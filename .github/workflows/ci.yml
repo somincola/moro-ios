@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build & Unit Test
+    runs-on: macos-latest
+    timeout-minutes: 40
+    env:
+      SCHEME: moro
+      PROJECT: moro.xcodeproj
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The project deploys to iOS 26.1, so it needs an Xcode 26.x toolchain for
+      # the iOS 26 SDK. The matching simulator runtime is not always pre-installed
+      # on the runner — the "Ensure an iOS simulator" step below installs it.
+      - name: Select latest Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project "$PROJECT" -scheme "$SCHEME"
+
+      - name: Ensure an iOS simulator (runtime + device) and pick it
+        id: sim
+        run: |
+          set -uxo pipefail
+          # -showdestinations lists only destinations the scheme can actually run
+          # on, so simulators on runtimes older than the iOS 26.1 deployment
+          # target are filtered out (plain `simctl list` does not filter).
+          # `-showdestinations` is not ordered by runtime version. Selecting its
+          # first iPhone can therefore run the suite on an older simulator even
+          # when a newer runtime is installed. Parse every eligible destination
+          # and deliberately choose the newest iOS runtime.
+          pick() {
+            xcodebuild -showdestinations -project "$PROJECT" -scheme "$SCHEME" 2>/dev/null \
+              | python3 -c '
+          import re
+          import sys
+
+          candidates = []
+          for line in sys.stdin:
+              if "platform:iOS Simulator" not in line:
+                  continue
+              identifier = re.search(r"\bid:\s*([0-9A-Fa-f-]+)", line)
+              os_version = re.search(r"\bOS:\s*([0-9]+(?:\.[0-9]+)*)", line)
+              device_name = re.search(r"\bname:\s*(iPhone[^,}]*)", line)
+              if not (identifier and os_version and device_name):
+                  continue
+              version = tuple(int(part) for part in os_version.group(1).split("."))
+              candidates.append((version, device_name.group(1).strip(), identifier.group(1)))
+
+          if candidates:
+              version, name, identifier = max(candidates, key=lambda item: (item[0], item[1]))
+              print("%s|%s|%s" % (identifier, ".".join(map(str, version)), name))
+          '
+          }
+          echo "Runtimes (before):"; xcrun simctl list runtimes || true
+          SELECTION="$(pick)"
+          UDID="${SELECTION%%|*}"
+          if [ -z "$UDID" ]; then
+            echo "No eligible iPhone destination — ensuring an iOS 26 runtime is present."
+            # The runner's Xcode does not always bundle its matching iOS simulator
+            # runtime; the iOS 26.1 target needs a >= 26.1 runtime, so download it
+            # when none is available (a no-op if already installed).
+            if ! xcrun simctl list runtimes | grep 'iOS' | grep -vi -q unavailable; then
+              echo "Downloading iOS platform (a few minutes)…"
+              xcodebuild -downloadPlatform iOS || sudo xcodebuild -downloadPlatform iOS || true
+            fi
+            # Create an iPhone on the newest installed, available iOS runtime.
+            RUNTIME="$(xcrun simctl list runtimes --json | python3 -c "import json,sys; rs=[r for r in json.load(sys.stdin)['runtimes'] if r.get('platform')=='iOS' and r.get('isAvailable')]; rs.sort(key=lambda r:[int(x) for x in r['version'].split('.')]); print(rs[-1]['identifier'] if rs else '')")"
+            DEVTYPE="$(xcrun simctl list devicetypes --json | python3 -c "import json,sys; ds=[d for d in json.load(sys.stdin)['devicetypes'] if d['name'].startswith('iPhone')]; print(ds[0]['identifier'] if ds else '')")"
+            echo "Creating simulator on runtime=$RUNTIME devtype=$DEVTYPE"
+            if [ -n "$RUNTIME" ] && [ -n "$DEVTYPE" ]; then
+              xcrun simctl create ci-iphone "$DEVTYPE" "$RUNTIME" || true
+            fi
+            SELECTION="$(pick)"
+            UDID="${SELECTION%%|*}"
+          fi
+          echo "Runtimes (after):"; xcrun simctl list runtimes || true
+          echo "iOS Simulator destinations:"
+          xcodebuild -showdestinations -project "$PROJECT" -scheme "$SCHEME" 2>/dev/null | grep 'platform:iOS Simulator' || true
+          if [ -z "$UDID" ]; then
+            echo "::error::No eligible iPhone simulator could be found or created"; exit 1
+          fi
+          IOS_VERSION="$(echo "$SELECTION" | cut -d'|' -f2)"
+          DEVICE_NAME="$(echo "$SELECTION" | cut -d'|' -f3-)"
+          echo "Using $DEVICE_NAME on iOS $IOS_VERSION ($UDID)"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: Build & run unit tests
+        run: |
+          set -o pipefail
+          # Ad-hoc sign for the simulator ("-"), with no team/profile, so the
+          # build needs no Apple account or secrets yet still embeds entitlements
+          # — keychain-backed tests fail with errSecMissingEntitlement (-34018)
+          # if signing is disabled outright (CODE_SIGNING_ALLOWED=NO).
+          xcodebuild test \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -only-testing:moroTests \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="-" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER=""
+
+      - name: Upload test result bundle
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestResults
+          path: TestResults.xcresult
+          retention-days: 7
+          if-no-files-found: ignore

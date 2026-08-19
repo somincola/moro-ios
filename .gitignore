@@ -1,0 +1,68 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+*.moved-aside
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.hmap
+*.ipa
+*.xcarchive
+*.xcresult
+*.dSYM
+*.dSYM.zip
+*.mobileprovision
+*.provisionprofile
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+# Package.resolved is intentionally tracked for this application.
+
+# Dependency build output
+Carthage/Build/
+Pods/
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# Fastlane generated output
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output/
+
+# Local logs and temporary output
+*.log
+*.tmp
+*.alpha.bak
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+*.p12
+*.p8
+*.xcconfig.local
+Secrets.xcconfig
+moro/Config/Secrets.swift
+.sentryclirc
+
+# Local recordings
+docs/app-review/**/*.mp4
+
+# Project-specific local Xcode state
+moro.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings

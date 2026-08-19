@@ -1,0 +1,227 @@
+//
+//  DirectMessagesViewModel.swift
+//  moro
+//
+//  ViewModel for direct-message conversations list.
+//
+
+import Foundation
+import Combine
+
+@MainActor
+final class DirectMessagesViewModel: ObservableObject {
+
+    enum LoadingState {
+        case idle
+        case loading
+        case loadingMore
+        case loaded
+        case error(Error)
+    }
+
+    @Published var conversations: [Conversation] = []
+    @Published var loadingState: LoadingState = .idle
+    @Published var transientErrorMessage: String?
+    /// True when the most recent load-more page failed; drives the inline retry footer.
+    @Published var loadMoreFailed: Bool = false
+
+    private let apiClient: MastodonAPI
+    private let pageSize: Int = 20
+    private var currentMaxID: String?
+    private var hasMore: Bool = true
+    private var inFlightConversationRefreshIDs: Set<String> = []
+
+    init(apiClient: MastodonAPI) {
+        self.apiClient = apiClient
+    }
+
+    func loadInitial() async {
+        guard case .idle = loadingState else { return }
+
+        loadingState = .loading
+        await load(reset: true)
+    }
+
+    func refresh() async {
+        await load(reset: true)
+    }
+
+    func loadMore() async {
+        guard hasMore, case .loaded = loadingState else { return }
+
+        loadingState = .loadingMore
+        loadMoreFailed = false
+
+        do {
+            let items = try await apiClient.fetchConversations(
+                maxID: currentMaxID,
+                sinceID: nil,
+                limit: pageSize
+            )
+            conversations.append(contentsOf: items)
+            currentMaxID = items.last?.id
+            hasMore = items.count >= pageSize
+            loadingState = .loaded
+            transientErrorMessage = nil
+        } catch {
+            // Keep already loaded data visible.
+            loadingState = .loaded
+            loadMoreFailed = true
+        }
+    }
+
+    @discardableResult
+    func markAsReadIfNeeded(_ conversation: Conversation) async -> Bool {
+        guard conversation.unread else { return false }
+
+        do {
+            let updatedConversation = try await apiClient.markConversationRead(id: conversation.id)
+            replaceConversation(updatedConversation)
+            transientErrorMessage = nil
+            return true
+        } catch {
+            AppFeedbackCenter.shared.showError(MoroL10n.DirectMessages.toastMarkReadFailed)
+            transientErrorMessage = MoroL10n.DirectMessages.errorMarkReadFailed
+            return false
+        }
+    }
+
+    @discardableResult
+    func delete(_ conversation: Conversation) async -> Bool {
+        do {
+            try await apiClient.deleteConversation(id: conversation.id)
+            conversations.removeAll { $0.id == conversation.id }
+            AppFeedbackCenter.shared.showSuccess(MoroL10n.DirectMessages.toastDeleted)
+            transientErrorMessage = nil
+            return true
+        } catch {
+            AppFeedbackCenter.shared.showError(MoroL10n.DirectMessages.toastDeleteFailed)
+            transientErrorMessage = MoroL10n.DirectMessages.errorDeleteFailed
+            return false
+        }
+    }
+
+    func conversation(withParticipantID accountID: String) -> Conversation? {
+        conversations.first { conversation in
+            conversation.accounts.contains(where: { $0.id == accountID })
+        }
+    }
+
+    func handleStreamEvent(_ event: StreamEvent) {
+        switch event {
+        case .conversation(let conversationID, let unread, let lastStatus):
+            let requiresRefresh = upsertConversationFromStream(
+                conversationID: conversationID,
+                unread: unread,
+                lastStatus: lastStatus
+            )
+            if requiresRefresh {
+                Task { await refreshConversationByID(conversationID) }
+            }
+
+        case .delete(let statusID):
+            handleDeleteEvent(statusID: statusID)
+
+        case .update, .statusUpdate, .notification:
+            break
+        }
+    }
+
+    private func load(reset: Bool) async {
+        do {
+            let items = try await apiClient.fetchConversations(
+                maxID: nil,
+                sinceID: nil,
+                limit: pageSize
+            )
+            if reset {
+                conversations = items
+            } else {
+                conversations.append(contentsOf: items)
+            }
+            currentMaxID = items.last?.id
+            hasMore = items.count >= pageSize
+            loadingState = .loaded
+            transientErrorMessage = nil
+        } catch {
+            loadingState = .error(error)
+            transientErrorMessage = MoroL10n.DirectMessages.errorLoadFailedDetail
+        }
+    }
+
+    private func replaceConversation(_ conversation: Conversation) {
+        guard let index = conversations.firstIndex(where: { $0.id == conversation.id }) else { return }
+        conversations[index] = conversation
+    }
+
+    private func upsertConversationFromStream(
+        conversationID: String,
+        unread: Bool,
+        lastStatus: Status?
+    ) -> Bool {
+        if let index = conversations.firstIndex(where: { $0.id == conversationID }) {
+            let current = conversations.remove(at: index)
+            let updated = Conversation(
+                id: current.id,
+                unread: unread,
+                accounts: current.accounts,
+                lastStatus: lastStatus ?? current.lastStatus,
+                updatedAt: lastStatus?.createdAt ?? Date()
+            )
+            conversations.insert(updated, at: 0)
+            return lastStatus == nil
+        }
+
+        let fallbackConversation = Conversation(
+            id: conversationID,
+            unread: unread,
+            accounts: lastStatus.map { [$0.account] } ?? [],
+            lastStatus: lastStatus,
+            updatedAt: lastStatus?.createdAt ?? Date()
+        )
+        conversations.insert(fallbackConversation, at: 0)
+        return true
+    }
+
+    private func handleDeleteEvent(statusID: String) {
+        guard let index = conversations.firstIndex(where: { $0.lastStatus?.id == statusID }) else {
+            return
+        }
+
+        let current = conversations[index]
+        conversations[index] = Conversation(
+            id: current.id,
+            unread: current.unread,
+            accounts: current.accounts,
+            lastStatus: nil,
+            updatedAt: current.updatedAt
+        )
+
+        Task { await refreshConversationByID(current.id) }
+    }
+
+    private func refreshConversationByID(_ conversationID: String) async {
+        guard !inFlightConversationRefreshIDs.contains(conversationID) else { return }
+        inFlightConversationRefreshIDs.insert(conversationID)
+        defer { inFlightConversationRefreshIDs.remove(conversationID) }
+
+        do {
+            let items = try await apiClient.fetchConversations(
+                maxID: nil,
+                sinceID: nil,
+                limit: pageSize
+            )
+            guard let latest = items.first(where: { $0.id == conversationID }) else { return }
+            replaceOrInsertAtTop(latest)
+        } catch {
+            // Silent fallback: keep currently visible local state.
+        }
+    }
+
+    private func replaceOrInsertAtTop(_ conversation: Conversation) {
+        if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
+            conversations.remove(at: index)
+        }
+        conversations.insert(conversation, at: 0)
+    }
+}

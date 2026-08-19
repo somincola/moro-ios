@@ -1,0 +1,620 @@
+//
+//  TimelineHomeView+ScrollView.swift
+//  moro
+//
+//  Per-timeline scroll view + loading states — extracted from TimelineHomeView as an extension (pure relocation, no behaviour change).
+//
+
+import SwiftUI
+import UIKit
+import Combine
+
+extension TimelineHomeView {
+    // MARK: - Timeline ScrollView (Independent for each timeline)
+
+    @ViewBuilder
+    func timelineScrollView(viewModel: TimelineViewModel, timelineType: TimelineType)
+        -> some View
+    {
+        let pageSession = pageSessionStore.session(for: timelineType)
+
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    // Scrollable spacer reserving room for the floating header. Being part of
+                    // the content (not a fixed/animated inset), it scrolls away naturally and the
+                    // content fills from the top — no layout jump or scroll feedback (= no jitter).
+                    Color.clear
+                        .frame(height: headerHeight)
+                        .id("timeline-top")
+                        .background(
+                            TimelineScrollViewResolver(
+                                timeline: timelineType,
+                                bridge: scrollBridge
+                            )
+                        )
+                        .onAppear { scrollBridge.setAtTop(true, for: timelineType) }
+                        .onDisappear { scrollBridge.setAtTop(false, for: timelineType) }
+
+                    TimelinePullRefreshSlot(
+                        maxHeight: pullRefreshReservedHeight,
+                        subject: scrollBridge.pullRefreshSubject(for: timelineType)
+                    )
+
+                    timelinePrimaryContent(for: viewModel, timelineType: timelineType)
+                }
+                .scrollTargetLayout()
+                // Clear the compact footer, including the device bottom safe area. The timeline
+                // remains edge to edge, while its final row stays fully reachable above the footer.
+                .padding(.bottom, bottomContentInset + theme.spacing.s)
+            }
+            // Reliable scroll tracking (iOS 18+). The old GeometryReader + preference +
+            // named coordinate space didn't fire inside the pager's per-timeline hosting
+            // controller, so the header never hid. contentOffset.y grows positive scrolling
+            // down; negate it to match the "minY-style" offset the header logic expects.
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y
+            } action: { _, offsetY in
+                guard isActive else { return }
+                if scrollBridge.isPresented(timelineType) {
+                    pageSession.recordContentOffset(offsetY)
+                }
+                let crossedThreshold = scrollBridge.updatePullRefreshDistance(
+                    max(0, -offsetY),
+                    threshold: pullRefreshTriggerDistance,
+                    for: timelineType,
+                    isSelected: timelineType == selectedTimeline
+                )
+                if crossedThreshold {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                }
+                handleScrollOffset(-offsetY, for: timelineType)
+            }
+            .onScrollPhaseChange { oldPhase, newPhase in
+                if scrollBridge.isPresented(timelineType) {
+                    pageSession.commitVisibleAnchor(for: newPhase)
+                }
+                guard isActive else { return }
+                guard didReleasePull(oldPhase: oldPhase, newPhase: newPhase) else { return }
+                startPullRefreshIfNeeded(
+                    viewModel: viewModel,
+                    timelineType: timelineType
+                )
+            }
+            .onChange(of: viewModel.statuses.count) { _, _ in
+                updateThreadContexts()
+            }
+            .onChange(of: viewModel.timelineType) { _, _ in
+                updateThreadContexts()
+            }
+            .onAppear {
+                scrollBridge.register(proxy, for: timelineType)
+            }
+        }
+    }
+
+    func didReleasePull(oldPhase: ScrollPhase, newPhase: ScrollPhase) -> Bool {
+        let wasTouching = oldPhase == .tracking || oldPhase == .interacting
+        let isTouching = newPhase == .tracking || newPhase == .interacting
+        return wasTouching && !isTouching
+    }
+
+    @MainActor
+    func startPullRefreshIfNeeded(
+        viewModel: TimelineViewModel,
+        timelineType: TimelineType
+    ) {
+        guard scrollBridge.commitPullRefresh(
+            for: timelineType,
+            threshold: pullRefreshTriggerDistance,
+            isSelected: timelineType == selectedTimeline
+        ) else { return }
+
+        Task { @MainActor in
+            await performPullRefresh(
+                viewModel: viewModel,
+                timelineType: timelineType
+            )
+        }
+    }
+
+    @MainActor
+    func performPullRefresh(
+        viewModel: TimelineViewModel,
+        timelineType: TimelineType
+    ) async {
+        let indicatorStart = Date()
+        let detectionSnapshot = detectionDimension(for: timelineType).map {
+            detectionManager.snapshot(for: $0)
+        }
+        let result = await viewModel.refresh(trigger: .pull)
+
+        switch result {
+        case .success:
+            viewModel.clearPendingStatuses()
+            if let detectionSnapshot {
+                detectionManager.resolve(detectionSnapshot)
+            }
+            syncDetectionTopID(for: timelineType)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        case .failure:
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            AppFeedbackCenter.shared.showError(MoroL10n.Timeline.loadFailed)
+        case .cancelled:
+            break
+        }
+
+        let elapsed = Date().timeIntervalSince(indicatorStart)
+        let remaining = minimumPullRefreshIndicatorDuration - elapsed
+        if remaining > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+        }
+        scrollBridge.finishPullRefresh(for: timelineType)
+    }
+
+    private struct TimelinePullRefreshSlot: View {
+        let maxHeight: CGFloat
+        let subject: CurrentValueSubject<TimelinePullRefreshVisualState, Never>
+
+        @Environment(\.moroTheme) private var theme
+        @State private var state = TimelinePullRefreshVisualState.idle
+
+        private var progress: CGFloat {
+            min(max(state.distance / max(state.threshold, 1), 0), 1)
+        }
+
+        private var slotHeight: CGFloat {
+            state.isPinned ? maxHeight : max(state.distance, 0)
+        }
+
+        private var entryProgress: CGFloat {
+            min(max(state.distance / max(maxHeight, 1), 0), 1)
+        }
+
+        private var iconOpacity: Double {
+            min(max(Double(entryProgress), 0), 1)
+        }
+
+        private var iconOffset: CGFloat {
+            let centeredY = (maxHeight - 28) / 2
+            return state.isRefreshing ? centeredY : -18 + (centeredY + 18) * entryProgress
+        }
+
+        var body: some View {
+            ZStack(alignment: .top) {
+                HStack {
+                    Spacer()
+                    indicator
+                    Spacer()
+                }
+                .offset(y: iconOffset)
+            }
+            .frame(height: slotHeight)
+            .clipped()
+            .onReceive(subject) { nextState in
+                if isCollapsing(to: nextState) {
+                    withAnimation(.easeOut(duration: 0.24)) {
+                        state = nextState
+                    }
+                } else {
+                    state = nextState
+                }
+            }
+            .animation(.easeOut(duration: 0.16), value: state.isRefreshing)
+        }
+
+        private func isCollapsing(to nextState: TimelinePullRefreshVisualState) -> Bool {
+            state.isPinned
+                && !nextState.isPinned
+                && !nextState.isRefreshing
+                && nextState.distance <= 0
+        }
+
+        @ViewBuilder
+        private var indicator: some View {
+            TimelinePetalProgress(
+                progress: progress,
+                isAnimating: state.isRefreshing,
+                activeColor: theme.colors.textSecondary,
+                inactiveColor: theme.colors.borderSubtle
+            )
+            .opacity(iconOpacity)
+            .scaleEffect(0.78 + 0.22 * entryProgress)
+            .frame(width: 28, height: 28)
+        }
+    }
+
+    private struct TimelinePetalProgress: View {
+        let progress: CGFloat
+        let isAnimating: Bool
+        let activeColor: Color
+        let inactiveColor: Color
+
+        private let petalCount = 12
+
+        var body: some View {
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimating)) { context in
+                let rotation = isAnimating
+                    ? context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.9) / 0.9 * 360
+                    : 0
+
+                ZStack {
+                    ForEach(0..<petalCount, id: \.self) { index in
+                        Capsule(style: .continuous)
+                            .fill(color(for: index))
+                            .frame(width: 2.4, height: 6.5)
+                            .offset(y: -8.5)
+                            .rotationEffect(.degrees(Double(index) * 360 / Double(petalCount)))
+                    }
+                }
+                .rotationEffect(.degrees(rotation))
+            }
+            .accessibilityHidden(true)
+        }
+
+        private func color(for index: Int) -> Color {
+            if isAnimating {
+                return activeColor.opacity(0.28 + Double(index + 1) / Double(petalCount) * 0.72)
+            }
+            let visiblePetals = Int(ceil(min(max(progress, 0), 1) * CGFloat(petalCount)))
+            return index < visiblePetals ? activeColor : inactiveColor.opacity(0.45)
+        }
+    }
+
+    @ViewBuilder
+    func timelinePrimaryContent(
+        for viewModel: TimelineViewModel, timelineType: TimelineType
+    )
+        -> some View
+    {
+        switch timelineContentState(for: viewModel, timelineType: timelineType) {
+        case .loading:
+            timelineLoadingRows
+        case .loaded:
+            timelineStatusRows(for: viewModel, timelineType: timelineType)
+        case .empty(let spec):
+            timelineStateCard(
+                icon: spec.icon,
+                title: spec.title,
+                message: spec.message,
+                actionTitle: spec.actionTitle,
+                action: spec.action
+            )
+        case .error(let spec):
+            timelineStateCard(
+                icon: "exclamationmark.triangle",
+                title: spec.title,
+                message: spec.message,
+                actionTitle: spec.action == nil ? nil : spec.actionTitle,
+                action: spec.action
+            )
+        }
+    }
+
+    @ViewBuilder
+    func timelineStatusRows(for viewModel: TimelineViewModel, timelineType: TimelineType)
+        -> some View
+    {
+        let pageSession = pageSessionStore.session(for: timelineType)
+
+        ForEach(Array(viewModel.statuses.enumerated()), id: \.element.id) { index, status in
+            let context = threadContext(for: status)
+            let prefetchWindowSize = 2
+            let canRunPrefetch = hasFinishedInitialLoad(for: timelineType)
+            let isNearBottom = viewModel.statuses.count - index <= 3
+            TimelinePostRow(
+                status: status,
+                threadContext: context,
+                translationAPIClient: apiClient,
+                accountCache: viewModel.accountCache,
+                actions: handlers.buildPostActions(
+                    for: status,
+                    onPollVote: { pollID, choices in
+                        await viewModel.votePoll(pollID: pollID, choices: choices)
+                    }
+                )
+            )
+            .id(status.id)
+            .overlay(alignment: .top) {
+                Color.clear
+                    .frame(height: 1)
+                    .offset(y: -headerHeight)
+                    .id(timelineHeaderSafeAnchorID(for: status.id))
+            }
+            .onScrollVisibilityChange(threshold: 0.05) { isVisible in
+                guard scrollBridge.isPresented(timelineType) else { return }
+                pageSession.updateVisibility(
+                    statusID: status.id,
+                    index: index,
+                    isVisible: isVisible
+                )
+                if timelineType == .home,
+                    let topVisibleStatusID = pageSession.topVisibleStatusID
+                {
+                    viewModel.currentTopVisibleStatusID = topVisibleStatusID
+                }
+            }
+            .onAppear {
+                if timelineType == .home,
+                    selectedTimeline == .home,
+                    index == 0
+                {
+                    StartupPerformanceTracker.shared.markTimelineFirstContentReady(
+                        count: viewModel.statuses.count,
+                        source: "first-cell-appear"
+                    )
+                }
+
+                if canRunPrefetch, timelineType == .home, scrollBridge.hasScrolledHome,
+                    index < prefetchWindowSize, selectedTimeline == timelineType
+                {
+                    Task(priority: .utility) {
+                        try? await Task.sleep(nanoseconds: 350_000_000)
+                        guard !Task.isCancelled else { return }
+                        guard selectedTimeline == timelineType else { return }
+                        await StatusDetailPrefetchCoordinator.shared.prefetchStatusAndQuoteIfNeeded(
+                            for: status.displayStatus,
+                            apiClient: apiClient,
+                            threadCache: cacheManager.threadCache,
+                            accountCache: cacheManager.accountCache
+                        )
+                    }
+                }
+
+                if isNearBottom,
+                    case .idle = viewModel.loadingState,
+                    viewModel.hasMore
+                {
+                    Task {
+                        await viewModel.loadMore(triggeredByStatusID: status.id)
+                    }
+                }
+            }
+
+            MoroDivider(leadingInset: theme.spacing.timelineDividerInset, height: 0.5)
+        }
+
+        if case .loadingMore = viewModel.loadingState {
+            HStack {
+                Spacer()
+                ProgressView()
+                    .padding(.vertical, theme.spacing.m)
+                Spacer()
+            }
+        } else if viewModel.loadMoreFailed {
+            PaginationFooter(
+                isLoadingMore: false,
+                didFail: true,
+                onRetry: { Task { await viewModel.loadMore() } }
+            )
+        } else if !viewModel.hasMore && !viewModel.statuses.isEmpty {
+            HStack {
+                Spacer()
+                Text(MoroL10n.Timeline.noMore)
+                    .font(theme.typography.caption)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .padding(.vertical, theme.spacing.m)
+                Spacer()
+            }
+        }
+    }
+
+    @ViewBuilder
+    var timelineLoadingRows: some View {
+        ForEach(0..<6, id: \.self) { _ in
+            HStack(alignment: .top, spacing: theme.spacing.m) {
+                Circle()
+                    .fill(theme.colors.surfaceSubtle)
+                    .frame(width: 36, height: 36)
+
+                VStack(alignment: .leading, spacing: theme.spacing.s) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(theme.colors.surfaceSubtle)
+                        .frame(width: 122, height: 12)
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(theme.colors.surfaceSubtle)
+                        .frame(height: 11)
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(theme.colors.surfaceSubtle)
+                        .frame(width: 190, height: 11)
+                }
+            }
+            .padding(.horizontal, theme.spacing.timelinePadding)
+            .padding(.vertical, theme.spacing.timelineVertical)
+            .redacted(reason: .placeholder)
+
+            MoroDivider()
+                .padding(.leading, theme.spacing.timelinePadding)
+        }
+    }
+
+    func timelineStateCard(
+        icon: String,
+        title: String,
+        message: String,
+        actionTitle: String?,
+        action: (() -> Void)?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: theme.spacing.m) {
+            MoroSectionTextBlock(
+                title: title,
+                message: message,
+                icon: icon,
+                tint: theme.colors.textTertiary
+            )
+
+            if let actionTitle, let action {
+                MoroButton(title: actionTitle, kind: .secondary, action: action)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, theme.spacing.timelinePadding)
+        .padding(.vertical, 42)
+    }
+
+    @ViewBuilder
+    func timelineContextCard(for timelineType: TimelineType, viewModel: TimelineViewModel)
+        -> some View
+    {
+        VStack(alignment: .leading, spacing: theme.spacing.s) {
+            HStack(spacing: theme.spacing.s) {
+                Image(systemName: timelineType.icon)
+                    .moroScaledFont(size: 12, weight: .semibold)
+                    .foregroundStyle(theme.colors.primary500)
+                    .frame(width: 22, height: 22)
+                    .background(
+                        Circle()
+                            .fill(theme.colors.primary500.opacity(0.12))
+                    )
+
+                VStack(alignment: .leading, spacing: theme.spacing.micro) {
+                    Text(timelineType.localizedTitle)
+                        .font(theme.typography.subtitle)
+                        .foregroundStyle(theme.colors.textPrimary)
+                    Text(timelineType.description)
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textSecondary)
+                }
+
+                Spacer()
+
+                Text(MoroL10n.Timeline.statusCount(viewModel.statuses.count))
+                    .font(theme.typography.caption)
+                    .foregroundStyle(theme.colors.textSecondary)
+            }
+
+            HStack(spacing: theme.spacing.hairline) {
+                timelineMetaChip(icon: "dot.radiowaves.left.and.right", text: MoroL10n.Timeline.streamConnected)
+                if currentDetectionCount > 0 {
+                    timelineMetaChip(
+                        icon: "arrow.up.circle", text: MoroL10n.Timeline.pendingCheck(currentDetectionCount))
+                }
+                if viewModel.hasMore {
+                    timelineMetaChip(icon: "chevron.down", text: MoroL10n.Timeline.canLoadMore)
+                }
+            }
+        }
+        .padding(.horizontal, theme.spacing.m)
+        .padding(.vertical, theme.spacing.s)
+        .moroCardSurface(cornerRadius: 12, tone: .subtle)
+    }
+
+    @ViewBuilder
+    func timelineMetaChip(icon: String, text: String) -> some View {
+        HStack(spacing: theme.spacing.xs) {
+            Image(systemName: icon)
+                .moroScaledFont(size: 10, weight: .semibold)
+            Text(text)
+                .font(theme.typography.caption)
+                .fontWeight(.semibold)
+        }
+        .foregroundStyle(theme.colors.textSecondary)
+        .padding(.horizontal, theme.spacing.s)
+        .padding(.vertical, theme.spacing.xs)
+        .background(
+            Capsule(style: .continuous)
+                .fill(theme.colors.surfaceBase)
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(theme.colors.borderSubtle, lineWidth: 1)
+        )
+    }
+
+    func timelineContentState(for viewModel: TimelineViewModel, timelineType: TimelineType)
+        -> ContentState
+    {
+        if viewModel.statuses.isEmpty, !hasLoadedTimeline(timelineType) {
+            return .loading(.timeline)
+        }
+        if viewModel.statuses.isEmpty, case .loading = viewModel.loadingState {
+            return .loading(.timeline)
+        }
+        if viewModel.statuses.isEmpty, case .error(let error) = viewModel.loadingState {
+            return .error(
+                ErrorStateSpec(
+                    title: MoroL10n.Timeline.loadFailed,
+                    message: error.localizedDescription,
+                    actionTitle: MoroL10n.Timeline.retry,
+                    action: {
+                        Task { await viewModel.loadInitial() }
+                    }
+                ))
+        }
+        if viewModel.statuses.isEmpty {
+            return .empty(emptyStateSpec(for: timelineType, viewModel: viewModel))
+        }
+        return .loaded
+    }
+
+    func hasLoadedTimeline(_ timelineType: TimelineType) -> Bool {
+        switch timelineType {
+        case .home:
+            return hasLoadedHome
+        case .local:
+            return hasLoadedLocal
+        case .federated:
+            return hasLoadedFederated
+        case .list:
+            return loadedPinnedTimelineIDs.contains(timelineType.id)
+        }
+    }
+
+    func emptyStateSpec(for timelineType: TimelineType, viewModel: TimelineViewModel)
+        -> EmptyStateSpec
+    {
+        switch timelineType {
+        case .home:
+            return EmptyStateSpec(
+                icon: "person.2",
+                title: MoroL10n.Timeline.emptyHomeTitle,
+                message: MoroL10n.Timeline.emptyHomeMessage,
+                actionTitle: MoroL10n.Timeline.refresh,
+                action: {
+                    Task { await viewModel.refresh() }
+                }
+            )
+        case .local:
+            return EmptyStateSpec(
+                icon: "building.2",
+                title: MoroL10n.Timeline.emptyLocalTitle,
+                message: MoroL10n.Timeline.emptyLocalMessage,
+                actionTitle: MoroL10n.Timeline.refresh,
+                action: {
+                    Task { await viewModel.loadInitial() }
+                }
+            )
+        case .federated:
+            return EmptyStateSpec(
+                icon: "globe",
+                title: MoroL10n.Timeline.emptyFederatedTitle,
+                message: MoroL10n.Timeline.emptyFederatedMessage,
+                actionTitle: MoroL10n.Timeline.refresh,
+                action: {
+                    Task { await viewModel.loadInitial() }
+                }
+            )
+        case .list:
+            return EmptyStateSpec(
+                icon: "list.bullet.rectangle",
+                title: MoroL10n.Lists.timelineEmptyTitle,
+                message: MoroL10n.Lists.timelineEmptyMessage,
+                actionTitle: MoroL10n.Timeline.refresh,
+                action: {
+                    Task { await viewModel.loadInitial() }
+                }
+            )
+        }
+    }
+
+    // MARK: - Timeline Loading
+
+    func loadTimeline(type: TimelineType) async {
+        // Update timeline type in view model
+        viewModel.timelineType = type
+        // Clear existing statuses and load new timeline
+        viewModel.clearStatuses()
+        await viewModel.loadInitial()
+    }
+
+}

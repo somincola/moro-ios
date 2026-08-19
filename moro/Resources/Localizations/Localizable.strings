@@ -1,0 +1,6 @@
+/* Intentionally empty.
+
+   All app strings — including the former error.* messages — now live in the
+   localized String Catalog Moro.xcstrings (table "Moro") and are accessed through
+   MoroL10n. Add new user-facing strings there via MoroL10n, never with String(localized:)
+   against this default table, so every string is translated across all 9 languages. */
