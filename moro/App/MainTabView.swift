@@ -459,7 +459,7 @@ private struct HomeTabRootView: View {
         Button {
             coordinator.openCompose()
         } label: {
-            Image(systemName: "square.and.pencil")
+            Image(systemName: "plus")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(theme.colors.primaryForeground)
                 .frame(width: composeButtonSize, height: composeButtonSize)

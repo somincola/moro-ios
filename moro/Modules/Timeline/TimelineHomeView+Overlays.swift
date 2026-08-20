@@ -2,41 +2,12 @@
 //  TimelineHomeView+Overlays.swift
 //  moro
 //
-//  Floating compose button + top new-posts/refresh indicator — extracted from TimelineHomeView as an extension (pure relocation, no behaviour change).
+//  Top new-posts/refresh indicator — extracted from TimelineHomeView as an extension (pure relocation, no behaviour change).
 //
 
 import SwiftUI
 
 extension TimelineHomeView {
-    // MARK: - Floating Compose Button
-
-    @ViewBuilder
-    var floatingComposeButton: some View {
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                Button(action: {
-                    actionSurface.composeContext = ComposeContextWrapper(context: .newPost)
-                }) {
-                    Image(systemName: "pencil")
-                        .moroScaledFont(size: 20, weight: .semibold)
-                        .foregroundStyle(theme.colors.primaryForeground)
-                        .frame(width: 56, height: 56)
-                        .background(
-                            Circle()
-                                .fill(theme.colors.primary500)
-                                .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
-                        )
-                }
-                .buttonStyle(.plain)
-                .padding(.trailing, theme.spacing.l)
-                .padding(.bottom, 70)  // 留出 tab bar 的高度空间
-            }
-        }
-        .ignoresSafeArea(edges: [])
-    }
-
     // MARK: - Top Indicator
 
     /// Helper computed property to check if current timeline is at top

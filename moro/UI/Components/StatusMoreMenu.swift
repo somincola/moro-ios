@@ -14,8 +14,32 @@ private enum MoroMenuMetrics {
     static let labelSpacing: CGFloat = 12
 }
 
+private enum MoroMenuItemTone {
+    case standard
+    case destructive
+
+    var swiftUIColor: Color {
+        switch self {
+        case .standard:
+            return .primary
+        case .destructive:
+            return .red
+        }
+    }
+
+    var uiColor: UIColor {
+        switch self {
+        case .standard:
+            return .label
+        case .destructive:
+            return .systemRed
+        }
+    }
+}
+
 private struct MoroMenuGlyph: View {
     let systemImage: String
+    let tintColor: UIColor
 
     var body: some View {
         Image(uiImage: renderedImage)
@@ -30,7 +54,7 @@ private struct MoroMenuGlyph: View {
         )
         let baseImage = UIImage(systemName: systemImage, withConfiguration: configuration)
             ?? UIImage()
-        return baseImage.withTintColor(.secondaryLabel, renderingMode: .alwaysOriginal)
+        return baseImage.withTintColor(tintColor, renderingMode: .alwaysOriginal)
     }
 }
 
@@ -58,13 +82,17 @@ struct MoroMenuItemLabel: View {
     let systemImage: String
     var isDestructive: Bool = false
 
+    private var tone: MoroMenuItemTone {
+        isDestructive ? .destructive : .standard
+    }
+
     var body: some View {
         HStack(spacing: MoroMenuMetrics.labelSpacing) {
-            MoroMenuGlyph(systemImage: systemImage)
+            MoroMenuGlyph(systemImage: systemImage, tintColor: tone.uiColor)
 
             Text(title)
                 .moroScaledFont(size: 15)
-                .foregroundStyle(isDestructive ? Color.red : Color.primary)
+                .foregroundStyle(tone.swiftUIColor)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

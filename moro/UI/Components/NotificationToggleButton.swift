@@ -15,26 +15,26 @@ struct NotificationToggleButton: View {
     
     @Environment(\.moroTheme) private var theme
 
-    private var surfaceTone: RelationshipControlSurfaceTone {
-        isNotifying ? .primary : .secondary
+    static func systemImage(isNotifying: Bool) -> String {
+        isNotifying ? "person.fill.xmark" : "person.fill.checkmark"
     }
     
     var body: some View {
         Button(action: onToggle) {
             ZStack {
-                Image(systemName: isNotifying ? "bell.fill" : "bell")
+                Image(systemName: Self.systemImage(isNotifying: isNotifying))
                     .moroScaledFont(size: 18, weight: .medium)
                     .opacity(isLoading ? 0 : 1)
 
                 if isLoading {
                     ProgressView()
                         .scaleEffect(0.8)
-                        .tint(isNotifying ? theme.colors.primaryForeground : theme.colors.textPrimary)
+                        .tint(theme.colors.textPrimary)
                 }
             }
-            .foregroundStyle(isNotifying ? theme.colors.primaryForeground : theme.colors.textSecondary)
+            .foregroundStyle(theme.colors.textPrimary)
             .frame(width: 36, height: 36)
-            .moroRelationshipControlSurface(surfaceTone, theme: theme)
+            .moroRelationshipControlSurface(.secondary, theme: theme)
         }
         .buttonStyle(.plain)
         .disabled(isLoading || isInteractionDisabled)

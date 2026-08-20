@@ -13,9 +13,9 @@ struct PinnedStatusCarousel: View {
     let pinnedStatuses: [Status]
     let onStatusTap: (Status) -> Void
 
-    @State private var currentIndex: Int = 0
+    @State private var selectedStatusID: String?
     @State private var availableWidth: CGFloat = 0
-    @State private var cardHeights: [Int: CGFloat] = [:]
+    @State private var cardHeights: [String: CGFloat] = [:]
     @State private var uniformCardHeight: CGFloat = 220
 
     // All pinned cards share ONE height — the tallest measured card, clamped — so
@@ -30,6 +30,22 @@ struct PinnedStatusCarousel: View {
 
     private var cardWidth: CGFloat {
         max(resolvedAvailableWidth - (theme.spacing.m * 2), 240)
+    }
+
+    private var stablePinnedStatuses: [Status] {
+        PinnedStatusCarouselState.deduplicated(pinnedStatuses, id: { $0.id })
+    }
+
+    private var statusIDs: [String] {
+        stablePinnedStatuses.map(\.id)
+    }
+
+    private var currentIndex: Int {
+        guard let selectedStatusID,
+              let index = statusIDs.firstIndex(of: selectedStatusID) else {
+            return 0
+        }
+        return index
     }
 
     var body: some View {
@@ -48,29 +64,41 @@ struct PinnedStatusCarousel: View {
                 Spacer()
 
                 // Page indicator
-                if pinnedStatuses.count > 1 {
-                    Text("\(currentIndex + 1)/\(pinnedStatuses.count)")
+                if stablePinnedStatuses.count > 1 {
+                    Text("\(currentIndex + 1)/\(stablePinnedStatuses.count)")
                         .font(theme.typography.caption)
                         .foregroundStyle(theme.colors.textSecondary)
                 }
             }
             .padding(.horizontal, theme.spacing.m)
 
-            TabView(selection: $currentIndex) {
-                ForEach(Array(pinnedStatuses.enumerated()), id: \.element.id) { index, status in
-                    PinnedStatusCard(
-                        status: status,
-                        maxCardWidth: cardWidth
-                    ) {
-                        onStatusTap(status)
+            // Native ScrollView paging avoids UIPageViewController transition assertions
+            // when the server mutates pinned statuses during an active swipe.
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(stablePinnedStatuses, id: \.id) { status in
+                        PinnedStatusCard(
+                            status: status,
+                            maxCardWidth: cardWidth
+                        ) {
+                            onStatusTap(status)
+                        }
+                        .frame(width: cardWidth, alignment: .topLeading)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .padding(.horizontal, theme.spacing.m)
+                        .frame(
+                            width: resolvedAvailableWidth,
+                            height: uniformCardHeight,
+                            alignment: .top
+                        )
+                        .id(status.id)
                     }
-                    .frame(width: cardWidth, alignment: .topLeading)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .padding(.horizontal, theme.spacing.m)
-                    .tag(index)
                 }
+                .scrollTargetLayout()
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $selectedStatusID)
             .frame(height: uniformCardHeight, alignment: .top)
             .background(alignment: .topLeading) {
                 allCardHeightProbes
@@ -81,9 +109,9 @@ struct PinnedStatusCarousel: View {
             }
 
             // Page Dots (for multiple pinned statuses)
-            if pinnedStatuses.count > 1 {
+            if stablePinnedStatuses.count > 1 {
                 HStack(spacing: 6) {
-                    ForEach(0..<pinnedStatuses.count, id: \.self) { index in
+                    ForEach(Array(statusIDs.enumerated()), id: \.element) { index, _ in
                         Capsule(style: .continuous)
                             .fill(
                                 index == currentIndex
@@ -109,39 +137,31 @@ struct PinnedStatusCarousel: View {
                     }
             }
         )
-        .onAppear {
-            if !pinnedStatuses.isEmpty {
-                currentIndex = min(max(currentIndex, 0), pinnedStatuses.count - 1)
-                recomputeUniformHeight(animated: false)
-            } else {
-                currentIndex = 0
-                uniformCardHeight = 220
-            }
-        }
-        .onChange(of: pinnedStatuses.count) { _, newCount in
-            guard newCount > 0 else {
-                currentIndex = 0
-                cardHeights.removeAll()
+        .onChange(of: statusIDs, initial: true) { previousIDs, newIDs in
+            selectedStatusID = PinnedStatusCarouselState.reconciledSelection(
+                currentID: selectedStatusID,
+                previousIDs: previousIDs,
+                newIDs: newIDs
+            )
+
+            let validIDs = Set(newIDs)
+            cardHeights = cardHeights.filter { validIDs.contains($0.key) }
+
+            guard !newIDs.isEmpty else {
                 uniformCardHeight = 220
                 return
             }
-            if currentIndex >= newCount {
-                currentIndex = newCount - 1
-            }
-            // Drop stale heights for indices that no longer exist so a removed (possibly
-            // tallest) card can't keep inflating the shared height, then recompute.
-            cardHeights = cardHeights.filter { $0.key < newCount }
+
             recomputeUniformHeight(animated: false)
         }
     }
 
     /// Hidden measurement layer: lay out EVERY pinned card at its natural height and
-    /// report each one keyed by index, so the shared height settles on the tallest from
-    /// the start (not lazily as each page is first swiped into view). The page TabView
-    /// already builds all pages, so these probes add no real network image loads.
+    /// report each one keyed by stable status ID, so the shared height settles on the
+    /// tallest from the start and remains correct across removal or reordering.
     private var allCardHeightProbes: some View {
         ZStack(alignment: .topLeading) {
-            ForEach(Array(pinnedStatuses.enumerated()), id: \.element.id) { index, status in
+            ForEach(stablePinnedStatuses, id: \.id) { status in
                 PinnedStatusCard(status: status, maxCardWidth: cardWidth) {}
                     .frame(width: cardWidth, alignment: .topLeading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -149,7 +169,7 @@ struct PinnedStatusCarousel: View {
                         GeometryReader { proxy in
                             Color.clear.preference(
                                 key: PinnedStatusHeightPreferenceKey.self,
-                                value: [index: proxy.size.height]
+                                value: [status.id: proxy.size.height]
                             )
                         }
                     )
@@ -178,10 +198,42 @@ struct PinnedStatusCarousel: View {
 }
 
 private struct PinnedStatusHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: [Int: CGFloat] = [:]
+    static var defaultValue: [String: CGFloat] = [:]
 
-    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
         value.merge(nextValue()) { _, new in new }
+    }
+}
+
+enum PinnedStatusCarouselState {
+    static func deduplicated<Element>(
+        _ elements: [Element],
+        id: (Element) -> String
+    ) -> [Element] {
+        var seenIDs = Set<String>()
+        return elements.filter { seenIDs.insert(id($0)).inserted }
+    }
+
+    static func reconciledSelection(
+        currentID: String?,
+        previousIDs: [String],
+        newIDs: [String]
+    ) -> String? {
+        guard let firstID = newIDs.first else { return nil }
+        guard let currentID else { return firstID }
+
+        if newIDs.contains(currentID) {
+            return currentID
+        }
+
+        let newIDSet = Set(newIDs)
+        let hasExistingPage = previousIDs.contains(where: newIDSet.contains)
+        guard hasExistingPage,
+              let previousIndex = previousIDs.firstIndex(of: currentID) else {
+            return firstID
+        }
+
+        return newIDs[min(previousIndex, newIDs.count - 1)]
     }
 }
 
