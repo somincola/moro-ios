@@ -105,7 +105,6 @@ struct AppCoordinatorView: View {
         .environment(
             \.moroMediaPrefs,
             MoroMediaPreferences(
-                playAnimations: settings.playAnimations,
                 autoplayGIFs: settings.autoplayGIFs
             )
         )

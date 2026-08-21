@@ -409,7 +409,7 @@ final class SearchCoreViewController: UIViewController {
         case .account(let account):
             return SearchResultLineCell.ContentModel(
                 kind: .account,
-                avatarURL: account.avatarAnimatedURL ?? account.avatarURL,
+                avatarURL: account.avatarURL,
                 title: account.displayNameFormatted,
                 subtitle: displayHandle(for: account),
                 body: accountNotePreview(for: account),
@@ -422,7 +422,7 @@ final class SearchCoreViewController: UIViewController {
             let status = wrappedStatus.displayStatus
             return SearchResultLineCell.ContentModel(
                 kind: .status,
-                avatarURL: status.account.avatarAnimatedURL ?? status.account.avatarURL,
+                avatarURL: status.account.avatarURL,
                 title: status.account.displayNameFormatted,
                 subtitle: "\(displayHandle(for: status.account)) · \(DateFormatting.relativeString(for: status.createdAt))",
                 body: normalizedPreviewText(statusPreviewText(for: status)),

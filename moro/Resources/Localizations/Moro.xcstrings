@@ -32870,55 +32870,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Animierte Avatare und Emoji abspielen"
+            "value" : "Animierte Emoji-Vorschauen abspielen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Play animated avatars and emoji"
+            "value" : "Play animated emoji previews"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reproducir avatares y emoji animados"
+            "value" : "Reproducir vistas previas de emojis animados"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lire les avatars animés et les emojis"
+            "value" : "Lire les aperçus d’émojis animés"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Riproduci avatar ed emoji animati"
+            "value" : "Riproduci le anteprime animate delle emoji"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "アニメーションアバターと絵文字を再生"
+            "value" : "アニメーション絵文字のプレビューを再生"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reproduzir avatares e emojis animados"
+            "value" : "Reproduzir pré-visualizações de emojis animados"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "播放动画头像和表情符号"
+            "value" : "播放动态表情预览"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "播放動態頭像和表情符號"
+            "value" : "播放動態表情預覽"
           }
         }
       }

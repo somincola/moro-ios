@@ -58,6 +58,101 @@ struct ComposeFixesTests {
         #expect(MoroUtilityButtonMetrics.hitTargetSize >= 44)
     }
 
+    @Test func composerPhotoSelectionNeverExceedsFourTotalAttachments() {
+        #expect(ComposeMediaSelectionPolicy.maximumAttachmentCount == 4)
+        #expect(ComposeMediaSelectionPolicy.remainingSlots(existingCount: 0) == 4)
+        #expect(ComposeMediaSelectionPolicy.remainingSlots(existingCount: 3) == 1)
+        #expect(ComposeMediaSelectionPolicy.remainingSlots(existingCount: 4) == 0)
+        #expect(
+            ComposeMediaSelectionPolicy.acceptedSelectionCount(
+                requestedCount: 4,
+                existingCount: 2
+            ) == 2
+        )
+    }
+
+    @Test func composerEmojiAnimationUsesOriginalMediaAndHonorsRuntimePauses() throws {
+        let animatedURL = try #require(URL(string: "https://example.test/emoji-original.png"))
+        let staticURL = try #require(URL(string: "https://example.test/emoji-static.png"))
+
+        #expect(
+            ComposeEmojiAnimationPolicy.imageURL(
+                animatedURL: animatedURL,
+                staticURL: staticURL,
+                reduceMotion: false
+            ) == animatedURL
+        )
+        #expect(
+            ComposeEmojiAnimationPolicy.imageURL(
+                animatedURL: animatedURL,
+                staticURL: staticURL,
+                animationsEnabled: false,
+                reduceMotion: false
+            ) == staticURL
+        )
+        #expect(
+            ComposeEmojiAnimationPolicy.imageURL(
+                animatedURL: animatedURL,
+                staticURL: staticURL,
+                reduceMotion: true
+            ) == staticURL
+        )
+        #expect(
+            ComposeEmojiAnimationPolicy.imageURL(
+                animatedURL: animatedURL,
+                staticURL: staticURL,
+                reduceMotion: false,
+                usesStaticFallback: true
+            ) == staticURL
+        )
+        // The composer emoji surface is hosted as UITextView.inputView. Its detached
+        // UIHostingController may not inherit scenePhase, so visibility gates loading while
+        // scene activity only gates playback.
+        #expect(ComposeEmojiAnimationPolicy.shouldLoadImage(isVisible: true))
+        #expect(!ComposeEmojiAnimationPolicy.shouldLoadImage(isVisible: false))
+        #expect(
+            ComposeEmojiAnimationPolicy.shouldAnimate(
+                isVisible: true,
+                isSceneActive: true,
+                animationsEnabled: true,
+                reduceMotion: false
+            )
+        )
+        #expect(
+            !ComposeEmojiAnimationPolicy.shouldAnimate(
+                isVisible: true,
+                isSceneActive: false,
+                animationsEnabled: true,
+                reduceMotion: false
+            )
+        )
+        #expect(
+            !ComposeEmojiAnimationPolicy.shouldAnimate(
+                isVisible: true,
+                isSceneActive: true,
+                animationsEnabled: true,
+                reduceMotion: false,
+                usesStaticFallback: true
+            )
+        )
+        #expect(
+            !ComposeEmojiAnimationPolicy.shouldAnimate(
+                isVisible: true,
+                isSceneActive: true,
+                animationsEnabled: false,
+                reduceMotion: false
+            )
+        )
+        #expect(
+            !ComposeEmojiAnimationPolicy.shouldAnimate(
+                isVisible: true,
+                isSceneActive: true,
+                animationsEnabled: true,
+                reduceMotion: true
+            )
+        )
+    }
+
     @Test func scheduledPublishingHasOneDisabledCapabilityBoundary() {
         #expect(ComposeFeatureAvailability.scheduledPublishing == false)
     }

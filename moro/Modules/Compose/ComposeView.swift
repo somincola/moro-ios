@@ -48,6 +48,39 @@ enum ComposeInputLayout {
     }
 }
 
+enum ComposeEmojiAnimationPolicy {
+    static func shouldLoadImage(isVisible: Bool) -> Bool {
+        isVisible
+    }
+
+    static func imageURL(
+        animatedURL: URL,
+        staticURL: URL,
+        animationsEnabled: Bool = true,
+        reduceMotion: Bool,
+        usesStaticFallback: Bool = false
+    ) -> URL {
+        if animationsEnabled, !reduceMotion, !usesStaticFallback {
+            return animatedURL
+        }
+        return staticURL
+    }
+
+    static func shouldAnimate(
+        isVisible: Bool,
+        isSceneActive: Bool,
+        animationsEnabled: Bool,
+        reduceMotion: Bool,
+        usesStaticFallback: Bool = false
+    ) -> Bool {
+        isVisible
+            && isSceneActive
+            && animationsEnabled
+            && !reduceMotion
+            && !usesStaticFallback
+    }
+}
+
 struct ComposeTextInsertionResult: Equatable {
     let text: String
     let selection: NSRange
@@ -108,7 +141,7 @@ struct ComposeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var appState: AppState
     
-    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var destination: ComposeDestination?
     @State private var inputMode: ComposeInputMode = .idle
     @State private var emojiPickerHeight = ComposeInputLayout.defaultEmojiPickerHeight
@@ -276,8 +309,11 @@ struct ComposeView: View {
             }
             .photosPicker(
                 isPresented: destinationBinding(for: .photoLibrary),
-                selection: $selectedPhoto,
-                matching: .images
+                selection: $selectedPhotos,
+                maxSelectionCount: max(viewModel.remainingMediaAttachmentSlots, 1),
+                selectionBehavior: .ordered,
+                matching: .images,
+                preferredItemEncoding: .current
             )
             .fileImporter(
                 isPresented: destinationBinding(for: .fileImporter),
@@ -295,11 +331,21 @@ struct ComposeView: View {
                     break
                 }
             }
-            .onChange(of: selectedPhoto) { _, newValue in
-                if let newValue = newValue {
-                    Task {
-                        await handlePhotoSelection(newValue)
-                    }
+            .onChange(of: selectedPhotos) { _, newValue in
+                guard !newValue.isEmpty else { return }
+
+                let acceptedItems = Array(
+                    newValue.prefix(viewModel.remainingMediaAttachmentSlots)
+                )
+                selectedPhotos = []
+                let reservationIDs = viewModel.reservePhotoImports(count: acceptedItems.count)
+                guard !reservationIDs.isEmpty else { return }
+
+                Task {
+                    await handlePhotoSelections(
+                        acceptedItems,
+                        reservationIDs: reservationIDs
+                    )
                 }
             }
             .onAppear {
@@ -610,6 +656,8 @@ struct ComposeView: View {
             emojiPickerHeight: emojiPickerHeight,
             emojiViewModel: emojiViewModel,
             hasEmojiHost: accountHost != nil,
+            isSceneActive: scenePhase == .active,
+            playAnimations: settings.playAnimations,
             theme: theme,
             textColor: UIColor(theme.colors.textPrimary),
             placeholder: placeholderText,
@@ -888,11 +936,11 @@ struct ComposeView: View {
                         toolbarIcon(
                             symbol: "photo",
                             isActive: false,
-                            isDisabled: viewModel.isPollActive
+                            isDisabled: viewModel.isPollActive || !viewModel.canAddMedia
                         )
                     }
                     .menuStyle(.borderlessButton)
-                    .disabled(viewModel.isPollActive)
+                    .disabled(viewModel.isPollActive || !viewModel.canAddMedia)
                     .accessibilityLabel(Text(MoroL10n.Compose.toolbarMedia))
                     .accessibilityIdentifier("compose.mediaMenu")
 
@@ -1557,10 +1605,46 @@ struct ComposeView: View {
     
     // MARK: - Actions
     
-    private func handlePhotoSelection(_ item: PhotosPickerItem) async {
-        defer { selectedPhoto = nil }
-        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-        showMediaImportFeedback(await viewModel.importPhotoData(data))
+    private func handlePhotoSelections(
+        _ items: [PhotosPickerItem],
+        reservationIDs: [String]
+    ) async {
+        let imports = Array(zip(items, reservationIDs))
+        let viewModel = viewModel
+        var firstFailure: ComposeViewModel.MediaImportOutcome?
+
+        await withTaskGroup(of: ComposeViewModel.MediaImportOutcome.self) { group in
+            for (item, reservationID) in imports {
+                group.addTask {
+                    do {
+                        guard let data = try await item.loadTransferable(type: Data.self) else {
+                            await viewModel.cancelPhotoImportReservation(id: reservationID)
+                            return .failed(.imageProcessing)
+                        }
+                        return await viewModel.importPhotoData(
+                            data,
+                            reservationID: reservationID
+                        )
+                    } catch is CancellationError {
+                        await viewModel.cancelPhotoImportReservation(id: reservationID)
+                        return .cancelled
+                    } catch {
+                        await viewModel.cancelPhotoImportReservation(id: reservationID)
+                        return .failed(.imageProcessing)
+                    }
+                }
+            }
+
+            for await outcome in group {
+                if case .failed = outcome, firstFailure == nil {
+                    firstFailure = outcome
+                }
+            }
+        }
+
+        if let firstFailure {
+            showMediaImportFeedback(firstFailure)
+        }
     }
     
     private func handleImageSelection(_ image: UIImage) async {
@@ -1759,6 +1843,8 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
     let emojiPickerHeight: CGFloat
     let emojiViewModel: CustomEmojiViewModel?
     let hasEmojiHost: Bool
+    let isSceneActive: Bool
+    let playAnimations: Bool
     let theme: MoroTheme
     let textColor: UIColor
     let placeholder: String
@@ -1838,6 +1924,8 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
                     ComposeEmojiInputSurface(
                         emojiViewModel: emojiViewModel,
                         hasEmojiHost: hasEmojiHost,
+                        isSceneActive: isSceneActive,
+                        playAnimations: playAnimations,
                         onEmojiSelected: { [weak coordinator = context.coordinator] shortcode in
                             coordinator?.parent.onEmojiSelected(shortcode)
                         }
@@ -2117,6 +2205,8 @@ private final class ComposeEmojiInputView: UIInputView {
 private struct ComposeEmojiInputSurface: View {
     let emojiViewModel: CustomEmojiViewModel?
     let hasEmojiHost: Bool
+    let isSceneActive: Bool
+    let playAnimations: Bool
     let onEmojiSelected: (String) -> Void
 
     @Environment(\.moroTheme) private var theme
@@ -2128,6 +2218,8 @@ private struct ComposeEmojiInputSurface: View {
             if let emojiViewModel {
                 EmojiPickerContentView(
                     emojiViewModel: emojiViewModel,
+                    isSceneActive: isSceneActive,
+                    playAnimations: playAnimations,
                     onEmojiSelected: onEmojiSelected
                 )
             } else if hasEmojiHost {
@@ -2155,6 +2247,8 @@ private struct ComposeEmojiInputSurface: View {
 
 struct EmojiPickerContentView: View {
     @ObservedObject var emojiViewModel: CustomEmojiViewModel
+    let isSceneActive: Bool
+    let playAnimations: Bool
     let onEmojiSelected: (String) -> Void
     
     @Environment(\.moroTheme) private var theme
@@ -2225,7 +2319,13 @@ struct EmojiPickerContentView: View {
                             Button(action: {
                                 onEmojiSelected(emoji.shortcode)
                             }) {
-                                EmojiPickerThumbnail(url: emoji.staticURL)
+                                AnimatedEmojiPickerThumbnail(
+                                    animatedURL: emoji.url,
+                                    staticURL: emoji.staticURL,
+                                    isSceneActive: isSceneActive,
+                                    prefersAnimatedAsset: playAnimations,
+                                    animationsEnabled: playAnimations
+                                )
                                     .frame(width: 48, height: 48)
                                     .contentShape(Rectangle())
                             }
@@ -2330,5 +2430,113 @@ private struct EmojiPickerThumbnail: View {
             guard !Task.isCancelled else { return }
             image = loadedImage
         }
+    }
+}
+
+private struct AnimatedEmojiPickerThumbnail: View {
+    let animatedURL: URL
+    let staticURL: URL
+    let isSceneActive: Bool
+    let prefersAnimatedAsset: Bool
+    let animationsEnabled: Bool
+    let size: CGFloat
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.moroTheme) private var theme
+    @State private var isLoaded = false
+    @State private var isVisible = false
+    @State private var usesStaticFallback = false
+
+    init(
+        animatedURL: URL,
+        staticURL: URL,
+        isSceneActive: Bool,
+        prefersAnimatedAsset: Bool,
+        animationsEnabled: Bool,
+        size: CGFloat = 40
+    ) {
+        self.animatedURL = animatedURL
+        self.staticURL = staticURL
+        self.isSceneActive = isSceneActive
+        self.prefersAnimatedAsset = prefersAnimatedAsset
+        self.animationsEnabled = animationsEnabled
+        self.size = size
+    }
+
+    private var activeURL: URL? {
+        // This view lives inside a standalone UIHostingController used as UITextView.inputView.
+        // That host does not reliably inherit SwiftUI's scenePhase environment. Loading must
+        // therefore depend only on cell visibility; scene activity controls playback below.
+        guard ComposeEmojiAnimationPolicy.shouldLoadImage(isVisible: isVisible) else {
+            return nil
+        }
+        return ComposeEmojiAnimationPolicy.imageURL(
+            animatedURL: animatedURL,
+            staticURL: staticURL,
+            animationsEnabled: prefersAnimatedAsset,
+            reduceMotion: reduceMotion,
+            usesStaticFallback: usesStaticFallback
+        )
+    }
+
+    private var shouldAnimate: Bool {
+        ComposeEmojiAnimationPolicy.shouldAnimate(
+            isVisible: isVisible,
+            isSceneActive: isSceneActive,
+            animationsEnabled: animationsEnabled,
+            reduceMotion: reduceMotion,
+            usesStaticFallback: usesStaticFallback
+        )
+    }
+
+    var body: some View {
+        ZStack {
+            if !isLoaded {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(theme.colors.surfaceSubtle)
+                    .overlay {
+                        Image(systemName: "face.smiling")
+                            .moroScaledFont(size: max(size * 0.32, 10))
+                            .foregroundStyle(theme.colors.textTertiary)
+                    }
+            }
+
+            SDWebRemoteImage(
+                url: activeURL,
+                thumbnailPixelSize: size * displayScale,
+                contentMode: .scaleAspectFit,
+                allowsAnimation: shouldAnimate,
+                maximumAnimatedBufferSize: 2 * 1024 * 1024,
+                onLoadStateChange: { loaded in
+                    isLoaded = loaded
+                },
+                onLoadFailure: {
+                    // A server may advertise a static PNG as its original URL or return an
+                    // animation format this OS cannot decode. Never leave the picker blank:
+                    // retry once with Mastodon's guaranteed static_url variant.
+                    guard prefersAnimatedAsset,
+                          !reduceMotion,
+                          !usesStaticFallback else { return }
+                    usesStaticFallback = true
+                }
+            )
+        }
+        .frame(width: size, height: size)
+        .onAppear {
+            isVisible = true
+        }
+        .onDisappear {
+            isVisible = false
+        }
+        .onChange(of: animatedURL) {
+            isLoaded = false
+            usesStaticFallback = false
+        }
+        .onChange(of: prefersAnimatedAsset) {
+            isLoaded = false
+            usesStaticFallback = false
+        }
+        .accessibilityHidden(true)
     }
 }

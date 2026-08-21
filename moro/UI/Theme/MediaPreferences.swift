@@ -2,16 +2,13 @@
 //  MediaPreferences.swift
 //  moro
 //
-//  Environment carrier for media playback preferences. Injected at the theme
-//  injection points (which already observe AppSettings), so row-level views —
-//  avatars, media grids, emoji-bearing text — read these without each
-//  attaching their own AppSettings observer.
+//  Environment carrier for timeline media playback preferences. Injected at
+//  the theme boundaries so media rows do not each observe AppSettings.
 //
 
 import SwiftUI
 
 struct MoroMediaPreferences: Equatable {
-    var playAnimations: Bool = true
     var autoplayGIFs: Bool = true
 }
 

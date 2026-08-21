@@ -9,12 +9,11 @@ import SwiftUI
 
 struct MoroAvatar: View {
     var imageURL: URL?
-    var staticImageURL: URL?  // Static version for when animations are disabled
+    var staticImageURL: URL?  // Server-provided static version, preferred in scrolling surfaces
     var initials: String = "MO"  // Kept for backward compatibility but not used by default
     var size: CGFloat = 36
 
     @Environment(\.moroTheme) private var theme
-    @Environment(\.moroMediaPrefs) private var mediaPrefs
     @Environment(\.displayScale) private var displayScale
 
     /// Avatars stay static in scrolling surfaces. Animated avatars create one display link per

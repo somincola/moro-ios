@@ -49,7 +49,6 @@ struct RichTextContentView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.appRouter) private var router
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.moroMediaPrefs) private var mediaPrefs
 
     init(
         html: String,
@@ -258,7 +257,6 @@ struct RichTextContentView: View {
                 MixedTextEmojiView(
                     elements: elements,
                     emojiSize: emojiSize,
-                    playAnimations: mediaPrefs.playAnimations,
                     textColor: UIColor(resolvedTextColor),
                     linkColor: UIColor(resolvedLinkColor),
                     codeBackgroundColor: UIColor(theme.colors.surfaceSubtle),
@@ -442,7 +440,7 @@ struct RichTextContentView: View {
     }
 }
 
-// MARK: - Animated Emoji Support
+// MARK: - Static Inline Emoji Support
 
 /// Custom UITextView that properly calculates intrinsic content size
 private class AutoHeightTextView: UITextView {
@@ -520,7 +518,6 @@ extension UIColor {
 struct MixedTextEmojiView: UIViewRepresentable {
     let elements: [ContentElement]
     let emojiSize: CGFloat
-    let playAnimations: Bool
     let textColor: UIColor
     let linkColor: UIColor
     let codeBackgroundColor: UIColor
@@ -543,6 +540,23 @@ struct MixedTextEmojiView: UIViewRepresentable {
             attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
         }
         return attributes
+    }
+
+    static func makeStaticEmojiAttachment(
+        image: UIImage,
+        emojiSize: CGFloat
+    ) -> NSTextAttachment {
+        let attachment = NSTextAttachment()
+        attachment.image = image.aspectFittedCanvas(
+            size: CGSize(width: emojiSize, height: emojiSize)
+        )
+        attachment.bounds = CGRect(
+            x: 0,
+            y: -emojiSize * 0.08,
+            width: emojiSize,
+            height: emojiSize
+        )
+        return attachment
     }
 
     func makeUIView(context: Context) -> UITextView {
@@ -631,9 +645,8 @@ struct MixedTextEmojiView: UIViewRepresentable {
 
         // Load emojis and build attributed string
         context.coordinator.loadEmojiAssets(
-            elements: self.elements, emojiSize: self.emojiSize, playAnimations: self.playAnimations
+            elements: self.elements, emojiSize: self.emojiSize
         ) { [
-            playAnimations = self.playAnimations,
             textColor = self.textColor,
             linkColor = self.linkColor,
             codeBackgroundColor = self.codeBackgroundColor,
@@ -641,7 +654,6 @@ struct MixedTextEmojiView: UIViewRepresentable {
         ] emojiAssets in
             let attributedString = self.buildAttributedString(
                 emojiAssets: emojiAssets,
-                playAnimations: playAnimations,
                 textColor: textColor,
                 linkColor: linkColor,
                 codeBackgroundColor: codeBackgroundColor,
@@ -674,7 +686,6 @@ struct MixedTextEmojiView: UIViewRepresentable {
         let elements: [ContentElement]
         let width: CGFloat
         let emojiSize: CGFloat
-        let playAnimations: Bool
         // Compared by resolved RGBA, NOT by UIColor instance: every SwiftUI render builds a
         // fresh `UIColor(SwiftUI.Color)`, and two such instances are not reliably `isEqual:`
         // (especially dynamic colors). Keying the gate on the instance made it always differ
@@ -693,7 +704,6 @@ struct MixedTextEmojiView: UIViewRepresentable {
     private func buildInputs(width: CGFloat) -> BuildInputs {
         BuildInputs(
             elements: elements, width: width, emojiSize: emojiSize,
-            playAnimations: playAnimations,
             textColorRGBA: textColor.moroRGBAComponents,
             linkColorRGBA: linkColor.moroRGBAComponents,
             codeBackgroundColorRGBA: codeBackgroundColor.moroRGBAComponents,
@@ -754,7 +764,7 @@ struct MixedTextEmojiView: UIViewRepresentable {
         }
 
         func loadEmojiAssets(
-            elements: [ContentElement], emojiSize: CGFloat, playAnimations: Bool,
+            elements: [ContentElement], emojiSize: CGFloat,
             completion: @escaping ([URL: UIImage]) -> Void
         ) {
             _ = emojiSize
@@ -864,9 +874,8 @@ struct MixedTextEmojiView: UIViewRepresentable {
         }
     }
 
-    private func buildAttributedString(
+    func buildAttributedString(
         emojiAssets: [URL: UIImage],
-        playAnimations: Bool,
         textColor: UIColor,
         linkColor: UIColor,
         codeBackgroundColor: UIColor,
@@ -950,12 +959,10 @@ struct MixedTextEmojiView: UIViewRepresentable {
                 // per-emoji SDAnimatedImageView / CADisplayLink, which (unbounded by cell reuse
                 // in a SwiftUI list) saturated the main thread. Keyed on the static URL.
                 if let image = emojiAssets[staticURL] {
-                    let plain = NSTextAttachment()
-                    plain.image = image.aspectFittedCanvas(
-                        size: CGSize(width: emojiSize, height: emojiSize))
-                    plain.bounds = CGRect(
-                        x: 0, y: -emojiSize * 0.08,
-                        width: emojiSize, height: emojiSize)
+                    let plain = Self.makeStaticEmojiAttachment(
+                        image: image,
+                        emojiSize: emojiSize
+                    )
                     let attachmentString = NSMutableAttributedString(attachment: plain)
                     attachmentString.addAttributes(
                         [.paragraphStyle: paragraphStyle],
