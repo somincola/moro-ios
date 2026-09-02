@@ -374,29 +374,40 @@ struct ContentParser {
         return result
     }
 
-    /// Mastodon HTML commonly preserves a visual space after a mention as whitespace
-    /// between the closing anchor and the next text node. Text-segment cleanup trims that
-    /// boundary, so status bodies can render `@usertext` even though the source contained
-    /// `@user text`. Restore exactly one separator before ordinary following text while
-    /// keeping sentence punctuation, line breaks, and adjacent rich-text tokens untouched.
+    /// Mastodon HTML commonly preserves visual spaces between mention anchors, or between
+    /// a mention and the next text node, as whitespace-only HTML nodes. Text-segment cleanup
+    /// trims those boundaries, so status bodies can render `@first@second` or `@usertext`.
+    /// Restore exactly one separator while keeping punctuation and line breaks untouched.
     private static func separatingMentionsFromFollowingText(
         _ elements: [ContentElement]
     ) -> [ContentElement] {
         guard elements.count > 1 else { return elements }
 
-        var result = elements
-        for index in elements.indices.dropLast() {
-            guard case .mention = elements[index],
-                  case .text(let text) = elements[elements.index(after: index)],
-                  let firstScalar = text.unicodeScalars.first,
-                  !CharacterSet.whitespacesAndNewlines.contains(firstScalar),
-                  !mentionAttachedPunctuation.contains(firstScalar)
-            else {
-                continue
+        var result: [ContentElement] = []
+        result.reserveCapacity(elements.count)
+
+        for element in elements {
+            var normalizedElement = element
+
+            if let previous = result.last,
+               case .mention = previous {
+                switch element {
+                case .mention:
+                    result.append(.text(" "))
+                case .text(let text):
+                    if let firstScalar = text.unicodeScalars.first,
+                       !CharacterSet.whitespacesAndNewlines.contains(firstScalar),
+                       !mentionAttachedPunctuation.contains(firstScalar) {
+                        normalizedElement = .text(" " + text)
+                    }
+                default:
+                    break
+                }
             }
 
-            result[result.index(after: index)] = .text(" " + text)
+            result.append(normalizedElement)
         }
+
         return result
     }
     

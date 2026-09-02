@@ -538,6 +538,39 @@ struct moroTests {
         #expect(accountElements.plainTextValue == "@tangquote (') 寫數據很方便")
     }
 
+    @Test @MainActor func contentParserSeparatesAdjacentStatusMentions() throws {
+        let jabsonikURL = try #require(URL(string: "https://ihan.outo.la/@jabsonik"))
+        let mookieURL = try #require(URL(string: "https://bunnymotorsports.com/@mookie"))
+        let html = #"<p><span class="h-card" translate="no"><a href="https://ihan.outo.la/@jabsonik" class="u-url mention">@<span>jabsonik</span></a></span> <span class="h-card" translate="no"><a href="https://bunnymotorsports.com/@mookie" class="u-url mention">@<span>mookie</span></a></span> </p><p>This is the first time I’ve received feedback.</p>"#
+        let mentions = [
+            Status.Mention(
+                id: "jabsonik",
+                username: "jabsonik",
+                url: jabsonikURL,
+                acct: "jabsonik@ihan.outo.la"
+            ),
+            Status.Mention(
+                id: "mookie",
+                username: "mookie",
+                url: mookieURL,
+                acct: "mookie@bunnymotorsports.com"
+            ),
+        ]
+
+        let elements = ContentParser.parseToElements(
+            html: html,
+            mentions: mentions,
+            options: .statusBody
+        )
+
+        #expect(Array(elements.prefix(3)) == [
+            .mention(username: "@jabsonik", url: jabsonikURL),
+            .text(" "),
+            .mention(username: "@mookie", url: mookieURL),
+        ])
+        #expect(elements.plainTextValue.hasPrefix("@jabsonik @mookie\n\nThis is"))
+    }
+
     @Test func contentParserPreservesStatusCodeBlocksInOrder() throws {
         let mentionURL = try #require(URL(string: "https://social.lomia.uk/@tan"))
         let mention = Status.Mention(
