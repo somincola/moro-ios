@@ -76,4 +76,14 @@ final class PinnedStatusCarouselTests: XCTestCase {
 
         XCTAssertEqual(result, "a")
     }
+
+    func testUniformHeightDoesNotClipTallTimelineCard() {
+        let result = PinnedStatusCarouselState.uniformCardHeight(
+            measuredHeights: [240, 612],
+            fallback: 220,
+            minimum: 180
+        )
+
+        XCTAssertEqual(result, 612)
+    }
 }

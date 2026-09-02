@@ -15,14 +15,15 @@ struct ProfileContentStream: View {
 
     let apiClient: MastodonAPI
     let postActions: (Status) -> PostActions
-    let onStatusTap: (Status) -> Void
 
     var body: some View {
         LazyVStack(spacing: 0) {
             if viewModel.selectedTab == .posts && !viewModel.pinnedStatuses.isEmpty {
                 PinnedStatusCarousel(
                     pinnedStatuses: viewModel.pinnedStatuses,
-                    onStatusTap: onStatusTap
+                    translationAPIClient: apiClient,
+                    accountCache: cacheManager.accountCache,
+                    postActions: postActions
                 )
 
                 MoroDivider()
@@ -60,6 +61,7 @@ struct ProfileContentStream: View {
                 TimelinePostRow(
                     status: status,
                     threadContext: .none,
+                    translationAPIClient: apiClient,
                     accountCache: cacheManager.accountCache,
                     actions: postActions(status)
                 )

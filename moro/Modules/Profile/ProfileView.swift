@@ -178,8 +178,7 @@ struct ProfileView: View {
                         ProfileContentStream(
                             viewModel: viewModel,
                             apiClient: apiClient,
-                            postActions: postActions,
-                            onStatusTap: navigateToDetail
+                            postActions: postActions
                         )
                             .frame(minHeight: chromeLayout.pinnedContentHeight, alignment: .top)
                             .background(theme.colors.surfaceBase)
@@ -960,10 +959,7 @@ struct ProfileView: View {
                 linkColorOverride: theme.colors.primary500,
                 lineSpacing: 2,
                 lineLimit: 1,
-                truncationMode: .tail,
-                trailingSystemImage: field.isVerified ? "checkmark.seal.fill" : nil,
-                trailingSystemImageColor: theme.colors.success,
-                trailingSystemImageSize: 11
+                truncationMode: .tail
             )
             .accessibilityLabel(
                 field.isVerified
@@ -983,7 +979,11 @@ struct ProfileView: View {
                     uiFontOverride: .moroScaled(ofSize: 15, weight: .medium, relativeTo: .subheadline),
                     textColorOverride: theme.colors.textPrimary,
                     linkColorOverride: theme.colors.primary500,
-                    lineSpacing: 3
+                    underlinesLinks: true,
+                    lineSpacing: 3,
+                    trailingSystemImage: field.isVerified ? "checkmark.seal.fill" : nil,
+                    trailingSystemImageColor: theme.colors.success,
+                    trailingSystemImageSize: 13
                 )
                 .multilineTextAlignment(.leading)
 
@@ -1041,10 +1041,6 @@ struct ProfileView: View {
     }
 
     // MARK: - Helpers
-
-    private func navigateToDetail(_ status: Status) {
-        router.navigate(to: .statusDetail(status.displayStatus))
-    }
 
     private func postActions(for status: Status) -> PostActions {
         handlers.buildPostActions(

@@ -11,18 +11,20 @@ struct PinnedStatusCarousel: View {
     @Environment(\.moroTheme) private var theme
 
     let pinnedStatuses: [Status]
-    let onStatusTap: (Status) -> Void
+    var translationAPIClient: MastodonAPI? = nil
+    var accountCache: AccountCache? = nil
+    var postActions: (Status) -> PostActions = { _ in .empty }
 
     @State private var selectedStatusID: String?
     @State private var availableWidth: CGFloat = 0
     @State private var cardHeights: [String: CGFloat] = [:]
     @State private var uniformCardHeight: CGFloat = 220
 
-    // All pinned cards share ONE height — the tallest measured card, clamped — so
+    // All pinned cards share ONE height — the tallest measured card — so
     // swiping left/right never resizes the carousel (and the profile content below it
-    // never jumps). Shorter cards top-align with empty space beneath.
+    // never jumps). The height is intentionally not capped because the reused timeline
+    // card must keep its full media, poll, quote, and action toolbar visible.
     private static let minCardHeight: CGFloat = 180
-    private static let maxCardHeight: CGFloat = 460
 
     private var resolvedAvailableWidth: CGFloat {
         availableWidth > 0 ? availableWidth : 320
@@ -79,11 +81,11 @@ struct PinnedStatusCarousel: View {
                     ForEach(stablePinnedStatuses, id: \.id) { status in
                         PinnedStatusCard(
                             status: status,
-                            maxCardWidth: cardWidth
-                        ) {
-                            onStatusTap(status)
-                        }
-                        .frame(width: cardWidth, alignment: .topLeading)
+                            cardWidth: cardWidth,
+                            translationAPIClient: translationAPIClient,
+                            accountCache: accountCache,
+                            actions: postActions(status)
+                        )
                         .frame(maxHeight: .infinity, alignment: .top)
                         .padding(.horizontal, theme.spacing.m)
                         .frame(
@@ -162,8 +164,13 @@ struct PinnedStatusCarousel: View {
     private var allCardHeightProbes: some View {
         ZStack(alignment: .topLeading) {
             ForEach(stablePinnedStatuses, id: \.id) { status in
-                PinnedStatusCard(status: status, maxCardWidth: cardWidth) {}
-                    .frame(width: cardWidth, alignment: .topLeading)
+                PinnedStatusCard(
+                    status: status,
+                    cardWidth: cardWidth,
+                    translationAPIClient: translationAPIClient,
+                    accountCache: accountCache,
+                    actions: postActions(status)
+                )
                     .fixedSize(horizontal: false, vertical: true)
                     .background(
                         GeometryReader { proxy in
@@ -180,12 +187,15 @@ struct PinnedStatusCarousel: View {
         .accessibilityHidden(true)
     }
 
-    /// Resolve the single shared height from the tallest measured card, clamped to a
-    /// sane range. Animated only when it genuinely changes (data load / pin change),
+    /// Resolve the single shared height from the tallest measured card. Animated only
+    /// when it genuinely changes (data load / pin change),
     /// never on swipe — so the carousel height stays put while paging.
     private func recomputeUniformHeight(animated: Bool = true) {
-        let measuredMax = cardHeights.values.max() ?? uniformCardHeight
-        let target = min(max(measuredMax, Self.minCardHeight), Self.maxCardHeight)
+        let target = PinnedStatusCarouselState.uniformCardHeight(
+            measuredHeights: Array(cardHeights.values),
+            fallback: uniformCardHeight,
+            minimum: Self.minCardHeight
+        )
         guard abs(target - uniformCardHeight) > 0.5 else { return }
         if animated {
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -206,6 +216,14 @@ private struct PinnedStatusHeightPreferenceKey: PreferenceKey {
 }
 
 enum PinnedStatusCarouselState {
+    static func uniformCardHeight(
+        measuredHeights: [CGFloat],
+        fallback: CGFloat,
+        minimum: CGFloat
+    ) -> CGFloat {
+        max(measuredHeights.max() ?? fallback, minimum)
+    }
+
     static func deduplicated<Element>(
         _ elements: [Element],
         id: (Element) -> String
@@ -320,6 +338,6 @@ enum PinnedStatusCarouselState {
         )
     ]
     
-    PinnedStatusCarousel(pinnedStatuses: sampleStatuses, onStatusTap: { _ in })
+    PinnedStatusCarousel(pinnedStatuses: sampleStatuses)
         .background(Color.gray.opacity(0.1))
 }

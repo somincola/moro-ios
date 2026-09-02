@@ -31,12 +31,14 @@ struct ContentParsingOptions: OptionSet {
     static let omitKnownHashtagLinks = ContentParsingOptions(rawValue: 1 << 4)
     static let separateMentionsFromFollowingText = ContentParsingOptions(rawValue: 1 << 5)
     static let preserveCodeSemantics = ContentParsingOptions(rawValue: 1 << 6)
+    static let separateAdjacentHashtags = ContentParsingOptions(rawValue: 1 << 7)
 
     static let accountRichText: ContentParsingOptions = [
         .preserveInlineImageAltText,
         .autoDetectPlainLinks,
         .autoDetectRemoteMentions,
         .autoDetectPlainHashtags,
+        .separateAdjacentHashtags,
     ]
 
     static let statusBody: ContentParsingOptions = [
@@ -339,11 +341,37 @@ struct ContentParser {
         
         // Clean up: merge adjacent text elements and remove empty ones
         let cleaned = cleanupElements(elements)
-        let normalized = options.contains(.separateMentionsFromFollowingText)
-            ? separatingMentionsFromFollowingText(cleaned)
+        let hashtagSeparated = options.contains(.separateAdjacentHashtags)
+            ? separatingAdjacentHashtags(cleaned)
             : cleaned
+        let normalized = options.contains(.separateMentionsFromFollowingText)
+            ? separatingMentionsFromFollowingText(hashtagSeparated)
+            : hashtagSeparated
         parseCache.setObject(CachedElementsBox(normalized), forKey: cacheKey)
         return normalized
+    }
+
+    /// Mastodon emits profile hashtags as adjacent anchors separated by whitespace-only
+    /// text nodes. Text-segment cleanup intentionally trims those nodes, so restore one
+    /// visual separator between neighboring hashtag elements for account rich text.
+    private static func separatingAdjacentHashtags(
+        _ elements: [ContentElement]
+    ) -> [ContentElement] {
+        guard elements.count > 1 else { return elements }
+
+        var result: [ContentElement] = []
+        result.reserveCapacity(elements.count)
+
+        for element in elements {
+            if case .hashtag = element,
+               let previous = result.last,
+               case .hashtag = previous {
+                result.append(.text(" "))
+            }
+            result.append(element)
+        }
+
+        return result
     }
 
     /// Mastodon HTML commonly preserves a visual space after a mention as whitespace

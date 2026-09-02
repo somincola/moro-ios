@@ -1347,6 +1347,17 @@ struct moroTests {
         #expect(elements.plainTextValue == "Hello :wave: world")
     }
 
+    @Test @MainActor func accountNoteContentElementsSeparateAdjacentHashtagLinks() async throws {
+        let account = makeAccount(
+            note: """
+                <p><a href="https://ihan.outo.la/tags/music" class="mention hashtag">#<span>music</span></a> <a href="https://ihan.outo.la/tags/afrobeat" class="mention hashtag">#<span>afrobeat</span></a> <a href="https://ihan.outo.la/tags/afrofunk" class="mention hashtag">#<span>afrofunk</span></a></p>
+                """,
+            url: "https://ihan.outo.la/@jabsonik"
+        )
+
+        #expect(account.noteContentElements.plainTextValue == "#music #afrobeat #afrofunk")
+    }
+
     @Test @MainActor func accountFieldContentElementsSupportEmojiMentionsURLsAndHashtags() async throws {
         let account = makeAccount(
             note: "",
@@ -2481,6 +2492,35 @@ struct moroTests {
         #expect(field.value.contains("<a href="))
         #expect(field.isVerified)
         #expect(field.verifiedAt != nil)
+    }
+
+    @Test @MainActor func accountDecodesVerifiedProfileFieldFromFieldsPayload() throws {
+        let payload = """
+            {
+              "id": "113817148213605504",
+              "username": "jabsonik",
+              "fields": [
+                {
+                  "name": "Outola radio show (FI)",
+                  "value": "<a href=\\\"https://outo.la\\\">outo.la</a>",
+                  "verified_at": "2026-09-01T18:29:49.661+00:00"
+                },
+                {
+                  "name": "Hire me! (FI)",
+                  "value": "<a href=\\\"https://mediakali.fi\\\">mediakali.fi</a>",
+                  "verified_at": null
+                }
+              ]
+            }
+            """
+
+        let account = try JSONDecoder().decode(Account.self, from: Data(payload.utf8))
+
+        #expect(account.fields.count == 2)
+        #expect(account.fields[0].isVerified)
+        #expect(account.fields[0].verifiedAt != nil)
+        #expect(!account.fields[1].isVerified)
+        #expect(account.fields[1].verifiedAt == nil)
     }
 
     @Test @MainActor func followButtonResolvesActionableRelationshipStates() async throws {
