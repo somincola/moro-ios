@@ -79,6 +79,14 @@ enum ComposeEmojiAnimationPolicy {
             && !reduceMotion
             && !usesStaticFallback
     }
+
+    static func shouldFallbackAfterLoadFailure(
+        animationsEnabled: Bool,
+        reduceMotion: Bool,
+        usesStaticFallback: Bool
+    ) -> Bool {
+        animationsEnabled && !reduceMotion && !usesStaticFallback
+    }
 }
 
 struct ComposeTextInsertionResult: Equatable {
@@ -1613,31 +1621,46 @@ struct ComposeView: View {
         let viewModel = viewModel
         var firstFailure: ComposeViewModel.MediaImportOutcome?
 
-        await withTaskGroup(of: ComposeViewModel.MediaImportOutcome.self) { group in
-            for (item, reservationID) in imports {
-                group.addTask {
-                    do {
-                        guard let data = try await item.loadTransferable(type: Data.self) else {
+        // Loading several ProRAW/full-resolution assets as Data at once can create a large
+        // transient memory spike. Process at most two selections concurrently while the
+        // reservation placeholders keep all four chosen positions visible and stable.
+        for batchStart in stride(
+            from: 0,
+            to: imports.count,
+            by: ComposeMediaSelectionPolicy.maximumConcurrentImports
+        ) {
+            let batchEnd = min(
+                batchStart + ComposeMediaSelectionPolicy.maximumConcurrentImports,
+                imports.count
+            )
+            let batch = imports[batchStart..<batchEnd]
+
+            await withTaskGroup(of: ComposeViewModel.MediaImportOutcome.self) { group in
+                for (item, reservationID) in batch {
+                    group.addTask {
+                        do {
+                            guard let data = try await item.loadTransferable(type: Data.self) else {
+                                await viewModel.cancelPhotoImportReservation(id: reservationID)
+                                return .failed(.imageProcessing)
+                            }
+                            return await viewModel.importPhotoData(
+                                data,
+                                reservationID: reservationID
+                            )
+                        } catch is CancellationError {
+                            await viewModel.cancelPhotoImportReservation(id: reservationID)
+                            return .cancelled
+                        } catch {
                             await viewModel.cancelPhotoImportReservation(id: reservationID)
                             return .failed(.imageProcessing)
                         }
-                        return await viewModel.importPhotoData(
-                            data,
-                            reservationID: reservationID
-                        )
-                    } catch is CancellationError {
-                        await viewModel.cancelPhotoImportReservation(id: reservationID)
-                        return .cancelled
-                    } catch {
-                        await viewModel.cancelPhotoImportReservation(id: reservationID)
-                        return .failed(.imageProcessing)
                     }
                 }
-            }
 
-            for await outcome in group {
-                if case .failed = outcome, firstFailure == nil {
-                    firstFailure = outcome
+                for await outcome in group {
+                    if case .failed = outcome, firstFailure == nil {
+                        firstFailure = outcome
+                    }
                 }
             }
         }
@@ -2323,7 +2346,6 @@ struct EmojiPickerContentView: View {
                                     animatedURL: emoji.url,
                                     staticURL: emoji.staticURL,
                                     isSceneActive: isSceneActive,
-                                    prefersAnimatedAsset: playAnimations,
                                     animationsEnabled: playAnimations
                                 )
                                     .frame(width: 48, height: 48)
@@ -2437,7 +2459,6 @@ private struct AnimatedEmojiPickerThumbnail: View {
     let animatedURL: URL
     let staticURL: URL
     let isSceneActive: Bool
-    let prefersAnimatedAsset: Bool
     let animationsEnabled: Bool
     let size: CGFloat
 
@@ -2452,14 +2473,12 @@ private struct AnimatedEmojiPickerThumbnail: View {
         animatedURL: URL,
         staticURL: URL,
         isSceneActive: Bool,
-        prefersAnimatedAsset: Bool,
         animationsEnabled: Bool,
         size: CGFloat = 40
     ) {
         self.animatedURL = animatedURL
         self.staticURL = staticURL
         self.isSceneActive = isSceneActive
-        self.prefersAnimatedAsset = prefersAnimatedAsset
         self.animationsEnabled = animationsEnabled
         self.size = size
     }
@@ -2474,7 +2493,7 @@ private struct AnimatedEmojiPickerThumbnail: View {
         return ComposeEmojiAnimationPolicy.imageURL(
             animatedURL: animatedURL,
             staticURL: staticURL,
-            animationsEnabled: prefersAnimatedAsset,
+            animationsEnabled: animationsEnabled,
             reduceMotion: reduceMotion,
             usesStaticFallback: usesStaticFallback
         )
@@ -2507,6 +2526,7 @@ private struct AnimatedEmojiPickerThumbnail: View {
                 thumbnailPixelSize: size * displayScale,
                 contentMode: .scaleAspectFit,
                 allowsAnimation: shouldAnimate,
+                animationLoadingMode: .boundedPreview,
                 maximumAnimatedBufferSize: 2 * 1024 * 1024,
                 onLoadStateChange: { loaded in
                     isLoaded = loaded
@@ -2515,9 +2535,11 @@ private struct AnimatedEmojiPickerThumbnail: View {
                     // A server may advertise a static PNG as its original URL or return an
                     // animation format this OS cannot decode. Never leave the picker blank:
                     // retry once with Mastodon's guaranteed static_url variant.
-                    guard prefersAnimatedAsset,
-                          !reduceMotion,
-                          !usesStaticFallback else { return }
+                    guard ComposeEmojiAnimationPolicy.shouldFallbackAfterLoadFailure(
+                        animationsEnabled: animationsEnabled,
+                        reduceMotion: reduceMotion,
+                        usesStaticFallback: usesStaticFallback
+                    ) else { return }
                     usesStaticFallback = true
                 }
             )
@@ -2533,7 +2555,7 @@ private struct AnimatedEmojiPickerThumbnail: View {
             isLoaded = false
             usesStaticFallback = false
         }
-        .onChange(of: prefersAnimatedAsset) {
+        .onChange(of: animationsEnabled) {
             isLoaded = false
             usesStaticFallback = false
         }

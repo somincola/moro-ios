@@ -11,6 +11,15 @@
 import SDWebImage
 import SwiftUI
 
+enum SDWebRemoteImageAnimationLoadingMode: Equatable {
+    /// Preserve the shared renderer's existing behaviour for timeline media and every
+    /// non-composer call site.
+    case standard
+    /// Decode the original APNG/GIF without thumbnailing away its frames, while bounding
+    /// frame memory and pausing playback during picker scrolling.
+    case boundedPreview
+}
+
 struct SDWebRemoteImage: UIViewRepresentable {
     let url: URL?
     /// Longest-edge decode target in pixels. The decoder won't upscale, so passing the
@@ -18,6 +27,7 @@ struct SDWebRemoteImage: UIViewRepresentable {
     let thumbnailPixelSize: CGFloat
     var contentMode: UIView.ContentMode = .scaleAspectFill
     var allowsAnimation: Bool = false
+    var animationLoadingMode: SDWebRemoteImageAnimationLoadingMode = .standard
     /// Caps decoded animation frames without forcing APNG/GIF through thumbnail decoding,
     /// which can collapse the resource to a single frame.
     var maximumAnimatedBufferSize: UInt = 8 * 1024 * 1024
@@ -29,37 +39,48 @@ struct SDWebRemoteImage: UIViewRepresentable {
         view.contentMode = contentMode
         view.clipsToBounds = true
         view.backgroundColor = .clear
-        // Pause decorative animation while a scroll view is tracking without adding
-        // per-row scroll observers.
-        view.runLoopMode = .default
-        view.maxBufferSize = maximumAnimatedBufferSize
-        view.clearBufferWhenStopped = true
+        if animationLoadingMode == .boundedPreview {
+            // Pause decorative picker animation while its scroll view is tracking without
+            // changing the playback lifecycle of timeline GIF media.
+            view.runLoopMode = .default
+            view.maxBufferSize = maximumAnimatedBufferSize
+            view.clearBufferWhenStopped = true
+        }
         view.autoPlayAnimatedImage = allowsAnimation
         return view
     }
 
     func updateUIView(_ view: SDAnimatedImageView, context: Context) {
-        context.coordinator.onLoadStateChange = onLoadStateChange
-        context.coordinator.onLoadFailure = onLoadFailure
+        let usesBoundedPreview = animationLoadingMode == .boundedPreview
+        context.coordinator.onLoadStateChange = usesBoundedPreview ? onLoadStateChange : nil
+        context.coordinator.onLoadFailure = usesBoundedPreview ? onLoadFailure : nil
         view.contentMode = contentMode
-        view.maxBufferSize = maximumAnimatedBufferSize
+        if usesBoundedPreview {
+            view.maxBufferSize = maximumAnimatedBufferSize
+        }
         view.autoPlayAnimatedImage = allowsAnimation
         guard context.coordinator.lastURL != url
             || context.coordinator.lastAllowsAnimation != allowsAnimation
+            || context.coordinator.lastAnimationLoadingMode != animationLoadingMode
         else { return }
-        let requestID = UUID()
+        let requestID = usesBoundedPreview ? UUID() : nil
         context.coordinator.loadRequestID = requestID
         context.coordinator.lastURL = url
         context.coordinator.lastAllowsAnimation = allowsAnimation
+        context.coordinator.lastAnimationLoadingMode = animationLoadingMode
         view.sd_cancelCurrentImageLoad()
 
         guard let url else {
             view.stopAnimating()
             view.image = nil
-            context.coordinator.reportLoadState(false, requestID: requestID)
+            if let requestID {
+                context.coordinator.reportLoadState(false, requestID: requestID)
+            }
             return
         }
-        context.coordinator.reportLoadState(false, requestID: requestID)
+        if let requestID {
+            context.coordinator.reportLoadState(false, requestID: requestID)
+        }
         if !allowsAnimation {
             view.stopAnimating()
         }
@@ -67,15 +88,32 @@ struct SDWebRemoteImage: UIViewRepresentable {
             cgSize: CGSize(width: thumbnailPixelSize, height: thumbnailPixelSize))
         var options: SDWebImageOptions = [.retryFailed]
         let imageContext: [SDWebImageContextOption: Any]
-        if allowsAnimation {
+        if allowsAnimation, usesBoundedPreview {
             options.insert(.matchAnimatedImageClass)
             imageContext = [
                 .imageScaleDownLimitBytes: NSNumber(value: maximumAnimatedBufferSize)
             ]
-        } else {
+        } else if !allowsAnimation {
             options.insert(.decodeFirstFrameOnly)
             imageContext = [.imageThumbnailPixelSize: thumbnail]
+        } else {
+            // This is the pre-existing path used by timeline GIF attachments. Keeping it as
+            // the default ensures the composer feature cannot alter feed playback behaviour.
+            imageContext = [.imageThumbnailPixelSize: thumbnail]
         }
+
+        guard usesBoundedPreview, let requestID else {
+            // Preserve the exact pre-feature loading path for timeline media and all other
+            // shared-image consumers: no completion callback or extra main-queue work.
+            view.sd_setImage(
+                with: url,
+                placeholderImage: nil,
+                options: options,
+                context: imageContext
+            )
+            return
+        }
+
         view.sd_setImage(
             with: url,
             placeholderImage: nil,
@@ -107,6 +145,7 @@ struct SDWebRemoteImage: UIViewRepresentable {
     final class Coordinator {
         var lastURL: URL?
         var lastAllowsAnimation = false
+        var lastAnimationLoadingMode: SDWebRemoteImageAnimationLoadingMode = .standard
         var loadRequestID: UUID?
         var onLoadStateChange: ((Bool) -> Void)?
         var onLoadFailure: (() -> Void)?

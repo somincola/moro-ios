@@ -11,6 +11,7 @@ import SwiftUI
 
 enum ComposeMediaSelectionPolicy {
     static let maximumAttachmentCount = 4
+    static let maximumConcurrentImports = 2
 
     static func remainingSlots(existingCount: Int) -> Int {
         max(0, maximumAttachmentCount - max(0, existingCount))

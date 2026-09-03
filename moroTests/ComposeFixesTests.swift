@@ -60,6 +60,7 @@ struct ComposeFixesTests {
 
     @Test func composerPhotoSelectionNeverExceedsFourTotalAttachments() {
         #expect(ComposeMediaSelectionPolicy.maximumAttachmentCount == 4)
+        #expect(ComposeMediaSelectionPolicy.maximumConcurrentImports == 2)
         #expect(ComposeMediaSelectionPolicy.remainingSlots(existingCount: 0) == 4)
         #expect(ComposeMediaSelectionPolicy.remainingSlots(existingCount: 3) == 1)
         #expect(ComposeMediaSelectionPolicy.remainingSlots(existingCount: 4) == 0)
@@ -151,6 +152,48 @@ struct ComposeFixesTests {
                 reduceMotion: true
             )
         )
+        #expect(
+            ComposeEmojiAnimationPolicy.shouldFallbackAfterLoadFailure(
+                animationsEnabled: true,
+                reduceMotion: false,
+                usesStaticFallback: false
+            )
+        )
+        #expect(
+            !ComposeEmojiAnimationPolicy.shouldFallbackAfterLoadFailure(
+                animationsEnabled: false,
+                reduceMotion: false,
+                usesStaticFallback: false
+            )
+        )
+        #expect(
+            !ComposeEmojiAnimationPolicy.shouldFallbackAfterLoadFailure(
+                animationsEnabled: true,
+                reduceMotion: false,
+                usesStaticFallback: true
+            )
+        )
+    }
+
+    @Test func composerAnimatedDecodePipelineIsExplicitlyScopedAwayFromTimelineMedia() throws {
+        let url = try #require(URL(string: "https://example.test/animated.gif"))
+
+        let sharedDefault = SDWebRemoteImage(
+            url: url,
+            thumbnailPixelSize: 320,
+            allowsAnimation: true
+        )
+        let composerPreview = SDWebRemoteImage(
+            url: url,
+            thumbnailPixelSize: 80,
+            allowsAnimation: true,
+            animationLoadingMode: .boundedPreview,
+            maximumAnimatedBufferSize: 2 * 1024 * 1024
+        )
+
+        #expect(sharedDefault.animationLoadingMode == .standard)
+        #expect(composerPreview.animationLoadingMode == .boundedPreview)
+        #expect(composerPreview.maximumAnimatedBufferSize == 2 * 1024 * 1024)
     }
 
     @Test func scheduledPublishingHasOneDisabledCapabilityBoundary() {

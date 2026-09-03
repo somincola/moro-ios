@@ -1316,6 +1316,40 @@ struct moroTests {
         #expect(abs(attachment.bounds.minY + 1.6) < 0.001)
     }
 
+    @Test @MainActor func richTextEmojiRendererKeepsReadableShortcodeWhenStaticAssetFails() {
+        let animatedURL = URL(string: "https://example.test/original/wave.apng")!
+        let staticURL = URL(string: "https://example.test/static/wave.png")!
+        let elements: [ContentElement] = [
+            .emoji(shortcode: "wave", url: animatedURL, staticURL: staticURL)
+        ]
+
+        let rendered = MixedTextEmojiView(
+            elements: elements,
+            emojiSize: 20,
+            textColor: .label,
+            linkColor: .systemBlue,
+            codeBackgroundColor: .secondarySystemBackground
+        ).buildAttributedString(
+            emojiAssets: [:],
+            textColor: .label,
+            linkColor: .systemBlue,
+            codeBackgroundColor: .secondarySystemBackground,
+            underlinesLinks: false
+        )
+        var attachmentCount = 0
+        rendered.enumerateAttribute(
+            .attachment,
+            in: NSRange(location: 0, length: rendered.length)
+        ) { value, _, _ in
+            if value is NSTextAttachment {
+                attachmentCount += 1
+            }
+        }
+
+        #expect(rendered.string == ":wave:")
+        #expect(attachmentCount == 0)
+    }
+
     @Test @MainActor func statusEmojiPipelineParsesStaticURLsAndBuildsEveryAttachment()
         async throws
     {
@@ -3532,6 +3566,141 @@ struct moroTests {
         #expect(viewModel.mediaAttachments.first?.uploadState.isUploaded == true)
         #expect(viewModel.mediaAttachments.first?.sourceUploadData == nil)
         #expect(viewModel.mediaUploadStates["server-media"]?.isUploaded == true)
+    }
+
+    @Test @MainActor func composePhotoReservationsCapAndCreateImmediatePlaceholders() throws {
+        let viewModel = ComposeViewModel(
+            context: .newPost,
+            apiClient: MockMastodonAPI()
+        )
+        let existing = [
+            makeComposeMediaAttachment(id: "existing-1", state: .uploaded),
+            makeComposeMediaAttachment(id: "existing-2", state: .uploaded),
+        ]
+        viewModel.mediaAttachments = existing
+        viewModel.mediaUploadStates = Dictionary(
+            uniqueKeysWithValues: existing.map { ($0.id, .uploaded) }
+        )
+
+        let reservationIDs = viewModel.reservePhotoImports(count: 4)
+
+        #expect(reservationIDs.count == 2)
+        #expect(
+            viewModel.mediaAttachments.map(\.id)
+                == ["existing-1", "existing-2"] + reservationIDs
+        )
+        for reservationID in reservationIDs {
+            let attachment = try #require(viewModel.mediaAttachment(id: reservationID))
+            #expect(attachment.url.scheme == "temp")
+            #expect(attachment.previewImage == nil)
+            if case .uploading(let progress) = attachment.uploadState {
+                #expect(progress == 0)
+            } else {
+                Issue.record("Photo reservation must begin as an uploading placeholder")
+            }
+            if case .uploading(let progress) = viewModel.mediaUploadStates[reservationID] {
+                #expect(progress == 0)
+            } else {
+                Issue.record("Photo reservation must publish immediate upload state")
+            }
+        }
+
+        let cancelledID = try #require(reservationIDs.first)
+        viewModel.cancelPhotoImportReservation(id: cancelledID)
+        #expect(viewModel.mediaAttachment(id: cancelledID) == nil)
+        #expect(viewModel.mediaUploadStates[cancelledID] == nil)
+    }
+
+    @Test @MainActor func composeReservedPhotoUploadsPreservePickerOrderWhenFinishingOutOfOrder()
+        async throws
+    {
+        let api = MockMastodonAPI()
+        api.uploadMediaHandler = { data, _, _ in
+            let marker = try #require(data.first)
+            let delay: UInt64 = switch marker {
+            case 1: 120_000_000
+            case 2: 60_000_000
+            default: 10_000_000
+            }
+            try await Task.sleep(nanoseconds: delay)
+            return Status.Attachment(
+                id: "server-\(marker)",
+                type: "image",
+                url: URL(string: "https://example.test/server-\(marker).png")!
+            )
+        }
+        let viewModel = ComposeViewModel(context: .newPost, apiClient: api)
+        let reservationIDs = viewModel.reservePhotoImports(count: 3)
+        let preparedMedia = (1...3).map { marker in
+            ComposeMediaProcessor.PreparedMedia(
+                uploadData: Data([UInt8(marker)]),
+                uploadMimeType: "image/png",
+                mediaType: "image",
+                previewImage: nil
+            )
+        }
+
+        async let first = viewModel.importPreparedMedia(
+            preparedMedia[0], reservationID: reservationIDs[0]
+        )
+        async let second = viewModel.importPreparedMedia(
+            preparedMedia[1], reservationID: reservationIDs[1]
+        )
+        async let third = viewModel.importPreparedMedia(
+            preparedMedia[2], reservationID: reservationIDs[2]
+        )
+        let outcomes = await [first, second, third]
+
+        #expect(outcomes.allSatisfy { $0 == .uploaded })
+        #expect(viewModel.mediaAttachments.map(\.id) == ["server-1", "server-2", "server-3"])
+    }
+
+    @Test @MainActor func composePhotoReservationCleansDecodeFailureAndRetainsUploadFailure()
+        async throws
+    {
+        let api = MockMastodonAPI()
+        let viewModel = ComposeViewModel(context: .newPost, apiClient: api)
+        let decodeReservation = try #require(viewModel.reservePhotoImports(count: 1).first)
+
+        let decodeOutcome = await viewModel.importPhotoData(
+            Data("not-an-image".utf8),
+            reservationID: decodeReservation
+        )
+
+        #expect(decodeOutcome == .failed(.imageProcessing))
+        #expect(viewModel.mediaAttachment(id: decodeReservation) == nil)
+        #expect(viewModel.mediaUploadStates[decodeReservation] == nil)
+
+        api.uploadMediaHandler = { _, _, _ in
+            throw MockMastodonAPI.MockError.forcedFailure
+        }
+        let uploadReservation = try #require(viewModel.reservePhotoImports(count: 1).first)
+        let sourceData = Data([0x01, 0x02, 0x03])
+        let uploadOutcome = await viewModel.importPreparedMedia(
+            ComposeMediaProcessor.PreparedMedia(
+                uploadData: sourceData,
+                uploadMimeType: "image/png",
+                mediaType: "image",
+                previewImage: nil
+            ),
+            reservationID: uploadReservation
+        )
+
+        #expect(uploadOutcome == .failed(.upload))
+        let failedAttachment = try #require(
+            viewModel.mediaAttachment(id: uploadReservation)
+        )
+        #expect(failedAttachment.sourceUploadData == sourceData)
+        if case .failed = failedAttachment.uploadState {
+            // Expected: the user can retry this reserved upload.
+        } else {
+            Issue.record("Upload failure must retain a retryable failed attachment")
+        }
+        if case .failed = viewModel.mediaUploadStates[uploadReservation] {
+            // Expected: the media grid observes the failed state.
+        } else {
+            Issue.record("Upload failure must retain its published failed state")
+        }
     }
 
     @Test @MainActor func composeMediaDeletionSupportsEveryFourAttachmentOrder() throws {
