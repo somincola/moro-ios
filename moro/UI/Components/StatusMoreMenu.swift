@@ -14,16 +14,25 @@ private enum MoroMenuMetrics {
     static let labelSpacing: CGFloat = 12
 }
 
-private enum MoroMenuItemTone {
+enum MoroMenuItemTone {
     case standard
     case destructive
+
+    var buttonRole: ButtonRole? {
+        switch self {
+        case .standard:
+            return nil
+        case .destructive:
+            return .destructive
+        }
+    }
 
     var swiftUIColor: Color {
         switch self {
         case .standard:
             return .primary
         case .destructive:
-            return .red
+            return Color(uiColor: .systemRed)
         }
     }
 
@@ -99,6 +108,23 @@ struct MoroMenuItemLabel: View {
     }
 }
 
+private struct MoroMenuActionButton: View {
+    let title: String
+    let systemImage: String
+    var tone: MoroMenuItemTone = .standard
+    let action: () -> Void
+
+    var body: some View {
+        Button(role: tone.buttonRole, action: action) {
+            MoroMenuItemLabel(
+                title: title,
+                systemImage: systemImage,
+                isDestructive: tone == .destructive
+            )
+        }
+    }
+}
+
 /// Menu item configuration for status more menu
 struct StatusMoreMenuItem {
     let title: String
@@ -147,20 +173,22 @@ struct StatusMoreMenu: View {
             }
 
             // Block User
-            Button(action: onBlockUser) {
-                MoroMenuItemLabel(
-                    title: "Block @\(status.account.username)",
-                    systemImage: "hand.raised",
-                    isDestructive: true
-                )
-            }
+            MoroMenuActionButton(
+                title: "Block @\(status.account.username)",
+                systemImage: "hand.raised",
+                tone: .destructive,
+                action: onBlockUser
+            )
 
             Divider()
 
             // Report
-            Button(action: onReport) {
-                MoroMenuItemLabel(title: "Report", systemImage: "flag", isDestructive: true)
-            }
+            MoroMenuActionButton(
+                title: "Report",
+                systemImage: "flag",
+                tone: .destructive,
+                action: onReport
+            )
 
         } label: {
             MoroMoreMenuTriggerLabel()
@@ -296,11 +324,12 @@ struct StatusMoreButton: View {
                     if visibility.showEdit || visibility.showPin {
                         Divider()
                     }
-                    Button(action: {
-                        performAction(onDelete)
-                    }) {
-                        MoroMenuItemLabel(title: "Delete", systemImage: "trash", isDestructive: true)
-                    }
+                    MoroMenuActionButton(
+                        title: "Delete",
+                        systemImage: "trash",
+                        tone: .destructive,
+                        action: { performAction(onDelete) }
+                    )
                 }
             } else {
                 if visibility.hasCommonActions && visibility.hasOtherActions {
@@ -331,28 +360,22 @@ struct StatusMoreButton: View {
                             )
                         }
                     } else {
-                        Button(action: {
-                            performAction(onBlockUser)
-                        }) {
-                            MoroMenuItemLabel(
-                                title: "Block @\(actionAccount.username)",
-                                systemImage: "hand.raised",
-                                isDestructive: true
-                            )
-                        }
+                        MoroMenuActionButton(
+                            title: "Block @\(actionAccount.username)",
+                            systemImage: "hand.raised",
+                            tone: .destructive,
+                            action: { performAction(onBlockUser) }
+                        )
                     }
                 }
 
                 if visibility.showBlockAndReport, let onBlockAndReport {
-                    Button(action: {
-                        performAction(onBlockAndReport)
-                    }) {
-                        MoroMenuItemLabel(
-                            title: "Block and report",
-                            systemImage: "hand.raised.circle",
-                            isDestructive: true
-                        )
-                    }
+                    MoroMenuActionButton(
+                        title: "Block and report",
+                        systemImage: "hand.raised.circle",
+                        tone: .destructive,
+                        action: { performAction(onBlockAndReport) }
+                    )
                 }
 
                 if visibility.showReport, let onReport {
@@ -360,11 +383,12 @@ struct StatusMoreButton: View {
                     {
                         Divider()
                     }
-                    Button(action: {
-                        performAction(onReport)
-                    }) {
-                        MoroMenuItemLabel(title: "Report", systemImage: "flag", isDestructive: true)
-                    }
+                    MoroMenuActionButton(
+                        title: "Report",
+                        systemImage: "flag",
+                        tone: .destructive,
+                        action: { performAction(onReport) }
+                    )
                 }
             }
 
