@@ -19,19 +19,29 @@ struct ProfileContentStream: View {
     var body: some View {
         LazyVStack(spacing: 0) {
             if viewModel.selectedTab == .posts && !viewModel.pinnedStatuses.isEmpty {
-                PinnedStatusCarousel(
+                PinnedStatusSection(
                     pinnedStatuses: viewModel.pinnedStatuses,
                     translationAPIClient: apiClient,
                     accountCache: cacheManager.accountCache,
                     postActions: postActions
                 )
 
-                MoroDivider()
+                pinnedSectionSeparator
             }
 
             contentRows
         }
         .background(theme.colors.surfaceBase)
+    }
+
+    private var pinnedSectionSeparator: some View {
+        VStack(spacing: 0) {
+            MoroDivider()
+            theme.colors.surfaceSubtle
+                .frame(height: theme.spacing.s)
+            MoroDivider()
+        }
+        .accessibilityHidden(true)
     }
 
     @ViewBuilder

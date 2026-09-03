@@ -54281,7 +54281,7 @@
         }
       }
     },
-    "pinnedCarousel.title" : {
+    "pinnedPosts.title" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
@@ -54336,6 +54336,65 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "置頂嘟文"
+          }
+        }
+      }
+    },
+    "pinnedPosts.viewAll" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle angehefteten Beiträge anzeigen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View all pinned posts"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ver todas las publicaciones fijadas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voir tous les messages épinglés"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vedi tutti i post in evidenza"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ピン留めした投稿をすべて表示"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ver todas as publicações fixadas"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看全部置顶嘟文"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看全部置頂嘟文"
           }
         }
       }

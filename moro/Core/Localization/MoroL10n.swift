@@ -1884,8 +1884,9 @@ public enum MoroL10n {
         public static var threadContext: String { text("postHeader.threadContext") }
     }
 
-    public enum PinnedCarousel {
-        public static var title: String { text("pinnedCarousel.title") }
+    public enum PinnedPosts {
+        public static var title: String { text("pinnedPosts.title") }
+        public static var viewAll: String { text("pinnedPosts.viewAll") }
     }
 
     public enum SettingsSwitch {
