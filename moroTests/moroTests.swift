@@ -455,6 +455,66 @@ struct moroTests {
         #expect(elements.plainTextValue == "第一行\n第二行\n第三行\n第四行")
     }
 
+    @Test @MainActor func statusContentAndEmojiMetadataResolveEveryEmojiOccurrence() throws {
+        let emojiSpecs = [
+            ("ablobangel", "000/002/817"),
+            ("ablobblewobble", "000/002/819"),
+            ("ablobcall", "000/002/820"),
+            ("ablobcaramelldansen", "000/002/821"),
+            ("Parrot04", "000/003/284"),
+            ("Parrot08", "000/003/285"),
+            ("Parrot09", "000/003/286"),
+            ("usamaru004", "000/003/202"),
+            ("usamaru049", "000/003/210"),
+        ]
+        let emojis = try emojiSpecs.map { shortcode, path in
+            Status.Emoji(
+                shortcode: shortcode,
+                url: try #require(
+                    URL(
+                        string:
+                            "https://media.somincola.org/custom_emojis/images/\(path)/original/\(shortcode).png"
+                    )
+                ),
+                staticURL: try #require(
+                    URL(
+                        string:
+                            "https://media.somincola.org/custom_emojis/images/\(path)/static/\(shortcode).png"
+                    )
+                )
+            )
+        }
+        let content = "<p>:ablobangel: :ablobblewobble: :ablobcall: :ablobcaramelldansen: :Parrot04: :Parrot08: :Parrot09: :usamaru004: :usamaru004: :usamaru049: :usamaru049: </p><p>测试表情</p>"
+
+        let elements = ContentParser.parseToElements(
+            html: content,
+            emojis: emojis,
+            options: .statusBody
+        )
+        let parsedEmojis = elements.compactMap { element -> (String, URL, URL)? in
+            guard case .emoji(let shortcode, let url, let staticURL) = element else {
+                return nil
+            }
+            return (shortcode, url, staticURL)
+        }
+        let expectedShortcodes = [
+            "ablobangel", "ablobblewobble", "ablobcall", "ablobcaramelldansen",
+            "Parrot04", "Parrot08", "Parrot09", "usamaru004", "usamaru004",
+            "usamaru049", "usamaru049",
+        ]
+        let metadataByShortcode = Dictionary(
+            uniqueKeysWithValues: emojis.map { ($0.shortcode, $0) }
+        )
+
+        #expect(parsedEmojis.map { $0.0 } == expectedShortcodes)
+        for (shortcode, originalURL, staticURL) in parsedEmojis {
+            let metadata = try #require(metadataByShortcode[shortcode])
+            #expect(originalURL == metadata.url)
+            #expect(staticURL == metadata.staticURL)
+        }
+        #expect(elements.plainTextValue.contains("测试表情"))
+    }
+
     @Test func contentParserPreservesParagraphSpacingAndOmitsKnownStatusTags() throws {
         let firstTagURL = try #require(URL(
             string: "https://m.somincola.org/tags/%E5%BC%80%E5%8F%91%E6%97%A5%E5%B8%B8"
@@ -1154,10 +1214,6 @@ struct moroTests {
             await counter.increment()
             return fakeData
         }
-        let settings = AppSettings.shared
-        let previousPlayAnimations = settings.playAnimations
-        settings.playAnimations = false
-        defer { settings.playAnimations = previousPlayAnimations }
 
         let assets = await withCheckedContinuation { continuation in
             coordinator.loadEmojiAssets(
@@ -1166,8 +1222,7 @@ struct moroTests {
                     .text(" "),
                     .emoji(shortcode: "b", url: url, staticURL: url)
                 ],
-                emojiSize: 18,
-                playAnimations: settings.playAnimations
+                emojiSize: 18
             ) { resolved in
                 continuation.resume(returning: resolved)
             }
@@ -1183,10 +1238,6 @@ struct moroTests {
         let url = URL(string: "https://example.com/\(UUID().uuidString).png")!
         let counter = AsyncCounter()
         let fakeData = tinyPNGData()
-        let settings = AppSettings.shared
-        let previousPlayAnimations = settings.playAnimations
-        settings.playAnimations = false
-        defer { settings.playAnimations = previousPlayAnimations }
 
         let firstCoordinator = MixedTextEmojiView.Coordinator { _ in
             await counter.increment()
@@ -1195,8 +1246,7 @@ struct moroTests {
         _ = await withCheckedContinuation { continuation in
             firstCoordinator.loadEmojiAssets(
                 elements: [.emoji(shortcode: "a", url: url, staticURL: url)],
-                emojiSize: 18,
-                playAnimations: settings.playAnimations
+                emojiSize: 18
             ) { resolved in
                 continuation.resume(returning: resolved)
             }
@@ -1209,8 +1259,7 @@ struct moroTests {
         _ = await withCheckedContinuation { continuation in
             secondCoordinator.loadEmojiAssets(
                 elements: [.emoji(shortcode: "a", url: url, staticURL: url)],
-                emojiSize: 18,
-                playAnimations: settings.playAnimations
+                emojiSize: 18
             ) { resolved in
                 continuation.resume(returning: resolved)
             }
@@ -1219,37 +1268,156 @@ struct moroTests {
         #expect(await counter.value() == 1)
     }
 
-    @Test @MainActor func richTextEmojiLoaderFetchesStaticImageEvenWhenAnimationsEnabled()
+    @Test @MainActor func richTextEmojiLoaderAlwaysFetchesStaticImage()
         async throws
     {
         let url = URL(string: "https://example.com/\(UUID().uuidString).gif")!
         let staticURL = URL(string: "https://example.com/\(UUID().uuidString).png")!
         let counter = AsyncCounter()
-        let coordinator = MixedTextEmojiView.Coordinator { _ in
+        let requestedURLs = AsyncURLRecorder()
+        let coordinator = MixedTextEmojiView.Coordinator { requestedURL in
             await counter.increment()
+            await requestedURLs.append(requestedURL)
             return tinyPNGData()
         }
-        let settings = AppSettings.shared
-        let previousPlayAnimations = settings.playAnimations
-        settings.playAnimations = true
-        defer { settings.playAnimations = previousPlayAnimations }
 
         let assets = await withCheckedContinuation { continuation in
             coordinator.loadEmojiAssets(
                 elements: [.emoji(shortcode: "wave", url: url, staticURL: staticURL)],
-                emojiSize: 18,
-                playAnimations: settings.playAnimations
+                emojiSize: 18
             ) { resolved in
                 continuation.resume(returning: resolved)
             }
         }
 
-        // In-text custom emoji now always render as static images (no per-emoji animated
-        // SDAnimatedImageView), so even with animations enabled the loader fetches the static
-        // image and keys the asset by the static URL.
+        // Post text always renders the server-provided static resource and never requests
+        // the original APNG/GIF URL.
         #expect(await counter.value() == 1)
+        #expect(await requestedURLs.values() == [staticURL])
         #expect(assets.count == 1)
         #expect(assets[staticURL] != nil)
+    }
+
+    @Test @MainActor func richTextEmojiRendererBuildsPlainStaticAttachment() throws {
+        let image = try #require(UIImage(data: tinyPNGData()))
+        let attachment = MixedTextEmojiView.makeStaticEmojiAttachment(
+            image: image,
+            emojiSize: 20
+        )
+        let attributedString = NSAttributedString(attachment: attachment)
+        let storedAttachment = try #require(
+            attributedString.attribute(.attachment, at: 0, effectiveRange: nil)
+                as? NSTextAttachment
+        )
+
+        #expect(storedAttachment === attachment)
+        #expect(attachment.image != nil)
+        #expect(attachment.bounds.size == CGSize(width: 20, height: 20))
+        #expect(abs(attachment.bounds.minY + 1.6) < 0.001)
+    }
+
+    @Test @MainActor func richTextEmojiRendererKeepsReadableShortcodeWhenStaticAssetFails() {
+        let animatedURL = URL(string: "https://example.test/original/wave.apng")!
+        let staticURL = URL(string: "https://example.test/static/wave.png")!
+        let elements: [ContentElement] = [
+            .emoji(shortcode: "wave", url: animatedURL, staticURL: staticURL)
+        ]
+
+        let rendered = MixedTextEmojiView(
+            elements: elements,
+            emojiSize: 20,
+            textColor: .label,
+            linkColor: .systemBlue,
+            codeBackgroundColor: .secondarySystemBackground
+        ).buildAttributedString(
+            emojiAssets: [:],
+            textColor: .label,
+            linkColor: .systemBlue,
+            codeBackgroundColor: .secondarySystemBackground,
+            underlinesLinks: false
+        )
+        var attachmentCount = 0
+        rendered.enumerateAttribute(
+            .attachment,
+            in: NSRange(location: 0, length: rendered.length)
+        ) { value, _, _ in
+            if value is NSTextAttachment {
+                attachmentCount += 1
+            }
+        }
+
+        #expect(rendered.string == ":wave:")
+        #expect(attachmentCount == 0)
+    }
+
+    @Test @MainActor func statusEmojiPipelineParsesStaticURLsAndBuildsEveryAttachment()
+        async throws
+    {
+        let originalWaveURL = try #require(
+            URL(string: "https://example.com/\(UUID().uuidString)/original/wave.apng")
+        )
+        let staticWaveURL = try #require(
+            URL(string: "https://example.com/\(UUID().uuidString)/static/wave.png")
+        )
+        let originalCatURL = try #require(
+            URL(string: "https://example.com/\(UUID().uuidString)/original/cat.gif")
+        )
+        let staticCatURL = try #require(
+            URL(string: "https://example.com/\(UUID().uuidString)/static/cat.png")
+        )
+        let emojis = [
+            Status.Emoji(shortcode: "wave", url: originalWaveURL, staticURL: staticWaveURL),
+            Status.Emoji(shortcode: "cat", url: originalCatURL, staticURL: staticCatURL),
+        ]
+        let elements = ContentParser.parseToElements(
+            html: "<p>:wave: :cat: :wave:</p><p>测试表情</p>",
+            emojis: emojis,
+            options: .statusBody
+        )
+        let requestedURLs = AsyncURLRecorder()
+        let coordinator = MixedTextEmojiView.Coordinator { requestedURL in
+            await requestedURLs.append(requestedURL)
+            return tinyPNGData()
+        }
+        let assets = await withCheckedContinuation { continuation in
+            coordinator.loadEmojiAssets(elements: elements, emojiSize: 20) { resolved in
+                continuation.resume(returning: resolved)
+            }
+        }
+
+        let rendered = MixedTextEmojiView(
+            elements: elements,
+            emojiSize: 20,
+            textColor: .label,
+            linkColor: .systemBlue,
+            codeBackgroundColor: .secondarySystemBackground
+        ).buildAttributedString(
+            emojiAssets: assets,
+            textColor: .label,
+            linkColor: .systemBlue,
+            codeBackgroundColor: .secondarySystemBackground,
+            underlinesLinks: false
+        )
+        var attachments: [NSTextAttachment] = []
+        rendered.enumerateAttribute(
+            .attachment,
+            in: NSRange(location: 0, length: rendered.length)
+        ) { value, _, _ in
+            if let attachment = value as? NSTextAttachment {
+                attachments.append(attachment)
+            }
+        }
+        let loadedURLs = await requestedURLs.values()
+
+        #expect(Set(loadedURLs) == Set([staticWaveURL, staticCatURL]))
+        #expect(assets.count == 2)
+        #expect(assets[originalWaveURL] == nil)
+        #expect(assets[originalCatURL] == nil)
+        #expect(attachments.count == 3)
+        #expect(attachments.allSatisfy { type(of: $0) == NSTextAttachment.self })
+        #expect(rendered.string.contains(":wave:") == false)
+        #expect(rendered.string.contains(":cat:") == false)
+        #expect(rendered.string.contains("测试表情"))
     }
 
     @Test @MainActor func profilePinnedInsertIgnoresOtherAccountsPinnedPost() async throws {
@@ -3400,6 +3568,141 @@ struct moroTests {
         #expect(viewModel.mediaUploadStates["server-media"]?.isUploaded == true)
     }
 
+    @Test @MainActor func composePhotoReservationsCapAndCreateImmediatePlaceholders() throws {
+        let viewModel = ComposeViewModel(
+            context: .newPost,
+            apiClient: MockMastodonAPI()
+        )
+        let existing = [
+            makeComposeMediaAttachment(id: "existing-1", state: .uploaded),
+            makeComposeMediaAttachment(id: "existing-2", state: .uploaded),
+        ]
+        viewModel.mediaAttachments = existing
+        viewModel.mediaUploadStates = Dictionary(
+            uniqueKeysWithValues: existing.map { ($0.id, .uploaded) }
+        )
+
+        let reservationIDs = viewModel.reservePhotoImports(count: 4)
+
+        #expect(reservationIDs.count == 2)
+        #expect(
+            viewModel.mediaAttachments.map(\.id)
+                == ["existing-1", "existing-2"] + reservationIDs
+        )
+        for reservationID in reservationIDs {
+            let attachment = try #require(viewModel.mediaAttachment(id: reservationID))
+            #expect(attachment.url.scheme == "temp")
+            #expect(attachment.previewImage == nil)
+            if case .uploading(let progress) = attachment.uploadState {
+                #expect(progress == 0)
+            } else {
+                Issue.record("Photo reservation must begin as an uploading placeholder")
+            }
+            if case .uploading(let progress) = viewModel.mediaUploadStates[reservationID] {
+                #expect(progress == 0)
+            } else {
+                Issue.record("Photo reservation must publish immediate upload state")
+            }
+        }
+
+        let cancelledID = try #require(reservationIDs.first)
+        viewModel.cancelPhotoImportReservation(id: cancelledID)
+        #expect(viewModel.mediaAttachment(id: cancelledID) == nil)
+        #expect(viewModel.mediaUploadStates[cancelledID] == nil)
+    }
+
+    @Test @MainActor func composeReservedPhotoUploadsPreservePickerOrderWhenFinishingOutOfOrder()
+        async throws
+    {
+        let api = MockMastodonAPI()
+        api.uploadMediaHandler = { data, _, _ in
+            let marker = try #require(data.first)
+            let delay: UInt64 = switch marker {
+            case 1: 120_000_000
+            case 2: 60_000_000
+            default: 10_000_000
+            }
+            try await Task.sleep(nanoseconds: delay)
+            return Status.Attachment(
+                id: "server-\(marker)",
+                type: "image",
+                url: URL(string: "https://example.test/server-\(marker).png")!
+            )
+        }
+        let viewModel = ComposeViewModel(context: .newPost, apiClient: api)
+        let reservationIDs = viewModel.reservePhotoImports(count: 3)
+        let preparedMedia = (1...3).map { marker in
+            ComposeMediaProcessor.PreparedMedia(
+                uploadData: Data([UInt8(marker)]),
+                uploadMimeType: "image/png",
+                mediaType: "image",
+                previewImage: nil
+            )
+        }
+
+        async let first = viewModel.importPreparedMedia(
+            preparedMedia[0], reservationID: reservationIDs[0]
+        )
+        async let second = viewModel.importPreparedMedia(
+            preparedMedia[1], reservationID: reservationIDs[1]
+        )
+        async let third = viewModel.importPreparedMedia(
+            preparedMedia[2], reservationID: reservationIDs[2]
+        )
+        let outcomes = await [first, second, third]
+
+        #expect(outcomes.allSatisfy { $0 == .uploaded })
+        #expect(viewModel.mediaAttachments.map(\.id) == ["server-1", "server-2", "server-3"])
+    }
+
+    @Test @MainActor func composePhotoReservationCleansDecodeFailureAndRetainsUploadFailure()
+        async throws
+    {
+        let api = MockMastodonAPI()
+        let viewModel = ComposeViewModel(context: .newPost, apiClient: api)
+        let decodeReservation = try #require(viewModel.reservePhotoImports(count: 1).first)
+
+        let decodeOutcome = await viewModel.importPhotoData(
+            Data("not-an-image".utf8),
+            reservationID: decodeReservation
+        )
+
+        #expect(decodeOutcome == .failed(.imageProcessing))
+        #expect(viewModel.mediaAttachment(id: decodeReservation) == nil)
+        #expect(viewModel.mediaUploadStates[decodeReservation] == nil)
+
+        api.uploadMediaHandler = { _, _, _ in
+            throw MockMastodonAPI.MockError.forcedFailure
+        }
+        let uploadReservation = try #require(viewModel.reservePhotoImports(count: 1).first)
+        let sourceData = Data([0x01, 0x02, 0x03])
+        let uploadOutcome = await viewModel.importPreparedMedia(
+            ComposeMediaProcessor.PreparedMedia(
+                uploadData: sourceData,
+                uploadMimeType: "image/png",
+                mediaType: "image",
+                previewImage: nil
+            ),
+            reservationID: uploadReservation
+        )
+
+        #expect(uploadOutcome == .failed(.upload))
+        let failedAttachment = try #require(
+            viewModel.mediaAttachment(id: uploadReservation)
+        )
+        #expect(failedAttachment.sourceUploadData == sourceData)
+        if case .failed = failedAttachment.uploadState {
+            // Expected: the user can retry this reserved upload.
+        } else {
+            Issue.record("Upload failure must retain a retryable failed attachment")
+        }
+        if case .failed = viewModel.mediaUploadStates[uploadReservation] {
+            // Expected: the media grid observes the failed state.
+        } else {
+            Issue.record("Upload failure must retain its published failed state")
+        }
+    }
+
     @Test @MainActor func composeMediaDeletionSupportsEveryFourAttachmentOrder() throws {
         func permutations(_ values: [String]) -> [[String]] {
             guard values.count > 1 else { return [values] }
@@ -5501,6 +5804,18 @@ private extension moroTests {
 
         func value() -> Int {
             count
+        }
+    }
+
+    actor AsyncURLRecorder {
+        private var urls: [URL] = []
+
+        func append(_ url: URL) {
+            urls.append(url)
+        }
+
+        func values() -> [URL] {
+            urls
         }
     }
 

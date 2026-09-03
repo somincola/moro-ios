@@ -874,7 +874,6 @@ struct SearchAccountRowContentView: View {
 struct SearchAccountNotePreviewView: View {
     let account: Account
 
-    @Environment(\.moroMediaPrefs) private var mediaPrefs
     @Environment(\.moroTheme) private var theme
 
     var body: some View {
@@ -883,7 +882,6 @@ struct SearchAccountNotePreviewView: View {
             MixedTextEmojiView(
                 elements: elements,
                 emojiSize: 14,
-                playAnimations: mediaPrefs.playAnimations,
                 textColor: UIColor(theme.colors.textSecondary),
                 linkColor: UIColor(theme.colors.textSecondary),
                 codeBackgroundColor: UIColor(theme.colors.surfaceSubtle),

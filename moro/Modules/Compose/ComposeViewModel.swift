@@ -9,6 +9,19 @@ import Foundation
 import Combine
 import SwiftUI
 
+enum ComposeMediaSelectionPolicy {
+    static let maximumAttachmentCount = 4
+    static let maximumConcurrentImports = 2
+
+    static func remainingSlots(existingCount: Int) -> Int {
+        max(0, maximumAttachmentCount - max(0, existingCount))
+    }
+
+    static func acceptedSelectionCount(requestedCount: Int, existingCount: Int) -> Int {
+        min(max(0, requestedCount), remainingSlots(existingCount: existingCount))
+    }
+}
+
 @MainActor
 final class ComposeViewModel: ObservableObject {
     // MARK: - Compose Context
@@ -70,6 +83,14 @@ final class ComposeViewModel: ObservableObject {
     
     // Media upload state tracking
     @Published var mediaUploadStates: [String: MediaAttachment.UploadState] = [:] // attachmentID -> upload state
+
+    var remainingMediaAttachmentSlots: Int {
+        ComposeMediaSelectionPolicy.remainingSlots(existingCount: mediaAttachments.count)
+    }
+
+    var canAddMedia: Bool {
+        remainingMediaAttachmentSlots > 0
+    }
     
     // Poll
     @Published var isPollActive: Bool = false
@@ -102,7 +123,7 @@ final class ComposeViewModel: ObservableObject {
         case scheduledDateTooSoon
     }
 
-    enum MediaImportFailure: Equatable {
+    enum MediaImportFailure: Equatable, Sendable {
         case imageProcessing
         case fileAccess
         case fileRead
@@ -110,7 +131,7 @@ final class ComposeViewModel: ObservableObject {
         case retryUnavailable
     }
 
-    enum MediaImportOutcome: Equatable {
+    enum MediaImportOutcome: Equatable, Sendable {
         case uploaded
         case cancelled
         case failed(MediaImportFailure)
@@ -482,6 +503,35 @@ final class ComposeViewModel: ObservableObject {
             mediaAttachments[index].uploadState = state
         }
     }
+
+    /// Adds lightweight placeholders immediately after the system picker is confirmed.
+    /// Expensive Photos transfers and image preparation then happen behind visible progress UI.
+    func reservePhotoImports(count: Int) -> [String] {
+        let acceptedCount = ComposeMediaSelectionPolicy.acceptedSelectionCount(
+            requestedCount: count,
+            existingCount: mediaAttachments.count
+        )
+
+        return (0..<acceptedCount).map { _ in
+            let reservationID = UUID().uuidString
+            let attachment = MediaAttachment(
+                id: reservationID,
+                url: URL(string: "temp://\(reservationID)")!,
+                previewURL: nil,
+                type: "image",
+                description: nil,
+                focus: nil,
+                uploadState: .uploading(progress: 0.0)
+            )
+            mediaAttachments.append(attachment)
+            mediaUploadStates[reservationID] = .uploading(progress: 0.0)
+            return reservationID
+        }
+    }
+
+    func cancelPhotoImportReservation(id: String) {
+        _ = removeMedia(id: id)
+    }
     
     func mediaAttachment(id: String) -> MediaAttachment? {
         mediaAttachments.first { $0.id == id }
@@ -506,13 +556,27 @@ final class ComposeViewModel: ObservableObject {
         return true
     }
 
-    func importPhotoData(_ data: Data) async -> MediaImportOutcome {
+    func importPhotoData(
+        _ data: Data,
+        reservationID: String? = nil
+    ) async -> MediaImportOutcome {
+        if let reservationID,
+           !mediaAttachments.contains(where: { $0.id == reservationID }) {
+            return .cancelled
+        }
+
         do {
             let prepared = try await ComposeMediaProcessor.shared.preparePhotoData(data)
-            return await importPreparedMedia(prepared)
+            return await importPreparedMedia(prepared, reservationID: reservationID)
         } catch is CancellationError {
+            if let reservationID {
+                cancelPhotoImportReservation(id: reservationID)
+            }
             return .cancelled
         } catch {
+            if let reservationID {
+                cancelPhotoImportReservation(id: reservationID)
+            }
             return .failed(.imageProcessing)
         }
     }
@@ -634,9 +698,22 @@ final class ComposeViewModel: ObservableObject {
     }
 
     func importPreparedMedia(
-        _ preparedMedia: ComposeMediaProcessor.PreparedMedia
+        _ preparedMedia: ComposeMediaProcessor.PreparedMedia,
+        reservationID: String? = nil
     ) async -> MediaImportOutcome {
-        let tempID = appendTemporaryMediaAttachment(preparedMedia)
+        let tempID: String
+        if let reservationID {
+            guard populatePhotoImportReservation(
+                id: reservationID,
+                with: preparedMedia
+            ) else {
+                return .cancelled
+            }
+            tempID = reservationID
+        } else {
+            guard canAddMedia else { return .cancelled }
+            tempID = appendTemporaryMediaAttachment(preparedMedia)
+        }
         updateMediaUploadState(id: tempID, state: .uploading(progress: 0.05))
         let uploadResult = await uploadTemporaryAttachment(
             tempID: tempID,
@@ -651,6 +728,21 @@ final class ComposeViewModel: ObservableObject {
         case .failed:
             return .failed(.upload)
         }
+    }
+
+    private func populatePhotoImportReservation(
+        id: String,
+        with preparedMedia: ComposeMediaProcessor.PreparedMedia
+    ) -> Bool {
+        guard let index = mediaAttachments.firstIndex(where: { $0.id == id }) else {
+            mediaUploadStates.removeValue(forKey: id)
+            return false
+        }
+
+        mediaAttachments[index].previewImage = preparedMedia.previewImage
+        mediaAttachments[index].sourceUploadData = preparedMedia.uploadData
+        mediaAttachments[index].sourceMimeType = preparedMedia.uploadMimeType
+        return true
     }
 
     private func appendTemporaryMediaAttachment(
