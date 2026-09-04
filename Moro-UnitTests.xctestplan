@@ -1,0 +1,27 @@
+{
+  "configurations" : [
+    {
+      "id" : "FA3473B9-134F-49D8-AAC2-38AAB778D101",
+      "name" : "Unit Tests",
+      "options" : {
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:moro.xcodeproj",
+      "identifier" : "408433DF2ED449B700F038E4",
+      "name" : "moro"
+    }
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:moro.xcodeproj",
+        "identifier" : "408433EE2ED449B800F038E4",
+        "name" : "moroTests"
+      }
+    }
+  ],
+  "version" : 1
+}
