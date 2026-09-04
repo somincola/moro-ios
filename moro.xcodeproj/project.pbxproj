@@ -285,6 +285,7 @@
 				408433EB2ED449B800F038E4 /* Sources */,
 				408433EC2ED449B800F038E4 /* Frameworks */,
 				408433ED2ED449B800F038E4 /* Resources */,
+				42C109042F90000100A1D001 /* Prepare App Store Test Fixtures */,
 			);
 			buildRules = (
 			);
@@ -504,6 +505,33 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		42C109042F90000100A1D001 /* Prepare App Store Test Fixtures */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/scripts/prepare-app-store-test-fixtures.swift",
+				"$(SRCROOT)/metadata/app-store/app-info/",
+				"$(SRCROOT)/metadata/app-store/version/1.0.0/",
+				"$(SRCROOT)/moro/Resources/Localizations/Moro.xcstrings",
+				"$(SRCROOT)/moro/Core/Localization/MoroL10n.swift",
+				"$(SRCROOT)/moro.xcodeproj/project.pbxproj",
+				"$(SRCROOT)/moro.xcodeproj/xcshareddata/xcschemes/moro.xcscheme",
+				"$(SRCROOT)/moro.xcodeproj/xcshareddata/xcschemes/moroShareExtension.xcscheme",
+			);
+			name = "Prepare App Store Test Fixtures";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/RepositoryFixtures.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/usr/bin/xcrun --sdk macosx swift -module-cache-path \"$TEMP_DIR/FixtureSwiftModules\" \"$SRCROOT/scripts/prepare-app-store-test-fixtures.swift\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		408433DC2ED449B700F038E4 /* Sources */ = {
@@ -799,6 +827,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/moro.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/moro";
+				USE_RECURSIVE_SCRIPT_INPUTS_IN_SCRIPT_PHASES = YES;
 			};
 			name = Debug;
 		};
@@ -821,6 +850,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/moro.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/moro";
+				USE_RECURSIVE_SCRIPT_INPUTS_IN_SCRIPT_PHASES = YES;
 			};
 			name = Release;
 		};

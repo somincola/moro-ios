@@ -51,10 +51,12 @@ final class AppStoreMetadataTests: XCTestCase {
         "de", "en", "es", "fr", "it", "ja", "pt-PT", "zh-Hans", "zh-Hant",
     ]
 
-    private var repositoryRoot: URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+    private lazy var repositorySnapshot: Result<[String: Data], Error> = Result {
+        // Cloud's test worker has the built test bundle, not the source checkout.
+        let url = try XCTUnwrap(
+            Bundle(for: Self.self).url(forResource: "RepositoryFixtures", withExtension: "plist")
+        )
+        return try PropertyListDecoder().decode([String: Data].self, from: Data(contentsOf: url))
     }
 
     func testAllStoreLocalesUseCanonicalBrandURLs() throws {
@@ -136,9 +138,7 @@ final class AppStoreMetadataTests: XCTestCase {
     }
 
     func testAppLocalizationCatalogHasNoLegacyBrandCopy() throws {
-        let catalogURL = repositoryRoot
-            .appendingPathComponent("moro/Resources/Localizations/Moro.xcstrings")
-        let catalog = try String(contentsOf: catalogURL, encoding: .utf8)
+        let catalog = try sourceText(at: "moro/Resources/Localizations/Moro.xcstrings")
         let obsoleteCopy = [
             "https://somincola.org/moro",
             "support@somincola.org",
@@ -198,9 +198,7 @@ final class AppStoreMetadataTests: XCTestCase {
 
     func testMoroL10nOnlyReferencesCatalogKeys() throws {
         let catalog = try loadStringCatalog()
-        let sourceURL = repositoryRoot
-            .appendingPathComponent("moro/Core/Localization/MoroL10n.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let source = try sourceText(at: "moro/Core/Localization/MoroL10n.swift")
         let expression = try NSRegularExpression(
             pattern: #"(?:text|format)\(\s*\"([^\"]+)\""#
         )
@@ -237,8 +235,7 @@ final class AppStoreMetadataTests: XCTestCase {
         ]
 
         for sourcePath in sourcePaths {
-            let sourceURL = repositoryRoot.appendingPathComponent(sourcePath)
-            let source = try String(contentsOf: sourceURL, encoding: .utf8)
+            let source = try sourceText(at: sourcePath)
             for reference in forbiddenReferences {
                 XCTAssertFalse(
                     source.localizedCaseInsensitiveContains(reference),
@@ -247,37 +244,40 @@ final class AppStoreMetadataTests: XCTestCase {
             }
         }
 
-        XCTAssertFalse(
-            FileManager.default.fileExists(
-                atPath: repositoryRoot.appendingPathComponent("MoroProducts.storekit").path
-            )
-        )
+        XCTAssertNil(try repositorySnapshot.get()["MoroProducts.storekit"])
     }
 
     private func loadMetadata<Value: Decodable>(
         at relativePath: String,
         as type: Value.Type
     ) throws -> [String: Value] {
-        let directory = repositoryRoot.appendingPathComponent(relativePath)
-        let files = try FileManager.default.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: nil
-        )
+        let files = try repositorySnapshot.get().filter { $0.key.hasPrefix(relativePath + "/") }
+        XCTAssertFalse(files.isEmpty, "Missing repository fixtures: \(relativePath)")
         var values: [String: Value] = [:]
 
-        for file in files where file.pathExtension == "json" {
+        for (path, data) in files where path.hasSuffix(".json") {
+            let file = URL(fileURLWithPath: path)
             values[file.deletingPathExtension().lastPathComponent] = try JSONDecoder().decode(
                 Value.self,
-                from: Data(contentsOf: file)
+                from: data
             )
         }
         return values
     }
 
     private func loadStringCatalog() throws -> StringCatalog {
-        let catalogURL = repositoryRoot
-            .appendingPathComponent("moro/Resources/Localizations/Moro.xcstrings")
-        return try JSONDecoder().decode(StringCatalog.self, from: Data(contentsOf: catalogURL))
+        try JSONDecoder().decode(
+            StringCatalog.self,
+            from: sourceData(at: "moro/Resources/Localizations/Moro.xcstrings")
+        )
+    }
+
+    private func sourceData(at path: String) throws -> Data {
+        try XCTUnwrap(try repositorySnapshot.get()[path], "Missing repository fixture: \(path)")
+    }
+
+    private func sourceText(at path: String) throws -> String {
+        try XCTUnwrap(String(data: sourceData(at: path), encoding: .utf8), "Invalid UTF-8: \(path)")
     }
 
     private func formatPlaceholders(in value: String) throws -> [String] {

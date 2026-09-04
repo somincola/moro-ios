@@ -33,6 +33,13 @@
 - `Moro-UnitTests.xctestplan`：仅包含 `moroTests`，供两条 Cloud 工作流显式选择。
 - 两条计划均纳入版本控制；Cloud 只能读取已经推送到所选分支的配置。
 
+`AppStoreMetadataTests` 需要读取原始商店文案、本地化目录与少量工程源码。
+测试 target 的 `Prepare App Store Test Fixtures` 构建阶段会从当前 checkout
+按白名单打包这些原始文本到 `moroTests.xctest/RepositoryFixtures.plist`，测试统一从 bundle 读取。
+这适配 Cloud 的 `build-for-testing` / `test-without-building` 分离执行，
+不跳过断言，也不会把测试资料加入上架 App。脚本沙箱保持开启；文件和文案目录显式声明为只读输入，
+测试 target 开启递归目录输入，唯一输出限制为测试 bundle 内的快照文件。
+
 本地检查计划：
 
 ```sh
