@@ -112,35 +112,6 @@ struct ContentParser {
         return cache
     }()
 
-    private static let quoteInlineRegex = try? NSRegularExpression(
-        pattern: "<p class=\"quote-inline\">.*?</p>",
-        options: [.caseInsensitive, .dotMatchesLineSeparators]
-    )
-    private static let preCodeRegex = try? NSRegularExpression(
-        pattern: #"<pre\b[^>]*>\s*<code\b[^>]*>(.*?)</code>\s*</pre\s*>"#,
-        options: [.caseInsensitive, .dotMatchesLineSeparators]
-    )
-    private static let preRegex = try? NSRegularExpression(
-        pattern: #"<pre\b[^>]*>(.*?)</pre\s*>"#,
-        options: [.caseInsensitive, .dotMatchesLineSeparators]
-    )
-    private static let inlineCodeRegex = try? NSRegularExpression(
-        pattern: #"<code\b[^>]*>(.*?)</code\s*>"#,
-        options: [.caseInsensitive, .dotMatchesLineSeparators]
-    )
-    private static let linkRegex = try? NSRegularExpression(
-        pattern: "<a\\s+[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a>",
-        options: [.caseInsensitive, .dotMatchesLineSeparators]
-    )
-    private static let htmlTagRegex = try? NSRegularExpression(pattern: "<[^>]+>")
-    private static let invisibleSpanRegex = try? NSRegularExpression(
-        pattern: "<span class=\"invisible\">[^<]*</span>",
-        options: [.caseInsensitive]
-    )
-    private static let ellipsisSpanRegex = try? NSRegularExpression(
-        pattern: "<span class=\"ellipsis\">([^<]*)</span>",
-        options: [.caseInsensitive]
-    )
     private static let plainURLRegex = try? NSRegularExpression(
         pattern: #"(?:(?:https?)://|www\.)[^\s<]+"#,
         options: [.caseInsensitive]
@@ -205,145 +176,21 @@ struct ContentParser {
             return cached.elements
         }
 
-        var elements: [ContentElement] = []
-        var workingHTML = html
-        
-        // Step 1: Remove invisible spans
-        workingHTML = removeInvisibleSpans(workingHTML)
-
-        if options.contains(.preserveInlineImageAltText) {
-            workingHTML = HTMLParser.replacingInlineImageTagsWithAltText(workingHTML)
-        }
-        
-        // Step 2: Remove quote-inline paragraphs
-        if let quoteInlineRegex {
-            workingHTML = quoteInlineRegex.stringByReplacingMatches(
-                in: workingHTML,
-                options: [],
-                range: NSRange(workingHTML.startIndex..., in: workingHTML),
-                withTemplate: ""
-            )
-        }
-
-        let preservedCode: PreservedCodeResult
-        if options.contains(.preserveCodeSemantics) {
-            preservedCode = preservingCodeSemantics(in: workingHTML)
-            workingHTML = preservedCode.html
-        } else {
-            preservedCode = PreservedCodeResult(html: workingHTML, fragments: [])
-        }
-        
-        // Step 3: Preserve HTML semantics. A paragraph boundary leaves one
-        // empty line (two newline markers); <br> remains one newline marker.
-        workingHTML = HTMLParser.replacingParagraphTags(
-            in: workingHTML,
-            with: "{{LINEBREAK}}{{LINEBREAK}}"
+        // HTML extraction is document ordered. Only decoded text nodes enter the
+        // inline detector; anchor destinations and code remain atomic elements.
+        let documentElements = ContentDOMParser.parse(
+            html: html, mentions: mentions, tags: tags, emojis: emojis,
+            contentBaseURL: contentBaseURL, options: options
         )
-        workingHTML = HTMLParser.replacingLineBreakTags(in: workingHTML, with: "{{LINEBREAK}}")
+        let elements = cleanupTextRunElements(documentElements).flatMap { element in
+            if case .text(let text) = element {
+                return processInlineText(
+                    text, emojis: emojis, contentBaseURL: contentBaseURL, options: options
+                )
+            }
+            return [element]
+        }
 
-        if options.contains(.omitKnownHashtagLinks) {
-            workingHTML = removingKnownHashtagAnchors(
-                from: workingHTML,
-                tags: tags,
-                contentBaseURL: contentBaseURL
-            )
-        }
-        
-        // Step 4: Extract and process links
-        if let linkRegex {
-            var lastEnd = workingHTML.startIndex
-            let matches = linkRegex.matches(
-                in: workingHTML,
-                options: [],
-                range: NSRange(workingHTML.startIndex..., in: workingHTML)
-            )
-            
-            for match in matches {
-                guard let fullRange = Range(match.range, in: workingHTML),
-                      let hrefRange = Range(match.range(at: 1), in: workingHTML),
-                      let textRange = Range(match.range(at: 2), in: workingHTML) else {
-                    continue
-                }
-                
-                // Add text before this link
-                if lastEnd < fullRange.lowerBound {
-                    let textBefore = String(workingHTML[lastEnd..<fullRange.lowerBound])
-                    elements.append(
-                        contentsOf: processTextSegment(
-                            textBefore,
-                            emojis: emojis,
-                            contentBaseURL: contentBaseURL,
-                            options: options,
-                            codeFragments: preservedCode.fragments,
-                            preserveLeadingWhitespace: lastEnd != workingHTML.startIndex,
-                            preserveTrailingWhitespace: true
-                        )
-                    )
-                }
-                
-                let href = String(workingHTML[hrefRange])
-                var linkText = String(workingHTML[textRange])
-                
-                // Clean up link text (remove remaining HTML tags and spans)
-                if let htmlTagRegex {
-                    linkText = htmlTagRegex.stringByReplacingMatches(
-                        in: linkText,
-                        options: [],
-                        range: NSRange(linkText.startIndex..., in: linkText),
-                        withTemplate: ""
-                    )
-                }
-                linkText = HTMLParser.decodeEntities(linkText)
-                
-                guard let url = resolvedURL(from: href, contentBaseURL: contentBaseURL) else {
-                    elements.append(.text(linkText))
-                    lastEnd = fullRange.upperBound
-                    continue
-                }
-                
-                // Determine link type
-                if let mention = mentions?.first(where: { $0.url.absoluteString == href }) {
-                    // It's a mention
-                    elements.append(.mention(username: "@\(mention.username)", url: url))
-                } else if isHashtagURL(href, tags: tags) {
-                    // It's a hashtag
-                    let tagName = linkText.hasPrefix("#") ? linkText : "#\(linkText)"
-                    elements.append(.hashtag(tag: tagName, url: url))
-                } else {
-                    // Regular link - show display text
-                    elements.append(.link(text: linkText, url: url))
-                }
-                
-                lastEnd = fullRange.upperBound
-            }
-            
-            // Add remaining text after last link
-            if lastEnd < workingHTML.endIndex {
-                let remainingText = String(workingHTML[lastEnd...])
-                elements.append(
-                    contentsOf: processTextSegment(
-                        remainingText,
-                        emojis: emojis,
-                        contentBaseURL: contentBaseURL,
-                        options: options,
-                        codeFragments: preservedCode.fragments,
-                        preserveLeadingWhitespace: lastEnd != workingHTML.startIndex
-                    )
-                )
-            }
-        } else {
-            // No regex match, process as plain text
-            elements.append(
-                contentsOf: processTextSegment(
-                    workingHTML,
-                    emojis: emojis,
-                    contentBaseURL: contentBaseURL,
-                    options: options,
-                    codeFragments: preservedCode.fragments
-                )
-            )
-        }
-        
         // Clean up: merge adjacent text elements and remove empty ones
         let cleaned = cleanupElements(elements)
         let hashtagSeparated = options.contains(.separateAdjacentHashtags)
@@ -356,9 +203,8 @@ struct ContentParser {
         return normalized
     }
 
-    /// Mastodon emits profile hashtags as adjacent anchors separated by whitespace-only
-    /// text nodes. Text-segment cleanup intentionally trims those nodes, so restore one
-    /// visual separator between neighboring hashtag elements for account rich text.
+    /// Preserve the account presentation fallback for adjacent anchors whose source
+    /// omitted a separator. Existing DOM whitespace is left untouched.
     private static func separatingAdjacentHashtags(
         _ elements: [ContentElement]
     ) -> [ContentElement] {
@@ -379,10 +225,8 @@ struct ContentParser {
         return result
     }
 
-    /// Mastodon HTML commonly preserves visual spaces between mention anchors, or between
-    /// a mention and the next text node, as whitespace-only HTML nodes. Text-segment cleanup
-    /// trims those boundaries, so status bodies can render `@first@second` or `@usertext`.
-    /// Restore exactly one separator while keeping punctuation and line breaks untouched.
+    /// Preserve the status presentation fallback for mentions attached to prose or
+    /// another mention. Existing DOM spaces and attached punctuation stay untouched.
     private static func separatingMentionsFromFollowingText(
         _ elements: [ContentElement]
     ) -> [ContentElement] {
@@ -416,344 +260,6 @@ struct ContentParser {
         return result
     }
     
-    /// Check if URL is a hashtag URL
-    private static func isHashtagURL(_ href: String, tags: [Status.Tag]?) -> Bool {
-        guard let url = URL(string: href) else { return false }
-        
-        // Check if URL path contains "tags"
-        let pathComponents = url.pathComponents
-        guard pathComponents.contains("tags") || pathComponents.contains("tag") else {
-            return false
-        }
-        
-        // Match against known tags if available
-        if let tags = tags {
-            let lastComponent = url.lastPathComponent.lowercased()
-            return tags.contains { $0.name.lowercased() == lastComponent }
-        }
-        
-        return true
-    }
-
-    /// Status hashtag chips are rendered from the API's `tags` collection.
-    /// Omit only a trailing run of lines consisting entirely of known hashtag anchors.
-    /// Inline tags, prose, images, code, and ambiguous links must remain in the body.
-    private static func removingKnownHashtagAnchors(
-        from html: String,
-        tags: [Status.Tag]?,
-        contentBaseURL: URL?
-    ) -> String {
-        guard let linkRegex, let tags, !tags.isEmpty else { return html }
-
-        var lines = html.components(separatedBy: "{{LINEBREAK}}")
-        for index in lines.indices.reversed() {
-            let line = lines[index]
-            if HTMLParser.decodeEntities(line).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                continue
-            }
-            let source = line as NSString
-            let matches = linkRegex.matches(
-                in: line, range: NSRange(location: 0, length: source.length)
-            )
-            guard !matches.isEmpty else { break }
-            let remainder = NSMutableString(string: line)
-            var containsOnlyKnownTags = true
-            for match in matches.reversed() {
-                let href = source.substring(with: match.range(at: 1))
-                let label = HTMLParser.stripHTML(source.substring(with: match.range(at: 2)))
-                let matchingTags = tags.filter {
-                    $0.name.caseInsensitiveCompare(String(label.dropFirst())) == .orderedSame
-                }
-                guard label.hasPrefix("#"),
-                      !matchingTags.isEmpty,
-                      isKnownHashtagURL(href, tags: matchingTags, contentBaseURL: contentBaseURL) else {
-                    containsOnlyKnownTags = false
-                    break
-                }
-                remainder.replaceCharacters(in: match.range, with: "")
-            }
-            guard containsOnlyKnownTags,
-                  HTMLParser.decodeEntities(remainder as String)
-                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { break }
-            lines[index] = ""
-        }
-        return lines.joined(separator: "{{LINEBREAK}}")
-    }
-
-    private static func isKnownHashtagURL(
-        _ href: String,
-        tags: [Status.Tag],
-        contentBaseURL: URL?
-    ) -> Bool {
-        guard let candidateURL = resolvedURL(from: href, contentBaseURL: contentBaseURL) else {
-            return false
-        }
-
-        let candidateURLString = normalizedTagURLString(candidateURL)
-        let candidateName = candidateURL.lastPathComponent.removingPercentEncoding?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            ?? candidateURL.lastPathComponent
-
-        let path = candidateURL.pathComponents.filter { $0 != "/" }
-        let isTagPath = path.count >= 2 && ["tags", "tag"].contains(path[path.count - 2].lowercased())
-        return tags.contains { tag in
-            normalizedTagURLString(tag.url) == candidateURLString
-                || (isTagPath && tag.name.caseInsensitiveCompare(candidateName) == .orderedSame)
-        }
-    }
-
-    private static func normalizedTagURLString(_ url: URL) -> String {
-        var value = (url.absoluteString.removingPercentEncoding ?? url.absoluteString)
-            .lowercased()
-        while value.last == "/" {
-            value.removeLast()
-        }
-        return value
-    }
-    
-    /// Remove invisible and ellipsis spans
-    private static func removeInvisibleSpans(_ html: String) -> String {
-        var result = html
-        
-        // Remove invisible spans
-        if let invisibleSpanRegex {
-            result = invisibleSpanRegex.stringByReplacingMatches(
-                in: result,
-                options: [],
-                range: NSRange(result.startIndex..., in: result),
-                withTemplate: ""
-            )
-        }
-        
-        // Process ellipsis spans (keep content but remove span tags)
-        if let ellipsisSpanRegex {
-            result = ellipsisSpanRegex.stringByReplacingMatches(
-                in: result,
-                options: [],
-                range: NSRange(result.startIndex..., in: result),
-                withTemplate: "$1"
-            )
-        }
-        
-        return result
-    }
-
-    private struct PreservedCodeFragment {
-        let token: String
-        let element: ContentElement
-    }
-
-    private struct PreservedCodeResult {
-        let html: String
-        let fragments: [PreservedCodeFragment]
-    }
-
-    /// Protect code from the general HTML/link parser so indentation, line breaks,
-    /// punctuation, URLs, and emoji-like shortcodes remain literal code.
-    private static func preservingCodeSemantics(in html: String) -> PreservedCodeResult {
-        var result = html
-        var fragments: [PreservedCodeFragment] = []
-
-        replaceCodeMatches(
-            in: &result,
-            regex: preCodeRegex,
-            isBlock: true,
-            fragments: &fragments
-        )
-        replaceCodeMatches(
-            in: &result,
-            regex: preRegex,
-            isBlock: true,
-            fragments: &fragments
-        )
-        replaceCodeMatches(
-            in: &result,
-            regex: inlineCodeRegex,
-            isBlock: false,
-            fragments: &fragments
-        )
-
-        return PreservedCodeResult(html: result, fragments: fragments)
-    }
-
-    private static func replaceCodeMatches(
-        in html: inout String,
-        regex: NSRegularExpression?,
-        isBlock: Bool,
-        fragments: inout [PreservedCodeFragment]
-    ) {
-        guard let regex else { return }
-
-        let matches = regex.matches(
-            in: html,
-            options: [],
-            range: NSRange(html.startIndex..., in: html)
-        )
-        guard !matches.isEmpty else { return }
-
-        for match in matches.reversed() {
-            guard match.numberOfRanges > 1,
-                  let fullRange = Range(match.range, in: html),
-                  let contentRange = Range(match.range(at: 1), in: html) else {
-                continue
-            }
-
-            let code = normalizedCode(String(html[contentRange]), isBlock: isBlock)
-            guard !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                html.replaceSubrange(fullRange, with: "")
-                continue
-            }
-
-            var token = "{{MORO_PRESERVED_CODE_\(fragments.count)}}"
-            while html.contains(token) {
-                token += "_"
-            }
-            let element: ContentElement = isBlock ? .codeBlock(code) : .inlineCode(code)
-            fragments.append(PreservedCodeFragment(token: token, element: element))
-            html.replaceSubrange(fullRange, with: token)
-        }
-    }
-
-    private static func normalizedCode(_ html: String, isBlock: Bool) -> String {
-        var code = HTMLParser.replacingLineBreakTags(in: html, with: "\n")
-        if let htmlTagRegex {
-            code = htmlTagRegex.stringByReplacingMatches(
-                in: code,
-                options: [],
-                range: NSRange(code.startIndex..., in: code),
-                withTemplate: ""
-            )
-        }
-        code = HTMLParser.decodeEntities(code)
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-
-        if isBlock {
-            return code.trimmingCharacters(in: .newlines)
-        }
-
-        return code
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    
-    /// Process a text segment into elements
-    private static func processTextSegment(
-        _ text: String,
-        emojis: [Status.Emoji]? = nil,
-        contentBaseURL: URL? = nil,
-        options: ContentParsingOptions = [],
-        codeFragments: [PreservedCodeFragment] = [],
-        preserveLeadingWhitespace: Bool = false,
-        preserveTrailingWhitespace: Bool = false
-    ) -> [ContentElement] {
-        var elements: [ContentElement] = []
-        
-        // Split by line break markers
-        let parts = text.components(separatedBy: "{{LINEBREAK}}")
-        for (index, part) in parts.enumerated() {
-            // Remove remaining HTML tags
-            var cleanText = part
-            if let htmlTagRegex {
-                cleanText = htmlTagRegex.stringByReplacingMatches(
-                    in: cleanText,
-                    options: [],
-                    range: NSRange(cleanText.startIndex..., in: cleanText),
-                    withTemplate: ""
-                )
-            }
-            cleanText = HTMLParser.decodeEntities(cleanText)
-            if options.contains(.preserveInlineWhitespace) {
-                if index != 0 || !preserveLeadingWhitespace {
-                    cleanText = String(cleanText.drop(while: { $0.isWhitespace && !$0.isNewline }))
-                }
-                if index != parts.count - 1 || !preserveTrailingWhitespace {
-                    cleanText = String(cleanText.reversed().drop(while: { $0.isWhitespace && !$0.isNewline }).reversed())
-                }
-            } else {
-                cleanText = cleanText.trimmingCharacters(in: .whitespaces)
-            }
-            
-            if !cleanText.isEmpty {
-                elements.append(
-                    contentsOf: processTextWithCodeFragments(
-                        cleanText,
-                        emojis: emojis,
-                        contentBaseURL: contentBaseURL,
-                        options: options,
-                        codeFragments: codeFragments
-                    )
-                )
-            }
-            
-            // Add line break between parts (not after last)
-            if index < parts.count - 1 {
-                elements.append(.lineBreak)
-            }
-        }
-        
-        return elements
-    }
-
-    private static func processTextWithCodeFragments(
-        _ text: String,
-        emojis: [Status.Emoji]?,
-        contentBaseURL: URL?,
-        options: ContentParsingOptions,
-        codeFragments: [PreservedCodeFragment]
-    ) -> [ContentElement] {
-        guard !codeFragments.isEmpty else {
-            return processInlineText(
-                text,
-                emojis: emojis,
-                contentBaseURL: contentBaseURL,
-                options: options
-            )
-        }
-
-        var elements: [ContentElement] = []
-        var cursor = text.startIndex
-
-        while cursor < text.endIndex {
-            let nextFragment = codeFragments.compactMap { fragment -> (PreservedCodeFragment, Range<String.Index>)? in
-                guard let range = text.range(
-                    of: fragment.token,
-                    range: cursor..<text.endIndex
-                ) else {
-                    return nil
-                }
-                return (fragment, range)
-            }.min { $0.1.lowerBound < $1.1.lowerBound }
-
-            guard let (fragment, range) = nextFragment else {
-                elements.append(
-                    contentsOf: processInlineText(
-                        String(text[cursor...]),
-                        emojis: emojis,
-                        contentBaseURL: contentBaseURL,
-                        options: options
-                    )
-                )
-                break
-            }
-
-            if cursor < range.lowerBound {
-                elements.append(
-                    contentsOf: processInlineText(
-                        String(text[cursor..<range.lowerBound]),
-                        emojis: emojis,
-                        contentBaseURL: contentBaseURL,
-                        options: options
-                    )
-                )
-            }
-            elements.append(fragment.element)
-            cursor = range.upperBound
-        }
-
-        return elements
-    }
-
     private enum InlineTokenMatch {
         case url(Range<String.Index>)
         case remoteMention(Range<String.Index>, username: String, domain: String)
@@ -968,18 +474,6 @@ struct ContentParser {
         return components.url
     }
 
-    private static func resolvedURL(from href: String, contentBaseURL: URL?) -> URL? {
-        if let absolute = URL(string: href), absolute.scheme != nil {
-            return absolute
-        }
-
-        guard let contentBaseURL else {
-            return URL(string: href)
-        }
-
-        return URL(string: href, relativeTo: contentBaseURL)?.absoluteURL
-    }
-
     private static func splitTrailingPunctuation(
         from token: String,
         punctuation: CharacterSet
@@ -1012,63 +506,6 @@ struct ContentParser {
             }
         }
         return merged
-    }
-    
-    /// Process emoji shortcodes in text
-    private static func processEmojis(in text: String, emojis: [Status.Emoji]) -> [ContentElement] {
-        var elements: [ContentElement] = []
-        var lastEnd = text.startIndex
-        
-        // Pattern to match :shortcode: format
-        if let emojiShortcodeRegex {
-            let matches = emojiShortcodeRegex.matches(
-                in: text,
-                options: [],
-                range: NSRange(text.startIndex..., in: text)
-            )
-            
-            for match in matches {
-                guard let fullRange = Range(match.range, in: text),
-                      let shortcodeRange = Range(match.range(at: 1), in: text) else {
-                    continue
-                }
-                
-                // Add text before this emoji
-                if lastEnd < fullRange.lowerBound {
-                    let textBefore = String(text[lastEnd..<fullRange.lowerBound])
-                    if !textBefore.isEmpty {
-                        elements.append(.text(textBefore))
-                    }
-                }
-                
-                let shortcode = String(text[shortcodeRange])
-                
-                // Find matching emoji (case-insensitive per Mastodon spec)
-                if let emoji = emojis.first(where: { $0.shortcode.caseInsensitiveCompare(shortcode) == .orderedSame }) {
-                    // Store both url and staticURL in the element
-                    // We'll choose which one to use at render time based on settings
-                    elements.append(.emoji(shortcode: shortcode, url: emoji.url, staticURL: emoji.staticURL))
-                } else {
-                    // Emoji not found, keep as text
-                    elements.append(.text(String(text[fullRange])))
-                }
-                
-                lastEnd = fullRange.upperBound
-            }
-            
-            // Add remaining text after last emoji
-            if lastEnd < text.endIndex {
-                let remaining = String(text[lastEnd...])
-                if !remaining.isEmpty {
-                    elements.append(.text(remaining))
-                }
-            }
-        } else {
-            // No emoji pattern match, return as text
-            elements.append(.text(text))
-        }
-        
-        return elements.isEmpty ? [.text(text)] : elements
     }
     
     private static func cacheKey(

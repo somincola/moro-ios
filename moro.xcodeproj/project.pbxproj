@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		43D000032FA0000100D00001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 43D000022FA0000100D00001 /* SwiftSoup */; };
 		40473AFF2FC851A8003DE073 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 40473AFE2FC851A8003DE073 /* InfoPlist.xcstrings */; };
 		41A86B602F5F220100A1B2C3 /* SDWebImage in Frameworks */ = {isa = PBXBuildFile; productRef = 41A86B5F2F5F220100A1B2C3 /* SDWebImage */; };
 		42C090042F70000100A1D001 /* MoroLocalization in Frameworks */ = {isa = PBXBuildFile; productRef = 42C090032F70000100A1D001 /* MoroLocalization */; };
@@ -169,6 +170,7 @@
 			files = (
 				42C090042F70000100A1D001 /* MoroLocalization in Frameworks */,
 				41A86B602F5F220100A1B2C3 /* SDWebImage in Frameworks */,
+				43D000032FA0000100D00001 /* SwiftSoup in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -273,6 +275,7 @@
 			packageProductDependencies = (
 				42C090032F70000100A1D001 /* MoroLocalization */,
 				41A86B5F2F5F220100A1B2C3 /* SDWebImage */,
+				43D000022FA0000100D00001 /* SwiftSoup */,
 			);
 			productName = moro;
 			productReference = 408433E02ED449B700F038E4 /* moro.app */;
@@ -444,6 +447,7 @@
 			packageReferences = (
 				42C090012F70000100A1D001 /* XCLocalSwiftPackageReference "." */,
 				41A86B5E2F5F220100A1B2C3 /* XCRemoteSwiftPackageReference "SDWebImage" */,
+				43D000012FA0000100D00001 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 408433E12ED449B700F038E4 /* Products */;
@@ -1156,6 +1160,14 @@
 				minimumVersion = 5.13.5;
 			};
 		};
+		43D000012FA0000100D00001 /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/scinfu/SwiftSoup";
+			requirement = {
+				kind = exactVersion;
+				version = 2.13.9;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1168,6 +1180,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 42C090012F70000100A1D001 /* XCLocalSwiftPackageReference "." */;
 			productName = MoroLocalization;
+		};
+		43D000022FA0000100D00001 /* SwiftSoup */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 43D000012FA0000100D00001 /* XCRemoteSwiftPackageReference "SwiftSoup" */;
+			productName = SwiftSoup;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
