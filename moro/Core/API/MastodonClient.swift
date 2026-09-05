@@ -545,7 +545,7 @@ struct MastodonClient: MastodonAPI {
     func fetchFollowedTags(maxID: String?, limit: Int = 100) async throws -> FollowedTagsPage {
         let request = try authorizedRequest(for: .followedTags(maxID: maxID, limit: limit))
         let (tags, response): ([SearchTag], HTTPURLResponse) = try await performWithResponse(request)
-        return FollowedTagsPage(tags: tags, nextMaxID: FollowedTagPagination.nextMaxID(in: response))
+        return FollowedTagsPage(tags: tags, nextMaxID: MastodonLinkPagination.nextMaxID(in: response))
     }
 
     func fetchTrendingTags(limit: Int? = 10) async throws -> [SearchTag] {
@@ -823,6 +823,12 @@ struct MastodonClient: MastodonAPI {
         let endpoint = MastodonEndpoint.conversations(maxID: maxID, sinceID: sinceID, limit: limit)
         let request = try authorizedRequest(for: endpoint)
         return try await perform(request)
+    }
+
+    func fetchBookmarkedPage(maxID: String?, limit: Int = 20) async throws -> BookmarkedStatusesPage {
+        let request = try authorizedRequest(for: .bookmarks(maxID: maxID, sinceID: nil, limit: limit))
+        let (statuses, response): ([Status], HTTPURLResponse) = try await performWithResponse(request)
+        return BookmarkedStatusesPage(statuses: statuses, nextMaxID: MastodonLinkPagination.nextMaxID(in: response))
     }
 
     func fetchBookmarkedStatuses(maxID: String? = nil, sinceID: String? = nil, limit: Int = 20)

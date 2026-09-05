@@ -170,6 +170,7 @@ protocol MastodonAPI {
     func fetchUnreadNotificationCount() async throws -> Int
     func fetchConversations(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Conversation]
+    func fetchBookmarkedPage(maxID: String?, limit: Int) async throws -> BookmarkedStatusesPage
     func fetchBookmarkedStatuses(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Status]
     func fetchFavouritedStatuses(maxID: String?, sinceID: String?, limit: Int) async throws
@@ -419,6 +420,11 @@ struct SearchTag: Codable, Hashable, Identifiable {
     }
 
     var id: String { name.lowercased() }
+}
+
+struct BookmarkedStatusesPage {
+    let statuses: [Status]
+    let nextMaxID: String?
 }
 
 struct FollowedTagsPage {

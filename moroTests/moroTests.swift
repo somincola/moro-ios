@@ -7281,6 +7281,10 @@ private final class MockMastodonAPI: MastodonAPI {
         }
         return []
     }
+    func fetchBookmarkedPage(maxID: String?, limit: Int) async throws -> BookmarkedStatusesPage {
+        BookmarkedStatusesPage(statuses: try await fetchBookmarkedStatuses(maxID: maxID, sinceID: nil, limit: limit), nextMaxID: nil)
+    }
+
     func fetchBookmarkedStatuses(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Status]
     {

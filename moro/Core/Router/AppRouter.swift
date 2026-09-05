@@ -186,7 +186,7 @@ struct AppRouteViewFactory {
 
         case .bookmarks:
             return AnyView(
-                BookmarksView(apiClient: apiClient)
+                BookmarksRouteView(apiClient: apiClient)
                     .toolbar(.hidden, for: .tabBar)
             )
 

@@ -1,6 +1,6 @@
 import Foundation
 
-enum FollowedTagPagination {
+enum MastodonLinkPagination {
     static func nextMaxID(in response: HTTPURLResponse) -> String? {
         guard let header = response.value(forHTTPHeaderField: "Link"), let source = response.url else { return nil }
         for link in header.split(separator: ",") {

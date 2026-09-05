@@ -138,8 +138,8 @@ struct FollowedTopicsTests {
         func response(_ link: String) -> HTTPURLResponse {
             HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: ["Link": link])!
         }
-        #expect(FollowedTagPagination.nextMaxID(in: response("</api/v1/followed_tags?max_id=7>; rel=\"prev\", </api/v1/followed_tags?max_id=abc%3A9>; rel=\"next\"")) == "abc:9")
-        #expect(FollowedTagPagination.nextMaxID(in: response("<https://other.example/api/v1/followed_tags?max_id=9>; rel=\"next\"")) == nil)
-        #expect(FollowedTagPagination.nextMaxID(in: response("</api/v1/tags?max_id=9>; rel=\"next\"")) == nil)
+        #expect(MastodonLinkPagination.nextMaxID(in: response("</api/v1/followed_tags?max_id=7>; rel=\"prev\", </api/v1/followed_tags?max_id=abc%3A9>; rel=\"next\"")) == "abc:9")
+        #expect(MastodonLinkPagination.nextMaxID(in: response("<https://other.example/api/v1/followed_tags?max_id=9>; rel=\"next\"")) == nil)
+        #expect(MastodonLinkPagination.nextMaxID(in: response("</api/v1/tags?max_id=9>; rel=\"next\"")) == nil)
     }
 }

@@ -44,6 +44,8 @@ struct MoroApp: App {
                     ComposeMediaGridHarnessView()
                         .moroTheme(MoroTheme(accent: .monochrome))
                         .preferredColorScheme(colorScheme)
+                } else if shouldUseBookmarksHarness {
+                    bookmarksHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseThreadReadingHarness {
                     threadReadingHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseComposeReadingHarness {
@@ -123,6 +125,20 @@ struct MoroApp: App {
     private var shouldUseComposeCounterHarness: Bool {
         launchArguments.contains("UITEST_COMPOSE_COUNTER")
             || launchEnvironment["UITEST_COMPOSE_COUNTER"] == "1"
+    }
+
+    private var shouldUseBookmarksHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_BOOKMARK_READING")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var bookmarksHarness: some View {
+        #if DEBUG
+        BookmarksHarnessView()
+        #endif
     }
 
     private var shouldUseThreadReadingHarness: Bool {

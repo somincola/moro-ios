@@ -72,6 +72,20 @@ public enum MoroL10n {
         public static func collapse(_ count: Int) -> String { format("threadReading.collapse", count) }
     }
 
+    public enum BookmarkReading {
+        public static var all: String { text("bookmarkReading.all") }
+        public static var unread: String { text("bookmarkReading.unread") }
+        public static var read: String { text("bookmarkReading.read") }
+        public static var markRead: String { text("bookmarkReading.markRead") }
+        public static var markUnread: String { text("bookmarkReading.markUnread") }
+        public static var search: String { text("bookmarkReading.search") }
+        public static var scope: String { text("bookmarkReading.scope") }
+        public static var offline: String { text("bookmarkReading.offline") }
+        public static var noMatches: String { text("bookmarkReading.noMatches") }
+        public static var loadMore: String { text("bookmarkReading.loadMore") }
+        public static var actions: String { text("bookmarkReading.actions") }
+    }
+
     public enum Common {
         public static var cancel: String { text("common.cancel") }
         public static var close: String { text("common.close") }
