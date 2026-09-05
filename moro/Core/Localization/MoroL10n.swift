@@ -1120,6 +1120,7 @@ public enum MoroL10n {
     }
 
     public enum Lists {
+        public static var cachedTimelineHint: String { text("lists.cachedTimelineHint") }
         public static var title: String { text("lists.title") }
         public static var newList: String { text("lists.newList") }
         public static var loadFailed: String { text("lists.loadFailed") }

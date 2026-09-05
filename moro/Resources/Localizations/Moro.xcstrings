@@ -1,6 +1,65 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
+    "lists.cachedTimelineHint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisierung nicht möglich. Gespeicherte Listenbeiträge werden angezeigt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to refresh. Showing list posts saved on this device."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo actualizar. Se muestran las publicaciones de la lista guardadas en este dispositivo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualisation impossible. Les messages de la liste enregistrés sur cet appareil sont affichés."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiornamento non riuscito. Sono mostrati i post della lista salvati sul dispositivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新できません。端末に保存されたリストの投稿を表示しています。"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível atualizar. A mostrar as publicações da lista guardadas neste dispositivo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂时无法更新，正在显示本机保留的列表帖子。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫時無法更新，正在顯示本機保留的列表貼文。"
+          }
+        }
+      }
+    },
     "bookmarkReading.all" : {
       "extractionState" : "manual",
       "localizations" : {

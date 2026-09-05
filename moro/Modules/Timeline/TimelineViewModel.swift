@@ -182,6 +182,9 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
     private let loadMoreThrottleInterval: TimeInterval = 0.5  // 500ms throttle
     private let bootstrapConfig: BootstrapConfig
     private var deferredInitialFillTask: Task<Void, Never>?
+    private var deferredInitialStatusIDs: Set<String> = []
+    private var deferredStatusUpdates: [String: Status] = [:]
+    private var deferredDeletedStatusIDs: Set<String> = []
 
     /// Track which status IDs have already triggered loadMore to prevent duplicate triggers
     private var triggeredLoadMoreForStatusIDs: Set<String> = []
@@ -280,21 +283,22 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
     }
 
     func loadInitial() async {
-        deferredInitialFillTask?.cancel()
         if case .loading = initialLoadState {
             return
         }
         if case .loaded = initialLoadState, !statuses.isEmpty {
+            await resumeCachedContentIfNeeded()
             return
         }
 
+        deferredInitialFillTask?.cancel()
         initialLoadState = .loading
         let hydrationTask = Task { [weak self] in
             guard let self else { return false }
             return await self.hydrateFromCacheIfAvailable()
         }
         let hydratedFromCache = await awaitCacheHydrationResult(from: hydrationTask)
-        let cachedStatusesBeforeNetwork = statuses
+        let cachedStatusesBeforeNetwork = await loadCachedStatusesSnapshot()
 
         do {
             let newStatuses: [Status]
@@ -331,9 +335,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
             let deferredStatuses = Array(
                 mergedStatuses.dropFirst(bootstrapConfig.initialRenderCap)
             )
-            let shouldScheduleDeferredFill =
-                !deferredStatuses.isEmpty && (!hydratedFromCache || newStatuses.isEmpty)
-
+            deferredInitialFillTask?.cancel()
             statuses = initialStatuses
             currentMaxID = initialStatuses.last?.id
             currentSinceID = initialStatuses.first?.id
@@ -346,8 +348,12 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
 
             // Cache accounts from loaded statuses
             accountCache.cacheFromStatuses(initialStatuses)
-            persistCurrentStatusesToCache()
-            if shouldScheduleDeferredFill {
+            // Persist the full merged snapshot before rendering it in small batches.
+            // Switching sources during that fill must not truncate the offline tail.
+            if let filter = timelineCacheFilter {
+                await timelineCache.set(statuses: mergedStatuses, for: cacheClientID, filter: filter)
+            }
+            if !deferredStatuses.isEmpty {
                 scheduleDeferredInitialFill(with: deferredStatuses)
             } else {
                 deferredInitialFillTask = nil
@@ -362,11 +368,15 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
             }
 
             if !cachedFallbackStatuses.isEmpty {
-                statuses = cachedFallbackStatuses
-                currentMaxID = cachedFallbackStatuses.last?.id
-                currentSinceID = cachedFallbackStatuses.first?.id
+                deferredInitialFillTask?.cancel()
+                statuses = Array(cachedFallbackStatuses.prefix(bootstrapConfig.initialRenderCap))
+                currentMaxID = statuses.last?.id
+                currentSinceID = statuses.first?.id
                 hasMore = cachedFallbackStatuses.count >= bootstrapConfig.initialLoadLimit
+                    || cachedFallbackStatuses.count > statuses.count
                 initialLoadState = .loaded
+                refreshState = .failed(error)
+                scheduleDeferredInitialFill(with: Array(cachedFallbackStatuses.dropFirst(statuses.count)))
             } else {
                 initialLoadState = .failed(error)
             }
@@ -428,6 +438,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
             let insertedCount = refreshedStatuses.count
 
             if shouldReplaceTimeline {
+                discardDeferredContent()
                 statuses = refreshedStatuses
                 currentMaxID = refreshedStatuses.last?.id
                 currentSinceID = refreshedStatuses.first?.id
@@ -569,6 +580,8 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
 
         guard hasMore, !isRefreshing, let maxID = currentMaxID else { return }
         if case .loading = initialLoadState { return }
+        // Finish presenting already-cached posts before asking for an older server page.
+        guard deferredInitialFillTask == nil else { return }
 
         if let statusID = triggeredByStatusID {
             if triggeredLoadMoreForStatusIDs.contains(statusID) {
@@ -638,6 +651,10 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
     }
 
     func updateStatus(_ status: Status) {
+        if deferredInitialStatusIDs.contains(status.id) {
+            deferredStatusUpdates[status.id] = status
+            persistSingleStatusUpdateToCache(status)
+        }
         if let index = statuses.firstIndex(where: { $0.id == status.id || $0.displayStatus.id == status.id }) {
             let mergedStatus = statuses[index].incorporatingDisplayStatusUpdate(status)
             statuses[index] = mergedStatus
@@ -700,10 +717,24 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         deferredInitialFillTask = nil
     }
 
+    private func discardDeferredContent() {
+        cancelBackgroundTasks()
+        deferredInitialStatusIDs = []
+        deferredStatusUpdates = [:]
+        deferredDeletedStatusIDs = []
+    }
+
+    func resumeCachedContentIfNeeded() async {
+        guard deferredInitialFillTask == nil, !statuses.isEmpty else { return }
+        let cached = await loadCachedStatusesSnapshot()
+        guard !Task.isCancelled, deferredInitialFillTask == nil else { return }
+        let visibleIDs = Set(statuses.map(\.id))
+        scheduleDeferredInitialFill(with: cached.filter { !visibleIDs.contains($0.id) })
+    }
+
     /// Clear all statuses and reset state (for timeline switching)
     func clearStatuses() {
-        deferredInitialFillTask?.cancel()
-        deferredInitialFillTask = nil
+        discardDeferredContent()
         activeRefreshRequest?.task.cancel()
         activeRefreshRequest = nil
         activeLoadMoreRequest?.task.cancel()
@@ -911,10 +942,8 @@ extension TimelineViewModel {
             return .local
         case .federated:
             return .federated
-        case .list:
-            // Pinned list timelines skip the offline timeline cache: TimelineFilter
-            // keys are per-kind, so distinct lists would collide on one cache slot.
-            return nil
+        case .list(let id, _):
+            return .list(id: id)
         }
     }
 
@@ -989,12 +1018,13 @@ extension TimelineViewModel {
         let statusesSnapshot = statuses
         let snapshotClientID = self.cacheClientID
         let timelineCache = self.timelineCache
+        let preservesUnrenderedTail = !deferredInitialStatusIDs.isEmpty
         Task(priority: .utility) {
-            await timelineCache.set(
-                statuses: statusesSnapshot,
-                for: snapshotClientID,
-                filter: snapshotFilter
-            )
+            if preservesUnrenderedTail {
+                await timelineCache.prepend(statuses: statusesSnapshot, for: snapshotClientID, filter: snapshotFilter)
+            } else {
+                await timelineCache.set(statuses: statusesSnapshot, for: snapshotClientID, filter: snapshotFilter)
+            }
         }
     }
 
@@ -1013,6 +1043,9 @@ extension TimelineViewModel {
     }
 
     fileprivate func scheduleDeferredInitialFill(with deferredStatuses: [Status]) {
+        deferredInitialStatusIDs = Set(deferredStatuses.flatMap { [$0.id, $0.displayStatus.id] })
+        deferredStatusUpdates = deferredStatusUpdates.filter { deferredInitialStatusIDs.contains($0.key) }
+        deferredDeletedStatusIDs.formIntersection(deferredInitialStatusIDs)
         guard !deferredStatuses.isEmpty else { return }
         deferredInitialFillTask?.cancel()
         deferredInitialFillTask = Task { [weak self] in
@@ -1027,13 +1060,27 @@ extension TimelineViewModel {
                 existingIDs.insert(status.id)
                 return true
             }
-            guard !appendable.isEmpty else { return }
+            guard !appendable.isEmpty else {
+                self.deferredInitialFillTask = nil
+                self.deferredInitialStatusIDs = []
+                self.deferredStatusUpdates = [:]
+                self.deferredDeletedStatusIDs = []
+                return
+            }
 
             var cursor = 0
             while cursor < appendable.count {
                 guard !Task.isCancelled else { return }
                 let nextCursor = min(cursor + self.bootstrapConfig.deferredFillBatchSize, appendable.count)
-                let chunk = Array(appendable[cursor..<nextCursor])
+                let presentIDs = Set(self.statuses.map(\.id))
+                let chunk = appendable[cursor..<nextCursor].filter {
+                    !presentIDs.contains($0.id) && !self.deferredDeletedStatusIDs.contains($0.id)
+                        && !self.deferredDeletedStatusIDs.contains($0.displayStatus.id)
+                }.map { status in
+                    self.deferredStatusUpdates[status.displayStatus.id].map {
+                        status.incorporatingDisplayStatusUpdate($0)
+                    } ?? status
+                }
                 self.statuses.append(contentsOf: chunk)
                 self.currentMaxID = self.statuses.last?.id
                 self.accountCache.cacheFromStatuses(chunk)
@@ -1044,6 +1091,9 @@ extension TimelineViewModel {
                 }
             }
 
+            self.deferredInitialStatusIDs = []
+            self.deferredStatusUpdates = [:]
+            self.deferredDeletedStatusIDs = []
             self.persistCurrentStatusesToCache()
             self.deferredInitialFillTask = nil
         }
@@ -1062,6 +1112,7 @@ extension TimelineViewModel {
     }
 
     fileprivate func removeStatusFromCache(id: String) {
+        if deferredInitialStatusIDs.contains(id) { deferredDeletedStatusIDs.insert(id) }
         guard let cacheFilter = timelineCacheFilter else { return }
         Task { [weak self] in
             guard let self else { return }

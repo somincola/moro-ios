@@ -123,7 +123,8 @@ struct ListsView: View {
 
                 ForEach(viewModel.lists) { list in
                     NavigationLink {
-                        ListTimelineView(list: list, apiClient: apiClient)
+                        ListTimelineView(list: list, apiClient: apiClient, cacheClientID: activeAccountKey)
+                            .id(activeAccountKey + ":" + list.id)
                     } label: {
                         listRow(list)
                     }
@@ -362,15 +363,16 @@ private struct ListEditorSheet: View {
 
 struct ListTimelineView: View {
     let list: MastodonList
-    @StateObject private var viewModel: ListTimelineViewModel
+    @StateObject private var viewModel: TimelineViewModel
     @Environment(\.moroTheme) private var theme
     @Environment(\.appRouter) private var router
     @EnvironmentObject private var appState: AppState
 
-    init(list: MastodonList, apiClient: MastodonAPI) {
+    init(list: MastodonList, apiClient: MastodonAPI, cacheClientID: String, timelineCache: TimelineCache? = nil) {
         self.list = list
         _viewModel = StateObject(
-            wrappedValue: ListTimelineViewModel(apiClient: apiClient, listID: list.id)
+            wrappedValue: TimelineViewModel(apiClient: apiClient, timelineType: .list(id: list.id, title: list.title),
+                timelineCache: timelineCache, cacheClientID: cacheClientID)
         )
     }
 
@@ -380,6 +382,7 @@ struct ListTimelineView: View {
         }
         .navigationTitle(list.title)
         .navigationBarTitleDisplayMode(.inline)
+        .background(theme.colors.surfaceBase)
         .task {
             await viewModel.loadInitial()
         }
@@ -426,25 +429,8 @@ struct ListTimelineView: View {
     private var timelineList: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                if let transientErrorMessage = viewModel.transientErrorMessage {
-                    HStack(alignment: .top, spacing: theme.spacing.s) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(theme.colors.error)
-                            .padding(.top, 2)
-                        Text(transientErrorMessage)
-                            .font(theme.typography.caption)
-                            .foregroundStyle(theme.colors.textPrimary)
-                        Spacer()
-                    }
-                    .padding(theme.spacing.s)
-                    .background(theme.colors.surfaceBase)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(theme.colors.borderSubtle, lineWidth: 1)
-                    )
-                    .padding(.horizontal, theme.spacing.m)
-                    .padding(.vertical, theme.spacing.s)
+                if case .failed = viewModel.refreshState {
+                    TimelineCachedContentNotice { Task { await viewModel.refresh() } }
                 }
 
                 ForEach(Array(viewModel.statuses.enumerated()), id: \.element.id) { index, status in

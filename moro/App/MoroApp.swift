@@ -44,6 +44,8 @@ struct MoroApp: App {
                     ComposeMediaGridHarnessView()
                         .moroTheme(MoroTheme(accent: .monochrome))
                         .preferredColorScheme(colorScheme)
+                } else if shouldUseListCacheHarness {
+                    listCacheHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseBookmarksHarness {
                     bookmarksHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseThreadReadingHarness {
@@ -78,6 +80,9 @@ struct MoroApp: App {
                             await coordinator.start()
                         }
                         .onChange(of: scenePhase) { _, newPhase in
+                            if newPhase == .background {
+                                Task { await CacheManager.shared.timelineCache.flushPendingWrites() }
+                            }
                             guard newPhase == .active else { return }
                             Task {
                                 await coordinator.refreshCurrentAccountIfNeeded()
@@ -125,6 +130,20 @@ struct MoroApp: App {
     private var shouldUseComposeCounterHarness: Bool {
         launchArguments.contains("UITEST_COMPOSE_COUNTER")
             || launchEnvironment["UITEST_COMPOSE_COUNTER"] == "1"
+    }
+
+    private var shouldUseListCacheHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_LIST_CACHE")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var listCacheHarness: some View {
+        #if DEBUG
+        ListCacheHarnessView()
+        #endif
     }
 
     private var shouldUseBookmarksHarness: Bool {

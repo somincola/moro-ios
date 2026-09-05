@@ -271,6 +271,9 @@ extension TimelineHomeView {
         case .loading:
             timelineLoadingRows
         case .loaded:
+            if case .list = timelineType, case .failed = viewModel.refreshState {
+                TimelineCachedContentNotice { Task { await viewModel.refresh() } }
+            }
             timelineStatusRows(for: viewModel, timelineType: timelineType)
         case .empty(let spec):
             timelineStateCard(

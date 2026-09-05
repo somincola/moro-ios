@@ -289,6 +289,7 @@ struct TimelineHomeView: View {
             }
 
             let wasAlreadyLoaded = hasFinishedInitialLoad(for: newValue)
+            let targetViewModel = viewModel
 
             // Load the new timeline if not already loaded
             Task {
@@ -313,6 +314,10 @@ struct TimelineHomeView: View {
                         await pinnedViewModel(for: newValue).loadInitial()
                         loadedPinnedTimelineIDs.insert(newValue.id)
                     }
+                }
+                guard selectedTimeline == newValue else { return }
+                if wasAlreadyLoaded {
+                    await targetViewModel.resumeCachedContentIfNeeded()
                 }
                 syncDetectionTopID(for: newValue)
                 let dimension = detectionDimension(for: newValue)
