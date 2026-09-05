@@ -32,6 +32,7 @@ struct ContentParsingOptions: OptionSet {
     static let separateMentionsFromFollowingText = ContentParsingOptions(rawValue: 1 << 5)
     static let preserveCodeSemantics = ContentParsingOptions(rawValue: 1 << 6)
     static let separateAdjacentHashtags = ContentParsingOptions(rawValue: 1 << 7)
+    static let preserveInlineWhitespace = ContentParsingOptions(rawValue: 1 << 8)
 
     static let accountRichText: ContentParsingOptions = [
         .preserveInlineImageAltText,
@@ -45,6 +46,7 @@ struct ContentParsingOptions: OptionSet {
         .omitKnownHashtagLinks,
         .separateMentionsFromFollowingText,
         .preserveCodeSemantics,
+        .preserveInlineWhitespace,
     ]
 }
 
@@ -272,7 +274,9 @@ struct ContentParser {
                             emojis: emojis,
                             contentBaseURL: contentBaseURL,
                             options: options,
-                            codeFragments: preservedCode.fragments
+                            codeFragments: preservedCode.fragments,
+                            preserveLeadingWhitespace: lastEnd != workingHTML.startIndex,
+                            preserveTrailingWhitespace: true
                         )
                     )
                 }
@@ -322,7 +326,8 @@ struct ContentParser {
                         emojis: emojis,
                         contentBaseURL: contentBaseURL,
                         options: options,
-                        codeFragments: preservedCode.fragments
+                        codeFragments: preservedCode.fragments,
+                        preserveLeadingWhitespace: lastEnd != workingHTML.startIndex
                     )
                 )
             }
@@ -431,8 +436,8 @@ struct ContentParser {
     }
 
     /// Status hashtag chips are rendered from the API's `tags` collection.
-    /// Remove only anchors that can be matched back to that authoritative data;
-    /// unknown tag-looking links remain visible instead of silently losing text.
+    /// Omit only a trailing run of lines consisting entirely of known hashtag anchors.
+    /// Inline tags, prose, images, code, and ambiguous links must remain in the body.
     private static func removingKnownHashtagAnchors(
         from html: String,
         tags: [Status.Tag]?,
@@ -440,28 +445,39 @@ struct ContentParser {
     ) -> String {
         guard let linkRegex, let tags, !tags.isEmpty else { return html }
 
-        let source = html as NSString
-        let matches = linkRegex.matches(
-            in: html,
-            options: [],
-            range: NSRange(location: 0, length: source.length)
-        )
-        guard !matches.isEmpty else { return html }
-
-        let result = NSMutableString(string: html)
-        for match in matches.reversed() {
-            guard match.numberOfRanges > 1 else { continue }
-            let href = source.substring(with: match.range(at: 1))
-            guard isKnownHashtagURL(
-                href,
-                tags: tags,
-                contentBaseURL: contentBaseURL
-            ) else {
+        var lines = html.components(separatedBy: "{{LINEBREAK}}")
+        for index in lines.indices.reversed() {
+            let line = lines[index]
+            if HTMLParser.decodeEntities(line).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 continue
             }
-            result.replaceCharacters(in: match.range, with: "")
+            let source = line as NSString
+            let matches = linkRegex.matches(
+                in: line, range: NSRange(location: 0, length: source.length)
+            )
+            guard !matches.isEmpty else { break }
+            let remainder = NSMutableString(string: line)
+            var containsOnlyKnownTags = true
+            for match in matches.reversed() {
+                let href = source.substring(with: match.range(at: 1))
+                let label = HTMLParser.stripHTML(source.substring(with: match.range(at: 2)))
+                let matchingTags = tags.filter {
+                    $0.name.caseInsensitiveCompare(String(label.dropFirst())) == .orderedSame
+                }
+                guard label.hasPrefix("#"),
+                      !matchingTags.isEmpty,
+                      isKnownHashtagURL(href, tags: matchingTags, contentBaseURL: contentBaseURL) else {
+                    containsOnlyKnownTags = false
+                    break
+                }
+                remainder.replaceCharacters(in: match.range, with: "")
+            }
+            guard containsOnlyKnownTags,
+                  HTMLParser.decodeEntities(remainder as String)
+                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { break }
+            lines[index] = ""
         }
-        return result as String
+        return lines.joined(separator: "{{LINEBREAK}}")
     }
 
     private static func isKnownHashtagURL(
@@ -478,9 +494,11 @@ struct ContentParser {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             ?? candidateURL.lastPathComponent
 
+        let path = candidateURL.pathComponents.filter { $0 != "/" }
+        let isTagPath = path.count >= 2 && ["tags", "tag"].contains(path[path.count - 2].lowercased())
         return tags.contains { tag in
             normalizedTagURLString(tag.url) == candidateURLString
-                || tag.name.caseInsensitiveCompare(candidateName) == .orderedSame
+                || (isTagPath && tag.name.caseInsensitiveCompare(candidateName) == .orderedSame)
         }
     }
 
@@ -625,7 +643,9 @@ struct ContentParser {
         emojis: [Status.Emoji]? = nil,
         contentBaseURL: URL? = nil,
         options: ContentParsingOptions = [],
-        codeFragments: [PreservedCodeFragment] = []
+        codeFragments: [PreservedCodeFragment] = [],
+        preserveLeadingWhitespace: Bool = false,
+        preserveTrailingWhitespace: Bool = false
     ) -> [ContentElement] {
         var elements: [ContentElement] = []
         
@@ -643,7 +663,16 @@ struct ContentParser {
                 )
             }
             cleanText = HTMLParser.decodeEntities(cleanText)
-            cleanText = cleanText.trimmingCharacters(in: .whitespaces)
+            if options.contains(.preserveInlineWhitespace) {
+                if index != 0 || !preserveLeadingWhitespace {
+                    cleanText = String(cleanText.drop(while: { $0.isWhitespace && !$0.isNewline }))
+                }
+                if index != parts.count - 1 || !preserveTrailingWhitespace {
+                    cleanText = String(cleanText.reversed().drop(while: { $0.isWhitespace && !$0.isNewline }).reversed())
+                }
+            } else {
+                cleanText = cleanText.trimmingCharacters(in: .whitespaces)
+            }
             
             if !cleanText.isEmpty {
                 elements.append(

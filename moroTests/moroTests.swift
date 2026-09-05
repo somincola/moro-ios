@@ -5215,7 +5215,7 @@ struct moroTests {
             capturedLanguage = language
             #expect(text == "Hello updated")
             #expect(visibility == .unlisted)
-            #expect(spoilerText == nil)
+            #expect(spoilerText == "")
             #expect(poll == nil)
             return self.makeStatus(
                 id: id,
@@ -5231,6 +5231,10 @@ struct moroTests {
             apiClient: api,
             feedCoordinator: feedCoordinator
         )
+        api.fetchStatusSourceHandler = { id in
+            StatusSource(id: id, text: "Hello old", spoilerText: "")
+        }
+        await viewModel.loadEditingSourceIfNeeded()
         viewModel.content = "Hello updated"
 
         let result = try await viewModel.publish()
@@ -6853,6 +6857,7 @@ private final class MockMastodonAPI: MastodonAPI {
     var fetchAccountFollowingCalls: [(id: String, maxID: String?, limit: Int)] = []
     var searchHandler: ((String, MastodonSearchType?, Bool, Int, Int?) async throws -> SearchResults)?
     var fetchStatusDetailHandler: ((String) async throws -> Status)?
+    var fetchStatusSourceHandler: ((String) async throws -> StatusSource)?
     var fetchStatusContextHandler: ((String) async throws -> StatusContext)?
     var verifyCredentialsHandler: (() async throws -> Account)?
     var updateAccountProfileHandler:
@@ -7180,6 +7185,12 @@ private final class MockMastodonAPI: MastodonAPI {
     func fetchStatusHistory(id: String) async throws -> [StatusEditHistoryItem] {
         throw MockError.unimplemented
     }
+    func fetchStatusSource(id: String) async throws -> StatusSource {
+        if let fetchStatusSourceHandler {
+            return try await fetchStatusSourceHandler(id)
+        }
+        throw MockError.unimplemented
+    }
     func translateStatus(id: String, targetLanguage: String?) async throws -> StatusTranslationPayload {
         if let translateStatusHandler {
             return try await translateStatusHandler(id, targetLanguage)
@@ -7463,6 +7474,7 @@ private final class MockMastodonAPI: MastodonAPI {
         spoilerText: String?,
         sensitive: Bool?,
         quotingID: String?,
+        quoteApprovalPolicy: MastodonQuoteApprovalPolicy?,
         language: String?,
         scheduledAt: Date?,
         poll: StatusPollPayload?

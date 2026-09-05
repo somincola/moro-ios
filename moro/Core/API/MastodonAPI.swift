@@ -39,6 +39,12 @@ enum MastodonVisibility: RawRepresentable, Codable, Hashable {
     }
 }
 
+enum MastodonQuoteApprovalPolicy: String, Encodable {
+    case anyone = "public"
+    case followers
+    case nobody
+}
+
 enum MastodonSearchType: String, Codable {
     case accounts
     case statuses
@@ -149,6 +155,7 @@ protocol MastodonAPI {
     func fetchStatusDetail(id: String) async throws -> Status
     func fetchStatusContext(id: String) async throws -> StatusContext
     func fetchStatusHistory(id: String) async throws -> [StatusEditHistoryItem]
+    func fetchStatusSource(id: String) async throws -> StatusSource
     func translateStatus(id: String, targetLanguage: String?) async throws -> StatusTranslationPayload
     /// Source → supported-target map from the instance translation backend.
     func fetchTranslationLanguages() async throws -> [String: [String]]
@@ -271,6 +278,7 @@ protocol MastodonAPI {
         spoilerText: String?,
         sensitive: Bool?,
         quotingID: String?,
+        quoteApprovalPolicy: MastodonQuoteApprovalPolicy?,
         language: String?,
         scheduledAt: Date?,
         poll: StatusPollPayload?

@@ -215,6 +215,8 @@ public enum MoroL10n {
     }
 
     public enum Compose {
+        public static var editSourceLoading: String { text("compose.editSource.loading") }
+        public static var editSourceFailed: String { text("compose.editSource.failed") }
         public static var navigationNewPost: String { text("compose.navigation.newPost") }
         public static var navigationReply: String { text("compose.navigation.reply") }
         public static var navigationQuote: String { text("compose.navigation.quote") }

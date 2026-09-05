@@ -54,6 +54,7 @@ enum MastodonEndpoint {
     case status(id: String)
     case statusContext(id: String)
     case statusHistory(id: String)
+    case statusSource(id: String)
     case statusTranslate(id: String, targetLanguage: String?)
     case translationLanguages
     case postStatus
@@ -230,6 +231,8 @@ enum MastodonEndpoint {
             return "/api/v1/statuses/\(id)/context"
         case .statusHistory(let id):
             return "/api/v1/statuses/\(id)/history"
+        case .statusSource(let id):
+            return "/api/v1/statuses/\(id)/source"
         case .statusTranslate(let id, _):
             return "/api/v1/statuses/\(id)/translate"
         case .postStatus:

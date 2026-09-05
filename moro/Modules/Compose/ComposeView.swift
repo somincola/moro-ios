@@ -234,7 +234,11 @@ struct ComposeView: View {
                             )
                         }
 
-                        inputSection
+                        if viewModel.isEditingSourceReady {
+                            inputSection
+                        } else {
+                            editSourcePlaceholder
+                        }
                     }
                 }
                 .scrollContentBackground(.hidden)
@@ -244,6 +248,7 @@ struct ComposeView: View {
                 
                 // Bottom: Quote policy selector (new post mode) + Toolbar
                 bottomSection
+                    .disabled(!viewModel.isEditingSourceReady)
             }
             .background(theme.colors.background)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -280,6 +285,7 @@ struct ComposeView: View {
                         }
                     }
                     .disabled(!viewModel.canPublish)
+                    .accessibilityIdentifier("compose.postButton")
                     .fontWeight(.semibold)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(
@@ -376,6 +382,45 @@ struct ComposeView: View {
             .task(priority: .utility) {
                 await viewModel.loadInstanceLimits()
             }
+            .task {
+                await loadEditingSource()
+            }
+        }
+    }
+
+    private var editSourcePlaceholder: some View {
+        VStack(spacing: theme.spacing.m) {
+            if viewModel.editSourceState == .failed {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(theme.typography.title)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .accessibilityHidden(true)
+                Text(MoroL10n.Compose.editSourceFailed)
+                    .font(theme.typography.body)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                Button {
+                    Task { await loadEditingSource() }
+                } label: {
+                    Text(MoroL10n.Compose.retry)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .tint(theme.colors.primary500)
+                .accessibilityIdentifier("compose.retryEditSource")
+            } else {
+                ProgressView(MoroL10n.Compose.editSourceLoading)
+                    .accessibilityIdentifier("compose.editSourceLoading")
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: fixedTextInputHeight)
+        .padding(theme.spacing.m)
+    }
+
+    private func loadEditingSource() async {
+        await viewModel.loadEditingSourceIfNeeded()
+        if case .edit = viewModel.context, viewModel.isEditingSourceReady {
+            textSelection = NSRange(location: (viewModel.content as NSString).length, length: 0)
         }
     }
 
@@ -1354,7 +1399,7 @@ struct ComposeView: View {
     private var showsQuotePolicyOption: Bool {
         switch viewModel.context {
         case .newPost, .reply, .quote:
-            return true
+            return viewModel.visibility == .public || viewModel.visibility == .unlisted
         case .edit:
             return false
         }

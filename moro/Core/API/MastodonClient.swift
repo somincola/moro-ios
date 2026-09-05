@@ -55,6 +55,7 @@ struct MastodonClient: MastodonAPI {
         let spoilerText: String?
         let sensitive: Bool?
         let quoteID: String?
+        let quoteApprovalPolicy: MastodonQuoteApprovalPolicy?
         let language: String?
         let scheduledAt: String?
         let poll: StatusPollPayload?
@@ -66,10 +67,27 @@ struct MastodonClient: MastodonAPI {
             case inReplyToID = "in_reply_to_id"
             case spoilerText = "spoiler_text"
             case sensitive
-            case quoteID = "quote_id"
+            case quoteID = "quoted_status_id"
+            case quoteApprovalPolicy = "quote_approval_policy"
             case language
             case scheduledAt = "scheduled_at"
             case poll
+        }
+    }
+
+    /// Editing must not re-send creation-only fields or reset an existing quote.
+    private struct StatusEditPayload: Encodable {
+        let status: String
+        let mediaIDs: [String]?
+        let spoilerText: String?
+        let sensitive: Bool?
+        let language: String?
+        let poll: StatusPollPayload?
+
+        enum CodingKeys: String, CodingKey {
+            case status, sensitive, language, poll
+            case mediaIDs = "media_ids"
+            case spoilerText = "spoiler_text"
         }
     }
 
@@ -585,6 +603,11 @@ struct MastodonClient: MastodonAPI {
         return try await perform(request)
     }
 
+    func fetchStatusSource(id: String) async throws -> StatusSource {
+        let request = try authorizedRequest(for: .statusSource(id: id))
+        return try await perform(request)
+    }
+
     func translateStatus(id: String, targetLanguage: String?) async throws -> StatusTranslationPayload
     {
         let endpoint = MastodonEndpoint.statusTranslate(id: id, targetLanguage: targetLanguage)
@@ -644,6 +667,7 @@ struct MastodonClient: MastodonAPI {
         spoilerText: String?,
         sensitive: Bool?,
         quotingID: String?,
+        quoteApprovalPolicy: MastodonQuoteApprovalPolicy? = nil,
         language: String?,
         scheduledAt: Date?,
         poll: StatusPollPayload?
@@ -656,6 +680,7 @@ struct MastodonClient: MastodonAPI {
             spoilerText: spoilerText,
             sensitive: sensitive,
             quoteID: quotingID,
+            quoteApprovalPolicy: quoteApprovalPolicy,
             language: language,
             scheduledAt: scheduledAt?.ISO8601Format(),
             poll: poll
@@ -682,16 +707,12 @@ struct MastodonClient: MastodonAPI {
         language: String?,
         poll: StatusPollPayload?
     ) async throws -> Status {
-        let payload = StatusPayload(
+        let payload = StatusEditPayload(
             status: text,
-            visibility: visibility,
             mediaIDs: mediaIDs,
-            inReplyToID: inReplyToID,
             spoilerText: spoilerText,
             sensitive: sensitive,
-            quoteID: quotingID,
             language: language,
-            scheduledAt: nil,
             poll: poll
         )
         let endpoint = MastodonEndpoint.editStatus(id: id)
