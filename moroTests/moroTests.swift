@@ -14,6 +14,27 @@ import Combine
 
 struct moroTests {
 
+    @Test @MainActor func composerPublishesReorderedMediaWithoutChangingAltText() async throws {
+        let api = MockMastodonAPI()
+        var postedIDs: [String] = []
+        api.postStatusHandler = { _, _, ids, _, _, _, _, _, _ in
+            postedIDs = ids ?? []
+            return makeStatus(id: "published")
+        }
+        let model = ComposeViewModel(context: .newPost, apiClient: api)
+        model.content = "Body"
+        model.mediaAttachments = (1...3).map { index in
+            MediaAttachment(id: "media-\(index)", url: URL(string: "https://example.com/\(index).png")!,
+                previewURL: nil, type: "image", description: "ALT \(index)", focus: nil,
+                originalDescription: "ALT \(index)", uploadState: .uploaded)
+        }
+        model.moveMedia(from: IndexSet(integer: 0), to: 3)
+        _ = try await model.publish()
+        #expect(postedIDs == ["media-2", "media-3", "media-1"])
+        #expect(model.mediaAttachments.map(\.description) == ["ALT 2", "ALT 3", "ALT 1"])
+    }
+
+
     @Test func accountDeletionURLPointsDirectlyToMastodonDeletionPage() throws {
         let instanceURL = try #require(URL(string: "https://social.example/path?source=moro#account"))
 

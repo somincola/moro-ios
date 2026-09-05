@@ -601,6 +601,12 @@ final class ComposeViewModel: ObservableObject {
         mediaAttachments.first { $0.id == id }
     }
 
+    func moveMedia(from source: IndexSet, to destination: Int) {
+        guard !isPublishing, destination >= 0, destination <= mediaAttachments.count,
+            source.allSatisfy({ mediaAttachments.indices.contains($0) }) else { return }
+        mediaAttachments.move(fromOffsets: source, toOffset: destination)
+    }
+
     @discardableResult
     func removeMedia(id: String) -> Bool {
         guard let index = mediaAttachments.firstIndex(where: { $0.id == id }) else {

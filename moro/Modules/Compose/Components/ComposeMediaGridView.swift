@@ -12,6 +12,7 @@ struct ComposeMediaGridView: View {
     let onRemove: (String) -> Void
     let onEditAlt: (String) -> Void
     let onRetry: (String) -> Void
+    var showsEditingControls = true
     
     @Environment(\.moroTheme) private var theme
 
@@ -123,6 +124,7 @@ struct ComposeMediaGridView: View {
     private func mediaTile(_ attachment: MediaAttachment) -> some View {
         ComposeMediaTileView(
             attachment: attachment,
+            showsEditingControls: showsEditingControls,
             onRemove: { onRemove(attachment.id) },
             onEditAlt: { onEditAlt(attachment.id) },
             onRetry: { onRetry(attachment.id) }
@@ -135,6 +137,7 @@ struct ComposeMediaGridView: View {
 
 private struct ComposeMediaTileView: View {
     let attachment: MediaAttachment
+    let showsEditingControls: Bool
     let onRemove: () -> Void
     let onEditAlt: () -> Void
     let onRetry: () -> Void
@@ -173,13 +176,13 @@ private struct ComposeMediaTileView: View {
                 uploadStateOverlay
                 
                 // Alt text is editable once the server attachment exists.
-                if case .uploaded = attachment.uploadState {
+                if showsEditingControls, case .uploaded = attachment.uploadState {
                     altTextButtonOverlay
                 }
 
                 // Removal remains available while uploading and after failures so an
                 // attachment can never trap the composer in a blocked state.
-                removeButtonOverlay
+                if showsEditingControls { removeButtonOverlay }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
@@ -232,18 +235,20 @@ private struct ComposeMediaTileView: View {
                         .font(theme.typography.caption)
                         .foregroundStyle(.white)
 
-                    Button(action: onRetry) {
-                        Text(MoroL10n.ComposeMedia.retry)
-                            .font(theme.typography.caption)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, theme.spacing.m)
-                            .padding(.vertical, theme.spacing.s)
-                            .background(
-                                Capsule()
-                                    .fill(theme.colors.primary500)
-                            )
+                    if showsEditingControls {
+                        Button(action: onRetry) {
+                            Text(MoroL10n.ComposeMedia.retry)
+                                .font(theme.typography.caption)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, theme.spacing.m)
+                                .padding(.vertical, theme.spacing.s)
+                                .background(
+                                    Capsule()
+                                        .fill(theme.colors.primary500)
+                                )
+                        }
+                        .accessibilityIdentifier("compose.media.retry.\(attachment.id)")
                     }
-                    .accessibilityIdentifier("compose.media.retry.\(attachment.id)")
                 }
             }
             

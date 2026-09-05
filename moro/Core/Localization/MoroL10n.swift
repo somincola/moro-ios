@@ -48,6 +48,19 @@ public enum MoroL10n {
         public static var loadMore: String { text("topics.loadMore") }
     }
 
+    public enum ComposeReading {
+        public static var expand: String { text("composeReading.expand") }
+        public static var collapse: String { text("composeReading.collapse") }
+        public static var preview: String { text("composeReading.preview") }
+        public static var mediaOrder: String { text("composeReading.mediaOrder") }
+        public static var options: String { text("composeReading.options") }
+        public static func attachment(_ index: Int) -> String { format("composeReading.attachment", index) }
+        public static var uploadPending: String { text("composeReading.uploadPending") }
+        public static var moveUp: String { text("composeReading.moveUp") }
+        public static var moveDown: String { text("composeReading.moveDown") }
+        public static var orderHint: String { text("composeReading.orderHint") }
+    }
+
     public enum Common {
         public static var cancel: String { text("common.cancel") }
         public static var close: String { text("common.close") }
