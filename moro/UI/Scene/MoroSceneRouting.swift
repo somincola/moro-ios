@@ -77,7 +77,7 @@ extension Route {
         case .bookmarks, .favourites, .scheduledStatuses, .profileConnections:
             return MoroSceneDescriptor(kind: .stream)
 
-        case .lists, .savedSearches:
+        case .lists, .savedSearches, .followedTopics:
             return MoroSceneDescriptor(kind: .grouped)
 
         case .editProfile:

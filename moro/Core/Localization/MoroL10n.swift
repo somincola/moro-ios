@@ -36,6 +36,18 @@ public enum MoroL10n {
         )
     }
 
+    public enum Topics {
+        public static var title: String { text("topics.title") }
+        public static var follow: String { text("topics.follow") }
+        public static var following: String { text("topics.following") }
+        public static var unfollow: String { text("topics.unfollow") }
+        public static var empty: String { text("topics.empty") }
+        public static var homeHint: String { text("topics.homeHint") }
+        public static var actionFailed: String { text("topics.actionFailed") }
+        public static var loadFailed: String { text("topics.loadFailed") }
+        public static var loadMore: String { text("topics.loadMore") }
+    }
+
     public enum Common {
         public static var cancel: String { text("common.cancel") }
         public static var close: String { text("common.close") }

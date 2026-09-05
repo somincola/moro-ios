@@ -71,6 +71,7 @@ struct TimelineSwitcher: View {
     /// Pinned timelines appended after the built-in three.
     var pinnedTimelines: [TimelineType] = []
     var onManageLists: (() -> Void)?
+    var onManageTopics: (() -> Void)?
     @Environment(\.moroTheme) private var theme
 
     private var items: [TimelineType] {
@@ -97,6 +98,12 @@ struct TimelineSwitcher: View {
                 Button(action: onManageLists) {
                     Label(MoroL10n.Navigation.lists, systemImage: "list.bullet.rectangle")
                 }
+            }
+            if let onManageTopics {
+                Button(action: onManageTopics) {
+                    Label(MoroL10n.Topics.title, systemImage: "number")
+                }
+                .accessibilityIdentifier("topics.menu")
             }
         } label: {
             HStack(spacing: 8) {

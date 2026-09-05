@@ -79,6 +79,8 @@ enum Route: Hashable {
     /// Navigate to lists management page
     case lists
 
+    case followedTopics
+
     /// Navigate to scheduled statuses list
     case scheduledStatuses
 
@@ -139,6 +141,8 @@ enum Route: Hashable {
             hasher.combine("bookmarks")
         case .favourites:
             hasher.combine("favourites")
+        case .followedTopics:
+            hasher.combine("followedTopics")
         case .lists:
             hasher.combine("lists")
         case .scheduledStatuses:
@@ -183,6 +187,8 @@ enum Route: Hashable {
         case (.bookmarks, .bookmarks):
             return true
         case (.favourites, .favourites):
+            return true
+        case (.followedTopics, .followedTopics):
             return true
         case (.lists, .lists):
             return true

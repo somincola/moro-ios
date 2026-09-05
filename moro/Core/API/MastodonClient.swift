@@ -533,6 +533,21 @@ struct MastodonClient: MastodonAPI {
         return try await perform(request)
     }
 
+    func fetchTag(name: String) async throws -> SearchTag {
+        try await perform(authorizedRequest(for: .tag(name: name)))
+    }
+
+    func setTagFollowed(name: String, followed: Bool) async throws -> SearchTag {
+        let endpoint: MastodonEndpoint = followed ? .followTag(name: name) : .unfollowTag(name: name)
+        return try await perform(authorizedRequest(for: endpoint))
+    }
+
+    func fetchFollowedTags(maxID: String?, limit: Int = 100) async throws -> FollowedTagsPage {
+        let request = try authorizedRequest(for: .followedTags(maxID: maxID, limit: limit))
+        let (tags, response): ([SearchTag], HTTPURLResponse) = try await performWithResponse(request)
+        return FollowedTagsPage(tags: tags, nextMaxID: FollowedTagPagination.nextMaxID(in: response))
+    }
+
     func fetchTrendingTags(limit: Int? = 10) async throws -> [SearchTag] {
         let endpoint = MastodonEndpoint.trendsTags(limit: limit)
         let request = try authorizedRequest(for: endpoint)
@@ -1333,6 +1348,11 @@ struct MastodonClient: MastodonAPI {
     }
 
     private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
+        let (value, _): (T, HTTPURLResponse) = try await performWithResponse(request)
+        return value
+    }
+
+    private func performWithResponse<T: Decodable>(_ request: URLRequest) async throws -> (T, HTTPURLResponse) {
         // Log the request
         logger.logRequest(request)
         let startTime = Date()
@@ -1403,7 +1423,7 @@ struct MastodonClient: MastodonAPI {
                         }
                     }
                 #endif
-                return decoded
+                return (decoded, httpResponse)
             } catch let decodingError as DecodingError {
                 // Log detailed decoding error
                 #if DEBUG

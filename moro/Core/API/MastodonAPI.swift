@@ -140,6 +140,9 @@ protocol MastodonAPI {
         limit: Int,
         offset: Int?
     ) async throws -> SearchResults
+    func fetchTag(name: String) async throws -> SearchTag
+    func setTagFollowed(name: String, followed: Bool) async throws -> SearchTag
+    func fetchFollowedTags(maxID: String?, limit: Int) async throws -> FollowedTagsPage
     func fetchTrendingTags(limit: Int?) async throws -> [SearchTag]
     func fetchTrendingStatuses(limit: Int?) async throws -> [Status]
     func fetchDirectoryAccounts(
@@ -406,7 +409,22 @@ struct SearchTag: Codable, Hashable, Identifiable {
     let url: URL
     let history: [SearchTagHistory]?
 
+    let following: Bool?
+
+    init(name: String, url: URL, history: [SearchTagHistory]?, following: Bool? = nil) {
+        self.name = name
+        self.url = url
+        self.history = history
+        self.following = following
+    }
+
     var id: String { name.lowercased() }
+}
+
+struct FollowedTagsPage {
+    let tags: [SearchTag]
+    /// Relationship cursor from the response Link header, never the tag id.
+    let nextMaxID: String?
 }
 
 struct SearchTagHistory: Codable, Hashable {

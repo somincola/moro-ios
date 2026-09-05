@@ -6824,6 +6824,10 @@ private final class BadgeValueRecorder {
 }
 
 private final class MockMastodonAPI: MastodonAPI {
+    func fetchTag(name: String) async throws -> SearchTag { throw MockError.unimplemented }
+    func setTagFollowed(name: String, followed: Bool) async throws -> SearchTag { throw MockError.unimplemented }
+    func fetchFollowedTags(maxID: String?, limit: Int) async throws -> FollowedTagsPage { throw MockError.unimplemented }
+
     enum MockError: Error {
         case unimplemented
         case forcedFailure
