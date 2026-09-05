@@ -21,6 +21,7 @@ struct MoroTheme {
     /// fixed-point helpers like `.moroScaledFont` so they can read it from
     /// the environment instead of observing AppSettings per call site.
     let fontScale: CGFloat
+    let dynamicTypeSize: DynamicTypeSize
 
     init(
         colorScheme: ColorScheme = .light,
@@ -33,6 +34,7 @@ struct MoroTheme {
         self.colors = MoroColors(colorScheme: colorScheme, accent: accent)
         self.typography = MoroTypography(fontScale: fontScale, dynamicTypeSize: dynamicTypeSize)
         self.fontScale = fontScale
+        self.dynamicTypeSize = dynamicTypeSize
     }
 }
 

@@ -25,21 +25,27 @@ enum SearchLayoutMetrics {
 
 struct SearchView: View {
     @Environment(\.appRouter) private var router
+    @Environment(\.activeAccountKey) private var accountKey
     @Environment(\.moroTheme) private var theme
     @Environment(\.moroSceneDescriptor) private var sceneDescriptor
     private let apiClient: MastodonAPI
     private let initialQuery: String?
+    private let initialScope: SearchViewModel.Scope
 
-    init(apiClient: MastodonAPI, initialQuery: String? = nil) {
+    init(apiClient: MastodonAPI, initialQuery: String? = nil, initialScope: SearchViewModel.Scope = .all) {
         self.apiClient = apiClient
         self.initialQuery = initialQuery
+        self.initialScope = initialScope
     }
 
     var body: some View {
         SearchCoreControllerHost(
             apiClient: apiClient,
             initialQuery: initialQuery,
+            initialScope: initialScope,
+            accountKey: accountKey,
             theme: theme,
+            onManageSavedSearches: { router.navigate(to: .savedSearches) },
             onOpenProfile: { account in
                 router.navigate(to: .userProfile(account))
             },
@@ -50,6 +56,7 @@ struct SearchView: View {
                 router.navigate(to: .hashtag(tag))
             }
         )
+        .id(accountKey)
         .background(sceneCanvasColor)
     }
 
@@ -62,7 +69,10 @@ struct SearchView: View {
 private struct SearchCoreControllerHost: UIViewControllerRepresentable {
     let apiClient: MastodonAPI
     let initialQuery: String?
+    let initialScope: SearchViewModel.Scope
+    let accountKey: String
     let theme: MoroTheme
+    let onManageSavedSearches: () -> Void
     let onOpenProfile: (Account) -> Void
     let onOpenStatus: (Status) -> Void
     let onOpenHashtag: (String) -> Void
@@ -71,8 +81,11 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
         let controller = SearchCoreViewController(
             apiClient: apiClient,
             initialQuery: initialQuery,
-            theme: theme
+            theme: theme,
+            accountKey: accountKey,
+            initialScope: initialScope
         )
+        controller.onManageSavedSearches = onManageSavedSearches
         controller.onOpenProfile = onOpenProfile
         controller.onOpenStatus = onOpenStatus
         controller.onOpenHashtag = onOpenHashtag
@@ -80,10 +93,15 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: SearchCoreViewController, context: Context) {
+        uiViewController.onManageSavedSearches = onManageSavedSearches
         uiViewController.onOpenProfile = onOpenProfile
         uiViewController.onOpenStatus = onOpenStatus
         uiViewController.onOpenHashtag = onOpenHashtag
         uiViewController.apply(theme: theme)
+    }
+    static func dismantleUIViewController(_ controller: SearchCoreViewController, coordinator: ()) {
+        controller.cancelInFlightSearchRequests()
+        controller.cancelDiscoveryRequests()
     }
 }
 

@@ -93,11 +93,14 @@ struct AppRouteViewFactory {
                     .toolbar(.hidden, for: .tabBar)
             )
 
-        case .search(let query):
+        case .search(let query, let scope):
             return AnyView(
-                SearchView(apiClient: apiClient, initialQuery: query)
+                SearchView(apiClient: apiClient, initialQuery: query, initialScope: SearchViewModel.Scope(rawValue: scope) ?? .all)
                     .toolbar(.hidden, for: .tabBar)
             )
+
+        case .savedSearches:
+            return AnyView(SavedSearchesRouteView().toolbar(.hidden, for: .tabBar))
 
         case .accountLookup(let acct):
             return AnyView(

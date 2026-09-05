@@ -10,7 +10,7 @@ import Foundation
 
 @MainActor
 final class SearchViewModel: ObservableObject {
-    enum Scope: Int, CaseIterable, Hashable {
+    enum Scope: Int, CaseIterable, Hashable, Codable {
         case all
         case accounts
         case statuses

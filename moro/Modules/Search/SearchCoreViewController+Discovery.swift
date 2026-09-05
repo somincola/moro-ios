@@ -178,6 +178,8 @@ extension SearchCoreViewController {
         discoveryTask?.cancel()
         if resetActiveRequestID {
             discoveryRequestID = UUID()
+            discovery.isLoading = false
+            discovery.isLoadingMoreAccounts = false
         }
     }
 }

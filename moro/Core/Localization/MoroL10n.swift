@@ -1102,6 +1102,21 @@ public enum MoroL10n {
     }
 
     public enum Search {
+        public static var recentTitle: String { text("search.recentTitle") }
+        public static var savedTitle: String { text("search.savedTitle") }
+        public static var entryHint: String { text("search.entryHint") }
+        public static var noRecent: String { text("search.noRecent") }
+        public static var noSaved: String { text("search.noSaved") }
+        public static var manageSaved: String { text("search.manageSaved") }
+        public static var clearRecent: String { text("search.clearRecent") }
+        public static var saveSearch: String { text("search.saveSearch") }
+        public static var searchSaved: String { text("search.searchSaved") }
+        public static var returnDiscovery: String { text("search.returnDiscovery") }
+        public static var renameSearch: String { text("search.renameSearch") }
+        public static var searchName: String { text("search.searchName") }
+        public static var localSearches: String { text("search.localSearches") }
+        public static func searchFor(_ query: String) -> String { format("search.searchFor", query) }
+
         public static var tabAll: String { text("search.tab.all") }
         public static var tabAccounts: String { text("search.tab.accounts") }
         public static var tabStatuses: String { text("search.tab.statuses") }

@@ -13,6 +13,7 @@
         let colorScheme: ColorScheme
         let accent: MoroAccentStyle
         let fontScale: CGFloat
+        let dynamicTypeSize: DynamicTypeSize
 
         let canvasBackground: UIColor
         let groupedBackground: UIColor
@@ -32,6 +33,7 @@
             colorScheme = theme.colorScheme
             accent = theme.accent
             fontScale = theme.fontScale
+            dynamicTypeSize = theme.dynamicTypeSize
             canvasBackground = UIColor(theme.colors.surfaceBase)
             groupedBackground = UIColor(theme.colors.groupedBackground)
             surfaceBase = UIColor(theme.colors.surfaceBase)
@@ -55,7 +57,8 @@
             forTextStyle textStyle: UIFont.TextStyle,
             weight: UIFont.Weight = .regular
         ) -> UIFont {
-            let preferredPointSize = UIFont.preferredFont(forTextStyle: textStyle).pointSize
+            let traits = UITraitCollection(preferredContentSizeCategory: dynamicTypeSize.uiContentSizeCategory)
+            let preferredPointSize = UIFont.preferredFont(forTextStyle: textStyle, compatibleWith: traits).pointSize
             return UIFont.systemFont(
                 ofSize: max(preferredPointSize * fontScale, 1),
                 weight: weight
@@ -66,6 +69,7 @@
             colorScheme == theme.colorScheme
                 && accent == theme.accent
                 && fontScale == theme.fontScale
+                && dynamicTypeSize == theme.dynamicTypeSize
         }
     }
 

@@ -6,67 +6,40 @@
 //
 
 #if os(iOS)
+import SwiftUI
 import UIKit
 
 extension SearchCoreViewController: UISearchBarDelegate {
     func searchBarShouldBeginEditing(_ searchBar: UISearchBar) -> Bool {
-        setCancelButtonVisible(true)
+        beginSearchEntry()
         return true
     }
 
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if trimmed.isEmpty {
-            clearSearchState()
-            loadDiscoveryIfNeeded()
-            return
-        }
-
-        cancelDiscoveryRequests()
-
-        switch triggerPolicy {
-        case .debounceAndSearchKey:
-            searchState.markTyping(query: trimmed, scope: selectedScope)
-            if trimmed.count >= minimumDebouncedQueryLength {
-                scheduleDebouncedSearch(for: trimmed)
-            } else {
-                debounceTask?.cancel()
-                pendingSearchQuery = nil
-            }
-            refreshViewState()
-        case .searchKeyOnly:
-            prepareForManualSearch(keepResults: true)
-            transitionToTypingStateIfNeeded()
-        }
+        beginSearchEntry()
+        interaction.draftQuery = searchText
+        updateEntryContent()
     }
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
-        debounceTask?.cancel()
-        pendingSearchQuery = nil
-        startSearch(reset: true)
-        searchBar.searchTextField.resignFirstResponder()
+        // A return key confirming an IME candidate is not a search submission.
+        guard searchBar.searchTextField.markedTextRange == nil else { return }
+        submitQuery(searchBar.text ?? "", scope: selectedScope)
     }
 
     func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
-        setCancelButtonVisible(false)
-        searchBar.text = ""
-        clearSearchState()
-        loadDiscoveryIfNeeded()
-        searchBar.searchTextField.resignFirstResponder()
+        cancelSearchEntry()
     }
 
     func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
-        if trimmedQuery.isEmpty {
-            setCancelButtonVisible(false)
-        }
+        // Dismissing the keyboard leaves the entry page and its draft intact.
     }
 }
 
 extension SearchCoreViewController: UITableViewDataSource {
     func numberOfSections(in tableView: UITableView) -> Int {
         switch mode {
-        case .placeholder, .typing, .loading, .empty:
+        case .placeholder, .loading, .empty:
             return 0
         case .error:
             return 1
@@ -77,7 +50,7 @@ extension SearchCoreViewController: UITableViewDataSource {
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch mode {
-        case .placeholder, .typing, .loading, .empty:
+        case .placeholder, .loading, .empty:
             return 0
         case .error:
             return 1
@@ -151,7 +124,7 @@ extension SearchCoreViewController: UITableViewDataSource {
             cell.configure(with: rowContent(for: row), theme: appliedTheme)
             return cell
 
-        case .placeholder, .typing, .loading, .empty:
+        case .placeholder, .loading, .empty:
             return UITableViewCell()
         }
     }
@@ -190,7 +163,7 @@ extension SearchCoreViewController: UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
         guard case .results = mode, sections.indices.contains(section) else { return .leastNormalMagnitude }
-        return UIApplication.shared.preferredContentSizeCategory.isAccessibilityCategory
+        return appliedTheme.dynamicTypeSize.isAccessibilitySize
             ? UITableView.automaticDimension
             : 34
     }
@@ -236,7 +209,7 @@ extension SearchCoreViewController: UITableViewDelegate {
     }
 
     func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
-        guard case .results = mode else { return }
+        guard interaction.page != .entry, case .results = mode else { return }
         guard sections.indices.contains(indexPath.section) else { return }
 
         if trimmedQuery.isEmpty {
