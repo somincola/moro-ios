@@ -61,6 +61,17 @@ public enum MoroL10n {
         public static var orderHint: String { text("composeReading.orderHint") }
     }
 
+    public enum ThreadReading {
+        public static var options: String { text("threadReading.options") }
+        public static var authorOnly: String { text("threadReading.authorOnly") }
+        public static var authorOnlyHint: String { text("threadReading.authorOnlyHint") }
+        public static var returnToPost: String { text("threadReading.returnToPost") }
+        public static var expandAll: String { text("threadReading.expandAll") }
+        public static func parent(_ name: String) -> String { format("threadReading.parent", name) }
+        public static func expand(_ count: Int) -> String { format("threadReading.expand", count) }
+        public static func collapse(_ count: Int) -> String { format("threadReading.collapse", count) }
+    }
+
     public enum Common {
         public static var cancel: String { text("common.cancel") }
         public static var close: String { text("common.close") }
