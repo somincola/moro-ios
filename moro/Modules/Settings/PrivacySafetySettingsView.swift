@@ -9,6 +9,7 @@ import SwiftUI
 
 struct PrivacySafetySettingsView: View {
     @Environment(\.moroTheme) private var theme
+    @Environment(\.activeAccountKey) private var activeAccountKey
     @EnvironmentObject private var appState: AppState
     @StateObject private var settings = AppSettings.shared
     
@@ -43,7 +44,13 @@ struct PrivacySafetySettingsView: View {
             
             Section {
                 Toggle(MoroL10n.PrivacySafety.toggleApproveFollows, isOn: privacyBoolBinding(\.manuallyApproveFollowRequests))
-                Toggle(MoroL10n.PrivacySafety.toggleShowFollowCounts, isOn: privacyBoolBinding(\.showFollowersAndFollowing))
+                if let apiClient {
+                    NavigationLink(MoroL10n.ProfileEditing.displaySettings) {
+                        ProfileDisplaySettingsView(apiClient: apiClient, accountKey: activeAccountKey)
+                    }
+                } else {
+                    Toggle(MoroL10n.PrivacySafety.toggleShowFollowCounts, isOn: privacyBoolBinding(\.showFollowersAndFollowing))
+                }
                 Toggle(MoroL10n.PrivacySafety.toggleSuggestAccount, isOn: privacyBoolBinding(\.suggestMyAccountToOthers))
                 Toggle(MoroL10n.PrivacySafety.toggleSearchEngine, isOn: privacyBoolBinding(\.appearInSearchEngines))
             } header: {

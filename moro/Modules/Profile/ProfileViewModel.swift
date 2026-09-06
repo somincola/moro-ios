@@ -15,6 +15,14 @@ final class ProfileViewModel: ObservableObject {
         case posts = "Posts"
         case replies = "Replies"
         case media = "Media"
+
+        var localizedTitle: String {
+            switch self {
+            case .posts: MoroL10n.ProfileEditing.posts
+            case .replies: MoroL10n.ProfileEditing.replies
+            case .media: MoroL10n.ProfileEditing.media
+            }
+        }
     }
 
     enum TabLoadState: Equatable {
@@ -44,7 +52,23 @@ final class ProfileViewModel: ObservableObject {
     
     // MARK: - Published Properties
     
-    @Published var account: Account?
+    @Published var account: Account? {
+        didSet {
+            if (oldValue?.showMediaReplies ?? false) != (account?.showMediaReplies ?? false) {
+                mediaPreferenceRevision = UUID()
+                media = []
+                mediaMaxID = nil
+                hasMoreMedia = true
+                tabLoadStates[.media] = .notLoaded
+                loadingMoreTabs.remove(.media)
+                loadMoreFailedTabs.remove(.media)
+            }
+            if account?.showMedia == false && selectedTab == .media { selectedTab = .posts }
+        }
+    }
+    @Published private(set) var mediaPreferenceRevision = UUID()
+    var availableTabs: [Tab] { account?.showMedia == false ? [.posts, .replies] : Tab.allCases }
+
     @Published private(set) var selectedTab: Tab = .posts
     @Published var loadingState: LoadingState = .idle
     @Published private(set) var tabLoadStates: [Tab: TabLoadState] = Dictionary(
@@ -263,7 +287,7 @@ final class ProfileViewModel: ObservableObject {
     }
     
     func refresh() async {
-        let refreshedTab = selectedTab
+        var refreshedTab = selectedTab
         let generation = queryGeneration
         let tag = selectedFeaturedTag
         loadingState = .loading
@@ -272,11 +296,14 @@ final class ProfileViewModel: ObservableObject {
             guard generation == queryGeneration else { return }
             account = refreshedAccount
             accountCache.set(refreshedAccount)
+            if !availableTabs.contains(refreshedTab) { refreshedTab = .posts }
+            let mediaRevision = mediaPreferenceRevision
             await loadRelationship()
             guard generation == queryGeneration else { return }
             await fetchPinnedStatuses()
             let page = try await fetchPage(for: refreshedTab, maxID: nil, tag: tag)
             guard generation == queryGeneration else { return }
+            guard refreshedTab != .media || mediaRevision == mediaPreferenceRevision else { return }
             replaceContent(with: page, for: refreshedTab)
             tabLoadStates[refreshedTab] = .loaded
             loadMoreFailedTabs.remove(refreshedTab)
@@ -293,39 +320,42 @@ final class ProfileViewModel: ObservableObject {
 
     func loadMore() async {
         let tab = selectedTab
+        let mediaRevision = mediaPreferenceRevision
         let generation = queryGeneration
         let tag = selectedFeaturedTag
         guard tabLoadState(for: tab) == .loaded,
               hasMore(for: tab), !loadingMoreTabs.contains(tab) else { return }
         loadingMoreTabs.insert(tab)
         loadMoreFailedTabs.remove(tab)
-        defer { if generation == queryGeneration { loadingMoreTabs.remove(tab) } }
+        defer { if acceptsResponse(generation: generation, tab: tab, mediaRevision: mediaRevision) { loadingMoreTabs.remove(tab) } }
         do {
             let page = try await fetchPage(for: tab, maxID: maxID(for: tab), tag: tag)
-            guard generation == queryGeneration else { return }
+            guard acceptsResponse(generation: generation, tab: tab, mediaRevision: mediaRevision) else { return }
             appendContent(from: page, for: tab)
         } catch {
-            guard generation == queryGeneration else { return }
+            guard acceptsResponse(generation: generation, tab: tab, mediaRevision: mediaRevision) else { return }
             loadMoreFailedTabs.insert(tab)
         }
     }
 
     func selectTab(_ tab: Tab) {
+        guard availableTabs.contains(tab) else { return }
         selectedTab = tab
     }
 
     func loadTabIfNeeded(_ tab: Tab) async {
         guard tabLoadState(for: tab) == .notLoaded else { return }
         let generation = queryGeneration
+        let mediaRevision = mediaPreferenceRevision
         let tag = selectedFeaturedTag
         tabLoadStates[tab] = .loading
         do {
             let page = try await fetchPage(for: tab, maxID: nil, tag: tag)
-            guard generation == queryGeneration else { return }
+            guard acceptsResponse(generation: generation, tab: tab, mediaRevision: mediaRevision) else { return }
             replaceContent(with: page, for: tab)
             tabLoadStates[tab] = .loaded
         } catch {
-            guard generation == queryGeneration else { return }
+            guard acceptsResponse(generation: generation, tab: tab, mediaRevision: mediaRevision) else { return }
             tabLoadStates[tab] = .error(error.localizedDescription)
         }
     }
@@ -337,6 +367,10 @@ final class ProfileViewModel: ObservableObject {
     }
     
     // MARK: - Private Methods
+
+    private func acceptsResponse(generation: UUID, tab: Tab, mediaRevision: UUID) -> Bool {
+        generation == queryGeneration && (tab != .media || mediaRevision == mediaPreferenceRevision)
+    }
 
     private func fetchLatestProfileAccount() async throws -> Account {
         if isCurrentUserProfile {
@@ -392,7 +426,7 @@ final class ProfileViewModel: ObservableObject {
                 maxID: maxID,
                 sinceID: nil,
                 limit: pageSize,
-                excludeReplies: true,
+                excludeReplies: !(account?.showMediaReplies ?? false),
                 excludeReblogs: true,
                 onlyMedia: true,
                 pinned: false,

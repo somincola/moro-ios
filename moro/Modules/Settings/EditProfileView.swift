@@ -3,6 +3,7 @@ import SwiftUI
 /// A compact hub. Each destination owns its draft and its save boundary.
 struct EditProfileView: View {
     @Environment(\.moroTheme) private var theme
+    @Environment(\.activeAccountKey) private var activeAccountKey
     @EnvironmentObject private var appState: AppState
     let apiClient: MastodonAPI
     let currentAccount: Account?
@@ -64,9 +65,16 @@ struct EditProfileView: View {
                         summary: MoroL10n.ProfileEditing.tagHint)
                 }
                 .accessibilityIdentifier("profile.edit.featuredTags")
+                NavigationLink {
+                    ProfileDisplaySettingsView(apiClient: apiClient, accountKey: activeAccountKey)
+                } label: {
+                    ProfileEditorSummaryRow(title: MoroL10n.ProfileEditing.displaySettings,
+                        summary: MoroL10n.ProfileEditing.showTags)
+                }
+                .accessibilityIdentifier("profile.edit.display")
             }
         }
-        .moroSettingsListChrome()
+        .profileEditorChrome()
         .navigationTitle(MoroL10n.EditProfile.title)
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("profile.edit.overview")

@@ -13,6 +13,81 @@ import UIKit
 import Combine
 
 struct moroTests {
+    @Test @MainActor func profileDisplaySaveKeepsLocalDraftWhenTheServerFails() async throws {
+        let suite = "profile-display-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = ProfilePresentationPreferences(defaults: defaults)
+        let api = MockMastodonAPI()
+        let source = EditableProfile(id: "account", displayName: "Name", note: "", fields: [],
+            showMedia: true, showMediaReplies: true, showFeatured: true, hideCollections: false)
+        api.fetchEditableProfileHandler = { source }
+        var fails = true
+        var savedUpdate: ProfileDisplayUpdate?
+        api.profileDisplayUpdateHandler = { update in
+            savedUpdate = update
+            if fails { throw MockMastodonAPI.MockError.forcedFailure }
+            return source
+        }
+        api.verifyCredentialsHandler = { makeAccount(showMedia: false) }
+        let model = ProfileDisplayViewModel(apiClient: api, accountKey: "A", preferences: preferences)
+        await model.load()
+        model.showTags = false
+        model.showMedia = false
+        #expect(await model.save(to: AppState()) == false)
+        #expect(model.hasChanges)
+        #expect(preferences.showsFeaturedTags(accountKey: "A"))
+        #expect(savedUpdate?.showMedia == false)
+        #expect(savedUpdate?.showMediaReplies == nil)
+        fails = false
+        #expect(await model.save(to: AppState()))
+        #expect(!preferences.showsFeaturedTags(accountKey: "A"))
+        #expect(preferences.showsFeaturedTags(accountKey: "B"))
+        #expect(!model.hasChanges)
+    }
+
+    @Test @MainActor func legacyProfileDisplayOnlyUpdatesSupportedCredentials() async {
+        let api = MockMastodonAPI()
+        api.fetchEditableProfileHandler = { EditableProfile(id: "account", displayName: "", note: "", fields: []) }
+        var hidden: Bool?
+        api.credentialsUpdateHandler = { value in hidden = value; return makeAccount() }
+        let model = ProfileDisplayViewModel(apiClient: api, accountKey: "legacy-test")
+        await model.load()
+        #expect(!model.supportsMedia && !model.supportsFeatured)
+        model.showConnections = false
+        #expect(await model.save(to: AppState()))
+        #expect(hidden == true)
+    }
+
+    @Test @MainActor func mediaPreferenceChangesDiscardAnOldRequestAndHideTheTab() async {
+        let api = MockMastodonAPI()
+        let started = AsyncStream<Void>.makeStream()
+        var oldRequest: CheckedContinuation<[Status], Error>?
+        api.fetchAccountStatusesHandler = { _, _, _, _, excludeReplies, _, _, _ in
+            if excludeReplies {
+                return try await withCheckedThrowingContinuation { continuation in
+                    oldRequest = continuation
+                    started.continuation.yield(())
+                }
+            }
+            return [makeStatus(id: "media-with-replies")]
+        }
+        let model = ProfileViewModel(apiClient: api, accountID: "account")
+        model.account = makeAccount(showMedia: true, showMediaReplies: false)
+        model.selectTab(.media)
+        let oldLoad = Task { await model.loadTabIfNeeded(.media) }
+        var iterator = started.stream.makeAsyncIterator()
+        await iterator.next()
+        model.account = makeAccount(showMedia: true, showMediaReplies: true)
+        await model.loadTabIfNeeded(.media)
+        oldRequest?.resume(returning: [makeStatus(id: "outdated-media")])
+        await oldLoad.value
+        #expect(model.media.map(\.id) == ["media-with-replies"])
+        model.account = makeAccount(showMedia: false, showMediaReplies: true)
+        #expect(model.availableTabs == [.posts, .replies])
+        #expect(model.selectedTab == .posts)
+    }
+
     @Test @MainActor func profileTagChangesDiscardLateResponsesAndResetPagination() async throws {
         let api = MockMastodonAPI()
         let account = makeAccount()
@@ -80,7 +155,7 @@ struct moroTests {
     @Test @MainActor func profileBasicEditPreservesRawLinksAndOmitsUnchangedFields() async throws {
         let api = MockMastodonAPI()
         let raw = "Hello\nhttps://example.org/full/path?query=value\n:custom_emoji:"
-        let source = EditableProfile(id: "1", displayName: "Original", note: raw,
+        let source = EditableProfile(id: "account", displayName: "Original", note: raw,
             fields: [AccountField(name: "Website", value: "https://example.org/full/path")])
         api.fetchEditableProfileHandler = { source }
         let account = makeAccount()
@@ -101,7 +176,7 @@ struct moroTests {
 
     @Test @MainActor func profileFieldReorderingPreservesValuesAndDetectsConcurrentEdits() async throws {
         let api = MockMastodonAPI()
-        let original = EditableProfile(id: "1", displayName: "Name", note: "Bio",
+        let original = EditableProfile(id: "account", displayName: "Name", note: "Bio",
             fields: [AccountField(name: "First", value: "https://example.org/a?x=1&y=2"),
                      AccountField(name: "Second", value: "  retained spacing  ")])
         var source = original
@@ -122,7 +197,7 @@ struct moroTests {
         let other = EditProfileViewModel(apiClient: api, initialAccount: account, scope: .fields)
         await other.load()
         other.fields[0].name = "Edited"
-        source = EditableProfile(id: "1", displayName: "Name", note: "Bio", fields: [])
+        source = EditableProfile(id: "account", displayName: "Name", note: "Bio", fields: [])
         #expect(await other.save(to: AppState()) == false)
         #expect(api.updateAccountProfileCalls.count == 1)
         #expect(other.fields[0].name == "Edited")
@@ -2779,7 +2854,7 @@ struct moroTests {
 
     @Test @MainActor func editProfileRejectsIncompleteFieldAndLimitsBio() async {
         let api = MockMastodonAPI()
-        api.fetchEditableProfileHandler = { EditableProfile(id: "1", displayName: "", note: "", fields: []) }
+        api.fetchEditableProfileHandler = { EditableProfile(id: "account", displayName: "", note: "", fields: []) }
         let viewModel = EditProfileViewModel(apiClient: api, initialAccount: makeAccount())
         await viewModel.load()
         let appState = AppState()
@@ -2805,7 +2880,7 @@ struct moroTests {
         )
         let updatedAccount = makeAccount()
         let api = MockMastodonAPI()
-        api.fetchEditableProfileHandler = { EditableProfile(id: "1", displayName: "", note: "", fields: []) }
+        api.fetchEditableProfileHandler = { EditableProfile(id: "account", displayName: "", note: "", fields: []) }
         api.updateAccountProfileHandler = { _, _, _, _, _, _, _ in updatedAccount }
         api.verifyCredentialsHandler = { updatedAccount }
         let appState = AppState()
@@ -2837,7 +2912,7 @@ struct moroTests {
     @Test @MainActor func editProfileSubmitsOnlyCompleteTrimmedFields() async throws {
         let initialAccount = makeAccount()
         let api = MockMastodonAPI()
-        api.fetchEditableProfileHandler = { EditableProfile(id: "1", displayName: "", note: "", fields: []) }
+        api.fetchEditableProfileHandler = { EditableProfile(id: "account", displayName: "", note: "", fields: []) }
         api.updateAccountProfileHandler = { _, _, _, _, _, _, fields in
             self.makeAccount(fields: fields ?? [])
         }
@@ -6827,7 +6902,9 @@ private extension moroTests {
         emojis: [Account.Emoji] = [],
         url: String? = nil,
         source: Account.Source? = nil,
-        locked: Bool = false
+        locked: Bool = false,
+        showMedia: Bool? = nil,
+        showMediaReplies: Bool? = nil
     ) -> Account {
         let resolvedUsername = username ?? "user_\(id)"
         return Account(
@@ -6847,7 +6924,9 @@ private extension moroTests {
             fields: fields,
             emojis: emojis,
             url: url ?? "https://example.com/@\(resolvedUsername)",
-            source: source
+            source: source,
+            showMedia: showMedia,
+            showMediaReplies: showMediaReplies
         )
     }
 
@@ -7030,6 +7109,12 @@ private final class MockMastodonAPI: MastodonAPI {
     func unfeatureTag(id: String) async throws {
         guard let unfeatureTagHandler else { throw MockError.unimplemented }
         try await unfeatureTagHandler(id)
+    }
+    var profileDisplayUpdateHandler: ((ProfileDisplayUpdate) async throws -> EditableProfile)?
+    var credentialsUpdateHandler: ((Bool?) async throws -> Account)?
+    func updateProfileDisplay(_ update: ProfileDisplayUpdate) async throws -> EditableProfile {
+        guard let profileDisplayUpdateHandler else { throw MockError.unimplemented }
+        return try await profileDisplayUpdateHandler(update)
     }
     var fetchEditableProfileHandler: (() async throws -> EditableProfile)?
     var accountFeaturedTagsHandler: ((String) async throws -> [FeaturedTag])?
@@ -7278,6 +7363,7 @@ private final class MockMastodonAPI: MastodonAPI {
         hideCollections: Bool?,
         privacy: String?
     ) async throws -> Account {
+        if let credentialsUpdateHandler { return try await credentialsUpdateHandler(hideCollections) }
         throw MockError.unimplemented
     }
     func updateAccountProfile(

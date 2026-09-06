@@ -116,6 +116,7 @@ struct MainTabView: View {
             case .settings:
                 SettingsSheetView(apiClient: apiClient)
                     .environment(\.settingsContext, settingsContext)
+                    .environment(\.activeAccountKey, activeSessionID ?? "no-active-session")
                     .moroSheetSurface(detents: [.large], cornerRadius: 20)
             }
         }

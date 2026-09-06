@@ -46,7 +46,7 @@ struct ProfileFieldsEditor: View {
             }
         }
         .environment(\.editMode, .constant(.active))
-        .moroSettingsListChrome()
+        .profileEditorChrome()
         .navigationTitle(MoroL10n.EditProfile.sectionExtraFields)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -144,7 +144,7 @@ private struct ProfileFieldEditor: View {
             }
         }
         .environment(\.editMode, .constant(.inactive))
-        .moroSettingsListChrome()
+        .profileEditorChrome()
         .navigationTitle(MoroL10n.ProfileEditing.editField)
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)

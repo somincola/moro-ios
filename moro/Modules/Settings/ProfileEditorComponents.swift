@@ -25,6 +25,7 @@ struct ProfileEditorLoadingView: View {
 
 private struct ProfileEditorExitGuard: ViewModifier {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appState: AppState
     @State private var confirmDiscard = false
     let hasChanges: Bool
     let isSaving: Bool
@@ -33,6 +34,7 @@ private struct ProfileEditorExitGuard: ViewModifier {
         content
             .navigationBarBackButtonHidden(hasChanges || isSaving)
             .interactiveDismissDisabled(hasChanges || isSaving)
+            .onChange(of: appState.authToken) { _, _ in dismiss() }
             .toolbar {
                 if hasChanges || isSaving {
                     ToolbarItem(placement: .topBarLeading) {
@@ -58,6 +60,12 @@ private struct ProfileEditorExitGuard: ViewModifier {
 }
 
 extension View {
+    func profileEditorChrome() -> some View {
+        moroSettingsListChrome()
+            .contentMargins(.top, 12, for: .scrollContent)
+            .contentMargins(.bottom, 24, for: .scrollContent)
+    }
+
     func profileEditorExitGuard(hasChanges: Bool, isSaving: Bool) -> some View {
         modifier(ProfileEditorExitGuard(hasChanges: hasChanges, isSaving: isSaving))
     }

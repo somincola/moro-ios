@@ -253,6 +253,12 @@ struct ProfileView: View {
             await viewModel.loadFeaturedTags()
             syncCurrentUserProfileFromAppState()
         }
+        .onChange(of: viewModel.selectedTab) { _, tab in
+            Task { await viewModel.loadTabIfNeeded(tab) }
+        }
+        .onChange(of: viewModel.mediaPreferenceRevision) { _, _ in
+            if viewModel.selectedTab == .media { Task { await viewModel.loadTabIfNeeded(.media) } }
+        }
         .onChange(of: profilePreferences.revision) { _, _ in
             Task {
                 await viewModel.setFeaturedTagsEnabled(profilePreferences.showsFeaturedTags(accountKey: activeAccountKey))
@@ -291,6 +297,10 @@ struct ProfileView: View {
             current.header,
             current.headerStatic,
             fieldsDigest,
+            String(describing: current.showMedia),
+            String(describing: current.showMediaReplies),
+            String(describing: current.showFeatured),
+            String(describing: current.credentialHideCollections),
         ].joined(separator: "|")
     }
 
@@ -1018,12 +1028,12 @@ struct ProfileView: View {
         hidesAccessibility: Bool
     ) -> some View {
         HStack(spacing: 0) {
-            ForEach(ProfileViewModel.Tab.allCases, id: \.rawValue) { tab in
+            ForEach(viewModel.availableTabs, id: \.rawValue) { tab in
                 Button(action: {
                     selectProfileTab(tab)
                 }) {
                     VStack(spacing: 0) {
-                        Text(tab.rawValue)
+                        Text(tab.localizedTitle)
                             .font(theme.typography.body)
                             .fontWeight(viewModel.selectedTab == tab ? .semibold : .regular)
                             .foregroundStyle(
@@ -1043,6 +1053,7 @@ struct ProfileView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityHidden(hidesAccessibility)
+                .accessibilityIdentifier("profile.tab.\(tab.rawValue.lowercased())")
             }
         }
         .padding(.horizontal, theme.spacing.l)
@@ -1053,7 +1064,6 @@ struct ProfileView: View {
     private func selectProfileTab(_ tab: ProfileViewModel.Tab) {
         guard tab != viewModel.selectedTab else { return }
         viewModel.selectTab(tab)
-        Task { await viewModel.loadTabIfNeeded(tab) }
     }
 
     // MARK: - Helpers

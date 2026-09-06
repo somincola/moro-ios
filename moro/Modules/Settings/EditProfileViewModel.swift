@@ -30,6 +30,7 @@ final class EditProfileViewModel: ObservableObject {
     @Published private(set) var hasLoadedSource = false
     @Published private(set) var isLoading = false
     @Published private(set) var loadError: String?
+    private var loadedProfileID: String?
     private var originalFieldValues: [UUID: FieldPair] = [:]
 
     @Published var displayName: String
@@ -78,6 +79,8 @@ final class EditProfileViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             let source = try await apiClient.fetchEditableProfile()
+            guard account == nil || source.id == account?.id else { throw APIError.authenticationRequired }
+            loadedProfileID = source.id
             let metadata = try? await InstanceMetadataStore.shared.load(apiClient: apiClient)
             try Task.checkCancellation()
             if let configuredLimits = metadata?.configuration?.accounts { limits = configuredLimits }
@@ -235,6 +238,7 @@ final class EditProfileViewModel: ObservableObject {
 
     func save(to appState: AppState) async -> Bool {
         guard !isBusy, hasLoadedSource else { return false }
+        if let activeID = appState.currentAccount?.id, activeID != loadedProfileID { return false }
 
         let normalizedName = displayName == originalDisplayName
             ? displayName : displayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -267,6 +271,7 @@ final class EditProfileViewModel: ObservableObject {
             // before overwriting untouched entries (the server has no conditional-write API).
             if changesFields {
                 let latest = try await apiClient.fetchEditableProfile()
+                guard latest.id == loadedProfileID else { throw APIError.authenticationRequired }
                 guard latest.fields.map({ FieldPair(name: $0.name, value: $0.value) }) == originalFields else {
                     throw ProfileEditingError.fieldsChangedElsewhere
                 }

@@ -37,6 +37,10 @@ public enum MoroL10n {
     }
 
     public enum ProfileEditing {
+        public static var posts: String { text("profileEditing.posts") }
+        public static var replies: String { text("profileEditing.replies") }
+        public static var media: String { text("profileEditing.media") }
+
         public static var featuredTags: String { text("profileEditing.featuredTags") }
         public static var displaySettings: String { text("profileEditing.displaySettings") }
         public static var showTags: String { text("profileEditing.showTags") }

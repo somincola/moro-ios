@@ -87,7 +87,7 @@ struct FeaturedTagsEditor: View {
                 Text(MoroL10n.ProfileEditing.immediateSave)
             }
         }
-        .moroSettingsListChrome()
+        .profileEditorChrome()
         .navigationTitle(MoroL10n.ProfileEditing.featuredTags)
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
