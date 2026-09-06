@@ -91,6 +91,19 @@ protocol MastodonAPI {
     ) async throws -> OAuthTokenResponse
     func verifyCredentials() async throws -> Account
 
+    // Editable profile data and curation
+    func fetchEditableProfile() async throws -> EditableProfile
+    func updateProfileDisplay(_ update: ProfileDisplayUpdate) async throws -> EditableProfile
+    func fetchAccountFeaturedTags(accountID: String) async throws -> [FeaturedTag]
+    func fetchOwnFeaturedTags() async throws -> [FeaturedTag]
+    func fetchFeaturedTagSuggestions() async throws -> [SearchTag]
+    func featureTag(name: String) async throws -> FeaturedTag
+    func unfeatureTag(id: String) async throws
+    func fetchAccountStatuses(
+        id: String, maxID: String?, sinceID: String?, limit: Int, excludeReplies: Bool,
+        excludeReblogs: Bool, onlyMedia: Bool, pinned: Bool, tagged: String?
+    ) async throws -> [Status]
+
     // Account
     func fetchAccount(id: String) async throws -> Account
     func lookupAccount(acct: String) async throws -> Account
@@ -304,6 +317,27 @@ protocol MastodonAPI {
 
 extension MastodonAPI {
     var instanceMetadataCacheKey: String? { nil }
+    func fetchEditableProfile() async throws -> EditableProfile {
+        try EditableProfile.credentials(await verifyCredentials())
+    }
+    func updateProfileDisplay(_ update: ProfileDisplayUpdate) async throws -> EditableProfile {
+        throw ProfileEditingError.unsupported
+    }
+    func fetchAccountFeaturedTags(accountID: String) async throws -> [FeaturedTag] {
+        throw ProfileEditingError.unsupported
+    }
+    func fetchOwnFeaturedTags() async throws -> [FeaturedTag] { throw ProfileEditingError.unsupported }
+    func fetchFeaturedTagSuggestions() async throws -> [SearchTag] { throw ProfileEditingError.unsupported }
+    func featureTag(name: String) async throws -> FeaturedTag { throw ProfileEditingError.unsupported }
+    func unfeatureTag(id: String) async throws { throw ProfileEditingError.unsupported }
+    func fetchAccountStatuses(
+        id: String, maxID: String?, sinceID: String?, limit: Int, excludeReplies: Bool,
+        excludeReblogs: Bool, onlyMedia: Bool, pinned: Bool, tagged: String?
+    ) async throws -> [Status] {
+        guard tagged == nil else { throw ProfileEditingError.unsupported }
+        return try await fetchAccountStatuses(id: id, maxID: maxID, sinceID: sinceID, limit: limit,
+            excludeReplies: excludeReplies, excludeReblogs: excludeReblogs, onlyMedia: onlyMedia, pinned: pinned)
+    }
 }
 
 struct AccountProfileImageUpload {

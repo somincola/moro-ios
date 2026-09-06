@@ -25,13 +25,15 @@ struct Account: Identifiable, Codable, Hashable {
     /// default posting language and visibility.
     struct Source: Codable, Hashable {
         let language: String?
+        let note: String?
+        let fields: [AccountField]?
         let privacy: String?
         let hideCollections: Bool?
         let discoverable: Bool?
         let indexable: Bool?
 
         enum CodingKeys: String, CodingKey {
-            case language
+            case language, note, fields
             case privacy
             case hideCollections = "hide_collections"
             case discoverable
@@ -40,12 +42,16 @@ struct Account: Identifiable, Codable, Hashable {
 
         init(
             language: String? = nil,
+            note: String? = nil,
+            fields: [AccountField]? = nil,
             privacy: String? = nil,
             hideCollections: Bool? = nil,
             discoverable: Bool? = nil,
             indexable: Bool? = nil
         ) {
             self.language = language
+            self.note = note
+            self.fields = fields
             self.privacy = privacy
             self.hideCollections = hideCollections
             self.discoverable = discoverable
@@ -81,6 +87,10 @@ struct Account: Identifiable, Codable, Hashable {
     let discoverable: Bool?
     let indexable: Bool?
     let hideCollections: Bool?
+
+    let showMedia: Bool?
+    let showMediaReplies: Bool?
+    let showFeatured: Bool?
 
     /// The account's default posting language as configured on the server, if any.
     var defaultPostingLanguage: String? {
@@ -255,6 +265,9 @@ struct Account: Identifiable, Codable, Hashable {
         case discoverable
         case indexable
         case hideCollections = "hide_collections"
+        case showMedia = "show_media"
+        case showMediaReplies = "show_media_replies"
+        case showFeatured = "show_featured"
     }
     
     init(from decoder: Decoder) throws {
@@ -297,6 +310,9 @@ struct Account: Identifiable, Codable, Hashable {
         discoverable = try container.decodeIfPresent(Bool.self, forKey: .discoverable)
         indexable = try container.decodeIfPresent(Bool.self, forKey: .indexable)
         hideCollections = try container.decodeIfPresent(Bool.self, forKey: .hideCollections)
+        showMedia = try container.decodeIfPresent(Bool.self, forKey: .showMedia)
+        showMediaReplies = try container.decodeIfPresent(Bool.self, forKey: .showMediaReplies)
+        showFeatured = try container.decodeIfPresent(Bool.self, forKey: .showFeatured)
 
         // Decode createdAt with flexible date parsing
         if let dateString = try? container.decodeIfPresent(String.self, forKey: .createdAt) {
@@ -332,7 +348,10 @@ struct Account: Identifiable, Codable, Hashable {
         source: Source? = nil,
         discoverable: Bool? = nil,
         indexable: Bool? = nil,
-        hideCollections: Bool? = nil
+        hideCollections: Bool? = nil,
+        showMedia: Bool? = nil,
+        showMediaReplies: Bool? = nil,
+        showFeatured: Bool? = nil
     ) {
         self.id = id
         self.username = username
@@ -359,6 +378,9 @@ struct Account: Identifiable, Codable, Hashable {
         self.discoverable = discoverable
         self.indexable = indexable
         self.hideCollections = hideCollections
+        self.showMedia = showMedia
+        self.showMediaReplies = showMediaReplies
+        self.showFeatured = showFeatured
     }
 
     /// Returns a copy with an updated followers count, preserving every other field —
@@ -389,7 +411,10 @@ struct Account: Identifiable, Codable, Hashable {
             source: source,
             discoverable: discoverable,
             indexable: indexable,
-            hideCollections: hideCollections
+            hideCollections: hideCollections,
+            showMedia: showMedia,
+            showMediaReplies: showMediaReplies,
+            showFeatured: showFeatured
         )
     }
 
@@ -421,6 +446,9 @@ struct Account: Identifiable, Codable, Hashable {
         try container.encodeIfPresent(discoverable, forKey: .discoverable)
         try container.encodeIfPresent(indexable, forKey: .indexable)
         try container.encodeIfPresent(hideCollections, forKey: .hideCollections)
+        try container.encodeIfPresent(showMedia, forKey: .showMedia)
+        try container.encodeIfPresent(showMediaReplies, forKey: .showMediaReplies)
+        try container.encodeIfPresent(showFeatured, forKey: .showFeatured)
     }
     
     // Hashable conformance

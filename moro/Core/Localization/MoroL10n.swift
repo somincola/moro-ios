@@ -36,6 +36,34 @@ public enum MoroL10n {
         )
     }
 
+    public enum ProfileEditing {
+        public static var featuredTags: String { text("profileEditing.featuredTags") }
+        public static var displaySettings: String { text("profileEditing.displaySettings") }
+        public static var showTags: String { text("profileEditing.showTags") }
+        public static var showTagsHint: String { text("profileEditing.showTagsHint") }
+        public static var showMedia: String { text("profileEditing.showMedia") }
+        public static var showMediaReplies: String { text("profileEditing.showMediaReplies") }
+        public static var showFeaturedWeb: String { text("profileEditing.showFeaturedWeb") }
+        public static var showFeaturedWebHint: String { text("profileEditing.showFeaturedWebHint") }
+        public static var unsupported: String { text("profileEditing.unsupported") }
+        public static var sourceUnavailable: String { text("profileEditing.sourceUnavailable") }
+        public static var fieldsChangedElsewhere: String { text("profileEditing.fieldsChangedElsewhere") }
+        public static var fieldOrderHint: String { text("profileEditing.fieldOrderHint") }
+        public static var editField: String { text("profileEditing.editField") }
+        public static var emptyFields: String { text("profileEditing.emptyFields") }
+        public static var emptyTags: String { text("profileEditing.emptyTags") }
+        public static var tagPlaceholder: String { text("profileEditing.tagPlaceholder") }
+        public static var suggestions: String { text("profileEditing.suggestions") }
+        public static var tagHint: String { text("profileEditing.tagHint") }
+        public static var immediateSave: String { text("profileEditing.immediateSave") }
+        public static var addTag: String { text("profileEditing.addTag") }
+        public static var limitReached: String { text("profileEditing.limitReached") }
+        public static var invalidTag: String { text("profileEditing.invalidTag") }
+        public static var limitsExceeded: String { text("profileEditing.limitsExceeded") }
+        public static var filteredEmpty: String { text("profileEditing.filteredEmpty") }
+        public static var clearFilter: String { text("profileEditing.clearFilter") }
+    }
+
     public enum Topics {
         public static var title: String { text("topics.title") }
         public static var follow: String { text("topics.follow") }

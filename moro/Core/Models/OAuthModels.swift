@@ -317,6 +317,7 @@ struct MastodonInstanceV2: Codable {
 /// The subset of `GET /api/v2/instance` `configuration` that we use.
 struct InstanceConfiguration: Codable {
     let statuses: Statuses?
+    var accounts: ProfileLimits? = nil
 
     struct Statuses: Codable {
         let maxCharacters: Int?

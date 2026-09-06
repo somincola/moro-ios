@@ -18,12 +18,19 @@ enum MastodonEndpoint {
 
     // Account
     case verifyCredentials
+    case editableProfile
+    case updateProfileDisplay
+    case accountFeaturedTags(id: String)
+    case ownFeaturedTags
+    case featuredTagSuggestions
+    case featureTag
+    case unfeatureTag(id: String)
     case account(id: String)
     case accountLists(id: String)
     case accountLookup(acct: String)
     case accountStatuses(
         id: String, maxID: String?, sinceID: String?, limit: Int, excludeReplies: Bool,
-        excludeReblogs: Bool, onlyMedia: Bool, pinned: Bool)
+        excludeReblogs: Bool, onlyMedia: Bool, pinned: Bool, tagged: String? = nil)
     case accountFollowers(id: String, maxID: String?, limit: Int)
     case accountFollowing(id: String, maxID: String?, limit: Int)
     case relationships(accountIDs: [String])
@@ -134,9 +141,9 @@ enum MastodonEndpoint {
             .readConversation, .createFilter, .createFilterKeyword, .blockDomain,
             .oauthTokenClientCredentials, .registerAccount, .createList, .addAccountsToList,
             .authorizeFollowRequest, .rejectFollowRequest, .dismissAnnouncement, .statusTranslate,
-            .createPushSubscription, .followTag, .unfollowTag:
+            .createPushSubscription, .followTag, .unfollowTag, .featureTag:
             return "POST"
-        case .updateMedia, .updateAccountCredentials:
+        case .updateMedia, .updateAccountCredentials, .updateProfileDisplay:
             return "PATCH"
         case .updateFilter, .updatePushSubscription, .updateFilterKeyword, .updateList,
             .addAnnouncementReaction, .editStatus:
@@ -146,7 +153,7 @@ enum MastodonEndpoint {
             return "DELETE"
         case .deleteFilter, .deletePushSubscription, .deleteFilterKeyword, .deleteList,
             .removeAccountsFromList, .removeAnnouncementReaction,
-            .unblockDomain:
+            .unblockDomain, .unfeatureTag:
             return "DELETE"
         default:
             return "GET"
@@ -171,13 +178,23 @@ enum MastodonEndpoint {
             return "/api/v1/accounts"
         case .verifyCredentials:
             return "/api/v1/accounts/verify_credentials"
+        case .editableProfile, .updateProfileDisplay:
+            return "/api/v1/profile"
+        case .accountFeaturedTags(let id):
+            return "/api/v1/accounts/\(id)/featured_tags"
+        case .ownFeaturedTags, .featureTag:
+            return "/api/v1/featured_tags"
+        case .featuredTagSuggestions:
+            return "/api/v1/featured_tags/suggestions"
+        case .unfeatureTag(let id):
+            return "/api/v1/featured_tags/\(id)"
         case .account(let id):
             return "/api/v1/accounts/\(id)"
         case .accountLists(let id):
             return "/api/v1/accounts/\(id)/lists"
         case .accountLookup:
             return "/api/v1/accounts/lookup"
-        case .accountStatuses(let id, _, _, _, _, _, _, _):
+        case .accountStatuses(let id, _, _, _, _, _, _, _, _):
             return "/api/v1/accounts/\(id)/statuses"
         case .accountFollowers(let id, _, _):
             return "/api/v1/accounts/\(id)/followers"
@@ -379,7 +396,7 @@ enum MastodonEndpoint {
             ].compactMap { $0 }
         case .accountStatuses(
             _, let maxID, let sinceID, let limit, let excludeReplies, let excludeReblogs,
-            let onlyMedia, let pinned):
+            let onlyMedia, let pinned, let tagged):
             return [
                 maxID.map { URLQueryItem(name: "max_id", value: $0) },
                 sinceID.map { URLQueryItem(name: "since_id", value: $0) },
@@ -388,6 +405,7 @@ enum MastodonEndpoint {
                 URLQueryItem(name: "exclude_reblogs", value: excludeReblogs ? "true" : "false"),
                 onlyMedia ? URLQueryItem(name: "only_media", value: "true") : nil,
                 pinned ? URLQueryItem(name: "pinned", value: "true") : nil,
+                tagged.map { URLQueryItem(name: "tagged", value: $0) },
             ].compactMap { $0 }
         case .accountLookup(let acct):
             return [URLQueryItem(name: "acct", value: acct)]

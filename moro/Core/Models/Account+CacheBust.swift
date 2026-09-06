@@ -32,10 +32,18 @@ extension Account {
             locked: locked,
             bot: bot,
             fields: fields,
+            emojis: emojis,
             url: url,
             moved: moved?.value,
             suspended: suspended,
-            limited: limited
+            limited: limited,
+            source: source,
+            discoverable: discoverable,
+            indexable: indexable,
+            hideCollections: hideCollections,
+            showMedia: showMedia,
+            showMediaReplies: showMediaReplies,
+            showFeatured: showFeatured
         )
     }
 

@@ -221,6 +221,53 @@ struct MastodonClient: MastodonAPI {
 
     // MARK: - Account
 
+    func fetchEditableProfile() async throws -> EditableProfile {
+        do {
+            return try await perform(authorizedRequest(for: .editableProfile))
+        } catch {
+            guard let code = (error as? APIError)?.httpStatusCode, [404, 405].contains(code) else {
+                throw error
+            }
+            return try EditableProfile.credentials(await verifyCredentials())
+        }
+    }
+
+    func updateProfileDisplay(_ update: ProfileDisplayUpdate) async throws -> EditableProfile {
+        try await perform(authorizedRequest(for: .updateProfileDisplay, body: update))
+    }
+
+    func fetchAccountFeaturedTags(accountID: String) async throws -> [FeaturedTag] {
+        try await perform(authorizedRequest(for: .accountFeaturedTags(id: accountID)))
+    }
+
+    func fetchOwnFeaturedTags() async throws -> [FeaturedTag] {
+        try await perform(authorizedRequest(for: .ownFeaturedTags))
+    }
+
+    func fetchFeaturedTagSuggestions() async throws -> [SearchTag] {
+        try await perform(authorizedRequest(for: .featuredTagSuggestions))
+    }
+
+    func featureTag(name: String) async throws -> FeaturedTag {
+        try await perform(authorizedRequest(for: .featureTag, body: ["name": name]))
+    }
+
+    func unfeatureTag(id: String) async throws {
+        _ = try await performIgnoringResponse(authorizedRequest(for: .unfeatureTag(id: id)))
+    }
+
+    func fetchAccountStatuses(
+        id: String, maxID: String?, sinceID: String?, limit: Int, excludeReplies: Bool,
+        excludeReblogs: Bool, onlyMedia: Bool, pinned: Bool, tagged: String?
+    ) async throws -> [Status] {
+        let endpoint = MastodonEndpoint.accountStatuses(
+            id: id, maxID: maxID, sinceID: sinceID, limit: limit,
+            excludeReplies: excludeReplies, excludeReblogs: excludeReblogs,
+            onlyMedia: onlyMedia, pinned: pinned, tagged: tagged
+        )
+        return try await perform(authorizedRequest(for: endpoint))
+    }
+
     func fetchAccount(id: String) async throws -> Account {
         let endpoint = MastodonEndpoint.account(id: id)
         let request = try authorizedRequest(for: endpoint)

@@ -14,6 +14,84 @@ import Combine
 
 struct moroTests {
 
+    @Test @MainActor func profileBasicEditPreservesRawLinksAndOmitsUnchangedFields() async throws {
+        let api = MockMastodonAPI()
+        let raw = "Hello\nhttps://example.org/full/path?query=value\n:custom_emoji:"
+        let source = EditableProfile(id: "1", displayName: "Original", note: raw,
+            fields: [AccountField(name: "Website", value: "https://example.org/full/path")])
+        api.fetchEditableProfileHandler = { source }
+        let account = makeAccount()
+        api.verifyCredentialsHandler = { account }
+        api.updateAccountProfileHandler = { _, _, _, _, _, _, _ in account }
+        let model = EditProfileViewModel(apiClient: api, initialAccount: account, scope: .basic)
+        await model.load()
+        #expect(model.note == raw)
+        #expect(!model.hasUnsavedChanges)
+        model.displayName = "New name"
+        #expect(await model.save(to: AppState()))
+        let request = try #require(api.updateAccountProfileCalls.first)
+        #expect(request.displayName == "New name")
+        #expect(request.note == nil)
+        #expect(request.fields == nil)
+        #expect(model.note == raw)
+    }
+
+    @Test @MainActor func profileFieldReorderingPreservesValuesAndDetectsConcurrentEdits() async throws {
+        let api = MockMastodonAPI()
+        let original = EditableProfile(id: "1", displayName: "Name", note: "Bio",
+            fields: [AccountField(name: "First", value: "https://example.org/a?x=1&y=2"),
+                     AccountField(name: "Second", value: "  retained spacing  ")])
+        var source = original
+        api.fetchEditableProfileHandler = { source }
+        let account = makeAccount()
+        api.verifyCredentialsHandler = { account }
+        api.updateAccountProfileHandler = { _, _, _, _, _, _, _ in account }
+        let model = EditProfileViewModel(apiClient: api, initialAccount: account, scope: .fields)
+        await model.load()
+        let fieldIDs = model.fields.map(\.id)
+        model.moveFields(from: IndexSet(integer: 0), to: 2)
+        #expect(model.fields.map(\.id) == Array(fieldIDs.reversed()))
+        #expect(await model.save(to: AppState()))
+        let request = try #require(api.updateAccountProfileCalls.first)
+        #expect(request.fields?.map(\.value) == original.fields.reversed().map(\.value))
+        #expect(request.note == nil && request.displayName == nil)
+
+        let other = EditProfileViewModel(apiClient: api, initialAccount: account, scope: .fields)
+        await other.load()
+        other.fields[0].name = "Edited"
+        source = EditableProfile(id: "1", displayName: "Name", note: "Bio", fields: [])
+        #expect(await other.save(to: AppState()) == false)
+        #expect(api.updateAccountProfileCalls.count == 1)
+        #expect(other.fields[0].name == "Edited")
+    }
+
+    @Test @MainActor func profileCannotSaveWithoutEditableSource() async {
+        let api = MockMastodonAPI()
+        let model = EditProfileViewModel(apiClient: api, initialAccount: makeAccount(), scope: .basic)
+        await model.load()
+        model.displayName = "Changed"
+        #expect(model.loadError != nil)
+        #expect(!model.canSave)
+        #expect(await model.save(to: AppState()) == false)
+        #expect(api.updateAccountProfileCalls.isEmpty)
+    }
+
+    @Test func profileSourceAndDisplayPreferencesSurviveAccountCacheUpdates() throws {
+        let data = Data(#"{"id":"1","username":"tester","show_media":false,"show_media_replies":true,"show_featured":false,"hide_collections":true,"source":{"note":"raw https://example.org/full","fields":[{"name":"Web","value":"https://example.org/full"}]}}"#.utf8)
+        let account = try JSONDecoder().decode(Account.self, from: data)
+        for copy in [account.updating(followersCount: 3), account.withCacheBustedMedia()] {
+            #expect(copy.showMedia == false)
+            #expect(copy.showMediaReplies == true)
+            #expect(copy.showFeatured == false)
+            #expect(copy.hideCollections == true)
+            #expect(copy.source?.fields?.first?.value == "https://example.org/full")
+            let decoded = try JSONDecoder().decode(Account.self, from: JSONEncoder().encode(copy))
+            #expect(decoded.source?.note == "raw https://example.org/full")
+            #expect(decoded.showMedia == false)
+        }
+    }
+
+
     @Test func notificationContentEventsUseTheDisplayedPostAuthor() {
         let actor = makeAccount(id: "notification-actor")
         let author = makeAccount(id: "post-author")
@@ -2638,7 +2716,9 @@ struct moroTests {
 
     @Test @MainActor func editProfileRejectsIncompleteFieldAndLimitsBio() async {
         let api = MockMastodonAPI()
+        api.fetchEditableProfileHandler = { EditableProfile(id: "1", displayName: "", note: "", fields: []) }
         let viewModel = EditProfileViewModel(apiClient: api, initialAccount: makeAccount())
+        await viewModel.load()
         let appState = AppState()
         defer { AppFeedbackCenter.shared.dismiss() }
 
@@ -2662,11 +2742,13 @@ struct moroTests {
         )
         let updatedAccount = makeAccount()
         let api = MockMastodonAPI()
+        api.fetchEditableProfileHandler = { EditableProfile(id: "1", displayName: "", note: "", fields: []) }
         api.updateAccountProfileHandler = { _, _, _, _, _, _, _ in updatedAccount }
         api.verifyCredentialsHandler = { updatedAccount }
         let appState = AppState()
         appState.currentAccount = initialAccount
         let viewModel = EditProfileViewModel(apiClient: api, initialAccount: initialAccount)
+        await viewModel.load()
         defer { AppFeedbackCenter.shared.dismiss() }
 
         viewModel.markAvatarRemoved()
@@ -2692,6 +2774,7 @@ struct moroTests {
     @Test @MainActor func editProfileSubmitsOnlyCompleteTrimmedFields() async throws {
         let initialAccount = makeAccount()
         let api = MockMastodonAPI()
+        api.fetchEditableProfileHandler = { EditableProfile(id: "1", displayName: "", note: "", fields: []) }
         api.updateAccountProfileHandler = { _, _, _, _, _, _, fields in
             self.makeAccount(fields: fields ?? [])
         }
@@ -2701,6 +2784,7 @@ struct moroTests {
             )
         }
         let viewModel = EditProfileViewModel(apiClient: api, initialAccount: initialAccount)
+        await viewModel.load()
         let appState = AppState()
         defer { AppFeedbackCenter.shared.dismiss() }
 
@@ -6875,6 +6959,27 @@ private final class BadgeValueRecorder {
 }
 
 private final class MockMastodonAPI: MastodonAPI {
+    var fetchEditableProfileHandler: (() async throws -> EditableProfile)?
+    var accountFeaturedTagsHandler: ((String) async throws -> [FeaturedTag])?
+    var taggedStatusesHandler: ((String, String?, String?, Bool) async throws -> [Status])?
+    var taggedStatusesCalls: [(id: String, tag: String?, maxID: String?, pinned: Bool)] = []
+
+    func fetchEditableProfile() async throws -> EditableProfile {
+        guard let fetchEditableProfileHandler else { throw MockError.unimplemented }
+        return try await fetchEditableProfileHandler()
+    }
+    func fetchAccountFeaturedTags(accountID: String) async throws -> [FeaturedTag] {
+        try await accountFeaturedTagsHandler?(accountID) ?? []
+    }
+    func fetchAccountStatuses(id: String, maxID: String?, sinceID: String?, limit: Int,
+        excludeReplies: Bool, excludeReblogs: Bool, onlyMedia: Bool, pinned: Bool, tagged: String?) async throws -> [Status] {
+        taggedStatusesCalls.append((id, tagged, maxID, pinned))
+        if let taggedStatusesHandler { return try await taggedStatusesHandler(id, tagged, maxID, pinned) }
+        guard tagged == nil else { throw MockError.unimplemented }
+        return try await fetchAccountStatuses(id: id, maxID: maxID, sinceID: sinceID, limit: limit,
+            excludeReplies: excludeReplies, excludeReblogs: excludeReblogs, onlyMedia: onlyMedia, pinned: pinned)
+    }
+
     func fetchTag(name: String) async throws -> SearchTag { throw MockError.unimplemented }
     func setTagFollowed(name: String, followed: Bool) async throws -> SearchTag { throw MockError.unimplemented }
     func fetchFollowedTags(maxID: String?, limit: Int) async throws -> FollowedTagsPage { throw MockError.unimplemented }
