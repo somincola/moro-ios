@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 #if os(iOS)
 import UIKit
 
@@ -69,6 +70,10 @@ final class SearchCoreViewController: UIViewController {
     private(set) var allowsSearchFocus = false
     var appliedTheme: MoroTheme
 
+    typealias PollVoteHandler = (String, [Int]) async -> Bool
+    var makeStatusView: ((Status, @escaping PollVoteHandler) -> AnyView)?
+    private var feedSubscription: AnyCancellable?
+
     var onOpenProfile: ((Account) -> Void)?
     var onOpenStatus: ((Status) -> Void)?
     var onOpenHashtag: ((String) -> Void)?
@@ -82,7 +87,7 @@ final class SearchCoreViewController: UIViewController {
     var searchTrailingWithCancel: NSLayoutConstraint!
     let scopeControl = UISegmentedControl(items: Scope.exploreScopes.map(\.title))
     private let scopeIndicatorView = UIView()
-    private let scopeMenuButton = UIButton(type: .system)
+    private let scopeMenuButton = SearchScopeMenuButton(type: .system)
     let tableView = UITableView(frame: .zero, style: .plain)
     let refreshControl = UIRefreshControl()
     private var scopeHeightConstraint: NSLayoutConstraint!
@@ -165,8 +170,8 @@ final class SearchCoreViewController: UIViewController {
         setupTableView()
         setupScopeSwipeGestures()
         apply(theme: appliedTheme)
-        searchState.onResultsReceived = { results in
-            SearchStatusPreviewCache.shared.prewarm(statuses: results.statuses)
+        feedSubscription = FeedCoordinator.shared.updates.sink { [weak self] update in
+            self?.incorporatePostUpdate(update)
         }
         searchState.onStateChange = { [weak self] in
             guard let self else { return }
@@ -296,6 +301,7 @@ final class SearchCoreViewController: UIViewController {
             }
         }
 
+        refreshVisibleStatusRows()
         updateSearchChrome()
         if interaction.page == .entry { updateEntryContent() }
         view.setNeedsLayout()
@@ -396,26 +402,12 @@ final class SearchCoreViewController: UIViewController {
         return "@\(handle)"
     }
 
-    private func normalizedInlineText(_ raw: String) -> String {
-        let collapsedWhitespace = raw.replacingOccurrences(
-            of: "\\s+",
-            with: " ",
-            options: .regularExpression
-        )
-        return collapsedWhitespace.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func normalizedPreviewText(_ raw: String) -> String {
-        let trimmed = normalizedInlineText(raw)
-        return trimmed.isEmpty ? MoroL10n.Search.noTextContent : trimmed
-    }
-
     private func accountNotePreview(for account: Account) -> String? {
         let note = account.notePreviewText
         return note.isEmpty ? nil : note
     }
 
-    func rowContent(for row: Row) -> SearchResultLineCell.ContentModel {
+    func rowContent(for row: Row) -> SearchResultLineCell.ContentModel? {
         switch row {
         case .account(let account):
             return SearchResultLineCell.ContentModel(
@@ -429,17 +421,8 @@ final class SearchCoreViewController: UIViewController {
                 account: account
             )
 
-        case .status(let wrappedStatus):
-            let status = wrappedStatus.displayStatus
-            return SearchResultLineCell.ContentModel(
-                kind: .status,
-                avatarURL: status.account.avatarURL,
-                title: status.account.displayNameFormatted,
-                subtitle: "\(displayHandle(for: status.account)) · \(DateFormatting.relativeString(for: status.createdAt))",
-                body: normalizedPreviewText(statusPreviewText(for: status)),
-                iconName: nil,
-                iconTintColor: nil
-            )
+        case .status:
+            return nil // Posts use TimelinePostRow, never a text preview cell.
 
         case .hashtag(let tag):
             return SearchResultLineCell.ContentModel(
@@ -585,6 +568,14 @@ final class SearchCoreViewController: UIViewController {
         scopeIndicatorView.isUserInteractionEnabled = false
         scopeControl.addSubview(scopeIndicatorView)
 
+        scopeMenuButton.onMenuWillDisplay = { [weak self] in
+            self?.allowsSearchFocus = false
+        }
+        scopeMenuButton.onMenuDidEnd = { [weak self] in
+            guard let self else { return }
+            self.searchBar.searchTextField.resignFirstResponder()
+            self.allowsSearchFocus = self.viewIfLoaded?.window != nil
+        }
         scopeMenuButton.contentHorizontalAlignment = .center
         scopeMenuButton.showsMenuAsPrimaryAction = true
         scopeMenuButton.isHidden = true
@@ -697,6 +688,7 @@ final class SearchCoreViewController: UIViewController {
             SearchResultLineCell.self,
             forCellReuseIdentifier: SearchResultLineCell.accountReuseIdentifier
         )
+        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "SearchTimelinePostCell")
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "StateCell")
         tableView.register(SearchLoadingMoreCell.self, forCellReuseIdentifier: SearchLoadingMoreCell.reuseIdentifier)
         refreshControl.addTarget(self, action: #selector(handlePullToRefresh), for: .valueChanged)
@@ -708,11 +700,13 @@ final class SearchCoreViewController: UIViewController {
         swipeLeft.direction = .left
         swipeLeft.numberOfTouchesRequired = 1
         swipeLeft.cancelsTouchesInView = false
+        swipeLeft.delegate = self
 
         let swipeRight = UISwipeGestureRecognizer(target: self, action: #selector(handleScopeSwipe(_:)))
         swipeRight.direction = .right
         swipeRight.numberOfTouchesRequired = 1
         swipeRight.cancelsTouchesInView = false
+        swipeRight.delegate = self
 
         tableView.addGestureRecognizer(swipeLeft)
         tableView.addGestureRecognizer(swipeRight)
@@ -859,7 +853,12 @@ final class SearchCoreViewController: UIViewController {
             queryIsEmpty: query.isEmpty
         )
         let previousSnapshot = lastRenderSnapshot
-        guard snapshot != previousSnapshot else { return }
+        guard snapshot != previousSnapshot else {
+            // IDs and row counts may stay unchanged after edits, poll votes or reactions.
+            refreshVisibleStatusRows()
+            lastRenderedSections = sections
+            return
+        }
 
         if let previousSnapshot {
             if shouldSkipReloadForListlessTransition(from: previousSnapshot, to: snapshot) {
@@ -954,10 +953,6 @@ final class SearchCoreViewController: UIViewController {
         case .hashtags:
             return kind == .hashtags
         }
-    }
-
-    private func statusPreviewText(for status: Status) -> String {
-        SearchStatusPreviewCache.shared.text(for: status)
     }
 
     func cancelInFlightSearchRequests() {

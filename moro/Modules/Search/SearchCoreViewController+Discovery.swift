@@ -106,7 +106,6 @@ extension SearchCoreViewController {
                 )
             }
 
-            SearchStatusPreviewCache.shared.prewarm(statuses: fetchedStatuses)
             guard !Task.isCancelled, requestID == discoveryRequestID else { return }
 
             if resetAccounts {

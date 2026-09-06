@@ -5530,6 +5530,7 @@ struct moroTests {
         }
 
         let viewModel = SearchViewModel(apiClient: api, initialQuery: "moro")
+        viewModel.scope = .all // Explicit legacy API scope; Explore defaults to Accounts.
         viewModel.submitSearch()
         await waitUntil(timeout: 1.0) { !viewModel.isLoading }
         viewModel.loadMoreIfNeeded()

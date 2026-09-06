@@ -56,6 +56,59 @@ final class SearchFlowUITests: XCTestCase {
         attach(app, "search-native-return-results")
     }
 
+    @MainActor func testNativeTimelinePostsReturnToTheirDiscoveryAndResultsSources() throws {
+        try verifyTimelinePosts(colorScheme: "light")
+    }
+
+    @MainActor func testNativeTimelinePostsInDarkMode() throws {
+        try verifyTimelinePosts(colorScheme: "dark")
+    }
+
+    @MainActor private func verifyTimelinePosts(colorScheme: String) throws {
+        let app = launch(colorScheme: colorScheme, nativeShell: true)
+        defer { app.terminate() }
+        let input = app.searchFields["search.input"]
+        let table = app.tables["search.results"]
+        let scopes = app.segmentedControls["search.scope"]
+        XCTAssertTrue(table.cells.firstMatch.waitForExistence(timeout: 10))
+        scopes.buttons.element(boundBy: 1).tap()
+        let post = table.cells.firstMatch
+        XCTAssertTrue(post.waitForExistence(timeout: 5))
+        // The timeline toolbar and multi-paragraph rich text must be rendered in place.
+        XCTAssertTrue(post.buttons.matching(NSPredicate(format: "label CONTAINS %@", "回复")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(post.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "结果")).firstMatch.exists)
+        attach(app, "search-discovery-timeline-\(colorScheme)")
+        tapFirstLine(of: post.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "结果")).firstMatch)
+        returnFromDetail(in: app)
+        XCTAssertTrue(table.cells.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(scopes.buttons.element(boundBy: 1).isSelected)
+        XCTAssertFalse(app.buttons["search.cancel"].exists)
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+
+        input.tap()
+        input.typeText("Swift\n")
+        XCTAssertTrue(table.cells.firstMatch.waitForExistence(timeout: 5))
+        let body = table.cells.firstMatch.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "结果 Swift")).firstMatch
+        XCTAssertTrue(body.waitForExistence(timeout: 5))
+        attach(app, "search-results-timeline-\(colorScheme)")
+        tapFirstLine(of: body)
+        returnFromDetail(in: app)
+        XCTAssertTrue(body.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, "Swift")
+        XCTAssertTrue(scopes.buttons.element(boundBy: 1).isSelected)
+        XCTAssertFalse(app.buttons["search.cancel"].exists)
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+
+        // A toolbar action updates the row without opening detail or entering search.
+        let favourite = table.cells.firstMatch.buttons.matching(NSPredicate(format: "label == %@", "喜欢")).firstMatch
+        XCTAssertTrue(favourite.waitForExistence(timeout: 3), app.debugDescription)
+        favourite.tap()
+        let unfavourite = table.cells.firstMatch.buttons.matching(NSPredicate(format: "label CONTAINS %@", "取消喜欢")).firstMatch
+        XCTAssertTrue(unfavourite.waitForExistence(timeout: 5))
+        XCTAssertTrue(input.exists)
+        XCTAssertFalse(app.buttons["search.cancel"].exists)
+    }
+
     @MainActor func testSearchAtAccessibilityXXXL() throws {
         let app = launch(colorScheme: "dark", accessibilitySize: true)
         defer { app.terminate() }
@@ -72,6 +125,13 @@ final class SearchFlowUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(scopeMenu.frame.height, 44)
         assertRemovedChrome(in: app)
         attach(app, "search-results-accessibilityXXXL")
+        scopeMenu.tap()
+        app.buttons["嘟文"].tap()
+        XCTAssertFalse(app.buttons["search.cancel"].exists)
+        let posts = app.tables["search.results"]
+        XCTAssertTrue(posts.cells.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(posts.cells.firstMatch.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "结果")).firstMatch.exists)
+        attach(app, "search-posts-accessibilityXXXL")
     }
 
     @MainActor
@@ -138,6 +198,13 @@ final class SearchFlowUITests: XCTestCase {
         if nativeShell { app.launchEnvironment["UITEST_SEARCH_NATIVE_SHELL"] = "1" }
         app.launch()
         return app
+    }
+
+    @MainActor
+    private func tapFirstLine(of body: XCUIElement) {
+        // Rich text exposes one accessibility frame; its center may be a link.
+        body.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0))
+            .withOffset(CGVector(dx: 0, dy: 8)).tap()
     }
 
     @MainActor

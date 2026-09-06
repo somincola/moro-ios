@@ -415,59 +415,31 @@ final class SearchLoadingMoreCell: UITableViewCell {
     }
 }
 
-final class SearchSectionHeaderView: UITableViewHeaderFooterView {
-    static let reuseIdentifier = "SearchSectionHeaderView"
+/// Suspend search-field focus restoration for the full native menu presentation.
+final class SearchScopeMenuButton: UIButton {
+    var onMenuWillDisplay: (() -> Void)?
+    var onMenuDidEnd: (() -> Void)?
 
-    private let titleLabel = UILabel()
-
-    override init(reuseIdentifier: String?) {
-        super.init(reuseIdentifier: reuseIdentifier)
-        setupViews()
+    override func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        willDisplayMenuFor configuration: UIContextMenuConfiguration,
+        animator: UIContextMenuInteractionAnimating?
+    ) {
+        onMenuWillDisplay?()
+        super.contextMenuInteraction(interaction, willDisplayMenuFor: configuration, animator: animator)
     }
 
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setupViews()
-    }
-
-    func configure(title: String, theme: MoroTheme) {
-        titleLabel.text = title
-        apply(theme: theme)
-    }
-
-    func apply(theme: MoroTheme) {
-        let palette = theme.uiKitPalette
-        backgroundView?.backgroundColor = palette.canvasBackground
-        contentView.backgroundColor = palette.canvasBackground
-        titleLabel.font = palette.font(forTextStyle: .caption1, weight: .semibold)
-        titleLabel.textColor = palette.textPrimary
-        titleLabel.numberOfLines = UIApplication.shared.preferredContentSizeCategory.isAccessibilityCategory
-            ? 0
-            : 1
-    }
-
-    private func setupViews() {
-        let palette = MoroTheme().uiKitPalette
-        contentView.backgroundColor = .clear
-        contentView.preservesSuperviewLayoutMargins = false
-        contentView.directionalLayoutMargins = .zero
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        titleLabel.font = palette.font(forTextStyle: .caption1, weight: .semibold)
-        titleLabel.textColor = palette.textPrimary
-        // Header trait drives VoiceOver's heading-rotor navigation between sections.
-        titleLabel.accessibilityTraits.insert(.header)
-
-        contentView.addSubview(titleLabel)
-
-        NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(
-                equalTo: contentView.leadingAnchor,
-                constant: SearchLayoutMetrics.contentHorizontalInset
-            ),
-            titleLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
-            titleLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -5),
-        ])
+    override func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        willEndFor configuration: UIContextMenuConfiguration,
+        animator: UIContextMenuInteractionAnimating?
+    ) {
+        super.contextMenuInteraction(interaction, willEndFor: configuration, animator: animator)
+        if let animator {
+            animator.addCompletion { [weak self] in self?.onMenuDidEnd?() }
+        } else {
+            onMenuDidEnd?()
+        }
     }
 }
 
@@ -901,46 +873,6 @@ struct SearchAccountNotePreviewView: View {
                 .lineSpacing(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-}
-
-final class SearchStatusPreviewCache {
-    static let shared = SearchStatusPreviewCache()
-
-    private let cache = NSCache<NSString, NSString>()
-    private let workerQueue = DispatchQueue(
-        label: "moro.search.preview-cache",
-        qos: .utility
-    )
-
-    private init() {
-        cache.countLimit = 300
-    }
-
-    func prewarm(statuses: [Status]) {
-        guard !statuses.isEmpty else { return }
-        let payload = statuses.map { ($0.id, $0.content) }
-        workerQueue.async { [cache] in
-            for (id, content) in payload {
-                let key = "\(id)|\(content.hashValue)" as NSString
-                if cache.object(forKey: key) != nil {
-                    continue
-                }
-                let plainText = HTMLParser.stripHTML(content)
-                cache.setObject(plainText as NSString, forKey: key)
-            }
-        }
-    }
-
-    func text(for status: Status) -> String {
-        let key = "\(status.id)|\(status.content.hashValue)" as NSString
-        if let cached = cache.object(forKey: key) {
-            return cached as String
-        }
-
-        let plainText = HTMLParser.stripHTML(status.content)
-        cache.setObject(plainText as NSString, forKey: key)
-        return plainText
     }
 }
 

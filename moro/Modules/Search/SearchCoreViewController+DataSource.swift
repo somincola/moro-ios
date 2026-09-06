@@ -108,6 +108,11 @@ extension SearchCoreViewController: UITableViewDataSource {
             }
             let section = sections[indexPath.section]
             let row = section.rows[indexPath.row]
+            if case .status(let status) = row {
+                let cell = tableView.dequeueReusableCell(withIdentifier: "SearchTimelinePostCell", for: indexPath)
+                configureStatusCell(cell, status: status)
+                return cell
+            }
             let reuseIdentifier: String
             if case .account = row {
                 reuseIdentifier = SearchResultLineCell.accountReuseIdentifier
@@ -122,7 +127,7 @@ extension SearchCoreViewController: UITableViewDataSource {
             else {
                 return UITableViewCell()
             }
-            cell.configure(with: rowContent(for: row), theme: appliedTheme)
+            if let content = rowContent(for: row) { cell.configure(with: content, theme: appliedTheme) }
             return cell
 
         case .placeholder, .loading, .empty:
@@ -132,6 +137,14 @@ extension SearchCoreViewController: UITableViewDataSource {
 }
 
 extension SearchCoreViewController: UITableViewDelegate {
+    func tableView(_ tableView: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
+        !isStatusRow(at: indexPath)
+    }
+
+    func tableView(_ tableView: UITableView, willSelectRowAt indexPath: IndexPath) -> IndexPath? {
+        isStatusRow(at: indexPath) ? nil : indexPath
+    }
+
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         guard case .results = mode,
             sections.indices.contains(indexPath.section),
@@ -206,6 +219,13 @@ extension SearchCoreViewController: UITableViewDelegate {
         if indexPath.row >= max(lastRowIndex - 1, 0) {
             startSearch(reset: false)
         }
+    }
+}
+extension SearchCoreViewController: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // A post's horizontal gestures belong to its media, not category switching.
+        guard let index = tableView.indexPathForRow(at: touch.location(in: tableView)) else { return true }
+        return !isStatusRow(at: index)
     }
 }
 #endif

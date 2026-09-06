@@ -1,5 +1,6 @@
 import Testing
 import UIKit
+import SwiftUI
 @testable import moro
 
 @Suite(.serialized)
@@ -9,7 +10,8 @@ struct SearchControllerTests {
         let (controller, defaults, suite) = makeController()
         defer { defaults.removePersistentDomain(forName: suite); controller.cancelDiscoveryRequests() }
         controller.loadViewIfNeeded()
-        controller.viewDidAppear(false)
+        controller.beginAppearanceTransition(true, animated: false)
+        controller.endAppearanceTransition()
         try await waitFor { controller.discovery.hasLoaded }
         SearchFixtureProtocol.resetRequests()
 
@@ -39,7 +41,8 @@ struct SearchControllerTests {
         let (controller, defaults, suite) = makeController()
         defer { defaults.removePersistentDomain(forName: suite); controller.cancelDiscoveryRequests() }
         controller.loadViewIfNeeded()
-        controller.viewDidAppear(false)
+        controller.beginAppearanceTransition(true, animated: false)
+        controller.endAppearanceTransition()
         try await waitFor { controller.discovery.hasLoaded }
         let accounts = controller.discovery.accounts.map(\.id)
         controller.submitQuery("slow", scope: .accounts)
@@ -88,15 +91,18 @@ struct SearchControllerTests {
                 controller.submitQuery("Swift", scope: .accounts)
                 try await waitFor { controller.searchState.hasSearchedCurrentQuery }
             }
-            controller.viewDidAppear(false)
+            controller.beginAppearanceTransition(true, animated: false)
+            controller.endAppearanceTransition()
             var openedAccount = false
             controller.onOpenProfile = { _ in openedAccount = true }
             controller.tableView(controller.tableView, didSelectRowAt: IndexPath(row: 0, section: 0))
             #expect(openedAccount)
             #expect(!controller.searchBarShouldBeginEditing(controller.searchBar))
-            controller.viewWillAppear(false)
+            controller.beginAppearanceTransition(false, animated: false)
+            controller.endAppearanceTransition()
+            controller.beginAppearanceTransition(true, animated: false)
             #expect(!controller.searchBarShouldBeginEditing(controller.searchBar))
-            controller.viewDidAppear(false)
+            controller.endAppearanceTransition()
             #expect(controller.interaction.page == page)
             #expect(!controller.tableView.isHidden)
             #expect(controller.searchBarShouldBeginEditing(controller.searchBar))
@@ -109,7 +115,8 @@ struct SearchControllerTests {
         let (controller, defaults, suite) = makeController()
         defer { defaults.removePersistentDomain(forName: suite); controller.cancelInFlightSearchRequests() }
         controller.loadViewIfNeeded()
-        controller.viewDidAppear(false)
+        controller.beginAppearanceTransition(true, animated: false)
+        controller.endAppearanceTransition()
         controller.submitQuery("slow", scope: .accounts)
         _ = controller.searchBarShouldBeginEditing(controller.searchBar)
         controller.searchBar(controller.searchBar, textDidChange: "fast")
@@ -138,6 +145,63 @@ struct SearchControllerTests {
         try await waitFor { controller.discovery.hasLoaded }
         #expect(controller.interaction.page == .discovery)
         #expect(!controller.discovery.isLoading)
+    }
+
+    @Test func postsUseTimelineHostingAndDoNotAlsoSelectTheTableRow() async throws {
+        let (controller, defaults, suite) = makeController()
+        defer { defaults.removePersistentDomain(forName: suite); controller.cancelDiscoveryRequests() }
+        controller.loadViewIfNeeded()
+        try await waitFor { controller.discovery.hasLoaded }
+        controller.scopeControl.selectedSegmentIndex = SearchViewModel.Scope.statuses.segmentIndex
+        controller.scopeControl.sendActions(for: .valueChanged)
+        let index = IndexPath(row: 0, section: 0)
+        #expect(controller.isStatusRow(at: index))
+        let cell = controller.tableView(controller.tableView, cellForRowAt: index)
+        #expect(cell.reuseIdentifier == "SearchTimelinePostCell")
+        #expect(!(cell is SearchResultLineCell))
+        #expect(cell.contentConfiguration != nil)
+        #expect(!controller.tableView(controller.tableView, shouldHighlightRowAt: index))
+        #expect(controller.tableView(controller.tableView, willSelectRowAt: index) == nil)
+    }
+
+    @Test func postUpdatesAndDeletionReachDiscoveryResultsAndCachedSearches() async throws {
+        let (controller, defaults, suite) = makeController()
+        defer { defaults.removePersistentDomain(forName: suite); controller.cancelInFlightSearchRequests() }
+        controller.loadViewIfNeeded()
+        try await waitFor { controller.discovery.hasLoaded }
+        controller.submitQuery("Swift", scope: .statuses)
+        try await waitFor { controller.searchState.hasSearchedCurrentQuery }
+        let status = try #require(controller.searchState.results.statuses.first)
+        FeedCoordinator.shared.publishUpdate(.post(status.updating(favouritesCount: 7, bookmarked: true, favourited: true)))
+        #expect(controller.discovery.statuses.first?.favouritesCount == 7)
+        #expect(controller.searchState.results.statuses.first?.bookmarked == true)
+        controller.showDiscovery()
+        controller.submitQuery("Swift", scope: .statuses)
+        #expect(controller.searchState.results.statuses.first?.favourited == true)
+        controller.cancelInFlightSearchRequests()
+        FeedCoordinator.shared.publishUpdate(.deletedPost(status.id))
+        #expect(controller.discovery.statuses.isEmpty)
+        #expect(controller.searchState.results.statuses.isEmpty)
+        #expect(controller.sections.isEmpty)
+        controller.showDiscovery()
+        controller.submitQuery("Swift", scope: .statuses)
+        #expect(controller.searchState.results.statuses.isEmpty)
+    }
+
+    @Test func pollResponsePreservesAReactionCompletedWhileVoting() async throws {
+        let (controller, defaults, suite) = makeController()
+        defer { defaults.removePersistentDomain(forName: suite); controller.cancelInFlightSearchRequests() }
+        controller.loadViewIfNeeded()
+        controller.submitQuery("poll", scope: .statuses)
+        try await waitFor { controller.searchState.hasSearchedCurrentQuery }
+        let status = try #require(controller.searchState.results.statuses.first)
+        let voting = Task { await controller.votePoll(pollID: "fixture-poll", choices: [0]) }
+        try await waitFor { SearchFixtureProtocol.requests.contains { $0.url?.path.hasSuffix("/votes") == true } }
+        FeedCoordinator.shared.publishUpdate(.post(status.updating(favouritesCount: 8, favourited: true)))
+        #expect(await voting.value)
+        #expect(controller.searchState.results.statuses.first?.poll?.voted == true)
+        #expect(controller.searchState.results.statuses.first?.favourited == true)
+        #expect(controller.searchState.results.statuses.first?.favouritesCount == 8)
     }
 
     private var searchRequests: [URLRequest] {

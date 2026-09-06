@@ -6,7 +6,6 @@ struct SearchFlowHarnessView: View {
     @StateObject private var router = AppRouter()
     @StateObject private var tabs = RootTabCoordinator(selectedTab: .explore)
     @StateObject private var appState = AppState()
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var accountKey = "ui-search-a"
     private let client = SearchFixtureProtocol.makeClient()
@@ -59,7 +58,11 @@ struct SearchFlowHarnessView: View {
         .moroTheme(theme)
     }
 
-    private var theme: MoroTheme { MoroTheme(colorScheme: colorScheme, dynamicTypeSize: dynamicTypeSize) }
+    private var theme: MoroTheme {
+        // Native roots are created once, before the parent hosting trait may settle.
+        let color: ColorScheme = ProcessInfo.processInfo.environment["UITEST_COLOR_SCHEME"] == "dark" ? .dark : .light
+        return MoroTheme(colorScheme: color, dynamicTypeSize: dynamicTypeSize)
+    }
 
     private func searchRoot(router: AppRouter) -> some View {
         SearchView(apiClient: client)
@@ -130,14 +133,25 @@ final class SearchFixtureProtocol: URLProtocol, @unchecked Sendable {
                         return row
                     } : [account]
                 let tag: [String: Any] = ["name": query.isEmpty ? "Moro" : query, "url": "https://search-fixture.invalid/tags/moro"]
-                let post: [String: Any] = [
+                let poll: [String: Any] = [
+                    "id": "fixture-poll", "expired": false, "multiple": false, "votes_count": 1,
+                    "voted": url.path.hasSuffix("/votes"), "own_votes": url.path.hasSuffix("/votes") ? [0] : [],
+                    "options": [["title": "One", "votes_count": 1], ["title": "Two", "votes_count": 0]],
+                ]
+                var post: [String: Any] = [
                     "id": "fixture-post", "content": "<p>结果 \(query)</p><p>阅读 <a href='https://example.com/a/very/long/path?first=1&amp;second=2'><span class='invisible'>https://</span>example.com/a…</a></p><pre><code>let value = &lt;limit&gt;\n  print(value)</code></pre>",
                     "created_at": "2026-09-05T10:00:00.000Z", "account": account,
                     "media_attachments": [], "favourites_count": 0, "reblogs_count": 0, "replies_count": 0,
                     "visibility": "public", "sensitive": false, "spoiler_text": "",
                 ]
+                if query == "poll" { post["poll"] = poll }
+                if url.path.hasSuffix("/favourite") { post["favourited"] = true; post["favourites_count"] = 1 }
+                if url.path.hasSuffix("/bookmark") { post["bookmarked"] = true }
                 let payload: Any
-                if url.path.hasSuffix("/search") {
+                if url.path.hasSuffix("/votes") {
+                    try await Task.sleep(for: .milliseconds(100))
+                    payload = poll
+                } else if url.path.hasSuffix("/search") {
                     payload = query == "empty" ? ["accounts": [], "statuses": [], "hashtags": []] : [
                         "accounts": type == nil || type == "accounts" ? resultAccounts : [],
                         "statuses": type == nil || type == "statuses" ? [post] : [],

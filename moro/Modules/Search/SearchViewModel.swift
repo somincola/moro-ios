@@ -73,7 +73,7 @@ final class SearchViewModel: ObservableObject {
     }
 
     private struct CachedResult {
-        let results: SearchResults
+        var results: SearchResults
         let hasMoreResults: Bool
         let nextOffset: Int
         let cachedAt: Date
@@ -217,6 +217,20 @@ final class SearchViewModel: ObservableObject {
         applyCachedSnapshot(cached, query: trimmed, scope: scope)
         notifyStateChanged()
         return true
+    }
+
+    /// Keep cached searches consistent with reactions, edits, poll votes and deletions.
+    func transformStatuses(_ transform: ([Status]) -> [Status]) {
+        func replacingStatuses(in value: SearchResults) -> SearchResults {
+            SearchResults(accounts: value.accounts, statuses: transform(value.statuses), hashtags: value.hashtags)
+        }
+        results = replacingStatuses(in: results)
+        for key in Array(resultCache.keys) {
+            guard var cached = resultCache[key] else { continue }
+            cached.results = replacingStatuses(in: cached.results)
+            resultCache[key] = cached
+        }
+        notifyStateChanged()
     }
 
     func clearCache() {
