@@ -62,6 +62,51 @@ final class ProfileViewModel: ObservableObject {
     @Published var replies: [Status] = []
     @Published var media: [Status] = []
     @Published var pinnedStatuses: [Status] = []
+    @Published private(set) var featuredTags: [FeaturedTag] = []
+    @Published private(set) var selectedFeaturedTag: String?
+    @Published private(set) var featuredTagsEnabled = true
+    private var queryGeneration = UUID()
+    private var featuredTagsRequestID = UUID()
+    private var pinnedRequestID = UUID()
+
+    var showsFeaturedTags: Bool {
+        ProfilePresentationPreferences.shouldShowTags(enabled: featuredTagsEnabled, tags: featuredTags)
+    }
+
+    func setFeaturedTagsEnabled(_ enabled: Bool) async {
+        featuredTagsEnabled = enabled
+        if !enabled, selectedFeaturedTag != nil { await selectFeaturedTag(nil) }
+    }
+
+    func loadFeaturedTags() async {
+        let requestID = UUID()
+        featuredTagsRequestID = requestID
+        do {
+            let tags = try await apiClient.fetchAccountFeaturedTags(accountID: resolvedAccountID)
+            guard requestID == featuredTagsRequestID, !Task.isCancelled else { return }
+            featuredTags = tags
+            if let selectedFeaturedTag, !tags.contains(where: { $0.name == selectedFeaturedTag }) {
+                await selectFeaturedTag(nil)
+            }
+        } catch {
+            // Optional profile curation must not block reading the account's posts.
+        }
+    }
+
+    func selectFeaturedTag(_ name: String?) async {
+        let tag = featuredTagsEnabled ? name.flatMap { value in featuredTags.first(where: { $0.name == value })?.name } : nil
+        guard tag != selectedFeaturedTag else { return }
+        selectedFeaturedTag = tag
+        queryGeneration = UUID()
+        posts = []; replies = []; media = []; pinnedStatuses = []
+        postsMaxID = nil; repliesMaxID = nil; mediaMaxID = nil
+        hasMorePosts = true; hasMoreReplies = true; hasMoreMedia = true
+        tabLoadStates = Dictionary(uniqueKeysWithValues: Tab.allCases.map { ($0, .notLoaded) })
+        loadingMoreTabs = []; loadMoreFailedTabs = []
+        async let pins: Void = fetchPinnedStatuses()
+        await loadTabIfNeeded(selectedTab)
+        await pins
+    }
     
     // MARK: - Private Properties
     
@@ -87,7 +132,8 @@ final class ProfileViewModel: ObservableObject {
     var currentStatuses: [Status] {
         switch selectedTab {
         case .posts:
-            return posts
+            let pinnedIDs = Set(pinnedStatuses.map(\.id))
+            return posts.filter { !pinnedIDs.contains($0.id) }
         case .replies:
             return replies
         case .media:
@@ -217,51 +263,49 @@ final class ProfileViewModel: ObservableObject {
     }
     
     func refresh() async {
-        // Don't clear data immediately - fetch new data first to avoid empty state flicker
         let refreshedTab = selectedTab
+        let generation = queryGeneration
+        let tag = selectedFeaturedTag
         loadingState = .loading
-        
         do {
-            // Refresh account details
             let refreshedAccount = try await fetchLatestProfileAccount()
+            guard generation == queryGeneration else { return }
             account = refreshedAccount
             accountCache.set(refreshedAccount)
-            
-            // Reload relationship
             await loadRelationship()
-            
-            // Refresh pinned statuses
+            guard generation == queryGeneration else { return }
             await fetchPinnedStatuses()
-            
-            // Capture the tab at refresh start so a later tap cannot redirect the response.
-            let page = try await fetchPage(for: refreshedTab, maxID: nil)
+            let page = try await fetchPage(for: refreshedTab, maxID: nil, tag: tag)
+            guard generation == queryGeneration else { return }
             replaceContent(with: page, for: refreshedTab)
             tabLoadStates[refreshedTab] = .loaded
             loadMoreFailedTabs.remove(refreshedTab)
-            
             loadingState = .loaded
+            await loadFeaturedTags()
         } catch {
+            guard generation == queryGeneration else { return }
             if statuses(for: refreshedTab).isEmpty {
                 tabLoadStates[refreshedTab] = .error(error.localizedDescription)
             }
             loadingState = .error(error.localizedDescription)
         }
     }
-    
+
     func loadMore() async {
         let tab = selectedTab
+        let generation = queryGeneration
+        let tag = selectedFeaturedTag
         guard tabLoadState(for: tab) == .loaded,
-              hasMore(for: tab),
-              !loadingMoreTabs.contains(tab) else { return }
-
+              hasMore(for: tab), !loadingMoreTabs.contains(tab) else { return }
         loadingMoreTabs.insert(tab)
         loadMoreFailedTabs.remove(tab)
-        defer { loadingMoreTabs.remove(tab) }
-
+        defer { if generation == queryGeneration { loadingMoreTabs.remove(tab) } }
         do {
-            let page = try await fetchPage(for: tab, maxID: maxID(for: tab))
+            let page = try await fetchPage(for: tab, maxID: maxID(for: tab), tag: tag)
+            guard generation == queryGeneration else { return }
             appendContent(from: page, for: tab)
         } catch {
+            guard generation == queryGeneration else { return }
             loadMoreFailedTabs.insert(tab)
         }
     }
@@ -272,15 +316,17 @@ final class ProfileViewModel: ObservableObject {
 
     func loadTabIfNeeded(_ tab: Tab) async {
         guard tabLoadState(for: tab) == .notLoaded else { return }
-
+        let generation = queryGeneration
+        let tag = selectedFeaturedTag
         tabLoadStates[tab] = .loading
         do {
-            let page = try await fetchPage(for: tab, maxID: nil)
+            let page = try await fetchPage(for: tab, maxID: nil, tag: tag)
+            guard generation == queryGeneration else { return }
             replaceContent(with: page, for: tab)
             tabLoadStates[tab] = .loaded
         } catch {
+            guard generation == queryGeneration else { return }
             tabLoadStates[tab] = .error(error.localizedDescription)
-            AppLogger.error("Error loading profile tab content: \(error)")
         }
     }
 
@@ -313,7 +359,7 @@ final class ProfileViewModel: ObservableObject {
         let sourceStatuses: [Status]
     }
 
-    private func fetchPage(for tab: Tab, maxID: String?) async throws -> TabPage {
+    private func fetchPage(for tab: Tab, maxID: String?, tag: String?) async throws -> TabPage {
         let sourceStatuses: [Status]
         switch tab {
         case .posts:
@@ -325,7 +371,8 @@ final class ProfileViewModel: ObservableObject {
                 excludeReplies: true,
                 excludeReblogs: false,
                 onlyMedia: false,
-                pinned: false
+                pinned: false,
+                tagged: tag
             )
         case .replies:
             sourceStatuses = try await apiClient.fetchAccountStatuses(
@@ -336,7 +383,8 @@ final class ProfileViewModel: ObservableObject {
                 excludeReplies: false,
                 excludeReblogs: true,
                 onlyMedia: false,
-                pinned: false
+                pinned: false,
+                tagged: tag
             )
         case .media:
             sourceStatuses = try await apiClient.fetchAccountStatuses(
@@ -347,7 +395,8 @@ final class ProfileViewModel: ObservableObject {
                 excludeReplies: true,
                 excludeReblogs: true,
                 onlyMedia: true,
-                pinned: false
+                pinned: false,
+                tagged: tag
             )
         }
 
@@ -416,21 +465,21 @@ final class ProfileViewModel: ObservableObject {
     
     /// Fetch pinned statuses for this account
     func fetchPinnedStatuses() async {
+        let generation = queryGeneration
+        let requestID = UUID()
+        let tag = selectedFeaturedTag
+        pinnedRequestID = requestID
         do {
-            pinnedStatuses = try await apiClient.fetchAccountStatuses(
-                id: resolvedAccountID,
-                maxID: nil,
-                sinceID: nil,
-                limit: 20,
-                excludeReplies: true,
-                excludeReblogs: false,
-                onlyMedia: false,
-                pinned: true
+            let statuses = try await apiClient.fetchAccountStatuses(
+                id: resolvedAccountID, maxID: nil, sinceID: nil, limit: 20,
+                excludeReplies: true, excludeReblogs: false, onlyMedia: false,
+                pinned: true, tagged: tag
             )
-            accountCache.cacheFromStatuses(pinnedStatuses)
+            guard generation == queryGeneration, requestID == pinnedRequestID else { return }
+            pinnedStatuses = statuses
+            accountCache.cacheFromStatuses(statuses)
         } catch {
-            AppLogger.error("Error fetching pinned statuses: \(error)")
-            pinnedStatuses = []
+            // Keep the existing pinned section when refreshing fails.
         }
     }
 

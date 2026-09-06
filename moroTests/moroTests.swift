@@ -13,6 +13,69 @@ import UIKit
 import Combine
 
 struct moroTests {
+    @Test @MainActor func profileTagChangesDiscardLateResponsesAndResetPagination() async throws {
+        let api = MockMastodonAPI()
+        let account = makeAccount()
+        api.accountFeaturedTagsHandler = { _ in [FeaturedTag(id: "a", name: "old"), FeaturedTag(id: "b", name: "new")] }
+        let started = AsyncStream<Void>.makeStream()
+        var oldRequest: CheckedContinuation<[Status], Error>?
+        api.taggedStatusesHandler = { _, tag, maxID, pinned in
+            if tag == "old", !pinned {
+                return try await withCheckedThrowingContinuation { continuation in
+                    oldRequest = continuation
+                    started.continuation.yield(())
+                }
+            }
+            if tag == "new" {
+                if pinned { return [makeStatus(id: "new-0")] }
+                if maxID != nil { return [] }
+                return (0..<20).map { makeStatus(id: "new-\($0)") }
+            }
+            return []
+        }
+        let model = ProfileViewModel(apiClient: api, accountID: account.id)
+        await model.loadFeaturedTags()
+        let oldLoad = Task { await model.selectFeaturedTag("old") }
+        var iterator = started.stream.makeAsyncIterator()
+        await iterator.next()
+        await model.selectFeaturedTag("new")
+        oldRequest?.resume(returning: [makeStatus(id: "stale-old")])
+        await oldLoad.value
+        #expect(model.selectedFeaturedTag == "new")
+        #expect(model.currentStatuses.count == 19)
+        #expect(model.pinnedStatuses.map(\.id) == ["new-0"])
+        let displayedIDs = Set(model.currentStatuses.map(\.id))
+        #expect(!displayedIDs.contains("stale-old"))
+        #expect(!displayedIDs.contains("new-0"))
+        await model.loadMore()
+        #expect(api.taggedStatusesCalls.last?.maxID == "new-19")
+        await model.setFeaturedTagsEnabled(false)
+        #expect(model.selectedFeaturedTag == nil)
+        #expect(!model.showsFeaturedTags)
+        #expect(api.taggedStatusesCalls.suffix(2).allSatisfy { $0.maxID == nil && $0.tag == nil })
+    }
+
+    @Test @MainActor func featuredTagRemovalWaitsForTheServerAndKeepsFailedRows() async {
+        let api = MockMastodonAPI()
+        let tag = FeaturedTag(id: "featured-entity-id", name: "moro")
+        api.ownFeaturedTagsHandler = { [tag] }
+        var fails = true
+        var deletedID: String?
+        api.unfeatureTagHandler = { id in
+            deletedID = id
+            if fails { throw MockMastodonAPI.MockError.forcedFailure }
+        }
+        let model = FeaturedTagsViewModel(apiClient: api)
+        await model.load()
+        await model.remove(tag)
+        #expect(model.tags == [tag])
+        #expect(model.error != nil)
+        #expect(deletedID == tag.id)
+        fails = false
+        await model.remove(tag)
+        #expect(model.tags.isEmpty)
+    }
+
 
     @Test @MainActor func profileBasicEditPreservesRawLinksAndOmitsUnchangedFields() async throws {
         let api = MockMastodonAPI()
@@ -76,7 +139,7 @@ struct moroTests {
         #expect(api.updateAccountProfileCalls.isEmpty)
     }
 
-    @Test func profileSourceAndDisplayPreferencesSurviveAccountCacheUpdates() throws {
+    @Test @MainActor func profileSourceAndDisplayPreferencesSurviveAccountCacheUpdates() throws {
         let data = Data(#"{"id":"1","username":"tester","show_media":false,"show_media_replies":true,"show_featured":false,"hide_collections":true,"source":{"note":"raw https://example.org/full","fields":[{"name":"Web","value":"https://example.org/full"}]}}"#.utf8)
         let account = try JSONDecoder().decode(Account.self, from: data)
         for copy in [account.updating(followersCount: 3), account.withCacheBustedMedia()] {
@@ -6959,6 +7022,15 @@ private final class BadgeValueRecorder {
 }
 
 private final class MockMastodonAPI: MastodonAPI {
+    var ownFeaturedTagsHandler: (() async throws -> [FeaturedTag])?
+    var unfeatureTagHandler: ((String) async throws -> Void)?
+    func fetchOwnFeaturedTags() async throws -> [FeaturedTag] {
+        try await ownFeaturedTagsHandler?() ?? []
+    }
+    func unfeatureTag(id: String) async throws {
+        guard let unfeatureTagHandler else { throw MockError.unimplemented }
+        try await unfeatureTagHandler(id)
+    }
     var fetchEditableProfileHandler: (() async throws -> EditableProfile)?
     var accountFeaturedTagsHandler: ((String) async throws -> [FeaturedTag])?
     var taggedStatusesHandler: ((String, String?, String?, Bool) async throws -> [Status])?

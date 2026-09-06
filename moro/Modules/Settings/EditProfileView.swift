@@ -57,6 +57,13 @@ struct EditProfileView: View {
                             : MoroL10n.ProfileEditing.emptyFields)
                 }
                 .accessibilityIdentifier("profile.edit.fields")
+                NavigationLink {
+                    FeaturedTagsEditor(apiClient: apiClient)
+                } label: {
+                    ProfileEditorSummaryRow(title: MoroL10n.ProfileEditing.featuredTags,
+                        summary: MoroL10n.ProfileEditing.tagHint)
+                }
+                .accessibilityIdentifier("profile.edit.featuredTags")
             }
         }
         .moroSettingsListChrome()

@@ -62,6 +62,8 @@ struct ProfileView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.cacheManager) private var cacheManager
     @Environment(\.appRouter) private var router
+    @Environment(\.activeAccountKey) private var activeAccountKey
+    @StateObject private var profilePreferences = ProfilePresentationPreferences.shared
     @Environment(\.settingsPresentationAction) private var presentSettings
     @EnvironmentObject private var appState: AppState
 
@@ -246,8 +248,16 @@ struct ProfileView: View {
         .task {
             // Update currentAccountID in viewModel
             viewModel.currentAccountID = appState.currentAccount?.id
+            await viewModel.setFeaturedTagsEnabled(profilePreferences.showsFeaturedTags(accountKey: activeAccountKey))
             await viewModel.loadInitial()
+            await viewModel.loadFeaturedTags()
             syncCurrentUserProfileFromAppState()
+        }
+        .onChange(of: profilePreferences.revision) { _, _ in
+            Task {
+                await viewModel.setFeaturedTagsEnabled(profilePreferences.showsFeaturedTags(accountKey: activeAccountKey))
+                await viewModel.loadFeaturedTags()
+            }
         }
         .onChange(of: currentAccountSyncKey) { _, _ in
             syncCurrentUserProfileFromAppState()
@@ -437,6 +447,12 @@ struct ProfileView: View {
     ) -> some View {
         VStack(spacing: 0) {
             tabBar(hidesAccessibility: hidesAccessibility)
+            if viewModel.showsFeaturedTags {
+                ProfileFeaturedTagBar(tags: viewModel.featuredTags, selection: viewModel.selectedFeaturedTag) { tag in
+                    Task { await viewModel.selectFeaturedTag(tag) }
+                }
+                .accessibilityHidden(hidesAccessibility)
+            }
             MoroDivider()
         }
         .background(theme.colors.surfaceBase)

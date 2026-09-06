@@ -112,7 +112,7 @@ struct ProfileContentStream: View {
                 )
             )
         case .loaded:
-            if viewModel.currentStatuses.isEmpty {
+            if viewModel.currentStatuses.isEmpty && !(viewModel.selectedTab == .posts && !viewModel.pinnedStatuses.isEmpty) {
                 return .empty(emptyStateSpec)
             }
             return .loaded
@@ -120,6 +120,11 @@ struct ProfileContentStream: View {
     }
 
     private var emptyStateSpec: EmptyStateSpec {
+        if viewModel.selectedFeaturedTag != nil {
+            return EmptyStateSpec(icon: "number", title: MoroL10n.ProfileEditing.filteredEmpty,
+                message: "#\(viewModel.selectedFeaturedTag ?? "")", actionTitle: MoroL10n.ProfileEditing.clearFilter,
+                action: { Task { await viewModel.selectFeaturedTag(nil) } })
+        }
         switch viewModel.selectedTab {
         case .posts:
             return EmptyStateSpec(
