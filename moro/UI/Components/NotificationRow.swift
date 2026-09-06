@@ -33,7 +33,7 @@ struct NotificationRow: View {
 
     private var kind: NotificationKind { notification.kind }
     private var descriptor: NotificationPresentationDescriptor { kind.descriptor }
-    private var primaryAccount: Account? { notification.primaryAccount }
+    private var primaryAccount: Account? { notification.presentationAccount }
     private var isMultiActorNotification: Bool { notification.actorCount > 1 }
     private var additionalActorCount: Int { max(notification.actorCount - 1, 0) }
     private var isReply: Bool { kind == .mention && notification.status?.inReplyToID != nil }
@@ -132,7 +132,7 @@ struct NotificationRow: View {
 
     private var contentEventRow: some View {
         HStack(alignment: .top, spacing: 12) {
-            semanticIconColumn
+            contentEventLeadingView
 
             trailingMediaLayout(status: effectiveStatusTarget) {
                 VStack(alignment: .leading, spacing: 5) {
@@ -190,6 +190,26 @@ struct NotificationRow: View {
     }
 
     // MARK: - Leading content
+
+    @ViewBuilder
+    private var contentEventLeadingView: some View {
+        if effectiveStatusTarget != nil, primaryAccount != nil {
+            personLeadingView
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: resolvedIconName)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(iconColor)
+                        .frame(width: 18, height: 18)
+                        .background(theme.colors.surfaceSubtle, in: Circle())
+                        .overlay(Circle().stroke(theme.colors.background, lineWidth: 2))
+                        .offset(x: 3, y: 3)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+        } else {
+            semanticIconColumn
+        }
+    }
 
     private var semanticIconColumn: some View {
         Image(systemName: resolvedIconName)

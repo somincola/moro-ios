@@ -14,6 +14,26 @@ import Combine
 
 struct moroTests {
 
+    @Test func notificationContentEventsUseTheDisplayedPostAuthor() {
+        let actor = makeAccount(id: "notification-actor")
+        let author = makeAccount(id: "post-author")
+        let status = makeStatus(id: "edited", account: author)
+        for type in ["poll", "update"] {
+            let item = NotificationDisplayItem(from: makeNotification(
+                id: type, type: type, account: actor, status: status
+            ))
+            #expect(item.presentationAccount?.id == author.id)
+        }
+        let like = NotificationDisplayItem(from: makeNotification(
+            id: "like", type: "favourite", account: actor, status: status
+        ))
+        #expect(like.presentationAccount?.id == actor.id)
+        let missing = NotificationDisplayItem(from: makeNotification(
+            id: "missing", type: "poll", account: actor
+        ))
+        #expect(missing.presentationAccount?.id == actor.id)
+    }
+
     @Test @MainActor func composerPublishesReorderedMediaWithoutChangingAltText() async throws {
         let api = MockMastodonAPI()
         var postedIDs: [String] = []

@@ -200,7 +200,7 @@ struct NotificationsView: View {
                     NotificationRow(
                         notification: notification,
                         onAvatarTap: {
-                            if let account = notification.primaryAccount {
+                            if let account = notification.presentationAccount {
                                 router.navigate(to: .userProfile(account))
                             }
                         },
@@ -217,7 +217,7 @@ struct NotificationsView: View {
                             router.navigate(to: .statusDetail(targetStatus))
                         },
                         onAccountTap: {
-                            if let account = notification.primaryAccount {
+                            if let account = notification.presentationAccount {
                                 router.navigate(to: .userProfile(account))
                             }
                         },

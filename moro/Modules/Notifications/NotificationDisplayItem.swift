@@ -18,6 +18,16 @@ struct NotificationDisplayItem: Identifiable {
     var sourceNotificationIDs: [String]
 
     var primaryAccount: Account? { accounts.first }
+    /// Content events identify the author of the affected post, including quoted edits.
+    /// Use the same account for the visible avatar/name and both profile tap targets.
+    var presentationAccount: Account? {
+        switch kind {
+        case .poll, .update, .quotedUpdate:
+            return effectiveStatusTarget?.account ?? primaryAccount
+        default:
+            return primaryAccount
+        }
+    }
     var actorCount: Int { accounts.count }
     var kind: NotificationKind { NotificationKind(rawValue: type) }
     var effectiveStatusTarget: Status? {
