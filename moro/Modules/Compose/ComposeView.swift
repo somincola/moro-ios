@@ -151,6 +151,7 @@ struct ComposeView: View {
     
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var destination: ComposeDestination?
+    @State private var isExpandedEditor = false
     @State private var inputMode: ComposeInputMode = .idle
     @State private var emojiPickerHeight = ComposeInputLayout.defaultEmojiPickerHeight
     @State private var textSelection: NSRange
@@ -225,25 +226,39 @@ struct ComposeView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        if let originalStatus = viewModel.originalStatus {
-                            ComposeOriginalPostSection(
-                                originalStatus: originalStatus,
-                                presentationStyle: originalPostPresentationStyle
-                            )
-                        }
-
-                        inputSection
+                if isExpandedEditor && viewModel.isEditingSourceReady {
+                    VStack(spacing: theme.spacing.s) {
+                        if viewModel.isContentWarningActive { contentWarningSection }
+                        textInputSection
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
+                    .padding(theme.spacing.m)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            if let originalStatus = viewModel.originalStatus {
+                                ComposeOriginalPostSection(
+                                    originalStatus: originalStatus,
+                                    presentationStyle: originalPostPresentationStyle
+                                )
+                            }
+
+                            if viewModel.isEditingSourceReady {
+                                inputSection
+                            } else {
+                                editSourcePlaceholder
+                            }
+                        }
+                    }
+                    .scrollContentBackground(.hidden)
+                    .contentShape(Rectangle())
+                    .scrollDisabled(isComposeTextViewDragging)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .scrollContentBackground(.hidden)
-                .contentShape(Rectangle())
-                .scrollDisabled(isComposeTextViewDragging)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
                 // Bottom: Quote policy selector (new post mode) + Toolbar
                 bottomSection
+                    .disabled(!viewModel.isEditingSourceReady)
             }
             .background(theme.colors.background)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -265,6 +280,40 @@ struct ComposeView: View {
                 }
 
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button {
+                            let selection = textSelection
+                            isExpandedEditor.toggle()
+                            textSelectionCommand = ComposeTextSelectionCommand(
+                                range: selection, scrollsToSelection: true
+                            )
+                        } label: {
+                            Label(isExpandedEditor ? MoroL10n.ComposeReading.collapse : MoroL10n.ComposeReading.expand,
+                                systemImage: isExpandedEditor ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                        }
+                        .accessibilityIdentifier("compose.expandEditor")
+                        Button {
+                            inputMode = .idle
+                            destination = .preview
+                        } label: {
+                            Label(MoroL10n.ComposeReading.preview, systemImage: "eye")
+                        }
+                        .accessibilityIdentifier("compose.preview")
+                        Button {
+                            inputMode = .idle
+                            destination = .mediaOrder
+                        } label: {
+                            Label(MoroL10n.ComposeReading.mediaOrder, systemImage: "arrow.up.arrow.down")
+                        }
+                        .disabled(viewModel.mediaAttachments.count < 2)
+                        .accessibilityIdentifier("compose.mediaOrder")
+                    } label: {
+                        Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44)
+                    }
+                    .disabled(!viewModel.isEditingSourceReady || viewModel.isPublishing)
+                    .accessibilityLabel(MoroL10n.ComposeReading.options)
+                    .accessibilityIdentifier("compose.editorOptions")
+
                     Button {
                         Task {
                             await publish()
@@ -280,6 +329,7 @@ struct ComposeView: View {
                         }
                     }
                     .disabled(!viewModel.canPublish)
+                    .accessibilityIdentifier("compose.postButton")
                     .fontWeight(.semibold)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(
@@ -376,6 +426,45 @@ struct ComposeView: View {
             .task(priority: .utility) {
                 await viewModel.loadInstanceLimits()
             }
+            .task {
+                await loadEditingSource()
+            }
+        }
+    }
+
+    private var editSourcePlaceholder: some View {
+        VStack(spacing: theme.spacing.m) {
+            if viewModel.editSourceState == .failed {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(theme.typography.title)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .accessibilityHidden(true)
+                Text(MoroL10n.Compose.editSourceFailed)
+                    .font(theme.typography.body)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                Button {
+                    Task { await loadEditingSource() }
+                } label: {
+                    Text(MoroL10n.Compose.retry)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .tint(theme.colors.primary500)
+                .accessibilityIdentifier("compose.retryEditSource")
+            } else {
+                ProgressView(MoroL10n.Compose.editSourceLoading)
+                    .accessibilityIdentifier("compose.editSourceLoading")
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: fixedTextInputHeight)
+        .padding(theme.spacing.m)
+    }
+
+    private func loadEditingSource() async {
+        await viewModel.loadEditingSourceIfNeeded()
+        if case .edit = viewModel.context, viewModel.isEditingSourceReady {
+            textSelection = NSRange(location: (viewModel.content as NSString).length, length: 0)
         }
     }
 
@@ -395,6 +484,12 @@ struct ComposeView: View {
     @ViewBuilder
     private func composeSheet(for destination: ComposeDestination) -> some View {
         switch destination {
+        case .preview:
+            ComposePreviewSheet(viewModel: viewModel, account: appState.currentAccount)
+                .moroSheetSurface(detents: [.large])
+        case .mediaOrder:
+            ComposeMediaOrderSheet(viewModel: viewModel)
+                .moroSheetSurface(detents: [.large])
         case .drafts:
             ComposeDraftsSheet(
                 accountID: appState.currentAccount?.id,
@@ -672,7 +767,7 @@ struct ComposeView: View {
             placeholderColor: UIColor(theme.colors.textSecondary),
             onEmojiSelected: insertEmoji
         )
-        .frame(height: fixedTextInputHeight)
+        .frame(height: isExpandedEditor ? nil : fixedTextInputHeight)
         .padding(usesCompactReplyComposerLayout ? theme.spacing.xs : theme.spacing.s)
         .overlay(alignment: .bottomTrailing) {
             inlineCharacterCounter
@@ -988,6 +1083,7 @@ struct ComposeView: View {
                                 return
                             }
                             withAnimation(AnimationTokens.easing.springSoft) {
+                                isExpandedEditor = false
                                 viewModel.isPollActive.toggle()
                             }
                         }) {
@@ -1354,7 +1450,7 @@ struct ComposeView: View {
     private var showsQuotePolicyOption: Bool {
         switch viewModel.context {
         case .newPost, .reply, .quote:
-            return true
+            return viewModel.visibility == .public || viewModel.visibility == .unlisted
         case .edit:
             return false
         }

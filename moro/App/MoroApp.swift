@@ -44,6 +44,22 @@ struct MoroApp: App {
                     ComposeMediaGridHarnessView()
                         .moroTheme(MoroTheme(accent: .monochrome))
                         .preferredColorScheme(colorScheme)
+                } else if shouldUseListCacheHarness {
+                    listCacheHarness.preferredColorScheme(colorScheme)
+                } else if shouldUseBookmarksHarness {
+                    bookmarksHarness.preferredColorScheme(colorScheme)
+                } else if shouldUseThreadReadingHarness {
+                    threadReadingHarness.preferredColorScheme(colorScheme)
+                } else if shouldUseComposeReadingHarness {
+                    composeReadingHarness.preferredColorScheme(colorScheme)
+                } else if shouldUseTopicsHarness {
+                    topicsHarness.preferredColorScheme(colorScheme)
+                } else if shouldUseSearchFlowHarness {
+                    searchFlowHarness
+                        .preferredColorScheme(colorScheme)
+                } else if shouldUseEditSourceHarness {
+                    editSourceHarness
+                        .preferredColorScheme(colorScheme)
                 } else if shouldUseComposeCounterHarness {
                     ComposeCounterHarnessView()
                         .moroTheme(MoroTheme(accent: .monochrome))
@@ -64,6 +80,9 @@ struct MoroApp: App {
                             await coordinator.start()
                         }
                         .onChange(of: scenePhase) { _, newPhase in
+                            if newPhase == .background {
+                                Task { await CacheManager.shared.timelineCache.flushPendingWrites() }
+                            }
                             guard newPhase == .active else { return }
                             Task {
                                 await coordinator.refreshCurrentAccountIfNeeded()
@@ -111,6 +130,107 @@ struct MoroApp: App {
     private var shouldUseComposeCounterHarness: Bool {
         launchArguments.contains("UITEST_COMPOSE_COUNTER")
             || launchEnvironment["UITEST_COMPOSE_COUNTER"] == "1"
+    }
+
+    private var shouldUseListCacheHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_LIST_CACHE")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var listCacheHarness: some View {
+        #if DEBUG
+        ListCacheHarnessView()
+        #endif
+    }
+
+    private var shouldUseBookmarksHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_BOOKMARK_READING")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var bookmarksHarness: some View {
+        #if DEBUG
+        BookmarksHarnessView()
+        #endif
+    }
+
+    private var shouldUseThreadReadingHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_THREAD_READING")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var threadReadingHarness: some View {
+        #if DEBUG
+        ThreadReadingHarnessView()
+        #endif
+    }
+
+    private var shouldUseComposeReadingHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_COMPOSE_READING")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var composeReadingHarness: some View {
+        #if DEBUG
+        ComposeReadingHarnessView()
+        #endif
+    }
+
+    private var shouldUseTopicsHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_TOPICS")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var topicsHarness: some View {
+        #if DEBUG
+        TopicsHarnessView()
+        #endif
+    }
+
+    private var shouldUseSearchFlowHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_SEARCH_FLOW")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder
+    private var searchFlowHarness: some View {
+        #if DEBUG
+        SearchFlowHarnessView()
+        #endif
+    }
+
+    private var shouldUseEditSourceHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_EDIT_SOURCE")
+            || launchEnvironment["UITEST_EDIT_SOURCE"] == "1"
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder
+    private var editSourceHarness: some View {
+        #if DEBUG
+        ComposeEditSourceHarnessView()
+        #endif
     }
 
     private var shouldUseComposeMediaHarness: Bool {

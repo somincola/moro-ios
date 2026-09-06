@@ -6,67 +6,41 @@
 //
 
 #if os(iOS)
+import SwiftUI
 import UIKit
 
 extension SearchCoreViewController: UISearchBarDelegate {
     func searchBarShouldBeginEditing(_ searchBar: UISearchBar) -> Bool {
-        setCancelButtonVisible(true)
+        guard allowsSearchFocus else { return false }
+        beginSearchEntry()
         return true
     }
 
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if trimmed.isEmpty {
-            clearSearchState()
-            loadDiscoveryIfNeeded()
-            return
-        }
-
-        cancelDiscoveryRequests()
-
-        switch triggerPolicy {
-        case .debounceAndSearchKey:
-            searchState.markTyping(query: trimmed, scope: selectedScope)
-            if trimmed.count >= minimumDebouncedQueryLength {
-                scheduleDebouncedSearch(for: trimmed)
-            } else {
-                debounceTask?.cancel()
-                pendingSearchQuery = nil
-            }
-            refreshViewState()
-        case .searchKeyOnly:
-            prepareForManualSearch(keepResults: true)
-            transitionToTypingStateIfNeeded()
-        }
+        beginSearchEntry()
+        interaction.draftQuery = searchText
+        updateEntryContent()
     }
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
-        debounceTask?.cancel()
-        pendingSearchQuery = nil
-        startSearch(reset: true)
-        searchBar.searchTextField.resignFirstResponder()
+        // A return key confirming an IME candidate is not a search submission.
+        guard searchBar.searchTextField.markedTextRange == nil else { return }
+        submitQuery(searchBar.text ?? "", scope: selectedScope)
     }
 
     func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
-        setCancelButtonVisible(false)
-        searchBar.text = ""
-        clearSearchState()
-        loadDiscoveryIfNeeded()
-        searchBar.searchTextField.resignFirstResponder()
+        cancelSearchEntry()
     }
 
     func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
-        if trimmedQuery.isEmpty {
-            setCancelButtonVisible(false)
-        }
+        // Dismissing the keyboard leaves the entry page and its draft intact.
     }
 }
 
 extension SearchCoreViewController: UITableViewDataSource {
     func numberOfSections(in tableView: UITableView) -> Int {
         switch mode {
-        case .placeholder, .typing, .loading, .empty:
+        case .placeholder, .loading, .empty:
             return 0
         case .error:
             return 1
@@ -77,7 +51,7 @@ extension SearchCoreViewController: UITableViewDataSource {
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch mode {
-        case .placeholder, .typing, .loading, .empty:
+        case .placeholder, .loading, .empty:
             return 0
         case .error:
             return 1
@@ -134,6 +108,11 @@ extension SearchCoreViewController: UITableViewDataSource {
             }
             let section = sections[indexPath.section]
             let row = section.rows[indexPath.row]
+            if case .status(let status) = row {
+                let cell = tableView.dequeueReusableCell(withIdentifier: "SearchTimelinePostCell", for: indexPath)
+                configureStatusCell(cell, status: status)
+                return cell
+            }
             let reuseIdentifier: String
             if case .account = row {
                 reuseIdentifier = SearchResultLineCell.accountReuseIdentifier
@@ -148,16 +127,24 @@ extension SearchCoreViewController: UITableViewDataSource {
             else {
                 return UITableViewCell()
             }
-            cell.configure(with: rowContent(for: row), theme: appliedTheme)
+            if let content = rowContent(for: row) { cell.configure(with: content, theme: appliedTheme) }
             return cell
 
-        case .placeholder, .typing, .loading, .empty:
+        case .placeholder, .loading, .empty:
             return UITableViewCell()
         }
     }
 }
 
 extension SearchCoreViewController: UITableViewDelegate {
+    func tableView(_ tableView: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
+        !isStatusRow(at: indexPath)
+    }
+
+    func tableView(_ tableView: UITableView, willSelectRowAt indexPath: IndexPath) -> IndexPath? {
+        isStatusRow(at: indexPath) ? nil : indexPath
+    }
+
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         guard case .results = mode,
             sections.indices.contains(indexPath.section),
@@ -173,38 +160,12 @@ extension SearchCoreViewController: UITableViewDelegate {
         return max(60, ceil(textHeight + 24))
     }
 
-    func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
-        guard case .results = mode else { return nil }
-        guard sections.indices.contains(section) else { return nil }
-
-        guard
-            let header = tableView.dequeueReusableHeaderFooterView(
-                withIdentifier: SearchSectionHeaderView.reuseIdentifier
-            ) as? SearchSectionHeaderView
-        else {
-            return nil
-        }
-        header.configure(title: sections[section].title, theme: appliedTheme)
-        return header
-    }
-
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
-        guard case .results = mode, sections.indices.contains(section) else { return .leastNormalMagnitude }
-        return UIApplication.shared.preferredContentSizeCategory.isAccessibilityCategory
-            ? UITableView.automaticDimension
-            : 34
+        .leastNormalMagnitude
     }
 
     func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
-        guard case .results = mode, sections.indices.contains(section) else { return .leastNormalMagnitude }
-        return 2
-    }
-
-    func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
-        guard case .results = mode, sections.indices.contains(section) else { return nil }
-        let view = UIView()
-        view.backgroundColor = .clear
-        return view
+        .leastNormalMagnitude
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -221,6 +182,7 @@ extension SearchCoreViewController: UITableViewDelegate {
         case .results:
             guard sections.indices.contains(indexPath.section) else { return }
             let row = sections[indexPath.section].rows[indexPath.row]
+            prepareForNavigation()
             switch row {
             case .account(let account):
                 onOpenProfile?(account)
@@ -236,7 +198,7 @@ extension SearchCoreViewController: UITableViewDelegate {
     }
 
     func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
-        guard case .results = mode else { return }
+        guard interaction.page != .entry, case .results = mode else { return }
         guard sections.indices.contains(indexPath.section) else { return }
 
         if trimmedQuery.isEmpty {
@@ -257,6 +219,13 @@ extension SearchCoreViewController: UITableViewDelegate {
         if indexPath.row >= max(lastRowIndex - 1, 0) {
             startSearch(reset: false)
         }
+    }
+}
+extension SearchCoreViewController: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // A post's horizontal gestures belong to its media, not category switching.
+        guard let index = tableView.indexPathForRow(at: touch.location(in: tableView)) else { return true }
+        return !isStatusRow(at: index)
     }
 }
 #endif

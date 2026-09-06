@@ -106,7 +106,6 @@ extension SearchCoreViewController {
                 )
             }
 
-            SearchStatusPreviewCache.shared.prewarm(statuses: fetchedStatuses)
             guard !Task.isCancelled, requestID == discoveryRequestID else { return }
 
             if resetAccounts {
@@ -178,6 +177,8 @@ extension SearchCoreViewController {
         discoveryTask?.cancel()
         if resetActiveRequestID {
             discoveryRequestID = UUID()
+            discovery.isLoading = false
+            discovery.isLoadingMoreAccounts = false
         }
     }
 }

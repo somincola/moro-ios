@@ -287,22 +287,18 @@ final class ThreadedConversationModel: ObservableObject {
         var ordered: [Status] = []
         var visited: Set<String> = []
 
-        func appendChildren(of parentID: String) {
-            for status in sorted(childrenByParent[parentID] ?? []) {
-                guard visited.insert(status.id).inserted else { continue }
+        func appendBranch(startingWith roots: [Status]) {
+            var pending = Array(roots.reversed())
+            while let status = pending.popLast() {
+                guard status.id != focusedID, visited.insert(status.id).inserted else { continue }
                 ordered.append(status)
-                appendChildren(of: status.id)
+                pending.append(contentsOf: sorted(childrenByParent[status.id] ?? []).reversed())
             }
         }
 
-        appendChildren(of: focusedID)
-
-        // Preserve replies whose parent is unavailable instead of silently dropping them.
-        for status in sorted(Array(uniqueStatuses.values)) {
-            guard visited.insert(status.id).inserted else { continue }
-            ordered.append(status)
-            appendChildren(of: status.id)
-        }
+        appendBranch(startingWith: sorted(childrenByParent[focusedID] ?? []))
+        // Preserve replies whose parent is unavailable, while bounding malformed cycles.
+        appendBranch(startingWith: sorted(Array(uniqueStatuses.values)))
 
         return ordered
     }
@@ -323,13 +319,15 @@ final class ThreadedConversationModel: ObservableObject {
         // Chain backwards from focused post
         var chain: [Status] = []
         var nextID: String? = replyToID
-        
-        while let currentID = nextID, let status = statusDict[currentID] {
-            chain.insert(status, at: 0)
+        var visited: Set<String> = [focusedStatus.id]
+
+        while let currentID = nextID, visited.insert(currentID).inserted,
+            let status = statusDict[currentID] {
+            chain.append(status)
             nextID = status.inReplyToID
         }
-        
-        return chain
+
+        return chain.reversed()
     }
     
     // MARK: - Index Finding

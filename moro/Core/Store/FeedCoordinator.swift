@@ -60,7 +60,7 @@ final class FeedCoordinator: ObservableObject {
     /// Shared singleton instance
     static let shared = FeedCoordinator()
     
-    private init() {}
+    init() {}
     
     /// Publish an update to all listening ViewModels
     func publishUpdate(_ update: UpdatedElement) {

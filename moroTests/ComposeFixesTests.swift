@@ -203,6 +203,8 @@ struct ComposeFixesTests {
     @Test func composerDestinationsUseOneExplicitPresentationChannel() {
         let sheetDestinations: [ComposeDestination] = [
             .drafts,
+            .preview,
+            .mediaOrder,
             .camera,
             .altText(attachmentID: "media-0"),
             .language,
@@ -218,6 +220,8 @@ struct ComposeFixesTests {
     @Test func composerDestinationIdentityKeepsAltEditorsDistinct() {
         let destinations: [ComposeDestination] = [
             .drafts,
+            .preview,
+            .mediaOrder,
             .photoLibrary,
             .camera,
             .fileImporter,

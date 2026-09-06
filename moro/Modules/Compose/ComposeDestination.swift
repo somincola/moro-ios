@@ -16,6 +16,8 @@ enum ComposeDestination: Equatable, Identifiable {
     }
 
     case drafts
+    case preview
+    case mediaOrder
     case photoLibrary
     case camera
     case fileImporter
@@ -27,6 +29,8 @@ enum ComposeDestination: Equatable, Identifiable {
 
     var id: String {
         switch self {
+        case .preview: return "preview"
+        case .mediaOrder: return "mediaOrder"
         case .drafts: return "drafts"
         case .photoLibrary: return "photoLibrary"
         case .camera: return "camera"
@@ -41,7 +45,7 @@ enum ComposeDestination: Equatable, Identifiable {
 
     var presentation: Presentation {
         switch self {
-        case .drafts, .camera, .altText, .language, .schedule:
+        case .drafts, .camera, .altText, .language, .schedule, .preview, .mediaOrder:
             return .sheet
         case .photoLibrary:
             return .photosPicker

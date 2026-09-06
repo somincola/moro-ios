@@ -14,6 +14,27 @@ import Combine
 
 struct moroTests {
 
+    @Test @MainActor func composerPublishesReorderedMediaWithoutChangingAltText() async throws {
+        let api = MockMastodonAPI()
+        var postedIDs: [String] = []
+        api.postStatusHandler = { _, _, ids, _, _, _, _, _, _ in
+            postedIDs = ids ?? []
+            return makeStatus(id: "published")
+        }
+        let model = ComposeViewModel(context: .newPost, apiClient: api)
+        model.content = "Body"
+        model.mediaAttachments = (1...3).map { index in
+            MediaAttachment(id: "media-\(index)", url: URL(string: "https://example.com/\(index).png")!,
+                previewURL: nil, type: "image", description: "ALT \(index)", focus: nil,
+                originalDescription: "ALT \(index)", uploadState: .uploaded)
+        }
+        model.moveMedia(from: IndexSet(integer: 0), to: 3)
+        _ = try await model.publish()
+        #expect(postedIDs == ["media-2", "media-3", "media-1"])
+        #expect(model.mediaAttachments.map(\.description) == ["ALT 2", "ALT 3", "ALT 1"])
+    }
+
+
     @Test func accountDeletionURLPointsDirectlyToMastodonDeletionPage() throws {
         let instanceURL = try #require(URL(string: "https://social.example/path?source=moro#account"))
 
@@ -331,14 +352,18 @@ struct moroTests {
             timestamp: Date().addingTimeInterval(-30)
         )
 
+        let detailRequests = AsyncStream<CheckedContinuation<Status, Never>>.makeStream()
+        let contextRequests = AsyncStream<CheckedContinuation<StatusContext, Never>>.makeStream()
+        defer {
+            detailRequests.continuation.finish()
+            contextRequests.continuation.finish()
+        }
         let api = MockMastodonAPI()
         api.fetchStatusDetailHandler = { _ in
-            try await Task.sleep(nanoseconds: 100_000_000)
-            return cachedStatus
+            await withCheckedContinuation { detailRequests.continuation.yield($0) }
         }
         api.fetchStatusContextHandler = { _ in
-            try await Task.sleep(nanoseconds: 100_000_000)
-            return StatusContext(ancestors: [], descendants: [])
+            await withCheckedContinuation { contextRequests.continuation.yield($0) }
         }
         let viewModel = StatusDetailViewModel(
             status: cachedStatus,
@@ -348,15 +373,20 @@ struct moroTests {
         )
 
         let loadTask = Task { await viewModel.loadThread() }
-        await waitUntil(timeout: 1) {
-            !api.fetchStatusDetailCallIDs.isEmpty && !api.fetchStatusContextCallIDs.isEmpty
-        }
+        // Hold both GET responses until the interaction has happened, regardless
+        // of how long the runner takes to start or schedule the requests.
+        var detailIterator = detailRequests.stream.makeAsyncIterator()
+        var contextIterator = contextRequests.stream.makeAsyncIterator()
+        let detailResponse = try #require(await detailIterator.next())
+        let contextResponse = try #require(await contextIterator.next())
         let interactedStatus = makeStatus(
             id: statusID,
             favouritesCount: 2,
             favourited: true
         )
         viewModel.updateStatus(interactedStatus)
+        detailResponse.resume(returning: cachedStatus)
+        contextResponse.resume(returning: StatusContext(ancestors: [], descendants: []))
         await loadTask.value
 
         #expect(viewModel.focusedStatus.favouritesCount == 2)
@@ -5215,7 +5245,7 @@ struct moroTests {
             capturedLanguage = language
             #expect(text == "Hello updated")
             #expect(visibility == .unlisted)
-            #expect(spoilerText == nil)
+            #expect(spoilerText == "")
             #expect(poll == nil)
             return self.makeStatus(
                 id: id,
@@ -5231,6 +5261,10 @@ struct moroTests {
             apiClient: api,
             feedCoordinator: feedCoordinator
         )
+        api.fetchStatusSourceHandler = { id in
+            StatusSource(id: id, text: "Hello old", spoilerText: "")
+        }
+        await viewModel.loadEditingSourceIfNeeded()
         viewModel.content = "Hello updated"
 
         let result = try await viewModel.publish()
@@ -5505,6 +5539,7 @@ struct moroTests {
         }
 
         let viewModel = SearchViewModel(apiClient: api, initialQuery: "moro")
+        viewModel.scope = .all // Explicit legacy API scope; Explore defaults to Accounts.
         viewModel.submitSearch()
         await waitUntil(timeout: 1.0) { !viewModel.isLoading }
         viewModel.loadMoreIfNeeded()
@@ -6820,6 +6855,10 @@ private final class BadgeValueRecorder {
 }
 
 private final class MockMastodonAPI: MastodonAPI {
+    func fetchTag(name: String) async throws -> SearchTag { throw MockError.unimplemented }
+    func setTagFollowed(name: String, followed: Bool) async throws -> SearchTag { throw MockError.unimplemented }
+    func fetchFollowedTags(maxID: String?, limit: Int) async throws -> FollowedTagsPage { throw MockError.unimplemented }
+
     enum MockError: Error {
         case unimplemented
         case forcedFailure
@@ -6853,6 +6892,7 @@ private final class MockMastodonAPI: MastodonAPI {
     var fetchAccountFollowingCalls: [(id: String, maxID: String?, limit: Int)] = []
     var searchHandler: ((String, MastodonSearchType?, Bool, Int, Int?) async throws -> SearchResults)?
     var fetchStatusDetailHandler: ((String) async throws -> Status)?
+    var fetchStatusSourceHandler: ((String) async throws -> StatusSource)?
     var fetchStatusContextHandler: ((String) async throws -> StatusContext)?
     var verifyCredentialsHandler: (() async throws -> Account)?
     var updateAccountProfileHandler:
@@ -7180,6 +7220,12 @@ private final class MockMastodonAPI: MastodonAPI {
     func fetchStatusHistory(id: String) async throws -> [StatusEditHistoryItem] {
         throw MockError.unimplemented
     }
+    func fetchStatusSource(id: String) async throws -> StatusSource {
+        if let fetchStatusSourceHandler {
+            return try await fetchStatusSourceHandler(id)
+        }
+        throw MockError.unimplemented
+    }
     func translateStatus(id: String, targetLanguage: String?) async throws -> StatusTranslationPayload {
         if let translateStatusHandler {
             return try await translateStatusHandler(id, targetLanguage)
@@ -7245,6 +7291,10 @@ private final class MockMastodonAPI: MastodonAPI {
         }
         return []
     }
+    func fetchBookmarkedPage(maxID: String?, limit: Int) async throws -> BookmarkedStatusesPage {
+        BookmarkedStatusesPage(statuses: try await fetchBookmarkedStatuses(maxID: maxID, sinceID: nil, limit: limit), nextMaxID: nil)
+    }
+
     func fetchBookmarkedStatuses(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Status]
     {
@@ -7463,6 +7513,7 @@ private final class MockMastodonAPI: MastodonAPI {
         spoilerText: String?,
         sensitive: Bool?,
         quotingID: String?,
+        quoteApprovalPolicy: MastodonQuoteApprovalPolicy?,
         language: String?,
         scheduledAt: Date?,
         poll: StatusPollPayload?

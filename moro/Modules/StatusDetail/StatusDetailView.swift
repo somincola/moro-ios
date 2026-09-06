@@ -17,6 +17,8 @@ struct StatusDetailView: View {
     @StateObject private var actionSurface = PostActionSurfaceCenter()
     @State private var showingEditHistorySheet = false
     @State private var visibleStatusID: String?
+    @State private var readingState = ThreadReadingState()
+    @State private var highlightedStatusID: String?
 
     let apiClient: MastodonAPI
     @StateObject private var postMenuActionCenter: PostMenuActionCenter
@@ -66,6 +68,26 @@ struct StatusDetailView: View {
                     }
                     .accessibilityLabel(Text(MoroL10n.StatusDetail.editHistory))
                 }
+
+                Menu {
+                    Button {
+                        readingState.setAuthorOnly(!readingState.authorOnly)
+                        jumpToPost(viewModel.focusedStatus.id)
+                    } label: {
+                        Label(MoroL10n.ThreadReading.authorOnly, systemImage: readingState.authorOnly ? "checkmark" : "person")
+                    }
+                    .accessibilityIdentifier("thread.authorOnly")
+                    Button(MoroL10n.ThreadReading.returnToPost) { jumpToPost(viewModel.focusedStatus.id) }
+                        .accessibilityIdentifier("thread.returnToPost")
+                    if !readingState.collapsedIDs.isEmpty {
+                        Button(MoroL10n.ThreadReading.expandAll) { readingState.expandAll() }
+                    }
+                } label: {
+                    Image(systemName: "text.book.closed")
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel(MoroL10n.ThreadReading.options)
+                .accessibilityIdentifier("thread.readingOptions")
 
                 detailHeaderMoreButton
             }
@@ -202,10 +224,12 @@ struct StatusDetailView: View {
         let descendants: [ThreadItem] = focusedIndex.map {
             Array(threadItems.dropFirst($0 + 1))
         } ?? []
+        let rows = ThreadReadingProjection(items: descendants, authorID: viewModel.focusedStatus.account.id, state: readingState).rows
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(ancestors) { item in
                     threadPostCard(item: item)
+                        .background(highlightedStatusID == item.id ? theme.colors.surfaceSubtle : Color.clear)
                         .id(item.status.id)
 
                     MoroDivider()
@@ -215,24 +239,71 @@ struct StatusDetailView: View {
                 .id(viewModel.focusedStatus.id)
 
                 MoroDivider()
+                if readingState.authorOnly {
+                    Text(MoroL10n.ThreadReading.authorOnlyHint)
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textSecondary)
+                        .padding(theme.spacing.m)
+                        .accessibilityIdentifier("thread.authorOnlyHint")
+                }
 
                 if viewModel.threadModel == nil {
                     threadLoadingState
                 } else {
-                    ForEach(Array(descendants.enumerated()), id: \.element.id) { index, item in
-                        let isLast = index == descendants.count - 1
-                        let nextStartsGroup = !isLast && descendants[index + 1].replyDepth == 0
-                        descendantPost(
-                            item,
-                            nextStartsGroup: nextStartsGroup,
-                            isLast: isLast
-                        )
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                        let isLast = index == rows.count - 1
+                        let nextStartsGroup = !isLast && rows[index + 1].item.replyDepth == 0
+                        VStack(alignment: .leading, spacing: 0) {
+                            if let parentID = row.item.status.inReplyToID,
+                                let parent = threadItems.first(where: { $0.id == parentID }),
+                                parentID != viewModel.focusedStatus.id {
+                                Button {
+                                    readingState.setAuthorOnly(false)
+                                    jumpToPost(parentID)
+                                } label: {
+                                    Label(MoroL10n.ThreadReading.parent(parent.status.account.displayName), systemImage: "arrow.turn.up.left")
+                                        .font(theme.typography.caption)
+                                        .foregroundStyle(theme.colors.textSecondary)
+                                        .frame(minHeight: 44)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.horizontal, theme.spacing.l)
+                                .accessibilityIdentifier("thread.parent.\(row.id)")
+                            }
+                            descendantPost(row.item, nextStartsGroup: nextStartsGroup, isLast: isLast)
+                            if row.replyCount > 0 {
+                                Button {
+                                    readingState.toggleBranch(row.id)
+                                } label: {
+                                    Label(readingState.collapsedIDs.contains(row.id)
+                                        ? MoroL10n.ThreadReading.expand(row.replyCount)
+                                        : MoroL10n.ThreadReading.collapse(row.replyCount),
+                                        systemImage: readingState.collapsedIDs.contains(row.id) ? "chevron.down" : "chevron.up")
+                                        .font(theme.typography.caption)
+                                        .foregroundStyle(theme.colors.textSecondary)
+                                        .frame(minHeight: 44)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.horizontal, theme.spacing.l)
+                                .accessibilityIdentifier("thread.branch.\(row.id)")
+                            }
+                        }
+                        .background(highlightedStatusID == row.id ? theme.colors.surfaceSubtle : Color.clear)
+                        .id(row.id)
                     }
                 }
             }
             .scrollTargetLayout()
         }
         .scrollPosition(id: $visibleStatusID, anchor: .top)
+    }
+
+    private func jumpToPost(_ id: String) {
+        readingState.expandAll()
+        highlightedStatusID = id
+        withAnimation { visibleStatusID = id }
     }
 
     @ViewBuilder
@@ -326,7 +397,6 @@ struct StatusDetailView: View {
     ) -> some View {
         threadPostCard(item: item)
             .padding(.leading, item.replyDepth > 0 ? theme.spacing.m : 0)
-            .id(item.id)
 
         if isLast {
             MoroDivider()

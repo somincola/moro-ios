@@ -36,6 +36,56 @@ public enum MoroL10n {
         )
     }
 
+    public enum Topics {
+        public static var title: String { text("topics.title") }
+        public static var follow: String { text("topics.follow") }
+        public static var following: String { text("topics.following") }
+        public static var unfollow: String { text("topics.unfollow") }
+        public static var empty: String { text("topics.empty") }
+        public static var homeHint: String { text("topics.homeHint") }
+        public static var actionFailed: String { text("topics.actionFailed") }
+        public static var loadFailed: String { text("topics.loadFailed") }
+        public static var loadMore: String { text("topics.loadMore") }
+    }
+
+    public enum ComposeReading {
+        public static var expand: String { text("composeReading.expand") }
+        public static var collapse: String { text("composeReading.collapse") }
+        public static var preview: String { text("composeReading.preview") }
+        public static var mediaOrder: String { text("composeReading.mediaOrder") }
+        public static var options: String { text("composeReading.options") }
+        public static func attachment(_ index: Int) -> String { format("composeReading.attachment", index) }
+        public static var uploadPending: String { text("composeReading.uploadPending") }
+        public static var moveUp: String { text("composeReading.moveUp") }
+        public static var moveDown: String { text("composeReading.moveDown") }
+        public static var orderHint: String { text("composeReading.orderHint") }
+    }
+
+    public enum ThreadReading {
+        public static var options: String { text("threadReading.options") }
+        public static var authorOnly: String { text("threadReading.authorOnly") }
+        public static var authorOnlyHint: String { text("threadReading.authorOnlyHint") }
+        public static var returnToPost: String { text("threadReading.returnToPost") }
+        public static var expandAll: String { text("threadReading.expandAll") }
+        public static func parent(_ name: String) -> String { format("threadReading.parent", name) }
+        public static func expand(_ count: Int) -> String { format("threadReading.expand", count) }
+        public static func collapse(_ count: Int) -> String { format("threadReading.collapse", count) }
+    }
+
+    public enum BookmarkReading {
+        public static var all: String { text("bookmarkReading.all") }
+        public static var unread: String { text("bookmarkReading.unread") }
+        public static var read: String { text("bookmarkReading.read") }
+        public static var markRead: String { text("bookmarkReading.markRead") }
+        public static var markUnread: String { text("bookmarkReading.markUnread") }
+        public static var search: String { text("bookmarkReading.search") }
+        public static var scope: String { text("bookmarkReading.scope") }
+        public static var offline: String { text("bookmarkReading.offline") }
+        public static var noMatches: String { text("bookmarkReading.noMatches") }
+        public static var loadMore: String { text("bookmarkReading.loadMore") }
+        public static var actions: String { text("bookmarkReading.actions") }
+    }
+
     public enum Common {
         public static var cancel: String { text("common.cancel") }
         public static var close: String { text("common.close") }
@@ -215,6 +265,8 @@ public enum MoroL10n {
     }
 
     public enum Compose {
+        public static var editSourceLoading: String { text("compose.editSource.loading") }
+        public static var editSourceFailed: String { text("compose.editSource.failed") }
         public static var navigationNewPost: String { text("compose.navigation.newPost") }
         public static var navigationReply: String { text("compose.navigation.reply") }
         public static var navigationQuote: String { text("compose.navigation.quote") }
@@ -1068,6 +1120,7 @@ public enum MoroL10n {
     }
 
     public enum Lists {
+        public static var cachedTimelineHint: String { text("lists.cachedTimelineHint") }
         public static var title: String { text("lists.title") }
         public static var newList: String { text("lists.newList") }
         public static var loadFailed: String { text("lists.loadFailed") }
@@ -1100,6 +1153,21 @@ public enum MoroL10n {
     }
 
     public enum Search {
+        public static var recentTitle: String { text("search.recentTitle") }
+        public static var savedTitle: String { text("search.savedTitle") }
+        public static var entryHint: String { text("search.entryHint") }
+        public static var noRecent: String { text("search.noRecent") }
+        public static var noSaved: String { text("search.noSaved") }
+        public static var manageSaved: String { text("search.manageSaved") }
+        public static var clearRecent: String { text("search.clearRecent") }
+        public static var saveSearch: String { text("search.saveSearch") }
+        public static var searchSaved: String { text("search.searchSaved") }
+        public static var returnDiscovery: String { text("search.returnDiscovery") }
+        public static var renameSearch: String { text("search.renameSearch") }
+        public static var searchName: String { text("search.searchName") }
+        public static var localSearches: String { text("search.localSearches") }
+        public static func searchFor(_ query: String) -> String { format("search.searchFor", query) }
+
         public static var tabAll: String { text("search.tab.all") }
         public static var tabAccounts: String { text("search.tab.accounts") }
         public static var tabStatuses: String { text("search.tab.statuses") }

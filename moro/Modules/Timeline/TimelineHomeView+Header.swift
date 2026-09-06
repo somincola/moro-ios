@@ -80,7 +80,8 @@ extension TimelineHomeView {
             TimelineSwitcher(
                 selectedTimeline: $selectedTimeline,
                 pinnedTimelines: pinnedTimelineTypes,
-                onManageLists: { router.navigate(to: .lists) }
+                onManageLists: { router.navigate(to: .lists) },
+                onManageTopics: { router.navigate(to: .followedTopics) }
             )
 
             Spacer()

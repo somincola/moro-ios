@@ -44,6 +44,10 @@ enum MastodonEndpoint {
     case publicTimeline(local: Bool, maxID: String?, sinceID: String?, minID: String?, limit: Int)
     case hashtagTimeline(tag: String, maxID: String?, sinceID: String?, limit: Int)
     case search(query: String, type: String?, resolve: Bool, limit: Int, offset: Int?)
+    case tag(name: String)
+    case followTag(name: String)
+    case unfollowTag(name: String)
+    case followedTags(maxID: String?, limit: Int)
     case trendsTags(limit: Int?)
     case trendsStatuses(limit: Int?)
     case directory(limit: Int?, offset: Int?, order: String?, local: Bool?)
@@ -54,6 +58,7 @@ enum MastodonEndpoint {
     case status(id: String)
     case statusContext(id: String)
     case statusHistory(id: String)
+    case statusSource(id: String)
     case statusTranslate(id: String, targetLanguage: String?)
     case translationLanguages
     case postStatus
@@ -129,7 +134,7 @@ enum MastodonEndpoint {
             .readConversation, .createFilter, .createFilterKeyword, .blockDomain,
             .oauthTokenClientCredentials, .registerAccount, .createList, .addAccountsToList,
             .authorizeFollowRequest, .rejectFollowRequest, .dismissAnnouncement, .statusTranslate,
-            .createPushSubscription:
+            .createPushSubscription, .followTag, .unfollowTag:
             return "POST"
         case .updateMedia, .updateAccountCredentials:
             return "PATCH"
@@ -210,6 +215,14 @@ enum MastodonEndpoint {
             return "/api/v1/timelines/tag/\(tag)"
         case .search:
             return "/api/v2/search"
+        case .tag(let name):
+            return "/api/v1/tags/\(name)"
+        case .followTag(let name):
+            return "/api/v1/tags/\(name)/follow"
+        case .unfollowTag(let name):
+            return "/api/v1/tags/\(name)/unfollow"
+        case .followedTags:
+            return "/api/v1/followed_tags"
         case .trendsTags:
             return "/api/v1/trends/tags"
         case .trendsStatuses:
@@ -230,6 +243,8 @@ enum MastodonEndpoint {
             return "/api/v1/statuses/\(id)/context"
         case .statusHistory(let id):
             return "/api/v1/statuses/\(id)/history"
+        case .statusSource(let id):
+            return "/api/v1/statuses/\(id)/source"
         case .statusTranslate(let id, _):
             return "/api/v1/statuses/\(id)/translate"
         case .postStatus:
@@ -341,6 +356,11 @@ enum MastodonEndpoint {
                 URLQueryItem(name: "resolve", value: resolve ? "true" : "false"),
                 URLQueryItem(name: "limit", value: "\(limit)"),
                 offset.map { URLQueryItem(name: "offset", value: "\($0)") },
+            ].compactMap { $0 }
+        case .followedTags(let maxID, let limit):
+            return [
+                maxID.map { URLQueryItem(name: "max_id", value: $0) },
+                URLQueryItem(name: "limit", value: "\(limit)"),
             ].compactMap { $0 }
         case .trendsTags(let limit):
             return [

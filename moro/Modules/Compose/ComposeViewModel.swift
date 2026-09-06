@@ -76,6 +76,15 @@ final class ComposeViewModel: ObservableObject {
     @Published var isSchedulingEnabled: Bool = false
     @Published var scheduledAt: Date = ComposeViewModel.defaultScheduledDate()
     @Published var selectedLanguageCode: String = ""
+    @Published private(set) var editSourceState: EditSourceState = .notRequired
+
+    enum EditSourceState {
+        case notRequired, pending, loading, ready, failed
+    }
+
+    var isEditingSourceReady: Bool {
+        editSourceState == .notRequired || editSourceState == .ready
+    }
     
     // Character counting
     @Published var characterCount: Int = 0
@@ -110,9 +119,19 @@ final class ComposeViewModel: ObservableObject {
         case anyone = "public"      // 任何人
         case followers = "followers" // 粉丝
         case none = "none"          // 仅自己（不允许引用）
+
+        // Keep the persisted draft value `none` compatible with older app versions.
+        var apiValue: MastodonQuoteApprovalPolicy {
+            switch self {
+            case .anyone: return .anyone
+            case .followers: return .followers
+            case .none: return .nobody
+            }
+        }
     }
 
     enum PublishBlocker: Equatable {
+        case editSourceUnavailable
         case emptyContent
         case publishing
         case mediaUploading
@@ -164,6 +183,7 @@ final class ComposeViewModel: ObservableObject {
     private(set) var activeDraftID: String?
     private var activeDraftCreatedAt: Date?
     private var activeDraftCategory: ComposeDraftCategory?
+    private var editSource: StatusSource?
 
     init(
         context: ComposeContext,
@@ -214,7 +234,7 @@ final class ComposeViewModel: ObservableObject {
             publishQuotingID = original?.displayStatus.id
         case .edit(let status):
             let displayStatus = status.displayStatus
-            content = HTMLParser.stripHTML(displayStatus.content)
+            editSourceState = .pending
             if let spoilerText = displayStatus.spoilerText, !spoilerText.isEmpty {
                 isContentWarningActive = true
                 contentWarning = spoilerText
@@ -251,6 +271,50 @@ final class ComposeViewModel: ObservableObject {
         $content
             .map { MastodonTextCounter.count($0) }
             .assign(to: &$characterCount)
+    }
+
+    /// Load once per editor. A failed/cancelled request can be retried, while a late
+    /// response must never replace text the user has already changed or restored.
+    func loadEditingSourceIfNeeded() async {
+        guard case .edit(let status) = context,
+              editSource == nil,
+              editSourceState != .loading else { return }
+
+        let displayStatus = status.displayStatus
+        let previousContent = content
+        let previousWarning = contentWarning
+        let previousWarningActive = isContentWarningActive
+        let warningWasUnedited = previousWarning == (displayStatus.spoilerText ?? "")
+            && previousWarningActive == !(displayStatus.spoilerText ?? "").isEmpty
+        editSourceState = .loading
+
+        do {
+            let source = try await apiClient.fetchStatusSource(id: displayStatus.id)
+            try Task.checkCancellation()
+            guard source.id == displayStatus.id else {
+                throw ComposeError.editSourceUnavailable
+            }
+            if activeDraftID == nil, previousContent.isEmpty, content == previousContent {
+                content = source.text
+            }
+            if activeDraftID == nil, warningWasUnedited,
+               contentWarning == previousWarning,
+               isContentWarningActive == previousWarningActive {
+                contentWarning = source.spoilerText
+                isContentWarningActive = !source.spoilerText.isEmpty
+            }
+            editSource = source
+            editSourceState = .ready
+        } catch {
+            editSourceState = Task.isCancelled || error is CancellationError ? .pending : .failed
+        }
+    }
+
+    var effectiveQuoteApprovalPolicy: MastodonQuoteApprovalPolicy {
+        switch visibility {
+        case .followers, .direct, ._other: return .nobody
+        case .public, .unlisted: return quotePolicy.apiValue
+        }
     }
 
     /// Reads the authenticated server's shared v2 metadata; keeps the 500 fallback when
@@ -537,6 +601,12 @@ final class ComposeViewModel: ObservableObject {
         mediaAttachments.first { $0.id == id }
     }
 
+    func moveMedia(from source: IndexSet, to destination: Int) {
+        guard !isPublishing, destination >= 0, destination <= mediaAttachments.count,
+            source.allSatisfy({ mediaAttachments.indices.contains($0) }) else { return }
+        mediaAttachments.move(fromOffsets: source, toOffset: destination)
+    }
+
     @discardableResult
     func removeMedia(id: String) -> Bool {
         guard let index = mediaAttachments.firstIndex(where: { $0.id == id }) else {
@@ -821,6 +891,9 @@ final class ComposeViewModel: ObservableObject {
     // MARK: - Publishing
     
     func publish() async throws -> StatusPublishResult {
+        guard isEditingSourceReady else {
+            throw ComposeError.editSourceUnavailable
+        }
         guard !isPublishing else {
             throw ComposeError.alreadyPublishing
         }
@@ -901,14 +974,16 @@ final class ComposeViewModel: ObservableObject {
 
             let result: StatusPublishResult
             if case .edit(let status) = context {
+                let warningIsUnchanged = contentWarning == editSource?.spoilerText
+                    && isContentWarningActive == !(editSource?.spoilerText ?? "").isEmpty
                 let updatedStatus = try await apiClient.editStatus(
                     id: status.displayStatus.id,
                     text: content,
                     visibility: visibility,
-                    mediaIDs: mediaIDs.isEmpty ? nil : mediaIDs,
+                    mediaIDs: mediaIDs,
                     inReplyToID: publishReplyToID,
-                    spoilerText: isContentWarningActive && !contentWarning.isEmpty ? contentWarning : nil,
-                    sensitive: isSensitive,
+                    spoilerText: isContentWarningActive ? contentWarning : "",
+                    sensitive: warningIsUnchanged ? status.displayStatus.sensitive : (isSensitive ?? false),
                     quotingID: publishQuotingID,
                     language: publishLanguageCode,
                     poll: nil
@@ -923,6 +998,7 @@ final class ComposeViewModel: ObservableObject {
                     spoilerText: isContentWarningActive && !contentWarning.isEmpty ? contentWarning : nil,
                     sensitive: isSensitive,
                     quotingID: publishQuotingID,
+                    quoteApprovalPolicy: effectiveQuoteApprovalPolicy,
                     language: publishLanguageCode,
                     scheduledAt: scheduledPublishDate,
                     poll: pollPayload
@@ -949,6 +1025,9 @@ final class ComposeViewModel: ObservableObject {
     // MARK: - Validation
 
     var publishBlocker: PublishBlocker? {
+        if !isEditingSourceReady {
+            return .editSourceUnavailable
+        }
         if isPublishing {
             return .publishing
         }
@@ -989,6 +1068,8 @@ final class ComposeViewModel: ObservableObject {
 
     var publishDisabledReason: String? {
         switch publishBlocker {
+        case .editSourceUnavailable:
+            return nil // The editor itself presents loading or retry UI.
         case .emptyContent, .publishing, .characterLimitExceeded, .pollNeedsMoreOptions, .none:
             return nil
         case .mediaUploading:
@@ -1027,6 +1108,9 @@ final class ComposeViewModel: ObservableObject {
     }
 
     var draftPersistenceBlocker: String? {
+        if !isEditingSourceReady {
+            return MoroL10n.Compose.editSourceFailed
+        }
         if hasUploadingMedia {
             return MoroL10n.Compose.validationMediaUploading
         }
@@ -1043,6 +1127,7 @@ final class ComposeViewModel: ObservableObject {
     // MARK: - Draft Support
 
     var hasDraftableContent: Bool {
+        guard isEditingSourceReady else { return false }
         let hasTextContent = !draftableTextContent.isEmpty
         let hasPollContent = isPollActive && pollOptions.contains {
             !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1198,6 +1283,7 @@ struct MediaAttachment: Identifiable {
 }
 
 enum ComposeError: LocalizedError {
+    case editSourceUnavailable
     case emptyContent
     case alreadyPublishing
     case mediaUploading
@@ -1209,6 +1295,8 @@ enum ComposeError: LocalizedError {
     
     var errorDescription: String? {
         switch self {
+        case .editSourceUnavailable:
+            return MoroL10n.Compose.editSourceFailed
         case .emptyContent:
             return MoroL10n.Compose.errorEmptyContent
         case .alreadyPublishing:

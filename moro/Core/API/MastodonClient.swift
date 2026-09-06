@@ -55,6 +55,7 @@ struct MastodonClient: MastodonAPI {
         let spoilerText: String?
         let sensitive: Bool?
         let quoteID: String?
+        let quoteApprovalPolicy: MastodonQuoteApprovalPolicy?
         let language: String?
         let scheduledAt: String?
         let poll: StatusPollPayload?
@@ -66,10 +67,27 @@ struct MastodonClient: MastodonAPI {
             case inReplyToID = "in_reply_to_id"
             case spoilerText = "spoiler_text"
             case sensitive
-            case quoteID = "quote_id"
+            case quoteID = "quoted_status_id"
+            case quoteApprovalPolicy = "quote_approval_policy"
             case language
             case scheduledAt = "scheduled_at"
             case poll
+        }
+    }
+
+    /// Editing must not re-send creation-only fields or reset an existing quote.
+    private struct StatusEditPayload: Encodable {
+        let status: String
+        let mediaIDs: [String]?
+        let spoilerText: String?
+        let sensitive: Bool?
+        let language: String?
+        let poll: StatusPollPayload?
+
+        enum CodingKeys: String, CodingKey {
+            case status, sensitive, language, poll
+            case mediaIDs = "media_ids"
+            case spoilerText = "spoiler_text"
         }
     }
 
@@ -515,6 +533,21 @@ struct MastodonClient: MastodonAPI {
         return try await perform(request)
     }
 
+    func fetchTag(name: String) async throws -> SearchTag {
+        try await perform(authorizedRequest(for: .tag(name: name)))
+    }
+
+    func setTagFollowed(name: String, followed: Bool) async throws -> SearchTag {
+        let endpoint: MastodonEndpoint = followed ? .followTag(name: name) : .unfollowTag(name: name)
+        return try await perform(authorizedRequest(for: endpoint))
+    }
+
+    func fetchFollowedTags(maxID: String?, limit: Int = 100) async throws -> FollowedTagsPage {
+        let request = try authorizedRequest(for: .followedTags(maxID: maxID, limit: limit))
+        let (tags, response): ([SearchTag], HTTPURLResponse) = try await performWithResponse(request)
+        return FollowedTagsPage(tags: tags, nextMaxID: MastodonLinkPagination.nextMaxID(in: response))
+    }
+
     func fetchTrendingTags(limit: Int? = 10) async throws -> [SearchTag] {
         let endpoint = MastodonEndpoint.trendsTags(limit: limit)
         let request = try authorizedRequest(for: endpoint)
@@ -585,6 +618,11 @@ struct MastodonClient: MastodonAPI {
         return try await perform(request)
     }
 
+    func fetchStatusSource(id: String) async throws -> StatusSource {
+        let request = try authorizedRequest(for: .statusSource(id: id))
+        return try await perform(request)
+    }
+
     func translateStatus(id: String, targetLanguage: String?) async throws -> StatusTranslationPayload
     {
         let endpoint = MastodonEndpoint.statusTranslate(id: id, targetLanguage: targetLanguage)
@@ -644,6 +682,7 @@ struct MastodonClient: MastodonAPI {
         spoilerText: String?,
         sensitive: Bool?,
         quotingID: String?,
+        quoteApprovalPolicy: MastodonQuoteApprovalPolicy? = nil,
         language: String?,
         scheduledAt: Date?,
         poll: StatusPollPayload?
@@ -656,6 +695,7 @@ struct MastodonClient: MastodonAPI {
             spoilerText: spoilerText,
             sensitive: sensitive,
             quoteID: quotingID,
+            quoteApprovalPolicy: quoteApprovalPolicy,
             language: language,
             scheduledAt: scheduledAt?.ISO8601Format(),
             poll: poll
@@ -682,16 +722,12 @@ struct MastodonClient: MastodonAPI {
         language: String?,
         poll: StatusPollPayload?
     ) async throws -> Status {
-        let payload = StatusPayload(
+        let payload = StatusEditPayload(
             status: text,
-            visibility: visibility,
             mediaIDs: mediaIDs,
-            inReplyToID: inReplyToID,
             spoilerText: spoilerText,
             sensitive: sensitive,
-            quoteID: quotingID,
             language: language,
-            scheduledAt: nil,
             poll: poll
         )
         let endpoint = MastodonEndpoint.editStatus(id: id)
@@ -787,6 +823,12 @@ struct MastodonClient: MastodonAPI {
         let endpoint = MastodonEndpoint.conversations(maxID: maxID, sinceID: sinceID, limit: limit)
         let request = try authorizedRequest(for: endpoint)
         return try await perform(request)
+    }
+
+    func fetchBookmarkedPage(maxID: String?, limit: Int = 20) async throws -> BookmarkedStatusesPage {
+        let request = try authorizedRequest(for: .bookmarks(maxID: maxID, sinceID: nil, limit: limit))
+        let (statuses, response): ([Status], HTTPURLResponse) = try await performWithResponse(request)
+        return BookmarkedStatusesPage(statuses: statuses, nextMaxID: MastodonLinkPagination.nextMaxID(in: response))
     }
 
     func fetchBookmarkedStatuses(maxID: String? = nil, sinceID: String? = nil, limit: Int = 20)
@@ -1312,6 +1354,11 @@ struct MastodonClient: MastodonAPI {
     }
 
     private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
+        let (value, _): (T, HTTPURLResponse) = try await performWithResponse(request)
+        return value
+    }
+
+    private func performWithResponse<T: Decodable>(_ request: URLRequest) async throws -> (T, HTTPURLResponse) {
         // Log the request
         logger.logRequest(request)
         let startTime = Date()
@@ -1382,7 +1429,7 @@ struct MastodonClient: MastodonAPI {
                         }
                     }
                 #endif
-                return decoded
+                return (decoded, httpResponse)
             } catch let decodingError as DecodingError {
                 // Log detailed decoding error
                 #if DEBUG

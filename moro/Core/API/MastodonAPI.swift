@@ -39,6 +39,12 @@ enum MastodonVisibility: RawRepresentable, Codable, Hashable {
     }
 }
 
+enum MastodonQuoteApprovalPolicy: String, Encodable {
+    case anyone = "public"
+    case followers
+    case nobody
+}
+
 enum MastodonSearchType: String, Codable {
     case accounts
     case statuses
@@ -134,6 +140,9 @@ protocol MastodonAPI {
         limit: Int,
         offset: Int?
     ) async throws -> SearchResults
+    func fetchTag(name: String) async throws -> SearchTag
+    func setTagFollowed(name: String, followed: Bool) async throws -> SearchTag
+    func fetchFollowedTags(maxID: String?, limit: Int) async throws -> FollowedTagsPage
     func fetchTrendingTags(limit: Int?) async throws -> [SearchTag]
     func fetchTrendingStatuses(limit: Int?) async throws -> [Status]
     func fetchDirectoryAccounts(
@@ -149,6 +158,7 @@ protocol MastodonAPI {
     func fetchStatusDetail(id: String) async throws -> Status
     func fetchStatusContext(id: String) async throws -> StatusContext
     func fetchStatusHistory(id: String) async throws -> [StatusEditHistoryItem]
+    func fetchStatusSource(id: String) async throws -> StatusSource
     func translateStatus(id: String, targetLanguage: String?) async throws -> StatusTranslationPayload
     /// Source → supported-target map from the instance translation backend.
     func fetchTranslationLanguages() async throws -> [String: [String]]
@@ -160,6 +170,7 @@ protocol MastodonAPI {
     func fetchUnreadNotificationCount() async throws -> Int
     func fetchConversations(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Conversation]
+    func fetchBookmarkedPage(maxID: String?, limit: Int) async throws -> BookmarkedStatusesPage
     func fetchBookmarkedStatuses(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Status]
     func fetchFavouritedStatuses(maxID: String?, sinceID: String?, limit: Int) async throws
@@ -271,6 +282,7 @@ protocol MastodonAPI {
         spoilerText: String?,
         sensitive: Bool?,
         quotingID: String?,
+        quoteApprovalPolicy: MastodonQuoteApprovalPolicy?,
         language: String?,
         scheduledAt: Date?,
         poll: StatusPollPayload?
@@ -398,7 +410,27 @@ struct SearchTag: Codable, Hashable, Identifiable {
     let url: URL
     let history: [SearchTagHistory]?
 
+    let following: Bool?
+
+    init(name: String, url: URL, history: [SearchTagHistory]?, following: Bool? = nil) {
+        self.name = name
+        self.url = url
+        self.history = history
+        self.following = following
+    }
+
     var id: String { name.lowercased() }
+}
+
+struct BookmarkedStatusesPage {
+    let statuses: [Status]
+    let nextMaxID: String?
+}
+
+struct FollowedTagsPage {
+    let tags: [SearchTag]
+    /// Relationship cursor from the response Link header, never the tag id.
+    let nextMaxID: String?
 }
 
 struct SearchTagHistory: Codable, Hashable {

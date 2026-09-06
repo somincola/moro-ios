@@ -30,7 +30,9 @@ enum Route: Hashable {
     case hashtag(String)
 
     /// Navigate to search/discovery
-    case search(query: String?)
+    case search(query: String?, scope: Int = 1)
+
+    case savedSearches
 
     /// Resolve a handle-like acct string to a real account profile.
     case accountLookup(String)
@@ -77,6 +79,8 @@ enum Route: Hashable {
     /// Navigate to lists management page
     case lists
 
+    case followedTopics
+
     /// Navigate to scheduled statuses list
     case scheduledStatuses
 
@@ -96,9 +100,12 @@ enum Route: Hashable {
         case .hashtag(let tag):
             hasher.combine("hashtag")
             hasher.combine(tag)
-        case .search(let query):
+        case .search(let query, let scope):
             hasher.combine("search")
             hasher.combine(query)
+            hasher.combine(scope)
+        case .savedSearches:
+            hasher.combine("savedSearches")
         case .accountLookup(let acct):
             hasher.combine("accountLookup")
             hasher.combine(acct)
@@ -134,6 +141,8 @@ enum Route: Hashable {
             hasher.combine("bookmarks")
         case .favourites:
             hasher.combine("favourites")
+        case .followedTopics:
+            hasher.combine("followedTopics")
         case .lists:
             hasher.combine("lists")
         case .scheduledStatuses:
@@ -151,8 +160,10 @@ enum Route: Hashable {
             return l.id == r.id
         case (.hashtag(let l), .hashtag(let r)):
             return l == r
-        case (.search(let l), .search(let r)):
-            return l == r
+        case (.search(let l, let ls), .search(let r, let rs)):
+            return l == r && ls == rs
+        case (.savedSearches, .savedSearches):
+            return true
         case (.accountLookup(let l), .accountLookup(let r)):
             return l == r
         case (.announcements, .announcements):
@@ -176,6 +187,8 @@ enum Route: Hashable {
         case (.bookmarks, .bookmarks):
             return true
         case (.favourites, .favourites):
+            return true
+        case (.followedTopics, .followedTopics):
             return true
         case (.lists, .lists):
             return true

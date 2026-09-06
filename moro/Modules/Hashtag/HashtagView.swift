@@ -7,11 +7,21 @@
 
 import SwiftUI
 
+struct HashtagRouteView: View {
+    @Environment(\.activeAccountKey) private var accountKey
+    let hashtag: String
+    let apiClient: MastodonAPI
+    var body: some View {
+        HashtagView(hashtag: hashtag, apiClient: apiClient).id(accountKey)
+    }
+}
+
 struct HashtagView: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.cacheManager) private var cacheManager
     @Environment(\.appRouter) private var router
     @EnvironmentObject private var appState: AppState
+    @StateObject private var topicFollow: TopicFollowModel
     @StateObject private var viewModel: HashtagViewModel
     @StateObject private var interactionService: PostInteractionService
     @StateObject private var actionSurface = PostActionSurfaceCenter()
@@ -23,6 +33,7 @@ struct HashtagView: View {
     init(hashtag: String, apiClient: MastodonAPI) {
         self.hashtag = hashtag
         self.apiClient = apiClient
+        _topicFollow = StateObject(wrappedValue: TopicFollowModel(apiClient: apiClient, name: hashtag))
         _postMenuActionCenter = StateObject(
             wrappedValue: PostMenuActionCenter(apiClient: apiClient))
         _interactionService = StateObject(
@@ -73,6 +84,47 @@ struct HashtagView: View {
                 }
             }
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if topicFollow.error != nil {
+                HStack {
+                    Text(MoroL10n.Topics.actionFailed)
+                        .font(theme.typography.caption)
+                    Spacer()
+                    Button(MoroL10n.Compose.retry) {
+                        Task {
+                            if topicFollow.following == nil { await topicFollow.load() }
+                            else { await topicFollow.toggle() }
+                        }
+                    }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .disabled(topicFollow.isBusy)
+                    .accessibilityIdentifier("topic.retry")
+                }
+                .padding(.horizontal, theme.spacing.m)
+                .background(theme.colors.surfaceBase)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task {
+                        if topicFollow.following == nil { await topicFollow.load() }
+                        else { await topicFollow.toggle() }
+                    }
+                } label: {
+                    if topicFollow.isBusy {
+                        ProgressView().frame(minWidth: 44, minHeight: 44)
+                    } else {
+                        Text(topicFollow.following == true ? MoroL10n.Topics.following : MoroL10n.Topics.follow)
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                }
+                .disabled(topicFollow.isBusy || topicFollow.following == nil)
+                .accessibilityIdentifier("topic.follow")
+                .accessibilityLabel(topicFollow.following == true ? MoroL10n.Topics.unfollow : MoroL10n.Topics.follow)
+            }
+        }
+        .task { await topicFollow.load() }
         .navigationTitle("#\(hashtag)")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {

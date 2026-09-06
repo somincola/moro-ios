@@ -24,37 +24,76 @@ enum SearchLayoutMetrics {
 }
 
 struct SearchView: View {
-    @Environment(\.appRouter) private var router
-    @Environment(\.moroTheme) private var theme
-    @Environment(\.moroSceneDescriptor) private var sceneDescriptor
-    private let apiClient: MastodonAPI
-    private let initialQuery: String?
+    @Environment(\.activeAccountKey) private var accountKey
+    let apiClient: MastodonAPI
+    var initialQuery: String? = nil
+    var initialScope: SearchViewModel.Scope = .accounts
 
-    init(apiClient: MastodonAPI, initialQuery: String? = nil) {
+    var body: some View {
+        SearchContentView(apiClient: apiClient, initialQuery: initialQuery, initialScope: initialScope)
+            .id(accountKey)
+    }
+}
+
+/// Keep the controller and all post action services in the same account lifetime.
+struct SearchContentView: View {
+    @Environment(\.appRouter) var router
+    @Environment(\.activeAccountKey) var accountKey
+    @Environment(\.moroTheme) var theme
+    @Environment(\.cacheManager) var cacheManager
+    @Environment(\.openURL) var openURL
+    @Environment(\.moroMediaPrefs) var mediaPreferences
+    @Environment(\.moroSceneDescriptor) var sceneDescriptor
+    @EnvironmentObject var appState: AppState
+    @StateObject var interactionService: PostInteractionService
+    @StateObject var actionSurface = PostActionSurfaceCenter()
+    @StateObject var postMenuActionCenter: PostMenuActionCenter
+    let apiClient: MastodonAPI
+    let initialQuery: String?
+    let initialScope: SearchViewModel.Scope
+
+    init(apiClient: MastodonAPI, initialQuery: String?, initialScope: SearchViewModel.Scope) {
         self.apiClient = apiClient
         self.initialQuery = initialQuery
+        self.initialScope = initialScope
+        _interactionService = StateObject(wrappedValue: PostInteractionService(apiClient: apiClient))
+        _postMenuActionCenter = StateObject(wrappedValue: PostMenuActionCenter(apiClient: apiClient))
     }
 
     var body: some View {
-        SearchCoreControllerHost(
-            apiClient: apiClient,
-            initialQuery: initialQuery,
-            theme: theme,
-            onOpenProfile: { account in
-                router.navigate(to: .userProfile(account))
-            },
-            onOpenStatus: { status in
-                router.navigate(to: .statusDetail(status.displayStatus))
-            },
-            onOpenHashtag: { tag in
-                router.navigate(to: .hashtag(tag))
-            }
-        )
-        .background(sceneCanvasColor)
+        searchWithPostActionSurfaces
     }
 
-    private var sceneCanvasColor: Color {
-        (sceneDescriptor?.canvas ?? .content).backgroundColor(in: theme)
+    var searchContent: some View {
+        SearchCoreControllerHost(
+            apiClient: apiClient, initialQuery: initialQuery, initialScope: initialScope,
+            accountKey: accountKey, theme: theme,
+            makeStatusView: { status, onPollVote in
+                AnyView(
+                    VStack(spacing: 0) {
+                        TimelinePostRow(
+                            status: status, threadContext: .none,
+                            translationAPIClient: apiClient,
+                            accountCache: cacheManager.accountCache,
+                            actions: handlers.buildPostActions(for: status, onPollVote: onPollVote)
+                        )
+                        MoroDivider()
+                    }
+                    .id(status.id)
+                    .environment(\.appRouter, router)
+                    .environment(\.openURL, openURL)
+                    .environment(\.moroMediaPrefs, mediaPreferences)
+                    .environment(\.activeAccountKey, accountKey)
+                    .environment(\.colorScheme, theme.colorScheme)
+                    .environment(\.dynamicTypeSize, theme.dynamicTypeSize)
+                    .moroTheme(theme)
+                )
+            },
+            onOpenProfile: { router.navigate(to: .userProfile($0)) },
+            onOpenStatus: { router.navigate(to: .statusDetail($0.displayStatus)) },
+            onOpenHashtag: { router.navigate(to: .hashtag($0)) }
+        )
+        .background((sceneDescriptor?.canvas ?? .content).backgroundColor(in: theme))
     }
 }
 
@@ -62,29 +101,38 @@ struct SearchView: View {
 private struct SearchCoreControllerHost: UIViewControllerRepresentable {
     let apiClient: MastodonAPI
     let initialQuery: String?
+    let initialScope: SearchViewModel.Scope
+    let accountKey: String
     let theme: MoroTheme
+    let makeStatusView: (Status, @escaping SearchCoreViewController.PollVoteHandler) -> AnyView
     let onOpenProfile: (Account) -> Void
     let onOpenStatus: (Status) -> Void
     let onOpenHashtag: (String) -> Void
 
     func makeUIViewController(context: Context) -> SearchCoreViewController {
         let controller = SearchCoreViewController(
-            apiClient: apiClient,
-            initialQuery: initialQuery,
-            theme: theme
+            apiClient: apiClient, initialQuery: initialQuery, theme: theme,
+            accountKey: accountKey, initialScope: initialScope
         )
-        controller.onOpenProfile = onOpenProfile
-        controller.onOpenStatus = onOpenStatus
-        controller.onOpenHashtag = onOpenHashtag
+        updateCallbacks(controller)
         return controller
     }
 
-    func updateUIViewController(_ uiViewController: SearchCoreViewController, context: Context) {
-        uiViewController.onOpenProfile = onOpenProfile
-        uiViewController.onOpenStatus = onOpenStatus
-        uiViewController.onOpenHashtag = onOpenHashtag
-        uiViewController.apply(theme: theme)
+    func updateUIViewController(_ controller: SearchCoreViewController, context: Context) {
+        updateCallbacks(controller)
+        controller.apply(theme: theme)
+    }
+
+    private func updateCallbacks(_ controller: SearchCoreViewController) {
+        controller.makeStatusView = makeStatusView
+        controller.onOpenProfile = onOpenProfile
+        controller.onOpenStatus = onOpenStatus
+        controller.onOpenHashtag = onOpenHashtag
+    }
+
+    static func dismantleUIViewController(_ controller: SearchCoreViewController, coordinator: ()) {
+        controller.cancelInFlightSearchRequests()
+        controller.cancelDiscoveryRequests()
     }
 }
-
 #endif

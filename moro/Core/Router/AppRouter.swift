@@ -89,15 +89,21 @@ struct AppRouteViewFactory {
 
         case .hashtag(let tag):
             return AnyView(
-                HashtagView(hashtag: tag, apiClient: apiClient)
+                HashtagRouteView(hashtag: tag, apiClient: apiClient)
                     .toolbar(.hidden, for: .tabBar)
             )
 
-        case .search(let query):
+        case .search(let query, let scope):
             return AnyView(
-                SearchView(apiClient: apiClient, initialQuery: query)
+                SearchView(apiClient: apiClient, initialQuery: query, initialScope: (SearchViewModel.Scope(rawValue: scope) ?? .accounts).exploreScope)
                     .toolbar(.hidden, for: .tabBar)
             )
+
+        case .followedTopics:
+            return AnyView(FollowedTopicsRouteView(apiClient: apiClient).toolbar(.hidden, for: .tabBar))
+
+        case .savedSearches:
+            return AnyView(SavedSearchesRouteView().toolbar(.hidden, for: .tabBar))
 
         case .accountLookup(let acct):
             return AnyView(
@@ -180,7 +186,7 @@ struct AppRouteViewFactory {
 
         case .bookmarks:
             return AnyView(
-                BookmarksView(apiClient: apiClient)
+                BookmarksRouteView(apiClient: apiClient)
                     .toolbar(.hidden, for: .tabBar)
             )
 

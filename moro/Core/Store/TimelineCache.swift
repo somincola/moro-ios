@@ -1,429 +1,222 @@
-//
-//  TimelineCache.swift
-//  moro
-//
-//  Actor-based timeline cache with disk persistence for offline support.
-//
-
+import CryptoKit
 import Foundation
 
-/// Timeline filter identifier
-enum TimelineFilter: String, Codable, Hashable, Sendable {
-    case home = "Home"
-    case local = "Local"
-    case federated = "Federated"
-    case hashtag = "Hashtag"
+/// Source identity is independent of display titles. List IDs never become file paths.
+enum TimelineFilter: Codable, Hashable, Sendable {
+    case home, local, federated, hashtag
+    case list(id: String)
 
-    nonisolated var cacheKey: String { rawValue }
+    nonisolated var cacheKey: String {
+        switch self {
+        case .home: "Home"
+        case .local: "Local"
+        case .federated: "Federated"
+        case .hashtag: "Hashtag"
+        case .list(let id):
+            "List-" + SHA256.hash(data: Data(id.utf8)).map { String(format: "%02x", $0) }.joined()
+        }
+    }
 }
 
-/// Actor for thread-safe timeline caching with persistence
+/// Bounded account/source caches; disk writes and mutations share one actor.
 actor TimelineCache {
-
-    // MARK: - Types
-
-    /// Cached timeline item wrapper
     private struct CachedItem: Codable {
         let status: Status
         let cachedAt: Date
     }
-
-    /// Cache metadata
     private struct CacheMetadata: Codable {
         var lastUpdated: Date
         var itemCount: Int
         var lastSeenStatusIds: [String]
     }
 
-    // MARK: - Configuration
-
-    /// Maximum number of statuses to cache per timeline
     private let maxCachedStatuses: Int
-
-    /// Cache expiration time (24 hours)
     private let cacheExpirationInterval: TimeInterval = 24 * 60 * 60
-
-    /// Base directory for cache files
     private let cacheDirectory: URL
-
-    // MARK: - In-Memory State
-
-    /// In-memory cache for quick access
     private var memoryCache: [String: [CachedItem]] = [:]
-
-    /// Metadata for each cache
     private var metadata: [String: CacheMetadata] = [:]
-
-    /// Dirty flags for pending writes
     private var dirtyKeys: Set<String> = []
+    private var dirtyMetadataKeys: Set<String> = []
+    private var persistenceTask: Task<Void, Never>?
 
-    // MARK: - Initialization
-
-    init(maxCachedStatuses: Int = 800) {
-        self.maxCachedStatuses = maxCachedStatuses
-
-        // Use app's cache directory
-        let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        self.cacheDirectory = cacheDir.appendingPathComponent("TimelineCache", isDirectory: true)
-
-        // Create directory if needed
-        try? FileManager.default.createDirectory(
-            at: cacheDirectory, withIntermediateDirectories: true)
+    init(maxCachedStatuses: Int = 800, directory: URL? = nil) {
+        self.maxCachedStatuses = max(1, maxCachedStatuses)
+        cacheDirectory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("TimelineCache", isDirectory: true)
+        try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
     }
 
-    // MARK: - Public API
-
-    /// Cache statuses for a timeline
     func set(statuses: [Status], for client: String, filter: TimelineFilter) {
-        let key = cacheKey(client: client, filter: filter)
-        let now = Date()
-
-        // Limit to max cached statuses
-        let limitedStatuses = Array(statuses.prefix(maxCachedStatuses))
-        let items = limitedStatuses.map { CachedItem(status: $0, cachedAt: now) }
-
-        memoryCache[key] = items
-        metadata[key] = CacheMetadata(
-            lastUpdated: now,
-            itemCount: items.count,
-            lastSeenStatusIds: []
-        )
-        dirtyKeys.insert(key)
-
-        // Persist to disk asynchronously
-        Task.detached(priority: .background) { [weak self] in
-            await self?.persistCache(key: key)
-        }
+        assign(statuses, key: cacheKey(client: client, filter: filter))
     }
 
-    /// Get cached statuses for a timeline
     func getStatuses(for client: String, filter: TimelineFilter) async -> [Status]? {
-        let key = cacheKey(client: client, filter: filter)
-
-        // Try memory cache first
-        if let items = memoryCache[key] {
-            // Check expiration
-            if let firstItem = items.first,
-                Date().timeIntervalSince(firstItem.cachedAt) < cacheExpirationInterval
-            {
-                return items.map { $0.status }
-            }
-        }
-
-        // Try loading from disk
-        if let items = await loadFromDisk(key: key) {
-            memoryCache[key] = items
-            return items.map { $0.status }
-        }
-
-        return nil
+        items(for: cacheKey(client: client, filter: filter))?.map(\.status)
     }
 
-    /// Prepend new statuses to cache (for refresh)
     func prepend(statuses: [Status], for client: String, filter: TimelineFilter) {
         let key = cacheKey(client: client, filter: filter)
-        let now = Date()
-
-        let newItems = statuses.map { CachedItem(status: $0, cachedAt: now) }
-        var items = memoryCache[key] ?? []
-
-        // Remove duplicates by ID
-        let newIds = Set(statuses.map { $0.id })
-        items.removeAll { newIds.contains($0.status.id) }
-
-        // Prepend and limit
-        items = newItems + items
-        items = Array(items.prefix(maxCachedStatuses))
-
-        memoryCache[key] = items
-        metadata[key]?.lastUpdated = now
-        metadata[key]?.itemCount = items.count
-        dirtyKeys.insert(key)
-
-        Task.detached(priority: .background) { [weak self] in
-            await self?.persistCache(key: key)
-        }
+        assign(statuses + (items(for: key)?.map(\.status) ?? []), key: key)
     }
 
-    /// Append statuses to cache (for pagination)
     func append(statuses: [Status], for client: String, filter: TimelineFilter) {
         let key = cacheKey(client: client, filter: filter)
-        let now = Date()
-
-        let newItems = statuses.map { CachedItem(status: $0, cachedAt: now) }
-        var items = memoryCache[key] ?? []
-
-        // Remove duplicates by ID
-        let existingIds = Set(items.map { $0.status.id })
-        let uniqueNewItems = newItems.filter { !existingIds.contains($0.status.id) }
-
-        items.append(contentsOf: uniqueNewItems)
-        items = Array(items.prefix(maxCachedStatuses))
-
-        memoryCache[key] = items
-        dirtyKeys.insert(key)
-
-        Task.detached(priority: .background) { [weak self] in
-            await self?.persistCache(key: key)
-        }
+        assign((items(for: key)?.map(\.status) ?? []) + statuses, key: key)
     }
 
-    /// Update a single status in cache
     func updateStatus(_ status: Status, for client: String, filter: TimelineFilter) {
         let key = cacheKey(client: client, filter: filter)
-
-        guard var items = memoryCache[key] else { return }
-
-        if let index = items.firstIndex(where: { $0.status.id == status.id }) {
-            items[index] = CachedItem(status: status, cachedAt: Date())
-            memoryCache[key] = items
-            dirtyKeys.insert(key)
-
-            Task.detached(priority: .background) { [weak self] in
-                await self?.persistCache(key: key)
-            }
-        }
+        guard let existing = items(for: key), existing.contains(where: { $0.status.id == status.id }) else { return }
+        assign(existing.map { $0.status.id == status.id ? status : $0.status }, key: key)
     }
 
-    /// Remove a status from cache
     func removeStatus(id: String, for client: String, filter: TimelineFilter) {
         let key = cacheKey(client: client, filter: filter)
+        guard let existing = items(for: key) else { return }
+        assign(existing.map(\.status).filter { $0.id != id }, key: key)
+    }
 
-        guard var items = memoryCache[key] else { return }
+    func clearCache(for client: String, filter: TimelineFilter) {
+        clear(key: cacheKey(client: client, filter: filter))
+    }
 
-        items.removeAll { $0.status.id == id }
-        memoryCache[key] = items
-        metadata[key]?.itemCount = items.count
-        dirtyKeys.insert(key)
-
-        Task.detached(priority: .background) { [weak self] in
-            await self?.persistCache(key: key)
+    func clearCache(for client: String) {
+        let prefix = "\(client)-"
+        let keys = Set(memoryCache.keys).union(metadata.keys).union(dirtyKeys).union(dirtyMetadataKeys)
+        for key in keys where key.hasPrefix(prefix) { clear(key: key) }
+        // Files are stored flat, including caches that have not been read this session.
+        let files = (try? FileManager.default.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil)) ?? []
+        for file in files where file.lastPathComponent.hasPrefix(prefix) {
+            try? FileManager.default.removeItem(at: file)
         }
     }
 
-    /// Clear cache for a specific timeline
-    func clearCache(for client: String, filter: TimelineFilter) {
-        let key = cacheKey(client: client, filter: filter)
-
-        memoryCache[key] = nil
-        metadata[key] = nil
-        dirtyKeys.remove(key)
-
-        // Remove from disk
-        let fileURL = cacheFileURL(for: key)
-        try? FileManager.default.removeItem(at: fileURL)
-    }
-
-    /// Clear all caches for a client
-    func clearCache(for client: String) {
-        let prefix = "\(client)-"
-
-        memoryCache = memoryCache.filter { !$0.key.hasPrefix(prefix) }
-        metadata = metadata.filter { !$0.key.hasPrefix(prefix) }
-        dirtyKeys = dirtyKeys.filter { !$0.hasPrefix(prefix) }
-
-        // Remove client directory
-        let clientDir = cacheDirectory.appendingPathComponent(client)
-        try? FileManager.default.removeItem(at: clientDir)
-    }
-
-    /// Clear all caches
     func clearAllCaches() {
         memoryCache.removeAll()
         metadata.removeAll()
         dirtyKeys.removeAll()
-
+        dirtyMetadataKeys.removeAll()
         try? FileManager.default.removeItem(at: cacheDirectory)
-        try? FileManager.default.createDirectory(
-            at: cacheDirectory, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
     }
 
-    // MARK: - Marker Support (Last Seen Status)
+    /// Memory pressure must not discard the offline copy on disk.
+    func releaseMemory() {
+        flushPendingWrites()
+        memoryCache = memoryCache.filter { dirtyKeys.contains($0.key) }
+        metadata = metadata.filter { dirtyMetadataKeys.contains($0.key) }
+    }
 
-    /// Save last seen status IDs for a timeline
-    func setLastSeenStatuses(
-        _ statusIds: [String], for client: String, filter: TimelineFilter
-    ) {
+    func setLastSeenStatuses(_ statusIds: [String], for client: String, filter: TimelineFilter) {
         let key = cacheKey(client: client, filter: filter)
-
-        if metadata[key] != nil {
-            metadata[key]?.lastSeenStatusIds = statusIds
-        } else {
-            metadata[key] = CacheMetadata(
-                lastUpdated: Date(),
-                itemCount: 0,
-                lastSeenStatusIds: statusIds
-            )
-        }
-
-        // Persist metadata
-        Task.detached(priority: .background) { [weak self] in
-            await self?.persistMetadata(key: key)
-        }
+        var meta = metadataForKey(key) ?? CacheMetadata(lastUpdated: Date(), itemCount: 0, lastSeenStatusIds: [])
+        meta.lastSeenStatusIds = statusIds
+        metadata[key] = meta
+        dirtyMetadataKeys.insert(key)
+        schedulePersistence()
     }
 
-    /// Get last seen status IDs for a timeline
     func getLastSeenStatuses(for client: String, filter: TimelineFilter) -> [String]? {
-        let key = cacheKey(client: client, filter: filter)
-        return metadata[key]?.lastSeenStatusIds
+        metadataForKey(cacheKey(client: client, filter: filter))?.lastSeenStatusIds
     }
 
-    // MARK: - Statistics
-
-    /// Get cached post count for a client
     func cachedPostsCount(for client: String) -> Int {
-        let prefix = "\(client)-"
-        return
-            memoryCache
-            .filter { $0.key.hasPrefix(prefix) }
-            .reduce(0) { $0 + $1.value.count }
+        memoryCache.filter { $0.key.hasPrefix("\(client)-") }.reduce(0) { $0 + $1.value.count }
     }
 
-    /// Get cache statistics
     func stats() -> (timelines: Int, totalStatuses: Int) {
-        let timelines = memoryCache.count
-        let statuses = memoryCache.values.reduce(0) { $0 + $1.count }
-        return (timelines, statuses)
+        (memoryCache.count, memoryCache.values.reduce(0) { $0 + $1.count })
     }
 
-    // MARK: - Private Helpers
-
-    private func cacheKey(client: String, filter: TimelineFilter) -> String {
-        "\(client)-\(filter.cacheKey)"
+    func set(statuses: [Status], for client: String, hashtag: String) {
+        assign(statuses, key: "\(client)-Hashtag-\(hashtag.lowercased())")
     }
 
-    private func cacheFileURL(for key: String) -> URL {
-        cacheDirectory.appendingPathComponent("\(key).cache")
+    func getStatuses(for client: String, hashtag: String) async -> [Status]? {
+        items(for: "\(client)-Hashtag-\(hashtag.lowercased())")?.map(\.status)
     }
 
-    private func metadataFileURL(for key: String) -> URL {
-        cacheDirectory.appendingPathComponent("\(key).meta")
-    }
-
-    private func persistCache(key: String) {
-        guard dirtyKeys.contains(key),
-            let items = memoryCache[key]
-        else { return }
-
-        dirtyKeys.remove(key)
-
-        let fileURL = cacheFileURL(for: key)
-
-        do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(items)
-            try data.write(to: fileURL)
-        } catch {
-            // Ignore persistence errors to avoid affecting timeline rendering.
+    /// Also provides an explicit durability boundary for backgrounding and tests.
+    func flushPendingWrites() {
+        for key in dirtyKeys {
+            guard let items = memoryCache[key] else { continue }
+            do {
+                let encoder = JSONEncoder()
+                encoder.dateEncodingStrategy = .iso8601
+                try encoder.encode(items).write(to: fileURL(key, extension: "cache"), options: .atomic)
+                dirtyKeys.remove(key)
+            } catch { /* Retain dirty state so the next flush can retry. */ }
+        }
+        for key in dirtyMetadataKeys {
+            guard let meta = metadata[key] else { continue }
+            do {
+                try JSONEncoder().encode(meta).write(to: fileURL(key, extension: "meta"), options: .atomic)
+                dirtyMetadataKeys.remove(key)
+            } catch { /* Metadata has the same retry boundary as cached bodies. */ }
         }
     }
 
-    private func persistMetadata(key: String) {
-        guard let meta = metadata[key] else { return }
-
-        let fileURL = metadataFileURL(for: key)
-
-        do {
-            let encoder = JSONEncoder()
-            let data = try encoder.encode(meta)
-            try data.write(to: fileURL)
-        } catch {
-            // Ignore metadata persistence errors to avoid affecting timeline rendering.
-        }
+    private func assign(_ statuses: [Status], key: String) {
+        var seen = Set<String>()
+        let unique = statuses.filter { seen.insert($0.id).inserted }.prefix(maxCachedStatuses)
+        let now = Date()
+        let lastSeen = metadataForKey(key)?.lastSeenStatusIds ?? []
+        memoryCache[key] = unique.map { CachedItem(status: $0, cachedAt: now) }
+        metadata[key] = CacheMetadata(lastUpdated: now, itemCount: unique.count, lastSeenStatusIds: lastSeen)
+        dirtyKeys.insert(key)
+        dirtyMetadataKeys.insert(key)
+        schedulePersistence()
     }
 
-    private func loadFromDisk(key: String) async -> [CachedItem]? {
-        let fileURL = cacheFileURL(for: key)
-
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            return nil
-        }
-
-        do {
-            let data = try Data(contentsOf: fileURL)
+    private func items(for key: String) -> [CachedItem]? {
+        let cached: [CachedItem]?
+        if let memory = memoryCache[key] { cached = memory }
+        else {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            let items = try decoder.decode([CachedItem].self, from: data)
-
-            // Check expiration
-            if let firstItem = items.first,
-                Date().timeIntervalSince(firstItem.cachedAt) >= cacheExpirationInterval
-            {
-                // Cache expired, remove it
-                try? FileManager.default.removeItem(at: fileURL)
-                return nil
-            }
-
-            return items
-        } catch {
-            // Fall back to network if disk cache load fails.
+            cached = (try? Data(contentsOf: fileURL(key, extension: "cache")))
+                .flatMap { try? decoder.decode([CachedItem].self, from: $0) }
+        }
+        guard let cached else { return nil }
+        if let first = cached.first, Date().timeIntervalSince(first.cachedAt) >= cacheExpirationInterval {
+            clear(key: key)
             return nil
         }
+        memoryCache[key] = cached
+        return cached
     }
 
-    private func loadMetadata(key: String) -> CacheMetadata? {
-        let fileURL = metadataFileURL(for: key)
-
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            return nil
-        }
-
-        do {
-            let data = try Data(contentsOf: fileURL)
-            let decoder = JSONDecoder()
-            return try decoder.decode(CacheMetadata.self, from: data)
-        } catch {
-            return nil
-        }
-    }
-}
-
-// MARK: - Hashtag Timeline Support
-
-extension TimelineCache {
-    /// Cache key for hashtag timeline
-    private func hashtagCacheKey(client: String, hashtag: String) -> String {
-        "\(client)-Hashtag-\(hashtag.lowercased())"
+    private func metadataForKey(_ key: String) -> CacheMetadata? {
+        if let meta = metadata[key] { return meta }
+        guard let data = try? Data(contentsOf: fileURL(key, extension: "meta")),
+              let meta = try? JSONDecoder().decode(CacheMetadata.self, from: data) else { return nil }
+        metadata[key] = meta
+        return meta
     }
 
-    /// Cache statuses for a hashtag timeline
-    func set(statuses: [Status], for client: String, hashtag: String) {
-        let key = hashtagCacheKey(client: client, hashtag: hashtag)
-        let now = Date()
-
-        let limitedStatuses = Array(statuses.prefix(maxCachedStatuses))
-        let items = limitedStatuses.map { CachedItem(status: $0, cachedAt: now) }
-
-        memoryCache[key] = items
-        metadata[key] = CacheMetadata(
-            lastUpdated: now,
-            itemCount: items.count,
-            lastSeenStatusIds: []
-        )
-
-        Task.detached(priority: .background) { [weak self] in
-            await self?.persistCache(key: key)
+    private func schedulePersistence() {
+        guard persistenceTask == nil else { return }
+        persistenceTask = Task.detached(priority: .background) { [weak self] in
+            await self?.persistScheduledWrites()
         }
     }
 
-    /// Get cached statuses for a hashtag timeline
-    func getStatuses(for client: String, hashtag: String) async -> [Status]? {
-        let key = hashtagCacheKey(client: client, hashtag: hashtag)
+    private func persistScheduledWrites() {
+        flushPendingWrites()
+        persistenceTask = nil
+    }
 
-        if let items = memoryCache[key] {
-            if let firstItem = items.first,
-                Date().timeIntervalSince(firstItem.cachedAt) < cacheExpirationInterval
-            {
-                return items.map { $0.status }
-            }
-        }
+    private func clear(key: String) {
+        memoryCache[key] = nil
+        metadata[key] = nil
+        dirtyKeys.remove(key)
+        dirtyMetadataKeys.remove(key)
+        try? FileManager.default.removeItem(at: fileURL(key, extension: "cache"))
+        try? FileManager.default.removeItem(at: fileURL(key, extension: "meta"))
+    }
 
-        if let items = await loadFromDisk(key: key) {
-            memoryCache[key] = items
-            return items.map { $0.status }
-        }
-
-        return nil
+    private func cacheKey(client: String, filter: TimelineFilter) -> String { "\(client)-\(filter.cacheKey)" }
+    private func fileURL(_ key: String, extension ext: String) -> URL {
+        cacheDirectory.appendingPathComponent("\(key).\(ext)")
     }
 }

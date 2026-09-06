@@ -37,5 +37,17 @@ import XCTest
             )
             XCTAssertFalse(regular.matches(scaledTheme))
         }
+
+        func testUIKitFontUsesTheSameDynamicTypeSizeAsSwiftUITheme() {
+            let regular = MoroTheme(dynamicTypeSize: .large).uiKitPalette
+            let accessibleTheme = MoroTheme(dynamicTypeSize: .accessibility5)
+            let accessible = accessibleTheme.uiKitPalette
+            XCTAssertGreaterThan(accessible.font(forTextStyle: .body).pointSize, regular.font(forTextStyle: .body).pointSize)
+            XCTAssertFalse(regular.matches(accessibleTheme))
+            XCTAssertEqual(
+                accessible.font(forTextStyle: .body).pointSize,
+                UIFont.preferredFont(forTextStyle: .body, compatibleWith: UITraitCollection(preferredContentSizeCategory: .accessibilityExtraExtraExtraLarge)).pointSize
+            )
+        }
     }
 #endif

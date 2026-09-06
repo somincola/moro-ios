@@ -59,13 +59,13 @@ final class CacheManager: ObservableObject {
     /// auto-evict; without this they stay resident and can get the app jetsam-killed
     /// during a long, media-heavy scroll session. On `.warning` we drop the soft caches
     /// (thread + account) and the 50 MB image memory cache; on `.critical` we also drop
-    /// the cached timeline, which simply re-fetches on next view.
+    /// the in-memory timeline while retaining its offline copy on disk.
     func handleMemoryPressure(critical: Bool) {
         threadCache.invalidateAll()
         accountCache.clear()
         ImageCache.shared.clearMemoryCache()
         if critical {
-            Task { await timelineCache.clearAllCaches() }
+            Task { await timelineCache.releaseMemory() }
         }
     }
 

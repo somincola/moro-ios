@@ -10,11 +10,16 @@ import Foundation
 
 @MainActor
 final class SearchViewModel: ObservableObject {
-    enum Scope: Int, CaseIterable, Hashable {
+    enum Scope: Int, CaseIterable, Hashable, Codable {
         case all
         case accounts
         case statuses
         case hashtags
+
+        /// Keep persisted scope IDs stable; legacy All searches reopen as Accounts.
+        static let exploreScopes: [Scope] = [.accounts, .statuses, .hashtags]
+        var exploreScope: Scope { self == .all ? .accounts : self }
+        var segmentIndex: Int { Self.exploreScopes.firstIndex(of: exploreScope) ?? 0 }
 
         var title: String {
             switch self {
@@ -50,7 +55,7 @@ final class SearchViewModel: ObservableObject {
     }
 
     @Published var query: String
-    @Published var scope: Scope = .all
+    @Published var scope: Scope = .accounts
     @Published private(set) var results = SearchResults()
     @Published private(set) var errorMessage: String?
     @Published private(set) var isLoading = false
@@ -68,7 +73,7 @@ final class SearchViewModel: ObservableObject {
     }
 
     private struct CachedResult {
-        let results: SearchResults
+        var results: SearchResults
         let hasMoreResults: Bool
         let nextOffset: Int
         let cachedAt: Date
@@ -212,6 +217,20 @@ final class SearchViewModel: ObservableObject {
         applyCachedSnapshot(cached, query: trimmed, scope: scope)
         notifyStateChanged()
         return true
+    }
+
+    /// Keep cached searches consistent with reactions, edits, poll votes and deletions.
+    func transformStatuses(_ transform: ([Status]) -> [Status]) {
+        func replacingStatuses(in value: SearchResults) -> SearchResults {
+            SearchResults(accounts: value.accounts, statuses: transform(value.statuses), hashtags: value.hashtags)
+        }
+        results = replacingStatuses(in: results)
+        for key in Array(resultCache.keys) {
+            guard var cached = resultCache[key] else { continue }
+            cached.results = replacingStatuses(in: cached.results)
+            resultCache[key] = cached
+        }
+        notifyStateChanged()
     }
 
     func clearCache() {
