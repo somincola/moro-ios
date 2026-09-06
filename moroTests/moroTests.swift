@@ -352,14 +352,18 @@ struct moroTests {
             timestamp: Date().addingTimeInterval(-30)
         )
 
+        let detailRequests = AsyncStream<CheckedContinuation<Status, Never>>.makeStream()
+        let contextRequests = AsyncStream<CheckedContinuation<StatusContext, Never>>.makeStream()
+        defer {
+            detailRequests.continuation.finish()
+            contextRequests.continuation.finish()
+        }
         let api = MockMastodonAPI()
         api.fetchStatusDetailHandler = { _ in
-            try await Task.sleep(nanoseconds: 100_000_000)
-            return cachedStatus
+            await withCheckedContinuation { detailRequests.continuation.yield($0) }
         }
         api.fetchStatusContextHandler = { _ in
-            try await Task.sleep(nanoseconds: 100_000_000)
-            return StatusContext(ancestors: [], descendants: [])
+            await withCheckedContinuation { contextRequests.continuation.yield($0) }
         }
         let viewModel = StatusDetailViewModel(
             status: cachedStatus,
@@ -369,15 +373,20 @@ struct moroTests {
         )
 
         let loadTask = Task { await viewModel.loadThread() }
-        await waitUntil(timeout: 1) {
-            !api.fetchStatusDetailCallIDs.isEmpty && !api.fetchStatusContextCallIDs.isEmpty
-        }
+        // Hold both GET responses until the interaction has happened, regardless
+        // of how long the runner takes to start or schedule the requests.
+        var detailIterator = detailRequests.stream.makeAsyncIterator()
+        var contextIterator = contextRequests.stream.makeAsyncIterator()
+        let detailResponse = try #require(await detailIterator.next())
+        let contextResponse = try #require(await contextIterator.next())
         let interactedStatus = makeStatus(
             id: statusID,
             favouritesCount: 2,
             favourited: true
         )
         viewModel.updateStatus(interactedStatus)
+        detailResponse.resume(returning: cachedStatus)
+        contextResponse.resume(returning: StatusContext(ancestors: [], descendants: []))
         await loadTask.value
 
         #expect(viewModel.focusedStatus.favouritesCount == 2)
