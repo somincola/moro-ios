@@ -98,6 +98,46 @@ final class ProfileExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["profile.field.2"].exists)
     }
 
+    func testAddingFieldsUsesFreshDraftsAndPersistsThroughNativeNavigation() {
+        let app = launch()
+        defer { app.terminate() }
+        openOverview(app)
+        app.buttons["profile.edit.fields"].tap()
+        let add = app.buttons["profile.field.add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 8))
+        let name = app.textFields["profile.field.name"]
+        let value = app.textFields["profile.field.value"]
+        let last = app.buttons["profile.field.3"]
+
+        for title in ["Temporary", "Docs"] {
+            add.tap()
+            XCTAssertTrue(name.waitForExistence(timeout: 5))
+            XCTAssertFalse(app.buttons["profile.field.done"].isEnabled)
+            XCTAssertFalse(app.buttons["profile.field.delete"].exists)
+            name.tap()
+            name.typeText(title)
+            value.tap()
+            value.typeText("https://example.com/docs")
+            app.buttons["profile.field.done"].tap()
+            waitLabel(last, contains: title)
+
+            if title == "Temporary" {
+                last.tap()
+                XCTAssertTrue(name.waitForExistence(timeout: 5))
+                XCTAssertEqual(name.value as? String, title)
+                app.buttons["profile.field.delete"].tap()
+                XCTAssertTrue(add.waitForExistence(timeout: 5))
+            }
+        }
+        app.buttons["profile.fields.save"].tap()
+        XCTAssertTrue(app.buttons["profile.edit.fields"].waitForExistence(timeout: 8))
+        app.buttons["profile.edit.fields"].tap()
+        waitLabel(last, contains: "Docs")
+        XCTAssertTrue(last.label.contains("https://example.com/docs"))
+        XCTAssertFalse(last.label.contains("Temporary"))
+        XCTAssertTrue(app.buttons["profile.field.0"].label.contains(rawLink))
+    }
+
     func testDiscardingFieldDraftLeavesStoredValueUnchanged() {
         let app = launch()
         defer { app.terminate() }

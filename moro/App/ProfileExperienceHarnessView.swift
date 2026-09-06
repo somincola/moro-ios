@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Exercises production profile screens without sending writes to a real account.
 struct ProfileExperienceHarnessView: View {
-    @StateObject private var router = AppRouter()
+    @StateObject private var coordinator = RootTabCoordinator(selectedTab: .me)
     @StateObject private var appState: AppState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let client = ProfileFixtureProtocol.makeClient()
@@ -25,19 +25,47 @@ struct ProfileExperienceHarnessView: View {
     }
 
     var body: some View {
-        NavigationStack(path: $router.path) {
-            ProfileView(account: appState.currentAccount, onLogout: {}, apiClient: client)
-                .navigationDestination(for: Route.self) { route in
+        // Use the app's real UIKit navigation container. A standalone SwiftUI
+        // NavigationStack can hide navigationDestination compatibility failures.
+        MainShellContainerRepresentable(
+            coordinator: coordinator,
+            theme: theme,
+            unreadInboxCount: 0,
+            currentUserAvatarURL: nil,
+            contentVersion: Self.accountKey,
+            homeView: AnyView(EmptyView()),
+            exploreView: AnyView(EmptyView()),
+            inboxView: AnyView(EmptyView()),
+            meView: routedView(
+                AnyView(ProfileView(account: appState.currentAccount, onLogout: {}, apiClient: client)),
+                router: coordinator.meRouter),
+            routeView: { route, router in
+                routedView(
                     AppRouteViewFactory(apiClient: client, appState: appState, cacheManager: .shared)
-                        .view(for: route)
-                }
-        }
-        .environment(\.appRouter, router)
-        .environment(\.activeAccountKey, Self.accountKey)
+                        .view(for: route), router: router)
+            }
+        )
+        .ignoresSafeArea(.container, edges: [.top, .bottom])
         .environmentObject(appState)
-        .moroTheme(MoroTheme(
+        .environment(\.activeAccountKey, Self.accountKey)
+        .moroTheme(theme)
+    }
+
+    private var theme: MoroTheme {
+        MoroTheme(
             colorScheme: ProcessInfo.processInfo.environment["UITEST_COLOR_SCHEME"] == "dark" ? .dark : .light,
-            dynamicTypeSize: dynamicTypeSize))
+            dynamicTypeSize: dynamicTypeSize)
+    }
+
+    private func routedView(_ content: AnyView, router: AppRouter) -> AnyView {
+        AnyView(content
+            .environment(\.appRouter, router)
+            .environment(\.activeAccountKey, Self.accountKey)
+            .environment(\.dynamicTypeSize, dynamicTypeSize)
+            .environment(\.mastodonAPIClient, client)
+            .environmentObject(router)
+            .environmentObject(appState)
+            .moroTheme(theme))
     }
 }
 

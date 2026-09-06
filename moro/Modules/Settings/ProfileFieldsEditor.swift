@@ -5,7 +5,6 @@ struct ProfileFieldsEditor: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appState: AppState
     @StateObject private var model: EditProfileViewModel
-    @State private var editingField: EditProfileViewModel.EditableField?
     @State private var editMode = EditMode.inactive
 
     init(apiClient: MastodonAPI, account: Account?) {
@@ -18,10 +17,10 @@ struct ProfileFieldsEditor: View {
             Section {
                 ForEach(model.fields) { field in
                     fieldRow(field)
-                    .accessibilityIdentifier("profile.field.\(model.fields.firstIndex(of: field) ?? 0)")
-                    .accessibilityAction(named: MoroL10n.ComposeReading.moveUp) { move(field, by: -1) }
-                    .accessibilityAction(named: MoroL10n.ComposeReading.moveDown) { move(field, by: 1) }
-                    .moveDisabled(!editMode.isEditing)
+                        .accessibilityIdentifier("profile.field.\(model.fields.firstIndex(of: field) ?? 0)")
+                        .accessibilityAction(named: MoroL10n.ComposeReading.moveUp) { move(field, by: -1) }
+                        .accessibilityAction(named: MoroL10n.ComposeReading.moveDown) { move(field, by: 1) }
+                        .moveDisabled(!editMode.isEditing)
                 }
                 .onDelete { model.fields.remove(atOffsets: $0) }
                 .onMove { model.moveFields(from: $0, to: $1) }
@@ -61,7 +60,9 @@ struct ProfileFieldsEditor: View {
             }
             if !editMode.isEditing && model.fields.count < model.limits.fieldCount {
                 Section {
-                    Button { editingField = .init() } label: {
+                    NavigationLink {
+                        fieldEditor()
+                    } label: {
                         Label(MoroL10n.EditProfile.addField, systemImage: "plus")
                             .frame(minHeight: 44)
                     }
@@ -93,18 +94,20 @@ struct ProfileFieldsEditor: View {
         }
         .task { await model.load() }
         .profileEditorExitGuard(hasChanges: model.hasUnsavedChanges, isSaving: model.isBusy)
-        .navigationDestination(item: $editingField) { field in
-            ProfileFieldEditor(field: field, limits: model.limits,
-                isExisting: model.fields.contains(where: { $0.id == field.id }),
-                onComplete: { updated in
-                    if let index = model.fields.firstIndex(where: { $0.id == updated.id }) {
-                        model.fields[index] = updated
-                    } else if model.fields.count < model.limits.fieldCount {
-                        model.fields.append(updated)
-                    }
-                }, onDelete: { model.removeField(id: field.id) })
-        }
         .accessibilityIdentifier("profile.fields.editor")
+    }
+
+    private func fieldEditor(_ field: EditProfileViewModel.EditableField? = nil) -> some View {
+        ProfileFieldEditor(field: field, limits: model.limits,
+            onComplete: { updated in
+                if let index = model.fields.firstIndex(where: { $0.id == updated.id }) {
+                    model.fields[index] = updated
+                } else if model.fields.count < model.limits.fieldCount {
+                    model.fields.append(updated)
+                }
+            }, onDelete: {
+                if let field { model.removeField(id: field.id) }
+            })
     }
 
     @ViewBuilder
@@ -115,17 +118,14 @@ struct ProfileFieldsEditor: View {
                 .accessibilityLabel(field.name)
                 .accessibilityValue(field.value)
         } else {
-            Button { editingField = field } label: {
-                HStack(spacing: 12) {
-                    ProfileEditorSummaryRow(title: field.name, summary: field.value)
-                    Image(systemName: "chevron.right")
-                        .font(theme.typography.caption.weight(.semibold))
-                        .foregroundStyle(theme.colors.textTertiary)
-                        .accessibilityHidden(true)
-                }
-                .contentShape(Rectangle())
+            // The production shell uses UINavigationController, so use the
+            // same destination-based link as the other profile editor pages.
+            NavigationLink {
+                fieldEditor(field)
+            } label: {
+                ProfileEditorSummaryRow(title: field.name, summary: field.value)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
         }
     }
 
@@ -139,18 +139,20 @@ private struct ProfileFieldEditor: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     @State private var draft: EditProfileViewModel.EditableField
-    let original: EditProfileViewModel.EditableField
+    // Freeze the baseline with the draft when NavigationLink rebuilds its destination.
+    @State private var original: EditProfileViewModel.EditableField
     let limits: ProfileLimits
     let isExisting: Bool
     let onComplete: (EditProfileViewModel.EditableField) -> Void
     let onDelete: () -> Void
 
-    init(field: EditProfileViewModel.EditableField, limits: ProfileLimits, isExisting: Bool,
+    init(field: EditProfileViewModel.EditableField?, limits: ProfileLimits,
          onComplete: @escaping (EditProfileViewModel.EditableField) -> Void, onDelete: @escaping () -> Void) {
-        original = field
-        _draft = State(initialValue: field)
+        let initialField = field ?? .init()
+        _original = State(initialValue: initialField)
+        _draft = State(initialValue: initialField)
         self.limits = limits
-        self.isExisting = isExisting
+        self.isExisting = field != nil
         self.onComplete = onComplete
         self.onDelete = onDelete
     }
