@@ -12,7 +12,7 @@ struct SearchControllerTests {
         controller.loadViewIfNeeded()
         controller.beginAppearanceTransition(true, animated: false)
         controller.endAppearanceTransition()
-        try await waitFor { controller.discovery.hasLoaded }
+        try await waitForDiscovery(controller)
         SearchFixtureProtocol.resetRequests()
 
         _ = controller.searchBarShouldBeginEditing(controller.searchBar)
@@ -43,7 +43,7 @@ struct SearchControllerTests {
         controller.loadViewIfNeeded()
         controller.beginAppearanceTransition(true, animated: false)
         controller.endAppearanceTransition()
-        try await waitFor { controller.discovery.hasLoaded }
+        try await waitForDiscovery(controller)
         let accounts = controller.discovery.accounts.map(\.id)
         controller.submitQuery("slow", scope: .accounts)
         _ = controller.searchBarShouldBeginEditing(controller.searchBar)
@@ -85,7 +85,7 @@ struct SearchControllerTests {
         let (controller, defaults, suite) = makeController()
         defer { defaults.removePersistentDomain(forName: suite); controller.cancelInFlightSearchRequests() }
         controller.loadViewIfNeeded()
-        try await waitFor { controller.discovery.hasLoaded }
+        try await waitForDiscovery(controller)
         for page in [SearchInteractionState.Page.discovery, .results] {
             if page == .results {
                 controller.submitQuery("Swift", scope: .accounts)
@@ -142,7 +142,7 @@ struct SearchControllerTests {
         if case .error = controller.mode {} else { Issue.record("Expected search error page") }
         #expect(controller.interaction.page == .results)
         controller.showDiscovery()
-        try await waitFor { controller.discovery.hasLoaded }
+        try await waitForDiscovery(controller)
         #expect(controller.interaction.page == .discovery)
         #expect(!controller.discovery.isLoading)
     }
@@ -151,7 +151,7 @@ struct SearchControllerTests {
         let (controller, defaults, suite) = makeController()
         defer { defaults.removePersistentDomain(forName: suite); controller.cancelDiscoveryRequests() }
         controller.loadViewIfNeeded()
-        try await waitFor { controller.discovery.hasLoaded }
+        try await waitForDiscovery(controller)
         controller.scopeControl.selectedSegmentIndex = SearchViewModel.Scope.statuses.segmentIndex
         controller.scopeControl.sendActions(for: .valueChanged)
         let index = IndexPath(row: 0, section: 0)
@@ -168,7 +168,7 @@ struct SearchControllerTests {
         let (controller, defaults, suite) = makeController()
         defer { defaults.removePersistentDomain(forName: suite); controller.cancelInFlightSearchRequests() }
         controller.loadViewIfNeeded()
-        try await waitFor { controller.discovery.hasLoaded }
+        try await waitForDiscovery(controller)
         controller.submitQuery("Swift", scope: .statuses)
         try await waitFor { controller.searchState.hasSearchedCurrentQuery }
         let status = try #require(controller.searchState.results.statuses.first)
@@ -214,6 +214,15 @@ struct SearchControllerTests {
         let library = SearchLibraryStore(accountKey: "a", defaults: defaults)
         let controller = SearchCoreViewController(apiClient: SearchFixtureProtocol.makeClient(), initialQuery: nil, theme: MoroTheme(), library: library)
         return (controller, defaults, suite)
+    }
+
+    private func waitForDiscovery(_ controller: SearchCoreViewController) async throws {
+        // Cold CI runners can spend several seconds initializing UIKit while other
+        // suites share the main actor. Await the request instead of timing setup.
+        let task = try #require(controller.discoveryTask)
+        await task.value
+        try #require(controller.discovery.hasLoaded)
+        try #require(controller.discovery.errorMessage == nil)
     }
 
     private func waitFor(_ condition: () -> Bool) async throws {
