@@ -11,6 +11,7 @@ import UIKit
 
 extension SearchCoreViewController: UISearchBarDelegate {
     func searchBarShouldBeginEditing(_ searchBar: UISearchBar) -> Bool {
+        guard allowsSearchFocus else { return false }
         beginSearchEntry()
         return true
     }
@@ -146,38 +147,12 @@ extension SearchCoreViewController: UITableViewDelegate {
         return max(60, ceil(textHeight + 24))
     }
 
-    func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
-        guard case .results = mode else { return nil }
-        guard sections.indices.contains(section) else { return nil }
-
-        guard
-            let header = tableView.dequeueReusableHeaderFooterView(
-                withIdentifier: SearchSectionHeaderView.reuseIdentifier
-            ) as? SearchSectionHeaderView
-        else {
-            return nil
-        }
-        header.configure(title: sections[section].title, theme: appliedTheme)
-        return header
-    }
-
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
-        guard case .results = mode, sections.indices.contains(section) else { return .leastNormalMagnitude }
-        return appliedTheme.dynamicTypeSize.isAccessibilitySize
-            ? UITableView.automaticDimension
-            : 34
+        .leastNormalMagnitude
     }
 
     func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
-        guard case .results = mode, sections.indices.contains(section) else { return .leastNormalMagnitude }
-        return 2
-    }
-
-    func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
-        guard case .results = mode, sections.indices.contains(section) else { return nil }
-        let view = UIView()
-        view.backgroundColor = .clear
-        return view
+        .leastNormalMagnitude
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -194,6 +169,7 @@ extension SearchCoreViewController: UITableViewDelegate {
         case .results:
             guard sections.indices.contains(indexPath.section) else { return }
             let row = sections[indexPath.section].rows[indexPath.row]
+            prepareForNavigation()
             switch row {
             case .account(let account):
                 onOpenProfile?(account)

@@ -21,30 +21,6 @@ extension SearchCoreViewController {
         ])
     }
 
-    func setupResultActions() {
-        resultActions.translatesAutoresizingMaskIntoConstraints = false
-        resultActions.axis = .horizontal
-        resultActions.distribution = .equalSpacing
-        resultActions.addArrangedSubview(discoveryButton)
-        resultActions.addArrangedSubview(saveSearchButton)
-        view.addSubview(resultActions)
-        resultActionsHeight = resultActions.heightAnchor.constraint(equalToConstant: 0)
-        NSLayoutConstraint.activate([
-            resultActions.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
-            resultActions.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: SearchLayoutMetrics.contentHorizontalInset),
-            resultActions.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -SearchLayoutMetrics.contentHorizontalInset),
-            resultActionsHeight,
-        ])
-        discoveryButton.accessibilityIdentifier = "search.discovery"
-        saveSearchButton.accessibilityIdentifier = "search.save"
-        discoveryButton.addAction(UIAction { [weak self] _ in self?.showDiscovery() }, for: .touchUpInside)
-        saveSearchButton.addAction(UIAction { [weak self] _ in
-            guard let self else { return }
-            self.library.save(query: self.trimmedQuery, scope: self.selectedScope)
-            self.updateSearchChrome()
-        }, for: .touchUpInside)
-    }
-
     func setupEntryUI() {
         addChild(entryHost)
         entryHost.view.translatesAutoresizingMaskIntoConstraints = false
@@ -61,7 +37,6 @@ extension SearchCoreViewController {
 
     func beginSearchEntry() {
         guard interaction.page != .entry else { return }
-        entryReturnOffset = tableView.contentOffset
         if interaction.page == .discovery {
             discoveryOffset = tableView.contentOffset
             discoveryScope = selectedScope
@@ -82,10 +57,6 @@ extension SearchCoreViewController {
                     guard let self else { return }
                     if scope == nil, self.searchBar.searchTextField.markedTextRange != nil { return }
                     self.submitQuery(query, scope: scope ?? self.selectedScope)
-                },
-                onManage: { [weak self] in
-                    self?.searchBar.searchTextField.resignFirstResponder()
-                    self?.onManageSavedSearches?()
                 }
             )
             .moroTheme(appliedTheme)
@@ -99,20 +70,14 @@ extension SearchCoreViewController {
             searchBar.searchTextField.resignFirstResponder()
             return
         }
-        interaction.cancelEntry()
-        searchBar.text = interaction.submittedQuery
-        searchBar.searchTextField.resignFirstResponder()
-        setCancelButtonVisible(false)
-        updateSearchChrome()
-        refreshViewState()
-        view.layoutIfNeeded()
-        tableView.setContentOffset(entryReturnOffset, animated: false)
+        showDiscovery()
     }
 
     func submitQuery(_ query: String, scope: Scope) {
+        let scope = scope.exploreScope
         guard interaction.submit(query, scope: scope) else { return }
         searchBar.text = interaction.submittedQuery
-        scopeControl.selectedSegmentIndex = scope.rawValue
+        scopeControl.selectedSegmentIndex = scope.segmentIndex
         library.record(query: interaction.submittedQuery, scope: scope)
         searchBar.searchTextField.resignFirstResponder()
         setCancelButtonVisible(false)
@@ -124,7 +89,7 @@ extension SearchCoreViewController {
     func showDiscovery() {
         interaction.showDiscovery()
         searchBar.text = ""
-        scopeControl.selectedSegmentIndex = discoveryScope.rawValue
+        scopeControl.selectedSegmentIndex = discoveryScope.segmentIndex
         searchBar.searchTextField.resignFirstResponder()
         setCancelButtonVisible(false)
         updateSearchChrome()
@@ -137,34 +102,10 @@ extension SearchCoreViewController {
     func updateSearchChrome() {
         guard isViewLoaded else { return }
         let isEntry = interaction.page == .entry
-        let isResults = interaction.page == .results
         entryHost.view.isHidden = !isEntry
         tableView.isHidden = isEntry
-        resultActions.isHidden = !isResults
-        resultActionsHeight.constant = isResults
-            ? (appliedTheme.dynamicTypeSize.isAccessibilitySize ? 64 : 44) : 0
         updateScopePresentation()
         let palette = appliedTheme.uiKitPalette
         entryHost.view.backgroundColor = palette.canvasBackground
-        let saved = library.isSaved(query: trimmedQuery, scope: selectedScope)
-        for (button, title, symbol) in [
-            (discoveryButton, MoroL10n.Search.returnDiscovery, "chevron.backward"),
-            (saveSearchButton, saved ? MoroL10n.Search.searchSaved : MoroL10n.Search.saveSearch, saved ? "bookmark.fill" : "bookmark"),
-        ] {
-            var configuration = UIButton.Configuration.plain()
-            configuration.title = title
-            configuration.image = UIImage(systemName: symbol)
-            configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-            configuration.imagePadding = 6
-            configuration.contentInsets = .zero
-            configuration.baseForegroundColor = palette.textSecondary
-            configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
-                var outgoing = incoming
-                outgoing.font = UIFont.systemFont(ofSize: min(palette.font(forTextStyle: .subheadline).pointSize, 22))
-                return outgoing
-            }
-            button.configuration = configuration
-        }
-        saveSearchButton.isEnabled = !saved
     }
 }

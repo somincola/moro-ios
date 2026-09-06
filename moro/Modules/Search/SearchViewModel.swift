@@ -16,6 +16,11 @@ final class SearchViewModel: ObservableObject {
         case statuses
         case hashtags
 
+        /// Keep persisted scope IDs stable; legacy All searches reopen as Accounts.
+        static let exploreScopes: [Scope] = [.accounts, .statuses, .hashtags]
+        var exploreScope: Scope { self == .all ? .accounts : self }
+        var segmentIndex: Int { Self.exploreScopes.firstIndex(of: exploreScope) ?? 0 }
+
         var title: String {
             switch self {
             case .all: return MoroL10n.Search.tabAll
@@ -50,7 +55,7 @@ final class SearchViewModel: ObservableObject {
     }
 
     @Published var query: String
-    @Published var scope: Scope = .all
+    @Published var scope: Scope = .accounts
     @Published private(set) var results = SearchResults()
     @Published private(set) var errorMessage: String?
     @Published private(set) var isLoading = false

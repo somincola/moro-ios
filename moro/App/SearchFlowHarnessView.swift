@@ -4,6 +4,7 @@ import SwiftUI
 /// Production search and route destinations, using an isolated HTTP transport.
 struct SearchFlowHarnessView: View {
     @StateObject private var router = AppRouter()
+    @StateObject private var tabs = RootTabCoordinator(selectedTab: .explore)
     @StateObject private var appState = AppState()
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -23,28 +24,59 @@ struct SearchFlowHarnessView: View {
     init() { _ = Self.seed }
 
     var body: some View {
-        NavigationStack(path: $router.path) {
-            SearchView(apiClient: client)
-                .navigationTitle(MoroL10n.Search.exploreTitle)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("切换测试账号") {
-                            accountKey = accountKey == "ui-search-a" ? "ui-search-b" : "ui-search-a"
-                        }
-                        .accessibilityIdentifier("search.switchAccount")
+        Group {
+            if ProcessInfo.processInfo.environment["UITEST_SEARCH_NATIVE_SHELL"] == "1" {
+                MainShellContainerRepresentable(
+                    coordinator: tabs, theme: theme, unreadInboxCount: 0,
+                    currentUserAvatarURL: nil, contentVersion: accountKey,
+                    homeView: AnyView(Text("Home")),
+                    exploreView: AnyView(searchRoot(router: tabs.exploreRouter)),
+                    inboxView: AnyView(Text("Inbox")), meView: AnyView(Text("Me")),
+                    routeView: { route, router in
+                        AnyView(destination(route).environment(\.appRouter, router))
                     }
+                )
+            } else {
+                NavigationStack(path: $router.path) {
+                    searchRoot(router: router)
+                        .navigationTitle(MoroL10n.Search.exploreTitle)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("切换测试账号") {
+                                    accountKey = accountKey == "ui-search-a" ? "ui-search-b" : "ui-search-a"
+                                }
+                                .accessibilityIdentifier("search.switchAccount")
+                            }
+                        }
+                        .navigationDestination(for: Route.self) { route in
+                            destination(route).environment(\.appRouter, router)
+                        }
                 }
-                .navigationDestination(for: Route.self) { route in
-                    AppRouteViewFactory(apiClient: client, appState: appState, cacheManager: .shared)
-                        .view(for: route)
-                }
+            }
         }
-        .environment(\.activeAccountKey, accountKey)
-        .environment(\.appRouter, router)
         .environmentObject(appState)
-        .moroTheme(MoroTheme(colorScheme: colorScheme, dynamicTypeSize: dynamicTypeSize))
+        .moroTheme(theme)
     }
+
+    private var theme: MoroTheme { MoroTheme(colorScheme: colorScheme, dynamicTypeSize: dynamicTypeSize) }
+
+    private func searchRoot(router: AppRouter) -> some View {
+        SearchView(apiClient: client)
+            .environment(\.activeAccountKey, accountKey)
+            .environment(\.appRouter, router)
+            .environmentObject(appState)
+            .moroTheme(theme)
+    }
+
+    private func destination(_ route: Route) -> some View {
+        AppRouteViewFactory(apiClient: client, appState: appState, cacheManager: .shared)
+            .view(for: route)
+            .environment(\.activeAccountKey, accountKey)
+            .environmentObject(appState)
+            .moroTheme(theme)
+    }
+
 }
 
 private final class SearchFixtureToken: AuthTokenProvider {
@@ -115,6 +147,12 @@ final class SearchFixtureProtocol: URLProtocol, @unchecked Sendable {
                     payload = [account]
                 } else if url.path.hasSuffix("/trends/tags") {
                     payload = [tag]
+                } else if url.path.hasSuffix("/trends/statuses") {
+                    payload = [post]
+                } else if url.path.hasSuffix("/relationships") {
+                    payload = []
+                } else if url.path.contains("/accounts/"), !url.path.hasSuffix("/statuses"), !url.path.hasSuffix("/featured_tags") {
+                    payload = account
                 } else if url.path.hasSuffix("/context") {
                     payload = ["ancestors": [], "descendants": []]
                 } else if url.path.contains("/statuses/fixture-post") {

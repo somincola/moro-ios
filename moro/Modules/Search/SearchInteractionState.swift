@@ -6,21 +6,18 @@ struct SearchInteractionState {
 
     private(set) var page: Page = .discovery
     private(set) var submittedQuery = ""
-    private(set) var submittedScope: SearchViewModel.Scope = .all
+    private(set) var submittedScope: SearchViewModel.Scope = .accounts
     var draftQuery = ""
-    private var returnPage: Page = .discovery
 
     mutating func beginEntry() {
         guard page != .entry else { return }
-        returnPage = page
         draftQuery = submittedQuery
         page = .entry
     }
 
     mutating func cancelEntry() {
         guard page == .entry else { return }
-        page = returnPage
-        draftQuery = submittedQuery
+        showDiscovery()
     }
 
     @discardableResult
@@ -28,7 +25,7 @@ struct SearchInteractionState {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         submittedQuery = trimmed
-        submittedScope = scope
+        submittedScope = scope.exploreScope
         draftQuery = trimmed
         page = .results
         return true

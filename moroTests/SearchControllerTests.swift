@@ -9,6 +9,7 @@ struct SearchControllerTests {
         let (controller, defaults, suite) = makeController()
         defer { defaults.removePersistentDomain(forName: suite); controller.cancelDiscoveryRequests() }
         controller.loadViewIfNeeded()
+        controller.viewDidAppear(false)
         try await waitFor { controller.discovery.hasLoaded }
         SearchFixtureProtocol.resetRequests()
 
@@ -34,25 +35,39 @@ struct SearchControllerTests {
         #expect(searchRequests.isEmpty)
     }
 
-    @Test func cancelRestoresResultsAndSingleCharacterScopesSubmitImmediately() async throws {
+    @Test func clearThenCancelReturnsToDiscoveryAndCancelsTheSubmittedRequest() async throws {
+        let (controller, defaults, suite) = makeController()
+        defer { defaults.removePersistentDomain(forName: suite); controller.cancelDiscoveryRequests() }
+        controller.loadViewIfNeeded()
+        controller.viewDidAppear(false)
+        try await waitFor { controller.discovery.hasLoaded }
+        let accounts = controller.discovery.accounts.map(\.id)
+        controller.submitQuery("slow", scope: .accounts)
+        _ = controller.searchBarShouldBeginEditing(controller.searchBar)
+        controller.searchBar.text = ""
+        controller.searchBar(controller.searchBar, textDidChange: "")
+        controller.searchBarCancelButtonClicked(controller.searchBar)
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(controller.searchBar.text == "")
+        #expect(controller.interaction.page == .discovery)
+        #expect(controller.searchState.results.accounts.isEmpty)
+        #expect(controller.discovery.accounts.map(\.id) == accounts)
+        #expect(!controller.tableView.isHidden)
+        #expect(controller.cancelEntryButton.isHidden)
+    }
+
+    @Test func defaultAndLegacyAllUseAccountsAndSingleCharacterScopesSubmitImmediately() async throws {
         let (controller, defaults, suite) = makeController()
         defer { defaults.removePersistentDomain(forName: suite); controller.cancelInFlightSearchRequests() }
         controller.loadViewIfNeeded()
+        #expect(controller.selectedScope == .accounts)
+        #expect(controller.scopeControl.numberOfSegments == 3)
         controller.submitQuery("中", scope: .all)
         try await waitFor { controller.searchState.hasSearchedCurrentQuery }
-        let accounts = controller.searchState.results.accounts.map(\.id)
+        #expect(controller.interaction.submittedScope == .accounts)
+        #expect(controller.searchState.scope == .accounts)
         SearchFixtureProtocol.resetRequests()
-
-        _ = controller.searchBarShouldBeginEditing(controller.searchBar)
-        controller.searchBar.text = "different"
-        controller.searchBar(controller.searchBar, textDidChange: "different")
-        controller.searchBarCancelButtonClicked(controller.searchBar)
-        #expect(controller.searchBar.text == "中")
-        #expect(controller.interaction.page == .results)
-        #expect(controller.searchState.results.accounts.map(\.id) == accounts)
-        #expect(searchRequests.isEmpty)
-
-        controller.scopeControl.selectedSegmentIndex = SearchViewModel.Scope.statuses.rawValue
+        controller.scopeControl.selectedSegmentIndex = SearchViewModel.Scope.statuses.segmentIndex
         controller.scopeControl.sendActions(for: .valueChanged)
         try await waitFor { !controller.searchState.isLoading && !searchRequests.isEmpty }
         let request = try #require(searchRequests.last)
@@ -63,10 +78,38 @@ struct SearchControllerTests {
         #expect(controller.library.recent.count == 1)
     }
 
+    @Test func navigationFocusRestorationDoesNotReplaceTheSourcePage() async throws {
+        let (controller, defaults, suite) = makeController()
+        defer { defaults.removePersistentDomain(forName: suite); controller.cancelInFlightSearchRequests() }
+        controller.loadViewIfNeeded()
+        try await waitFor { controller.discovery.hasLoaded }
+        for page in [SearchInteractionState.Page.discovery, .results] {
+            if page == .results {
+                controller.submitQuery("Swift", scope: .accounts)
+                try await waitFor { controller.searchState.hasSearchedCurrentQuery }
+            }
+            controller.viewDidAppear(false)
+            var openedAccount = false
+            controller.onOpenProfile = { _ in openedAccount = true }
+            controller.tableView(controller.tableView, didSelectRowAt: IndexPath(row: 0, section: 0))
+            #expect(openedAccount)
+            #expect(!controller.searchBarShouldBeginEditing(controller.searchBar))
+            controller.viewWillAppear(false)
+            #expect(!controller.searchBarShouldBeginEditing(controller.searchBar))
+            controller.viewDidAppear(false)
+            #expect(controller.interaction.page == page)
+            #expect(!controller.tableView.isHidden)
+            #expect(controller.searchBarShouldBeginEditing(controller.searchBar))
+            #expect(controller.interaction.page == .entry)
+            controller.cancelSearchEntry()
+        }
+    }
+
     @Test func newSubmissionRejectsLateResultsAndEntryNeverDisplaysTheirList() async throws {
         let (controller, defaults, suite) = makeController()
         defer { defaults.removePersistentDomain(forName: suite); controller.cancelInFlightSearchRequests() }
         controller.loadViewIfNeeded()
+        controller.viewDidAppear(false)
         controller.submitQuery("slow", scope: .accounts)
         _ = controller.searchBarShouldBeginEditing(controller.searchBar)
         controller.searchBar(controller.searchBar, textDidChange: "fast")

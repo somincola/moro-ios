@@ -30,7 +30,7 @@ enum Route: Hashable {
     case hashtag(String)
 
     /// Navigate to search/discovery
-    case search(query: String?, scope: Int = 0)
+    case search(query: String?, scope: Int = 1)
 
     case savedSearches
 

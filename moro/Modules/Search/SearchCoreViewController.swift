@@ -21,7 +21,6 @@ final class SearchCoreViewController: UIViewController {
         }
 
         let kind: Kind
-        let title: String
         let rows: [Row]
     }
 
@@ -65,10 +64,9 @@ final class SearchCoreViewController: UIViewController {
     private let initialScope: Scope
     let library: SearchLibraryStore
     var interaction = SearchInteractionState()
-    var entryReturnOffset: CGPoint = .zero
     var discoveryOffset: CGPoint = .zero
-    var discoveryScope: Scope = .all
-    var onManageSavedSearches: (() -> Void)?
+    var discoveryScope: Scope = .accounts
+    private(set) var allowsSearchFocus = false
     var appliedTheme: MoroTheme
 
     var onOpenProfile: ((Account) -> Void)?
@@ -82,16 +80,12 @@ final class SearchCoreViewController: UIViewController {
     let cancelEntryButton = UIButton(type: .system)
     var searchTrailingRegular: NSLayoutConstraint!
     var searchTrailingWithCancel: NSLayoutConstraint!
-    let scopeControl = UISegmentedControl(items: Scope.allCases.map(\.title))
+    let scopeControl = UISegmentedControl(items: Scope.exploreScopes.map(\.title))
     private let scopeIndicatorView = UIView()
     private let scopeMenuButton = UIButton(type: .system)
     let tableView = UITableView(frame: .zero, style: .plain)
     let refreshControl = UIRefreshControl()
     private var scopeHeightConstraint: NSLayoutConstraint!
-    let resultActions = UIStackView()
-    let discoveryButton = UIButton(type: .system)
-    let saveSearchButton = UIButton(type: .system)
-    var resultActionsHeight: NSLayoutConstraint!
     let entryHost = UIHostingController(rootView: AnyView(EmptyView()))
 
     private lazy var placeholderView: SearchLandingPlaceholderView = {
@@ -137,7 +131,7 @@ final class SearchCoreViewController: UIViewController {
     private var hasSearchedCurrentQuery: Bool { searchState.hasSearchedCurrentQuery }
     private var isCancelButtonVisible = false
     private let scopeSelectionFeedback = UISelectionFeedbackGenerator()
-    private var lastScopeSelectionIndex: Int = Scope.all.rawValue
+    private var lastScopeSelectionIndex = 0
     private var lastRenderSnapshot: RenderSnapshot?
     private var lastRenderedSections: [SectionModel] = []
     var discovery = DiscoveryState()
@@ -145,12 +139,12 @@ final class SearchCoreViewController: UIViewController {
     var discoveryRequestID = UUID()
 
     init(apiClient: MastodonAPI, initialQuery: String?, theme: MoroTheme,
-         accountKey: String = "no-active-session", initialScope: Scope = .all,
+         accountKey: String = "no-active-session", initialScope: Scope = .accounts,
          library: SearchLibraryStore? = nil) {
         self.apiClient = apiClient
         self.searchState = SearchViewModel(apiClient: apiClient, initialQuery: initialQuery)
         self.initialQuery = initialQuery
-        self.initialScope = initialScope
+        self.initialScope = initialScope.exploreScope
         self.library = library ?? SearchLibraryStore(accountKey: accountKey)
         self.appliedTheme = theme
         super.init(nibName: nil, bundle: nil)
@@ -166,7 +160,7 @@ final class SearchCoreViewController: UIViewController {
         setupUI()
         setupSearchBar()
         setupScopeControl()
-        scopeControl.selectedSegmentIndex = initialScope.rawValue
+        scopeControl.selectedSegmentIndex = initialScope.segmentIndex
         setupEntryUI()
         setupTableView()
         setupScopeSwipeGestures()
@@ -204,11 +198,29 @@ final class SearchCoreViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        _ = becomeFirstResponder()
+        // UIKit may try to restore the previous input responder while popping a route.
+        // A list page must stay a list until the user explicitly focuses the field.
+        if interaction.page != .entry { searchBar.searchTextField.resignFirstResponder() }
+        allowsSearchFocus = true
         scopeSelectionFeedback.prepare()
         library.reload()
         updateSearchChrome()
         if interaction.page == .entry { updateEntryContent() }
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        allowsSearchFocus = false
+        super.viewWillAppear(animated)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        prepareForNavigation()
+        super.viewWillDisappear(animated)
+    }
+
+    func prepareForNavigation() {
+        allowsSearchFocus = false
+        view.endEditing(true)
     }
 
     override func viewDidLayoutSubviews() {
@@ -284,10 +296,6 @@ final class SearchCoreViewController: UIViewController {
             }
         }
 
-        for section in 0..<tableView.numberOfSections {
-            (tableView.headerView(forSection: section) as? SearchSectionHeaderView)?.apply(theme: theme)
-        }
-
         updateSearchChrome()
         if interaction.page == .entry { updateEntryContent() }
         view.setNeedsLayout()
@@ -341,7 +349,8 @@ final class SearchCoreViewController: UIViewController {
     }
 
     var selectedScope: Scope {
-        Scope(rawValue: scopeControl.selectedSegmentIndex) ?? .all
+        let index = scopeControl.selectedSegmentIndex
+        return Scope.exploreScopes.indices.contains(index) ? Scope.exploreScopes[index] : .accounts
     }
 
     private var isDiscoveryMode: Bool {
@@ -362,11 +371,7 @@ final class SearchCoreViewController: UIViewController {
     private var hasVisibleResultContent: Bool {
         let currentResults = displayedResults
         switch selectedScope {
-        case .all:
-            return !currentResults.accounts.isEmpty
-                || !currentResults.statuses.isEmpty
-                || !currentResults.hashtags.isEmpty
-        case .accounts:
+        case .all, .accounts:
             return !currentResults.accounts.isEmpty
         case .statuses:
             return !currentResults.statuses.isEmpty
@@ -459,7 +464,6 @@ final class SearchCoreViewController: UIViewController {
 
         view.addSubview(searchBar)
         setupCancelEntryButton()
-        setupResultActions()
         view.addSubview(scopeControl)
         view.addSubview(scopeMenuButton)
         view.addSubview(tableView)
@@ -475,7 +479,7 @@ final class SearchCoreViewController: UIViewController {
             searchTrailingRegular,
             searchBar.heightAnchor.constraint(equalToConstant: 46),
 
-            scopeControl.topAnchor.constraint(equalTo: resultActions.bottomAnchor, constant: 4),
+            scopeControl.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 4),
             scopeControl.leadingAnchor.constraint(
                 equalTo: view.leadingAnchor,
                 constant: SearchLayoutMetrics.contentHorizontalInset
@@ -549,7 +553,7 @@ final class SearchCoreViewController: UIViewController {
         scopeControl.accessibilityIdentifier = "search.scope"
         scopeMenuButton.accessibilityIdentifier = "search.scopeMenu"
         let palette = appliedTheme.uiKitPalette
-        scopeControl.selectedSegmentIndex = Scope.all.rawValue
+        scopeControl.selectedSegmentIndex = Scope.accounts.segmentIndex
         scopeControl.addTarget(self, action: #selector(scopeChanged), for: .valueChanged)
         scopeControl.isHidden = false
         scopeControl.backgroundColor = .clear
@@ -623,7 +627,7 @@ final class SearchCoreViewController: UIViewController {
             return outgoing
         }
         scopeMenuButton.configuration = configuration
-        scopeMenuButton.menu = UIMenu(children: Scope.allCases.map { scope in
+        scopeMenuButton.menu = UIMenu(children: Scope.exploreScopes.map { scope in
             UIAction(
                 title: scope.title,
                 image: UIImage(systemName: scope == selectedScope ? "checkmark" : "circle"),
@@ -693,10 +697,6 @@ final class SearchCoreViewController: UIViewController {
             SearchResultLineCell.self,
             forCellReuseIdentifier: SearchResultLineCell.accountReuseIdentifier
         )
-        tableView.register(
-            SearchSectionHeaderView.self,
-            forHeaderFooterViewReuseIdentifier: SearchSectionHeaderView.reuseIdentifier
-        )
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "StateCell")
         tableView.register(SearchLoadingMoreCell.self, forCellReuseIdentifier: SearchLoadingMoreCell.reuseIdentifier)
         refreshControl.addTarget(self, action: #selector(handlePullToRefresh), for: .valueChanged)
@@ -744,15 +744,15 @@ final class SearchCoreViewController: UIViewController {
 
     private func switchScope(by step: Int) {
         let currentIndex = scopeControl.selectedSegmentIndex
-        let nextIndex = max(0, min(Scope.allCases.count - 1, currentIndex + step))
+        let nextIndex = max(0, min(Scope.exploreScopes.count - 1, currentIndex + step))
         guard nextIndex != currentIndex else { return }
         scopeControl.selectedSegmentIndex = nextIndex
         scopeChanged()
     }
 
     private func selectScope(_ scope: Scope) {
-        guard scopeControl.selectedSegmentIndex != scope.rawValue else { return }
-        scopeControl.selectedSegmentIndex = scope.rawValue
+        guard scopeControl.selectedSegmentIndex != scope.segmentIndex else { return }
+        scopeControl.selectedSegmentIndex = scope.segmentIndex
         scopeChanged()
     }
 
@@ -921,7 +921,6 @@ final class SearchCoreViewController: UIViewController {
             sections.append(
                 SectionModel(
                     kind: .accounts,
-                    title: sectionTitle(for: .accounts),
                     rows: currentResults.accounts.map(Row.account)
                 )
             )
@@ -931,7 +930,6 @@ final class SearchCoreViewController: UIViewController {
             sections.append(
                 SectionModel(
                     kind: .statuses,
-                    title: sectionTitle(for: .statuses),
                     rows: currentResults.statuses.map(Row.status)
                 )
             )
@@ -941,7 +939,6 @@ final class SearchCoreViewController: UIViewController {
             sections.append(
                 SectionModel(
                     kind: .hashtags,
-                    title: sectionTitle(for: .hashtags),
                     rows: currentResults.hashtags.map(Row.hashtag)
                 )
             )
@@ -950,36 +947,12 @@ final class SearchCoreViewController: UIViewController {
 
     private func isSectionVisible(_ kind: SectionModel.Kind) -> Bool {
         switch selectedScope {
-        case .all:
-            return true
-        case .accounts:
+        case .all, .accounts:
             return kind == .accounts
         case .statuses:
             return kind == .statuses
         case .hashtags:
             return kind == .hashtags
-        }
-    }
-
-    private func sectionTitle(for kind: SectionModel.Kind) -> String {
-        if isDiscoveryMode {
-            switch kind {
-            case .accounts:
-                return MoroL10n.Search.discoverDirectory
-            case .statuses:
-                return MoroL10n.Search.discoverTrendingPosts
-            case .hashtags:
-                return MoroL10n.Search.discoverTrendingTags
-            }
-        }
-
-        switch kind {
-        case .accounts:
-            return MoroL10n.Search.resultAccounts
-        case .statuses:
-            return MoroL10n.Search.resultPosts
-        case .hashtags:
-            return MoroL10n.Search.resultHashtags
         }
     }
 
@@ -1000,7 +973,6 @@ final class SearchCoreViewController: UIViewController {
         sections.map { section in
             var hasher = Hasher()
             hasher.combine(section.kind)
-            hasher.combine(section.title)
             hasher.combine(section.rows.count)
             for row in section.rows.prefix(8) {
                 switch row {

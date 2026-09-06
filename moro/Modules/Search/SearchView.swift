@@ -32,7 +32,7 @@ struct SearchView: View {
     private let initialQuery: String?
     private let initialScope: SearchViewModel.Scope
 
-    init(apiClient: MastodonAPI, initialQuery: String? = nil, initialScope: SearchViewModel.Scope = .all) {
+    init(apiClient: MastodonAPI, initialQuery: String? = nil, initialScope: SearchViewModel.Scope = .accounts) {
         self.apiClient = apiClient
         self.initialQuery = initialQuery
         self.initialScope = initialScope
@@ -45,7 +45,6 @@ struct SearchView: View {
             initialScope: initialScope,
             accountKey: accountKey,
             theme: theme,
-            onManageSavedSearches: { router.navigate(to: .savedSearches) },
             onOpenProfile: { account in
                 router.navigate(to: .userProfile(account))
             },
@@ -72,7 +71,6 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
     let initialScope: SearchViewModel.Scope
     let accountKey: String
     let theme: MoroTheme
-    let onManageSavedSearches: () -> Void
     let onOpenProfile: (Account) -> Void
     let onOpenStatus: (Status) -> Void
     let onOpenHashtag: (String) -> Void
@@ -85,7 +83,6 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
             accountKey: accountKey,
             initialScope: initialScope
         )
-        controller.onManageSavedSearches = onManageSavedSearches
         controller.onOpenProfile = onOpenProfile
         controller.onOpenStatus = onOpenStatus
         controller.onOpenHashtag = onOpenHashtag
@@ -93,7 +90,6 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: SearchCoreViewController, context: Context) {
-        uiViewController.onManageSavedSearches = onManageSavedSearches
         uiViewController.onOpenProfile = onOpenProfile
         uiViewController.onOpenStatus = onOpenStatus
         uiViewController.onOpenHashtag = onOpenHashtag

@@ -4,7 +4,7 @@ import Testing
 
 @MainActor
 struct SearchInteractionTests {
-    @Test func editingAndClearingNeverReplaceTheCommittedQuery() {
+    @Test func clearingThenCancellingAlwaysReturnsToDiscovery() {
         var state = SearchInteractionState()
         state.submit("原查询", scope: .statuses)
         state.beginEntry()
@@ -14,12 +14,13 @@ struct SearchInteractionTests {
         state.draftQuery = ""
         #expect(state.page == .entry)
         state.cancelEntry()
-        #expect(state.page == .results)
-        #expect(state.draftQuery == "原查询")
-        #expect(state.submittedScope == .statuses)
+        #expect(state.page == .discovery)
+        #expect(state.draftQuery.isEmpty)
+        #expect(state.submittedQuery.isEmpty)
+        #expect(state.submittedScope == .accounts)
     }
 
-    @Test func emptySubmissionAndRepeatedFocusKeepTheReturnPage() {
+    @Test func emptySubmissionAndRepeatedFocusRemainEntryUntilCancelled() {
         var state = SearchInteractionState()
         state.beginEntry()
         state.draftQuery = "  "
