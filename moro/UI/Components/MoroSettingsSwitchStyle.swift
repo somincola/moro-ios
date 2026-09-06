@@ -18,16 +18,17 @@ struct MoroSettingsSwitchStyle: ToggleStyle {
     }
 
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 12) {
-            configuration.label
+        Button {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.86)) {
+                configuration.isOn.toggle()
+            }
+        } label: {
+            HStack(spacing: 12) {
+                configuration.label
+                    .fixedSize(horizontal: false, vertical: true)
 
-            Spacer(minLength: 12)
+                Spacer(minLength: 12)
 
-            Button {
-                withAnimation(.spring(response: 0.22, dampingFraction: 0.86)) {
-                    configuration.isOn.toggle()
-                }
-            } label: {
                 RoundedRectangle(
                     cornerRadius: Metrics.trackHeight / 2,
                     style: .continuous
@@ -48,11 +49,14 @@ struct MoroSettingsSwitchStyle: ToggleStyle {
                         .shadow(color: .black.opacity(theme.colorScheme == .dark ? 0.28 : 0.12), radius: 6, y: 2)
                 }
                 .frame(width: Metrics.trackWidth, height: Metrics.trackHeight)
+                .accessibilityHidden(true)
             }
-            .buttonStyle(.plain)
-            .accessibilityAddTraits(.isToggle)
-            .accessibilityValue(configuration.isOn ? MoroL10n.SettingsSwitch.on : MoroL10n.SettingsSwitch.off)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityValue(configuration.isOn ? MoroL10n.SettingsSwitch.on : MoroL10n.SettingsSwitch.off)
         .opacity(configuration.isOn ? 1 : 0.96)
     }
 

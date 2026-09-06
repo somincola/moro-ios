@@ -282,6 +282,7 @@ struct ProfileBasicsEditor: View {
                         .focused($focusedInput, equals: .displayName)
                         .submitLabel(.next)
                         .onSubmit { focusedInput = .bio }
+                        .accessibilityIdentifier("profile.basic.name")
                 }
                 .padding(14)
 
@@ -304,6 +305,7 @@ struct ProfileBasicsEditor: View {
                         .frame(minHeight: 220)
                         .scrollContentBackground(.hidden)
                         .focused($focusedInput, equals: .bio)
+                        .accessibilityIdentifier("profile.basic.bio")
                 }
                 .padding(14)
             }
@@ -344,6 +346,7 @@ struct ProfileBasicsEditor: View {
                     .fontWeight(.semibold)
             }
             .disabled(!viewModel.canSave)
+            .accessibilityIdentifier("profile.basic.save")
         }
     }
 

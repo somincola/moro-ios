@@ -46,12 +46,14 @@ private struct ProfileEditorExitGuard: ViewModifier {
                         }
                         .disabled(isSaving)
                         .accessibilityLabel(MoroL10n.EditProfile.back)
+                        .accessibilityIdentifier("profile.editor.back")
                     }
                 }
             }
             .confirmationDialog(MoroL10n.EditProfile.discardTitle, isPresented: $confirmDiscard,
                                 titleVisibility: .visible) {
                 Button(MoroL10n.EditProfile.discardAction, role: .destructive) { dismiss() }
+                    .accessibilityIdentifier("profile.editor.discard")
                 Button(MoroL10n.EditProfile.discardContinue, role: .cancel) {}
             } message: {
                 Text(MoroL10n.EditProfile.discardMessage)

@@ -167,7 +167,7 @@ final class EditProfileViewModel: ObservableObject {
     }
 
     func updateNote(_ value: String) {
-        note = String(value.prefix(limits.noteLength))
+        note = String(value.prefix(max(limits.noteLength, originalNote.count)))
     }
 
     func selectAvatar(item: PhotosPickerItem) async {
@@ -254,12 +254,13 @@ final class EditProfileViewModel: ObservableObject {
             return false
         }
 
-        if scope != .fields && (normalizedName.count > limits.displayNameLength || normalizedNote.count > limits.noteLength) {
+        let changesName = scope != .fields && normalizedName != originalDisplayName
+        let changesNote = scope != .fields && normalizedNote != originalNote
+        if (changesName && normalizedName.count > limits.displayNameLength)
+            || (changesNote && normalizedNote.count > limits.noteLength) {
             AppFeedbackCenter.shared.showError(MoroL10n.ProfileEditing.limitsExceeded)
             return false
         }
-        let changesName = scope != .fields && normalizedName != originalDisplayName
-        let changesNote = scope != .fields && normalizedNote != originalNote
         let changesFields = scope != .basic && normalizedFieldsForComparison() != originalFields
         let activeToken = appState.authToken
         let activeAccountID = appState.currentAccount?.id
@@ -450,9 +451,10 @@ final class EditProfileViewModel: ObservableObject {
         let pairs = normalizedFieldsForComparison()
         // Keep previously accepted fields even if the instance later lowers its limit.
         guard fields.count <= max(limits.fieldCount, originalFields.count) else { return nil }
-        guard pairs.allSatisfy({ !$0.name.isEmpty && !$0.value.isEmpty }) else { return nil }
-        guard pairs.allSatisfy({ $0.name.count <= limits.fieldNameLength && $0.value.count <= limits.fieldValueLength }) else {
-            return nil
+        for (field, pair) in zip(fields, pairs) {
+            let original = originalFieldValues[field.id]
+            if pair.name != original?.name && (pair.name.isEmpty || pair.name.count > limits.fieldNameLength) { return nil }
+            if pair.value != original?.value && (pair.value.isEmpty || pair.value.count > limits.fieldValueLength) { return nil }
         }
         return pairs.map { AccountField(name: $0.name, value: $0.value) }
     }
@@ -490,4 +492,3 @@ final class EditProfileViewModel: ObservableObject {
         return resized
     }
 }
-

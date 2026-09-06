@@ -13,6 +13,99 @@ import UIKit
 import Combine
 
 struct moroTests {
+    @Test @MainActor func profileStopsAutomaticallyScanningAfterThreeEmptyReplyPages() async {
+        let api = MockMastodonAPI()
+        var page = 0
+        api.fetchAccountStatusesHandler = { _, _, _, _, _, _, _, _ in
+            page += 1
+            return (0..<20).map { makeStatus(id: "\(page)-\($0)") }
+        }
+        let model = ProfileViewModel(apiClient: api, accountID: "account")
+        model.selectTab(.replies)
+        await model.loadTabIfNeeded(.replies)
+        #expect(model.shouldAutomaticallyContinueEmptyPage)
+        await model.loadMore()
+        #expect(model.shouldAutomaticallyContinueEmptyPage)
+        await model.loadMore()
+        #expect(!model.shouldAutomaticallyContinueEmptyPage)
+        #expect(model.hasMore && model.currentStatuses.isEmpty)
+        #expect(model.paginationCursor == "3-19")
+    }
+
+    @Test @MainActor func profileTagFilterAlsoAppliesToLivePostAndPinEvents() async {
+        let api = MockMastodonAPI()
+        let account = makeAccount(id: "live-tag-owner")
+        api.accountFeaturedTagsHandler = { _ in [FeaturedTag(id: "app-tag", name: "app")] }
+        api.taggedStatusesHandler = { _, _, _, _ in [] }
+        let model = ProfileViewModel(apiClient: api, accountID: account.id)
+        await model.loadFeaturedTags()
+        await model.selectFeaturedTag("app")
+        let matching = makeStatus(id: "matching", account: account,
+            tags: [.init(name: "APP", url: URL(string: "https://example.org/tags/app")!)], pinned: true)
+        let unrelated = makeStatus(id: "unrelated", account: account, pinned: true)
+        FeedCoordinator.shared.publishUpdate(.createdPost(unrelated))
+        FeedCoordinator.shared.publishUpdate(.post(unrelated))
+        #expect(model.posts.isEmpty && model.pinnedStatuses.isEmpty)
+        FeedCoordinator.shared.publishUpdate(.createdPost(matching))
+        FeedCoordinator.shared.publishUpdate(.post(matching))
+        #expect(model.posts.map(\.id) == ["matching"])
+        #expect(model.pinnedStatuses.map(\.id) == ["matching"])
+        FeedCoordinator.shared.publishUpdate(.post(makeStatus(id: "matching", account: account, pinned: true)))
+        #expect(model.posts.isEmpty && model.pinnedStatuses.isEmpty)
+    }
+
+    @Test @MainActor func profilePreservesPreviouslyAcceptedTextWhenLimitsAreLowered() async throws {
+        let api = MockMastodonAPI()
+        let raw = String(repeating: "x", count: 540) + " https://example.org/keep"
+        let value = "https://example.org/" + String(repeating: "x", count: 300)
+        let source = EditableProfile(id: "account", displayName: "Name", note: raw,
+            fields: [.init(name: "Website", value: value), .init(name: "Other", value: "Value")])
+        api.fetchEditableProfileHandler = { source }
+        api.verifyCredentialsHandler = { makeAccount() }
+        api.updateAccountProfileHandler = { _, _, _, _, _, _, _ in makeAccount() }
+        let basic = EditProfileViewModel(apiClient: api, initialAccount: makeAccount(), scope: .basic)
+        await basic.load()
+        basic.displayName = "Changed"
+        #expect(await basic.save(to: AppState()))
+        #expect(api.updateAccountProfileCalls.last?.note == nil)
+        basic.updateNote(String(raw.dropLast()))
+        #expect(basic.note.count == raw.count - 1)
+        let fields = EditProfileViewModel(apiClient: api, initialAccount: makeAccount(), scope: .fields)
+        await fields.load()
+        fields.moveFields(from: IndexSet(integer: 0), to: 2)
+        #expect(await fields.save(to: AppState()))
+        #expect(api.updateAccountProfileCalls.last?.fields?.last?.value == value)
+    }
+
+    @Test @MainActor func failedMediaRefreshCannotReplaceANewerPreferenceResult() async {
+        let api = MockMastodonAPI()
+        let started = AsyncStream<Void>.makeStream()
+        var pending: CheckedContinuation<[Status], Error>?
+        let oldAccount = makeAccount(showMedia: true, showMediaReplies: false)
+        api.verifyCredentialsHandler = { oldAccount }
+        api.fetchAccountStatusesHandler = { _, _, _, _, excludeReplies, _, onlyMedia, _ in
+            if onlyMedia && excludeReplies {
+                return try await withCheckedThrowingContinuation { continuation in
+                    pending = continuation
+                    started.continuation.yield(())
+                }
+            }
+            return onlyMedia ? [makeStatus(id: "current-media")] : []
+        }
+        let model = ProfileViewModel(apiClient: api, accountID: "account", currentAccountID: "account")
+        model.account = oldAccount
+        model.selectTab(.media)
+        let refresh = Task { await model.refresh() }
+        var iterator = started.stream.makeAsyncIterator()
+        await iterator.next()
+        model.account = makeAccount(showMedia: true, showMediaReplies: true)
+        await model.loadTabIfNeeded(.media)
+        pending?.resume(throwing: MockMastodonAPI.MockError.forcedFailure)
+        await refresh.value
+        #expect(model.tabLoadState(for: .media) == .loaded)
+        #expect(model.media.map(\.id) == ["current-media"])
+    }
+
     @Test @MainActor func profileDisplaySaveKeepsLocalDraftWhenTheServerFails() async throws {
         let suite = "profile-display-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -6996,6 +7089,7 @@ private extension moroTests {
         language: String? = nil,
         poll: Status.Poll? = nil,
         mentions: [Status.Mention]? = nil,
+        tags: [Status.Tag]? = nil,
         filtered: [Status.FilterResult]? = nil,
         pinned: Bool? = nil
     ) -> Status {
@@ -7018,6 +7112,7 @@ private extension moroTests {
             visibility: visibility,
             language: language,
             mentions: mentions,
+            tags: tags,
             poll: poll,
             filtered: filtered,
             pinned: pinned

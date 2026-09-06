@@ -34,6 +34,7 @@ struct FeaturedTagsEditor: View {
                 Section {
                     Text(error).font(theme.typography.caption).foregroundStyle(theme.colors.error)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("profile.featuredTags.error")
                 }
             }
 
@@ -64,7 +65,7 @@ struct FeaturedTagsEditor: View {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 5) {
                             Text("#\(tag.name)").font(theme.typography.bodyStrong)
-                            Text(MoroL10n.Search.resultPostsCount(tag.statusesCount))
+                            Text(MoroL10n.Timeline.statusCount(tag.statusesCount))
                                 .font(theme.typography.caption)
                                 .foregroundStyle(theme.colors.textSecondary)
                         }

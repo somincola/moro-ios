@@ -89,7 +89,21 @@ struct ProfileContentStream: View {
         }
 
         let selectedTab = viewModel.selectedTab
-        if viewModel.isLoadingMore(selectedTab) || viewModel.didFailLoadMore(selectedTab) {
+        if viewModel.currentStatuses.isEmpty && viewModel.hasMore && !viewModel.didFailLoadMore(selectedTab) {
+            // Replies are filtered from server pages of posts. Keep paging when an
+            // otherwise full page contains no replies, instead of showing a false end.
+            if viewModel.shouldAutomaticallyContinueEmptyPage || viewModel.isLoadingMore(selectedTab) {
+                ProgressView()
+                    .frame(maxWidth: .infinity, minHeight: 64)
+                    .task(id: viewModel.paginationCursor) {
+                        if viewModel.shouldAutomaticallyContinueEmptyPage { await viewModel.loadMore() }
+                    }
+            } else {
+                Button(MoroL10n.Topics.loadMore) { Task { await viewModel.loadMore() } }
+                    .frame(maxWidth: .infinity, minHeight: 64)
+                    .accessibilityIdentifier("profile.loadMoreEmptyPage")
+            }
+        } else if viewModel.isLoadingMore(selectedTab) || viewModel.didFailLoadMore(selectedTab) {
             PaginationFooter(
                 isLoadingMore: viewModel.isLoadingMore(selectedTab),
                 didFail: viewModel.didFailLoadMore(selectedTab),
@@ -112,7 +126,7 @@ struct ProfileContentStream: View {
                 )
             )
         case .loaded:
-            if viewModel.currentStatuses.isEmpty && !(viewModel.selectedTab == .posts && !viewModel.pinnedStatuses.isEmpty) {
+            if viewModel.currentStatuses.isEmpty && !viewModel.hasMore && !(viewModel.selectedTab == .posts && !viewModel.pinnedStatuses.isEmpty) {
                 return .empty(emptyStateSpec)
             }
             return .loaded

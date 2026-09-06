@@ -18,7 +18,8 @@ final class ProfileDisplayViewModel: ObservableObject {
     private let accountKey: String
     private let preferences: ProfilePresentationPreferences
 
-    init(apiClient: MastodonAPI, accountKey: String, preferences: ProfilePresentationPreferences = .shared) {
+    init(apiClient: MastodonAPI, accountKey: String, preferences: ProfilePresentationPreferences? = nil) {
+        let preferences = preferences ?? .shared
         self.apiClient = apiClient
         self.accountKey = accountKey
         self.preferences = preferences

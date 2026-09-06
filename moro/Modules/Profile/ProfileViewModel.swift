@@ -92,6 +92,7 @@ final class ProfileViewModel: ObservableObject {
     private var queryGeneration = UUID()
     private var featuredTagsRequestID = UUID()
     private var pinnedRequestID = UUID()
+    private var consecutiveEmptyPages: [Tab: Int] = [:]
 
     var showsFeaturedTags: Bool {
         ProfilePresentationPreferences.shouldShowTags(enabled: featuredTagsEnabled, tags: featuredTags)
@@ -127,6 +128,7 @@ final class ProfileViewModel: ObservableObject {
         hasMorePosts = true; hasMoreReplies = true; hasMoreMedia = true
         tabLoadStates = Dictionary(uniqueKeysWithValues: Tab.allCases.map { ($0, .notLoaded) })
         loadingMoreTabs = []; loadMoreFailedTabs = []
+        consecutiveEmptyPages = [:]
         async let pins: Void = fetchPinnedStatuses()
         await loadTabIfNeeded(selectedTab)
         await pins
@@ -168,6 +170,9 @@ final class ProfileViewModel: ObservableObject {
     var hasMore: Bool {
         hasMore(for: selectedTab)
     }
+
+    var paginationCursor: String? { maxID(for: selectedTab) }
+    var shouldAutomaticallyContinueEmptyPage: Bool { (consecutiveEmptyPages[selectedTab] ?? 0) < 3 }
 
     func tabLoadState(for tab: Tab) -> TabLoadState {
         tabLoadStates[tab] ?? .notLoaded
@@ -288,6 +293,7 @@ final class ProfileViewModel: ObservableObject {
     
     func refresh() async {
         var refreshedTab = selectedTab
+        var mediaRevision = mediaPreferenceRevision
         let generation = queryGeneration
         let tag = selectedFeaturedTag
         loadingState = .loading
@@ -297,7 +303,7 @@ final class ProfileViewModel: ObservableObject {
             account = refreshedAccount
             accountCache.set(refreshedAccount)
             if !availableTabs.contains(refreshedTab) { refreshedTab = .posts }
-            let mediaRevision = mediaPreferenceRevision
+            mediaRevision = mediaPreferenceRevision
             await loadRelationship()
             guard generation == queryGeneration else { return }
             await fetchPinnedStatuses()
@@ -310,7 +316,7 @@ final class ProfileViewModel: ObservableObject {
             loadingState = .loaded
             await loadFeaturedTags()
         } catch {
-            guard generation == queryGeneration else { return }
+            guard acceptsResponse(generation: generation, tab: refreshedTab, mediaRevision: mediaRevision) else { return }
             if statuses(for: refreshedTab).isEmpty {
                 tabLoadStates[refreshedTab] = .error(error.localizedDescription)
             }
@@ -444,6 +450,7 @@ final class ProfileViewModel: ObservableObject {
     }
 
     private func replaceContent(with page: TabPage, for tab: Tab) {
+        consecutiveEmptyPages[tab] = page.displayedStatuses.isEmpty ? 1 : 0
         switch tab {
         case .posts:
             posts = page.displayedStatuses
@@ -462,6 +469,7 @@ final class ProfileViewModel: ObservableObject {
     }
 
     private func appendContent(from page: TabPage, for tab: Tab) {
+        consecutiveEmptyPages[tab] = page.displayedStatuses.isEmpty ? (consecutiveEmptyPages[tab] ?? 0) + 1 : 0
         switch tab {
         case .posts:
             posts = appendingUnique(page.displayedStatuses, to: posts)
@@ -680,7 +688,7 @@ final class ProfileViewModel: ObservableObject {
     private func incorporateUpdate(_ update: UpdatedElement) {
         switch update {
         case .createdPost(let status):
-            guard status.account.id == resolvedAccountID else { break }
+            guard status.account.id == resolvedAccountID, matchesSelectedTag(status) else { break }
             if status.inReplyToID == nil,
                 !posts.contains(where: { $0.id == status.id })
             {
@@ -691,12 +699,28 @@ final class ProfileViewModel: ObservableObject {
                 replies.insert(status, at: 0)
             }
             if !status.mediaAttachments.isEmpty,
+                status.inReplyToID == nil || account?.showMediaReplies == true,
                 !media.contains(where: { $0.id == status.id })
             {
                 media.insert(status, at: 0)
             }
 
         case .post(let updatedStatus):
+            guard matchesSelectedTag(updatedStatus) else {
+                if posts.contains(where: { $0.displayStatus.id == updatedStatus.id }) {
+                    posts.removeAll { $0.displayStatus.id == updatedStatus.id }
+                }
+                if replies.contains(where: { $0.displayStatus.id == updatedStatus.id }) {
+                    replies.removeAll { $0.displayStatus.id == updatedStatus.id }
+                }
+                if media.contains(where: { $0.displayStatus.id == updatedStatus.id }) {
+                    media.removeAll { $0.displayStatus.id == updatedStatus.id }
+                }
+                if pinnedStatuses.contains(where: { $0.displayStatus.id == updatedStatus.id }) {
+                    pinnedStatuses.removeAll { $0.displayStatus.id == updatedStatus.id }
+                }
+                break
+            }
             // Update status in all tabs if it exists
             if let index = posts.firstIndex(where: { $0.id == updatedStatus.id || $0.displayStatus.id == updatedStatus.id }) {
                 posts[index] = posts[index].incorporatingDisplayStatusUpdate(updatedStatus)
@@ -753,5 +777,12 @@ final class ProfileViewModel: ObservableObject {
             // Not applicable for profile
             break
         }
+    }
+
+    private func matchesSelectedTag(_ status: Status) -> Bool {
+        guard let selectedFeaturedTag else { return true }
+        return status.displayStatus.tags?.contains {
+            $0.name.localizedCaseInsensitiveCompare(selectedFeaturedTag) == .orderedSame
+        } == true
     }
 }

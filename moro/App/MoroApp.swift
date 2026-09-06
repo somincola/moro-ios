@@ -54,6 +54,8 @@ struct MoroApp: App {
                     composeReadingHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseTopicsHarness {
                     topicsHarness.preferredColorScheme(colorScheme)
+                } else if shouldUseProfileExperienceHarness {
+                    profileExperienceHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseSearchFlowHarness {
                     searchFlowHarness
                         .preferredColorScheme(colorScheme)
@@ -199,6 +201,20 @@ struct MoroApp: App {
     @ViewBuilder private var topicsHarness: some View {
         #if DEBUG
         TopicsHarnessView()
+        #endif
+    }
+
+    private var shouldUseProfileExperienceHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_PROFILE_EXPERIENCE")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var profileExperienceHarness: some View {
+        #if DEBUG
+        ProfileExperienceHarnessView()
         #endif
     }
 
