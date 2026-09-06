@@ -53,6 +53,9 @@ public enum MoroL10n {
         public static var sourceUnavailable: String { text("profileEditing.sourceUnavailable") }
         public static var fieldsChangedElsewhere: String { text("profileEditing.fieldsChangedElsewhere") }
         public static var fieldOrderHint: String { text("profileEditing.fieldOrderHint") }
+        public static var fieldEditingHint: String { text("profileEditing.fieldEditingHint") }
+        public static var reorderFields: String { text("profileEditing.reorderFields") }
+        public static var finishReordering: String { text("profileEditing.finishReordering") }
         public static var editField: String { text("profileEditing.editField") }
         public static var emptyFields: String { text("profileEditing.emptyFields") }
         public static var emptyTags: String { text("profileEditing.emptyTags") }

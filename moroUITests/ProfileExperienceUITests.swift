@@ -12,12 +12,16 @@ final class ProfileExperienceUITests: XCTestCase {
         let first = app.buttons["profile.field.0"]
         XCTAssertTrue(first.waitForExistence(timeout: 8))
         XCTAssertTrue(first.label.contains(rawLink))
-        let handle = app.buttons["Reorder Website"]
-        let last = app.buttons["profile.field.2"]
+        app.buttons["profile.fields.reorder"].tap()
+        let firstCell = app.cells.containing(.any, identifier: "profile.field.0").firstMatch
+        let handle = firstCell.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder")).firstMatch
+        let last = app.descendants(matching: .any).matching(identifier: "profile.field.2").firstMatch
         XCTAssertTrue(handle.exists)
         handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .press(forDuration: 0.8, thenDragTo: last.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.95)))
         waitLabel(last, contains: "Website")
+        app.buttons["profile.fields.reorder"].tap()
+        XCTAssertTrue(app.buttons["profile.field.2"].isHittable)
         app.buttons["profile.fields.save"].tap()
         XCTAssertTrue(app.buttons["profile.edit.fields"].waitForExistence(timeout: 8))
         app.buttons["profile.edit.fields"].tap()
@@ -43,6 +47,55 @@ final class ProfileExperienceUITests: XCTestCase {
         waitLabel(last, contains: editedName)
         XCTAssertTrue(last.label.contains(rawLink))
         attach(app, "profile-fields-reordered")
+    }
+
+    func testFieldRowWhitespaceOpensEditorAndDeletionCanBeDiscarded() {
+        let app = launch()
+        defer { app.terminate() }
+        openOverview(app)
+        app.buttons["profile.edit.fields"].tap()
+        let first = app.buttons["profile.field.0"]
+        XCTAssertTrue(first.waitForExistence(timeout: 8))
+        // The empty trailing area must be as tappable as the field text.
+        first.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.15)).tap()
+        let value = app.textFields["profile.field.value"]
+        XCTAssertTrue(value.waitForExistence(timeout: 5))
+        XCTAssertEqual(value.value as? String, rawLink)
+        let delete = app.buttons["profile.field.delete"]
+        reveal(delete, in: app)
+        delete.tap()
+        waitLabel(first, contains: "About")
+        XCTAssertTrue(app.buttons["profile.fields.save"].isEnabled)
+        app.buttons["profile.editor.back"].tap()
+        let discard = app.buttons["profile.editor.discard"].firstMatch
+        XCTAssertTrue(discard.waitForExistence(timeout: 3))
+        discard.tap()
+        XCTAssertTrue(app.buttons["profile.edit.fields"].waitForExistence(timeout: 5))
+        app.buttons["profile.edit.fields"].tap()
+        waitLabel(first, contains: "Website")
+        XCTAssertTrue(first.label.contains(rawLink))
+        XCTAssertTrue(app.buttons["profile.field.2"].exists)
+    }
+
+    func testSwipeDeletingAFieldPersistsAndPreservesOtherValues() {
+        let app = launch()
+        defer { app.terminate() }
+        openOverview(app)
+        app.buttons["profile.edit.fields"].tap()
+        let middle = app.buttons["profile.field.1"]
+        XCTAssertTrue(middle.waitForExistence(timeout: 8))
+        middle.swipeLeft()
+        let delete = app.buttons["Delete"].firstMatch
+        XCTAssertTrue(delete.waitForExistence(timeout: 3))
+        delete.tap()
+        waitLabel(middle, contains: "Garden")
+        XCTAssertFalse(app.buttons["profile.field.2"].exists)
+        app.buttons["profile.fields.save"].tap()
+        XCTAssertTrue(app.buttons["profile.edit.fields"].waitForExistence(timeout: 8))
+        app.buttons["profile.edit.fields"].tap()
+        waitLabel(middle, contains: "Garden")
+        XCTAssertTrue(app.buttons["profile.field.0"].label.contains(rawLink))
+        XCTAssertFalse(app.buttons["profile.field.2"].exists)
     }
 
     func testDiscardingFieldDraftLeavesStoredValueUnchanged() {

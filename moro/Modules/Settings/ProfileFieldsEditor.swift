@@ -6,6 +6,7 @@ struct ProfileFieldsEditor: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var model: EditProfileViewModel
     @State private var editingField: EditProfileViewModel.EditableField?
+    @State private var editMode = EditMode.inactive
 
     init(apiClient: MastodonAPI, account: Account?) {
         _model = StateObject(wrappedValue: EditProfileViewModel(
@@ -16,14 +17,13 @@ struct ProfileFieldsEditor: View {
         List {
             Section {
                 ForEach(model.fields) { field in
-                    Button { editingField = field } label: {
-                        ProfileEditorSummaryRow(title: field.name, summary: field.value)
-                    }
-                    .buttonStyle(.plain)
+                    fieldRow(field)
                     .accessibilityIdentifier("profile.field.\(model.fields.firstIndex(of: field) ?? 0)")
                     .accessibilityAction(named: MoroL10n.ComposeReading.moveUp) { move(field, by: -1) }
                     .accessibilityAction(named: MoroL10n.ComposeReading.moveDown) { move(field, by: 1) }
+                    .moveDisabled(!editMode.isEditing)
                 }
+                .onDelete { model.fields.remove(atOffsets: $0) }
                 .onMove { model.moveFields(from: $0, to: $1) }
                 if model.fields.isEmpty {
                     Text(MoroL10n.ProfileEditing.emptyFields)
@@ -31,11 +31,35 @@ struct ProfileFieldsEditor: View {
                         .padding(.vertical, 8)
                 }
             } header: {
-                Text("\(model.fields.count)/\(model.limits.fieldCount)").monospacedDigit()
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text("\(model.fields.count)/\(model.limits.fieldCount)")
+                        .font(theme.typography.caption)
+                        .monospacedDigit()
+                    Spacer(minLength: 0)
+                    if model.fields.count > 1 || editMode.isEditing {
+                        Button {
+                            withAnimation { editMode = editMode.isEditing ? .inactive : .active }
+                        } label: {
+                            Text(editMode.isEditing
+                                ? MoroL10n.ProfileEditing.finishReordering
+                                : MoroL10n.ProfileEditing.reorderFields)
+                                .font(theme.typography.caption.weight(.medium))
+                                .foregroundStyle(theme.colors.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(minWidth: 44, minHeight: 44, alignment: .trailing)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("profile.fields.reorder")
+                    }
+                }
+                .textCase(nil)
             } footer: {
-                Text(MoroL10n.ProfileEditing.fieldOrderHint)
+                Text(editMode.isEditing
+                    ? MoroL10n.ProfileEditing.fieldOrderHint
+                    : MoroL10n.ProfileEditing.fieldEditingHint)
             }
-            if model.fields.count < model.limits.fieldCount {
+            if !editMode.isEditing && model.fields.count < model.limits.fieldCount {
                 Section {
                     Button { editingField = .init() } label: {
                         Label(MoroL10n.EditProfile.addField, systemImage: "plus")
@@ -45,7 +69,7 @@ struct ProfileFieldsEditor: View {
                 }
             }
         }
-        .environment(\.editMode, .constant(.active))
+        .environment(\.editMode, $editMode)
         .profileEditorChrome()
         .navigationTitle(MoroL10n.EditProfile.sectionExtraFields)
         .navigationBarTitleDisplayMode(.inline)
@@ -81,6 +105,28 @@ struct ProfileFieldsEditor: View {
                 }, onDelete: { model.removeField(id: field.id) })
         }
         .accessibilityIdentifier("profile.fields.editor")
+    }
+
+    @ViewBuilder
+    private func fieldRow(_ field: EditProfileViewModel.EditableField) -> some View {
+        if editMode.isEditing {
+            ProfileEditorSummaryRow(title: field.name, summary: field.value)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(field.name)
+                .accessibilityValue(field.value)
+        } else {
+            Button { editingField = field } label: {
+                HStack(spacing: 12) {
+                    ProfileEditorSummaryRow(title: field.name, summary: field.value)
+                    Image(systemName: "chevron.right")
+                        .font(theme.typography.caption.weight(.semibold))
+                        .foregroundStyle(theme.colors.textTertiary)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private func move(_ field: EditProfileViewModel.EditableField, by offset: Int) {
@@ -139,7 +185,11 @@ private struct ProfileFieldEditor: View {
             }
             if isExisting {
                 Section {
-                    Button(MoroL10n.Common.delete, role: .destructive) { onDelete(); dismiss() }
+                    Button(role: .destructive) { onDelete(); dismiss() } label: {
+                        Label(MoroL10n.Common.delete, systemImage: "trash")
+                            .frame(minHeight: 44)
+                    }
+                    .accessibilityIdentifier("profile.field.delete")
                 }
             }
         }
