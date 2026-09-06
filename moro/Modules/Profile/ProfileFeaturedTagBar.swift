@@ -8,20 +8,21 @@ struct ProfileFeaturedTagBar: View {
 
     var body: some View {
         ScrollView(.horizontal) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 ForEach(tags, id: \.id) { (tag: FeaturedTag) in
                     let selected = selection == tag.name
                     Button { onSelect(selected ? nil : tag.name) } label: {
-                        HStack(spacing: 5) {
-                            Text("#\(tag.name)")
-                            if selected { Image(systemName: "checkmark").font(.caption.weight(.semibold)) }
-                        }
-                        .font(theme.typography.caption)
-                        .foregroundStyle(selected ? theme.colors.textPrimary : theme.colors.textSecondary)
-                        .padding(.horizontal, 14)
-                        .frame(minHeight: 44)
-                        .background(selected ? theme.colors.surfaceSubtle : Color.clear, in: Capsule())
-                        .overlay(Capsule().stroke(selected ? theme.colors.textSecondary : theme.colors.borderSubtle, lineWidth: 1))
+                        Text("#\(tag.name)")
+                            .font(theme.typography.caption.weight(.medium))
+                            .foregroundStyle(selected ? theme.colors.primaryForeground : theme.colors.textSecondary)
+                            .fixedSize()
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .frame(minHeight: 30)
+                            .background(selected ? theme.colors.primary500 : theme.colors.primary50, in: Capsule())
+                            // Keep the compact capsule inside a comfortable tap target.
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(selected ? [.isSelected] : [])
@@ -29,7 +30,7 @@ struct ProfileFeaturedTagBar: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, 2)
         }
         .scrollIndicators(.hidden)
         .accessibilityIdentifier("profile.featuredTags.filters")
