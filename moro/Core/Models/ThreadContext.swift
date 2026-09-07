@@ -89,13 +89,26 @@ enum ThreadPosition: Equatable {
 
 // MARK: - Thread Item
 
+enum ThreadReplyGroup: Equatable {
+    case authorContinuation
+    case discussion(rootID: String)
+}
+
 /// A status with its thread context information
 struct ThreadItem: Identifiable {
     let status: Status
     let position: ThreadPosition
     let replyDepth: Int
+    var replyGroup: ThreadReplyGroup? = nil
     
     var id: String { status.id }
+
+    var isAuthorContinuation: Bool { replyGroup == .authorContinuation }
+
+    var replyBranchID: String? {
+        guard case .discussion(let rootID) = replyGroup else { return nil }
+        return rootID
+    }
 }
 
 // MARK: - Threaded Conversation Model
@@ -145,10 +158,11 @@ final class ThreadedConversationModel: ObservableObject {
         }
         
         // Process descendants - show connection lines for OP engagement and self-reply chains
-        let descendants = orderedDescendants(
+        let orderedReplies = orderedDescendants(
             context.descendants,
-            startingAt: focusedStatus.id
+            replyingTo: focusedStatus
         )
+        let descendants = orderedReplies.statuses
         let opID = focusedStatus.account.id // Original Poster's ID
         
         // Build a dictionary for quick status lookup
@@ -193,6 +207,7 @@ final class ThreadedConversationModel: ObservableObject {
         items.append(ThreadItem(status: focusedStatus, position: focusedPosition, replyDepth: 0))
 
         var replyDepthByStatusID = [focusedStatus.id: -1]
+        var branchByStatusID: [String: String] = [:]
         
         for (index, status) in descendants.enumerated() {
             // Check if this is a direct reply to the focused post
@@ -253,54 +268,67 @@ final class ThreadedConversationModel: ObservableObject {
             }
             replyDepthByStatusID[status.id] = replyDepth
             
-            items.append(ThreadItem(status: status, position: position, replyDepth: replyDepth))
+            let replyGroup: ThreadReplyGroup
+            if orderedReplies.continuationIDs.contains(status.id) {
+                replyGroup = .authorContinuation
+            } else {
+                // Replies to the main post or an author continuation start separate discussions.
+                let branchID = status.inReplyToID.flatMap { branchByStatusID[$0] } ?? status.id
+                branchByStatusID[status.id] = branchID
+                replyGroup = .discussion(rootID: branchID)
+            }
+            items.append(ThreadItem(
+                status: status, position: position, replyDepth: replyDepth, replyGroup: replyGroup
+            ))
         }
         
         return items
     }
 
-    /// Keep every parent before its children and sort sibling replies oldest first.
+    /// Read the author's uninterrupted self-reply chain first, then each discussion.
+    /// Preserve the API's sibling order instead of replacing it with a date sort.
     private static func orderedDescendants(
         _ descendants: [Status],
-        startingAt focusedID: String
-    ) -> [Status] {
-        let uniqueStatuses = Dictionary(
-            descendants.map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        replyingTo focusedStatus: Status
+    ) -> (statuses: [Status], continuationIDs: Set<String>) {
+        var seen: Set<String> = [focusedStatus.id]
+        let uniqueStatuses = descendants.filter { seen.insert($0.id).inserted }
         var childrenByParent: [String: [Status]] = [:]
 
-        for status in uniqueStatuses.values {
+        for status in uniqueStatuses {
             guard let parentID = status.inReplyToID else { continue }
             childrenByParent[parentID, default: []].append(status)
         }
 
-        func sorted(_ statuses: [Status]) -> [Status] {
-            statuses.sorted {
-                if $0.createdAt == $1.createdAt {
-                    return $0.id < $1.id
-                }
-                return $0.createdAt < $1.createdAt
-            }
-        }
-
         var ordered: [Status] = []
-        var visited: Set<String> = []
+        var visited: Set<String> = [focusedStatus.id]
+        var pending = Array((childrenByParent[focusedStatus.id] ?? []).reversed())
+        while let status = pending.popLast() {
+            guard status.account.id == focusedStatus.account.id,
+                visited.insert(status.id).inserted else { continue }
+            ordered.append(status)
+            pending.append(contentsOf: (childrenByParent[status.id] ?? []).reversed())
+        }
+        let continuationIDs = visited.subtracting([focusedStatus.id])
 
         func appendBranch(startingWith roots: [Status]) {
             var pending = Array(roots.reversed())
             while let status = pending.popLast() {
-                guard status.id != focusedID, visited.insert(status.id).inserted else { continue }
+                guard visited.insert(status.id).inserted else { continue }
                 ordered.append(status)
-                pending.append(contentsOf: sorted(childrenByParent[status.id] ?? []).reversed())
+                pending.append(contentsOf: (childrenByParent[status.id] ?? []).reversed())
             }
         }
 
-        appendBranch(startingWith: sorted(childrenByParent[focusedID] ?? []))
+        let roots = uniqueStatuses.filter { status in
+            guard let parent = status.inReplyToID else { return true }
+            return parent == focusedStatus.id || continuationIDs.contains(parent) || !seen.contains(parent)
+        }
+        appendBranch(startingWith: roots)
         // Preserve replies whose parent is unavailable, while bounding malformed cycles.
-        appendBranch(startingWith: sorted(Array(uniqueStatuses.values)))
+        appendBranch(startingWith: uniqueStatuses)
 
-        return ordered
+        return (ordered, continuationIDs)
     }
     
     /// Build the ancestor chain by following inReplyToID
