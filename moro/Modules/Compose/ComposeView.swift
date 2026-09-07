@@ -101,6 +101,36 @@ struct ComposeTextSelectionCommand: Equatable {
 }
 
 enum ComposeTextEditing {
+    static func prependingReplyMention(
+        acct: String,
+        to text: String,
+        selection: NSRange
+    ) -> ComposeTextInsertionResult {
+        let safeSelection = clamped(selection, in: (text as NSString).length)
+        let mention = acct.hasPrefix("@") ? acct : "@\(acct)"
+        guard !text.contains(mention) else {
+            return ComposeTextInsertionResult(text: text, selection: safeSelection)
+        }
+
+        let prefix = "\(mention) "
+        let prefixLength = (prefix as NSString).length
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return ComposeTextInsertionResult(
+                text: prefix,
+                selection: NSRange(location: prefixLength, length: 0)
+            )
+        }
+
+        // Keep the final mention's separator and any text already entered while loading.
+        return ComposeTextInsertionResult(
+            text: prefix + text,
+            selection: NSRange(
+                location: prefixLength + safeSelection.location,
+                length: safeSelection.length
+            )
+        )
+    }
+
     static func insertingEmoji(
         shortcode: String,
         into text: String,
@@ -1812,23 +1842,17 @@ struct ComposeView: View {
     private func fetchAndAddOriginalAuthorMention(accountID: String) async {
         do {
             let account = try await viewModel.apiClient.fetchAccount(id: accountID)
-            // Add mention to content if not already present
-            // Ensure mention starts with @ but don't double it
-            let acct = account.acct
-            let mentionText = acct.hasPrefix("@") ? acct : "@\(acct)"
-            if !viewModel.content.contains(mentionText) {
-                // Prepend mention to content
-                let currentContent = viewModel.content.trimmingCharacters(in: .whitespacesAndNewlines)
-                if currentContent.isEmpty {
-                    viewModel.content = "\(mentionText) "
-                } else {
-                    // Check if mention is already at the start
-                    let mentions = currentContent.components(separatedBy: " ").filter { $0.hasPrefix("@") }
-                    if !mentions.contains(mentionText) {
-                        viewModel.content = "\(mentionText) \(currentContent)"
-                    }
-                }
-            }
+            let result = ComposeTextEditing.prependingReplyMention(
+                acct: account.acct,
+                to: viewModel.content,
+                selection: textSelection
+            )
+            guard result.text != viewModel.content else { return }
+            viewModel.content = result.text
+            textSelection = result.selection
+            textSelectionCommand = ComposeTextSelectionCommand(
+                range: result.selection, scrollsToSelection: true
+            )
         } catch {
             AppFeedbackCenter.shared.showInfo(MoroL10n.Compose.toastAuthorMentionFailed)
             AppLogger.error("Failed to fetch original author account: \(error)")

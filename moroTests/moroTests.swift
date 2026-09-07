@@ -4926,6 +4926,7 @@ struct moroTests {
             currentUserID: "me"
         )
 
+        #expect(viewModel.content == "@alice@example.com @bob@example.com ")
         #expect(viewModel.hasDraftableContent == false)
 
         viewModel.content = "@alice@example.com \n @bob@example.com"
