@@ -1,7 +1,7 @@
 #if DEBUG
 import SwiftUI
 
-/// Uses the production reply editor and an isolated, optionally delayed transport.
+/// Uses the production reply editor with local fixtures and an offline transport.
 struct ComposeReplyHarnessView: View {
     @StateObject private var appState = AppState()
     @StateObject private var accountCache: AccountCache
@@ -23,12 +23,20 @@ struct ComposeReplyHarnessView: View {
         )
         self.client = client
         let cache = AccountCache()
-        if mode == "cached" { cache.cacheFromStatuses([Self.makeStatus(author: "alice", mentions: [])]) }
+        if mode == "cached" { cache.set(Self.account("alice")) }
         _accountCache = StateObject(wrappedValue: cache)
         let mentions = mode == "mentions" ? [Status.Mention(
             id: "alice", username: "alice", url: URL(string: "https://example.com/@alice")!, acct: "alice@example.com"
         )] : []
-        let status = Self.makeStatus(author: "bob", mentions: mentions)
+        let status = Status(
+            id: "fixture-reply", content: "<p>A post in a conversation.</p>", createdAt: Date(),
+            account: Self.account(mode == "original" ? "alice" : "bob"), mediaAttachments: [],
+            favouritesCount: 0, reblogsCount: 0, repliesCount: 0,
+            bookmarked: false, favourited: false, reblogged: false,
+            inReplyToID: mode == "original" ? nil : "status-alice",
+            inReplyToAccountID: mode == "original" ? nil : "alice",
+            mentions: mentions, filtered: nil
+        )
         self.status = status
         if mode == "draft" {
             let model = ComposeViewModel(context: .reply(to: status), apiClient: client,
@@ -41,22 +49,24 @@ struct ComposeReplyHarnessView: View {
     }
 
     var body: some View {
-        Button("Reply") { presentsReply = true }
-            .accessibilityIdentifier("replyHarness.open")
-            .fullScreenCover(isPresented: $presentsReply) {
-                ComposeView(context: .reply(to: status), apiClient: client, currentUserID: "me",
-                            initialDraft: draft, accountCache: accountCache)
-                    .environmentObject(appState)
-                    .moroTheme(MoroTheme(colorScheme: colorScheme, dynamicTypeSize: dynamicTypeSize))
-            }
+        VStack {
+            Button("Reply") { presentsReply = true }
+                .accessibilityIdentifier("replyHarness.open")
+            Text("Recipient requests: \(ReplyFixtureProtocol.recipientRequestCount)")
+                .accessibilityIdentifier("replyHarness.recipientRequests")
+        }
+        .fullScreenCover(isPresented: $presentsReply) {
+            ComposeView(context: .reply(to: status), apiClient: client, currentUserID: "me",
+                        initialDraft: draft, accountCache: accountCache)
+                .environmentObject(appState)
+                .moroTheme(MoroTheme(colorScheme: colorScheme, dynamicTypeSize: dynamicTypeSize))
+        }
     }
 
-    private static func makeStatus(author: String, mentions: [Status.Mention]) -> Status {
-        Status(id: "status-\(author)", content: "<p>A reply in a conversation.</p>", createdAt: Date(),
-               account: ReplyFixtureProtocol.account(author), mediaAttachments: [],
-               favouritesCount: 0, reblogsCount: 0, repliesCount: 0,
-               bookmarked: false, favourited: false, reblogged: false,
-               inReplyToID: "status-alice", inReplyToAccountID: "alice", mentions: mentions, filtered: nil)
+    private static func account(_ id: String) -> Account {
+        Account(id: id, username: id, acct: "\(id)@example.com", displayName: id.capitalized, note: "",
+                avatar: "", avatarStatic: "", header: "", headerStatic: "",
+                followersCount: 0, followingCount: 0, statusesCount: 1)
     }
 }
 
@@ -66,42 +76,20 @@ private final class ReplyFixtureTokenProvider: AuthTokenProvider {
 
 private final class ReplyFixtureProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
-    private static var accountRequests = 0
-    private var responseTask: Task<Void, Never>?
-
-    static func account(_ id: String) -> Account {
-        Account(id: id, username: id, acct: "\(id)@example.com", displayName: id.capitalized, note: "",
-                avatar: "", avatarStatic: "", header: "", headerStatic: "",
-                followersCount: 0, followingCount: 0, statusesCount: 1)
-    }
+    private static var recipientRequests = 0
+    static var recipientRequestCount: Int { lock.withLock { recipientRequests } }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        let isAccountRequest = request.url?.path == "/api/v1/accounts/alice"
-        let attempt = Self.lock.withLock {
-            if isAccountRequest { Self.accountRequests += 1 }
-            return Self.accountRequests
+        let path = request.url?.path ?? ""
+        if path.hasPrefix("/api/v1/accounts/") || path.hasPrefix("/api/v1/statuses/") {
+            Self.lock.withLock { Self.recipientRequests += 1 }
         }
-        let mode = ProcessInfo.processInfo.environment["UITEST_REPLY_MODE"] ?? "mentions"
-        responseTask = Task {
-            do {
-                if isAccountRequest { try await Task.sleep(for: .seconds(3)) }
-                try Task.checkCancellation()
-                let succeeds = isAccountRequest && (mode == "delayed" || (mode == "retry" && attempt > 1))
-                let data = succeeds ? try JSONEncoder().encode(Self.account("alice")) : Data("{\"error\":\"Fixture unavailable\"}".utf8)
-                let response = HTTPURLResponse(url: request.url!, statusCode: succeeds ? 200 : 503,
-                                               httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
-                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-                client?.urlProtocol(self, didLoad: data)
-                client?.urlProtocolDidFinishLoading(self)
-            } catch {
-                if !Task.isCancelled { client?.urlProtocol(self, didFailWithError: error) }
-            }
-        }
+        client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
     }
 
-    override func stopLoading() { responseTask?.cancel() }
+    override func stopLoading() {}
 }
 #endif

@@ -3,109 +3,90 @@ import XCTest
 final class ComposeReplyUITests: XCTestCase {
     private let completePrefix = "@alice@example.com @bob@example.com "
 
+    @MainActor func testOriginalReplyMentionsOnlyItsAuthor() {
+        verifyImmediateReply(mode: "original", prefix: "@alice@example.com ")
+    }
+
     @MainActor func testLocalRecipientsAppearTogether() {
-        verifyImmediateReply(mode: "mentions")
+        verifyImmediateReply(mode: "mentions", prefix: completePrefix)
     }
 
     @MainActor func testCachedRecipientsAppearTogether() {
-        verifyImmediateReply(mode: "cached")
+        verifyImmediateReply(mode: "cached", prefix: completePrefix)
     }
 
-    @MainActor func testDelayedRecipientsAppearOnceAndAreCachedOnReopen() {
-        let app = launch(mode: "delayed")
+    @MainActor func testMissingAccountAllowsImmediateEditingWithoutRequests() {
+        let app = launch(mode: "missing", language: "en", dark: true, largeText: true)
         defer { app.terminate() }
-        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "compose.replyRecipientsLoading").firstMatch.waitForExistence(timeout: 3))
-        XCTAssertFalse(app.textViews["compose.textInput"].exists)
-        XCTAssertFalse(app.buttons["compose.postButton"].isEnabled)
-        let editor = app.textViews["compose.textInput"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 8))
-        XCTAssertEqual(editor.value as? String, completePrefix)
-        app.navigationBars.buttons["取消"].tap()
-        XCTAssertTrue(app.buttons["replyHarness.open"].waitForExistence(timeout: 4))
+        let editor = readyEditor(in: app, prefix: "@bob@example.com ")
+        XCTAssertTrue(app.buttons["compose.postButton"].isEnabled)
+        attach(app, name: "reply-offline-dark-accessibility")
+        app.navigationBars.buttons["Cancel"].tap()
+        assertNoRecipientRequests(in: app)
+
         app.buttons["replyHarness.open"].tap()
         XCTAssertTrue(editor.waitForExistence(timeout: 3))
-        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "compose.replyRecipientsLoading").firstMatch.exists)
-        XCTAssertEqual(editor.value as? String, completePrefix)
-        focusAtEnd(editor)
-        editor.typeText("Hello")
-        XCTAssertEqual(editor.value as? String, completePrefix + "Hello")
-        attach(app, name: "reply-reopened-caret")
-    }
-
-    @MainActor func testDismissWhilePreparingCanReopenWithoutPartialText() {
-        let app = launch(mode: "delayed")
-        defer { app.terminate() }
-        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "compose.replyRecipientsLoading").firstMatch.waitForExistence(timeout: 3))
-        app.navigationBars.buttons["取消"].tap()
-        XCTAssertTrue(app.buttons["replyHarness.open"].waitForExistence(timeout: 4))
-        app.buttons["replyHarness.open"].tap()
-        let editor = app.textViews["compose.textInput"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 8))
-        XCTAssertEqual(editor.value as? String, completePrefix)
-        focusAtEnd(editor)
-        editor.typeText("Hello")
-        XCTAssertEqual(editor.value as? String, completePrefix + "Hello")
-    }
-
-    @MainActor func testFailureCanRetryAtAccessibilitySize() {
-        let app = launch(mode: "retry", language: "en", dark: true, largeText: true)
-        defer { app.terminate() }
-        let retry = app.buttons["compose.retryReplyRecipients"]
-        XCTAssertTrue(retry.waitForExistence(timeout: 8))
-        XCTAssertFalse(app.textViews["compose.textInput"].exists)
-        XCTAssertFalse(app.buttons["compose.postButton"].isEnabled)
-        XCTAssertTrue(retry.isHittable)
-        XCTAssertGreaterThanOrEqual(retry.frame.width, 43.99)
-        XCTAssertGreaterThanOrEqual(retry.frame.height, 43.99)
-        let available = app.buttons["compose.continueReplyRecipients"]
-        XCTAssertTrue(available.isHittable)
-        XCTAssertGreaterThanOrEqual(available.frame.height, 43.99)
-        XCTAssertLessThanOrEqual(available.frame.maxX, app.frame.maxX)
-        attach(app, name: "reply-failure-dark-accessibility")
-        retry.tap()
-        let editor = app.textViews["compose.textInput"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 8))
-        XCTAssertEqual(editor.value as? String, completePrefix)
-    }
-
-    @MainActor func testFailureCanContinueWithKnownRecipients() {
-        let app = launch(mode: "failure", dark: true)
-        defer { app.terminate() }
-        let available = app.buttons["compose.continueReplyRecipients"]
-        XCTAssertTrue(available.waitForExistence(timeout: 8))
-        attach(app, name: "reply-failure-chinese")
-        available.tap()
-        let editor = app.textViews["compose.textInput"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 3))
-        XCTAssertEqual(editor.value as? String, "@bob@example.com ")
         focusAtEnd(editor)
         editor.typeText("Hello")
         XCTAssertEqual(editor.value as? String, "@bob@example.com Hello")
     }
 
-    @MainActor func testRestoredDraftStartsReadyAndKeepsBody() {
-        let app = launch(mode: "draft")
+    @MainActor func testDismissAndReopenKeepsPrefixWithoutRequests() {
+        let app = launch(mode: "cached")
         defer { app.terminate() }
-        let editor = app.textViews["compose.textInput"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 3))
-        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "compose.replyRecipientsLoading").firstMatch.exists)
-        XCTAssertEqual(editor.value as? String, "@bob@example.com 草稿 👋  \n")
-        focusAtEnd(editor)
-        editor.typeText("Hello")
-        XCTAssertEqual(editor.value as? String, "@bob@example.com 草稿 👋  \nHello")
-    }
-
-    @MainActor private func verifyImmediateReply(mode: String) {
-        let app = launch(mode: mode)
-        defer { app.terminate() }
-        let editor = app.textViews["compose.textInput"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 3))
-        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "compose.replyRecipientsLoading").firstMatch.exists)
-        XCTAssertEqual(editor.value as? String, completePrefix)
+        _ = readyEditor(in: app, prefix: completePrefix)
+        app.navigationBars.buttons["取消"].tap()
+        assertNoRecipientRequests(in: app)
+        app.buttons["replyHarness.open"].tap()
+        let editor = readyEditor(in: app, prefix: completePrefix)
         focusAtEnd(editor)
         editor.typeText("Hello")
         XCTAssertEqual(editor.value as? String, completePrefix + "Hello")
+    }
+
+    @MainActor func testClearingPrefillDoesNotAddItBack() {
+        let app = launch(mode: "mentions")
+        defer { app.terminate() }
+        let editor = readyEditor(in: app, prefix: completePrefix)
+        focusAtEnd(editor)
+        editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: completePrefix.count))
+        editor.typeText("Hello")
+        XCTAssertEqual(editor.value as? String, "Hello")
+    }
+
+    @MainActor func testRestoredDraftKeepsBodyAndCaret() {
+        let app = launch(mode: "draft")
+        defer { app.terminate() }
+        let prefix = "@bob@example.com 草稿 👋  \n"
+        let editor = readyEditor(in: app, prefix: prefix)
+        focusAtEnd(editor)
+        editor.typeText("Hello")
+        XCTAssertEqual(editor.value as? String, prefix + "Hello")
+    }
+
+    @MainActor private func verifyImmediateReply(mode: String, prefix: String) {
+        let app = launch(mode: mode)
+        defer { app.terminate() }
+        let editor = readyEditor(in: app, prefix: prefix)
+        XCTAssertTrue(app.buttons["compose.postButton"].isEnabled)
+        focusAtEnd(editor)
+        editor.typeText("Hello")
+        XCTAssertEqual(editor.value as? String, prefix + "Hello")
         attach(app, name: "reply-\(mode)-ready")
+    }
+
+    @MainActor private func readyEditor(in app: XCUIApplication, prefix: String) -> XCUIElement {
+        let editor = app.textViews["compose.textInput"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 3))
+        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "compose.replyRecipientsLoading").firstMatch.exists)
+        XCTAssertFalse(app.buttons["compose.retryReplyRecipients"].exists)
+        XCTAssertEqual(editor.value as? String, prefix)
+        return editor
+    }
+
+    @MainActor private func assertNoRecipientRequests(in app: XCUIApplication) {
+        XCTAssertTrue(app.buttons["replyHarness.open"].waitForExistence(timeout: 4))
+        XCTAssertEqual(app.staticTexts["replyHarness.recipientRequests"].label, "Recipient requests: 0")
     }
 
     @MainActor private func launch(mode: String, language: String = "zh-Hans", dark: Bool = false, largeText: Bool = false) -> XCUIApplication {

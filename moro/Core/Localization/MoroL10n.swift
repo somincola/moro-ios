@@ -300,9 +300,6 @@ public enum MoroL10n {
     }
 
     public enum Compose {
-        public static var replyRecipientsLoading: String { text("compose.replyRecipients.loading") }
-        public static var replyRecipientsFailed: String { text("compose.replyRecipients.failed") }
-        public static var replyRecipientsContinue: String { text("compose.replyRecipients.continue") }
         public static var editSourceLoading: String { text("compose.editSource.loading") }
         public static var editSourceFailed: String { text("compose.editSource.failed") }
         public static var navigationNewPost: String { text("compose.navigation.newPost") }
@@ -446,7 +443,6 @@ public enum MoroL10n {
         public static var toastImportFailed: String { text("compose.toast.importFailed") }
         public static var toastImportComplete: String { text("compose.toast.importComplete") }
         public static var toastImportPartial: String { text("compose.toast.importPartial") }
-        public static var toastAuthorMentionFailed: String { text("compose.toast.authorMentionFailed") }
         public static var toastFileAccessFailed: String { text("compose.toast.fileAccessFailed") }
         public static var toastFileReadFailed: String { text("compose.toast.fileReadFailed") }
 

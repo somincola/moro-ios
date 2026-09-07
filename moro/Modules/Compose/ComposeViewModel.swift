@@ -66,11 +66,7 @@ final class ComposeViewModel: ObservableObject {
     
     // MARK: - Published Properties
     
-    @Published var content: String = "" {
-        didSet {
-            if content != oldValue { contentRevision &+= 1 }
-        }
-    }
+    @Published var content: String = ""
     @Published var contentWarning: String = ""
     @Published var isContentWarningActive: Bool = false
     @Published var visibility: MastodonVisibility = .public
@@ -81,15 +77,6 @@ final class ComposeViewModel: ObservableObject {
     @Published var scheduledAt: Date = ComposeViewModel.defaultScheduledDate()
     @Published var selectedLanguageCode: String = ""
     @Published private(set) var editSourceState: EditSourceState = .notRequired
-    @Published private(set) var replyRecipientsState: ReplyRecipientsState = .ready
-
-    enum ReplyRecipientsState {
-        case pending, loading, ready, failed
-    }
-
-    var isComposerReady: Bool {
-        isEditingSourceReady && replyRecipientsState == .ready
-    }
 
     enum EditSourceState {
         case notRequired, pending, loading, ready, failed
@@ -125,7 +112,6 @@ final class ComposeViewModel: ObservableObject {
     
     // Original status for reply/quote display
     @Published var originalStatus: Status?
-    @Published var isReplyingToReply: Bool = false
     
     // Quote policy (who can quote this post)
     enum QuotePolicy: String, Codable {
@@ -145,7 +131,6 @@ final class ComposeViewModel: ObservableObject {
 
     enum PublishBlocker: Equatable {
         case editSourceUnavailable
-        case replyRecipientsUnavailable
         case emptyContent
         case publishing
         case mediaUploading
@@ -189,7 +174,6 @@ final class ComposeViewModel: ObservableObject {
     let apiClient: MastodonAPI
     private let feedCoordinator: FeedCoordinator
     private let instanceMetadataStore: InstanceMetadataStore
-    private let accountCache: AccountCache
     private var cancellables = Set<AnyCancellable>()
     private let currentUserID: String?
     private static let minimumScheduleLeadTime: TimeInterval = 5 * 60
@@ -199,9 +183,6 @@ final class ComposeViewModel: ObservableObject {
     private var activeDraftCreatedAt: Date?
     private var activeDraftCategory: ComposeDraftCategory?
     private var editSource: StatusSource?
-    private var replyRecipients: ComposeReplyRecipients?
-    private var contentRevision: UInt64 = 0
-    private var replyPreparationID = UUID()
 
     init(
         context: ComposeContext,
@@ -217,7 +198,6 @@ final class ComposeViewModel: ObservableObject {
         self.feedCoordinator = feedCoordinator ?? .shared
         let resolvedInstanceMetadataStore = instanceMetadataStore ?? .shared
         self.instanceMetadataStore = resolvedInstanceMetadataStore
-        self.accountCache = accountCache ?? CacheManager.shared.accountCache
         self.currentUserID = currentUserID
 
         if let cachedLimit = resolvedInstanceMetadataStore
@@ -237,7 +217,7 @@ final class ComposeViewModel: ObservableObject {
             publishQuotingID = nil
         case .reply(let status):
             if let status {
-                initializeForReply(to: status)
+                initializeForReply(to: status, accountCache: accountCache ?? CacheManager.shared.accountCache)
             } else {
                 visibility = defaultVisibilityFromSettings()
             }
@@ -427,22 +407,15 @@ final class ComposeViewModel: ObservableObject {
         }
     }
     
-    private func initializeForReply(to status: Status) {
+    private func initializeForReply(to status: Status, accountCache: AccountCache) {
         // Get the actual status to reply to (handle reblog case)
         // If it's a reblog, we want to reply to the original post, not the reblog wrapper
         let statusToReplyTo: Status = status.displayStatus
         
-        isReplyingToReply = statusToReplyTo.inReplyToID != nil
         originalStatus = statusToReplyTo
-        let recipients = ComposeReplyRecipients.prepare(
+        content = ComposeReplyRecipients.text(
             for: statusToReplyTo, currentUserID: currentUserID, accountCache: accountCache
         )
-        if recipients.missingAccountID == nil {
-            content = recipients.text
-        } else {
-            replyRecipients = recipients
-            replyRecipientsState = .pending
-        }
 
         // Inherit CW
         if let spoilerText = status.spoilerText, !spoilerText.isEmpty {
@@ -458,74 +431,17 @@ final class ComposeViewModel: ObservableObject {
         }
     }
     
-    /// Returns true only when this call supplies the editor's initial reply text.
-    @discardableResult
-    func prepareReplyRecipientsIfNeeded() async -> Bool {
-        guard replyRecipientsState == .pending || replyRecipientsState == .failed,
-              let recipients = replyRecipients,
-              let accountID = recipients.missingAccountID else { return false }
-        guard content.isEmpty, activeDraftID == nil else {
-            replyRecipientsState = .ready
-            replyRecipients = nil
-            return false
-        }
-
-        let preparationID = UUID()
-        replyPreparationID = preparationID
-        let revision = contentRevision
-        replyRecipientsState = .loading
-        do {
-            let account = try await accountCache.resolve(id: accountID, apiClient: apiClient)
-            try Task.checkCancellation()
-            guard replyPreparationID == preparationID, replyRecipientsState == .loading else { return false }
-            guard contentRevision == revision, activeDraftID == nil else {
-                replyRecipientsState = .ready
-                replyRecipients = nil
-                return false
-            }
-            content = recipients.resolving(with: account).text
-            replyRecipients = nil
-            replyRecipientsState = .ready
-            return true
-        } catch {
-            guard replyPreparationID == preparationID, replyRecipientsState == .loading else { return false }
-            guard contentRevision == revision, activeDraftID == nil else {
-                replyRecipientsState = .ready
-                replyRecipients = nil
-                return false
-            }
-            // Cache eviction can cancel a lookup while this editor is still visible.
-            replyRecipientsState = Task.isCancelled ? .pending : .failed
-            return false
-        }
-    }
-
-    @discardableResult
-    func continueWithKnownReplyRecipients() -> Bool {
-        guard replyRecipientsState != .ready, let recipients = replyRecipients else { return false }
-        replyPreparationID = UUID()
-        replyRecipients = nil
-        replyRecipientsState = .ready
-        guard content.isEmpty, activeDraftID == nil else { return false }
-        content = recipients.text
-        return true
-    }
-
     func applyRestoredDraft(_ draft: ComposeDraft) {
         applyDraft(draft)
     }
 
     private func applyDraft(_ draft: ComposeDraft) {
-        replyPreparationID = UUID()
-        replyRecipients = nil
-        replyRecipientsState = .ready
         activeDraftID = draft.id
         activeDraftCreatedAt = draft.createdAt
         activeDraftCategory = draft.category
         publishReplyToID = draft.target.inReplyToID
         publishQuotingID = draft.target.quotingID
         originalStatus = draft.target.referenceStatus
-        isReplyingToReply = draft.target.referenceStatus?.inReplyToID != nil
 
         let payload = draft.payload
         content = payload.content
@@ -899,9 +815,6 @@ final class ComposeViewModel: ObservableObject {
         guard isEditingSourceReady else {
             throw ComposeError.editSourceUnavailable
         }
-        guard replyRecipientsState == .ready else {
-            throw ComposeError.replyRecipientsUnavailable
-        }
         guard !isPublishing else {
             throw ComposeError.alreadyPublishing
         }
@@ -1036,9 +949,6 @@ final class ComposeViewModel: ObservableObject {
         if !isEditingSourceReady {
             return .editSourceUnavailable
         }
-        if replyRecipientsState != .ready {
-            return .replyRecipientsUnavailable
-        }
         if isPublishing {
             return .publishing
         }
@@ -1079,7 +989,7 @@ final class ComposeViewModel: ObservableObject {
 
     var publishDisabledReason: String? {
         switch publishBlocker {
-        case .editSourceUnavailable, .replyRecipientsUnavailable:
+        case .editSourceUnavailable:
             return nil // The editor itself presents loading or retry UI.
         case .emptyContent, .publishing, .characterLimitExceeded, .pollNeedsMoreOptions, .none:
             return nil
@@ -1119,9 +1029,6 @@ final class ComposeViewModel: ObservableObject {
     }
 
     var draftPersistenceBlocker: String? {
-        if replyRecipientsState != .ready {
-            return MoroL10n.Compose.replyRecipientsFailed
-        }
         if !isEditingSourceReady {
             return MoroL10n.Compose.editSourceFailed
         }
@@ -1298,7 +1205,6 @@ struct MediaAttachment: Identifiable {
 
 enum ComposeError: LocalizedError {
     case editSourceUnavailable
-    case replyRecipientsUnavailable
     case emptyContent
     case alreadyPublishing
     case mediaUploading
@@ -1312,8 +1218,6 @@ enum ComposeError: LocalizedError {
         switch self {
         case .editSourceUnavailable:
             return MoroL10n.Compose.editSourceFailed
-        case .replyRecipientsUnavailable:
-            return MoroL10n.Compose.replyRecipientsFailed
         case .emptyContent:
             return MoroL10n.Compose.errorEmptyContent
         case .alreadyPublishing:

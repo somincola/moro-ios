@@ -161,7 +161,6 @@ struct ComposeView: View {
     @State private var emojiViewModel: CustomEmojiViewModel?
     @State private var pendingScheduledDate = ComposeViewModel.defaultScheduledDate()
     @State private var hasProcessedSharedImport = false
-    @State private var replyPreparationAttempt = 0
     
     private let draftStore: ComposeDraftStore
     private let sharedImport: SharedComposeAttachmentImportPayload?
@@ -229,7 +228,7 @@ struct ComposeView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if isExpandedEditor && viewModel.isComposerReady {
+                if isExpandedEditor && viewModel.isEditingSourceReady {
                     VStack(spacing: theme.spacing.s) {
                         if viewModel.isContentWarningActive { contentWarningSection }
                         textInputSection
@@ -246,12 +245,10 @@ struct ComposeView: View {
                                 )
                             }
 
-                            if viewModel.isComposerReady {
+                            if viewModel.isEditingSourceReady {
                                 inputSection
-                            } else if !viewModel.isEditingSourceReady {
-                                editSourcePlaceholder
                             } else {
-                                replyRecipientsPlaceholder
+                                editSourcePlaceholder
                             }
                         }
                     }
@@ -263,7 +260,7 @@ struct ComposeView: View {
                 
                 // Bottom: Quote policy selector (new post mode) + Toolbar
                 bottomSection
-                    .disabled(!viewModel.isComposerReady)
+                    .disabled(!viewModel.isEditingSourceReady)
             }
             .background(theme.colors.background)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -315,7 +312,7 @@ struct ComposeView: View {
                     } label: {
                         Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44)
                     }
-                    .disabled(!viewModel.isComposerReady || viewModel.isPublishing)
+                    .disabled(!viewModel.isEditingSourceReady || viewModel.isPublishing)
                     .accessibilityLabel(MoroL10n.ComposeReading.options)
                     .accessibilityIdentifier("compose.editorOptions")
 
@@ -433,9 +430,6 @@ struct ComposeView: View {
             .task {
                 await loadEditingSource()
             }
-            .task(id: replyPreparationAttempt) {
-                await prepareReplyRecipients()
-            }
         }
     }
 
@@ -466,47 +460,6 @@ struct ComposeView: View {
         }
         .frame(maxWidth: .infinity, minHeight: fixedTextInputHeight)
         .padding(theme.spacing.m)
-    }
-
-    private var replyRecipientsPlaceholder: some View {
-        VStack(spacing: theme.spacing.m) {
-            if viewModel.replyRecipientsState == .failed {
-                Text(MoroL10n.Compose.replyRecipientsFailed)
-                    .font(theme.typography.body)
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .multilineTextAlignment(.center)
-                Button {
-                    replyPreparationAttempt += 1
-                } label: {
-                    Text(MoroL10n.Compose.retry)
-                        .frame(minWidth: 44, minHeight: 44)
-                }
-                .accessibilityIdentifier("compose.retryReplyRecipients")
-                Button {
-                    if viewModel.continueWithKnownReplyRecipients() { placeCaretAfterReplyRecipients() }
-                } label: {
-                    Text(MoroL10n.Compose.replyRecipientsContinue)
-                        .multilineTextAlignment(.center)
-                        .frame(minWidth: 44, minHeight: 44)
-                }
-                .accessibilityIdentifier("compose.continueReplyRecipients")
-            } else {
-                ProgressView(MoroL10n.Compose.replyRecipientsLoading)
-                    .accessibilityIdentifier("compose.replyRecipientsLoading")
-            }
-        }
-        .tint(theme.colors.primary500)
-        .frame(maxWidth: .infinity, minHeight: fixedTextInputHeight)
-        .padding(theme.spacing.m)
-    }
-
-    private func prepareReplyRecipients() async {
-        if await viewModel.prepareReplyRecipientsIfNeeded() { placeCaretAfterReplyRecipients() }
-    }
-
-    private func placeCaretAfterReplyRecipients() {
-        textSelection = NSRange(location: (viewModel.content as NSString).length, length: 0)
-        textSelectionCommand = ComposeTextSelectionCommand(range: textSelection, scrollsToSelection: true)
     }
 
     private func loadEditingSource() async {

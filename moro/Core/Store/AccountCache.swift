@@ -22,17 +22,6 @@ final class AccountCache: ObservableObject {
     private var accessTick: [String: UInt64] = [:]
     private var tick: UInt64 = 0
 
-    private struct RequestKey: Hashable {
-        let instance: String?
-        let accountID: String
-    }
-    private struct AccountRequest {
-        let id = UUID()
-        let task: Task<Account, Error>
-    }
-    private var requests: [RequestKey: AccountRequest] = [:]
-    private var generation = UUID()
-
     init(maxCacheSize: Int = 500) {
         self.maxCacheSize = maxCacheSize
     }
@@ -44,34 +33,6 @@ final class AccountCache: ObservableObject {
         guard let account = cache[id] else { return nil }
         tick &+= 1
         accessTick[id] = tick
-        return account
-    }
-
-    /// Reuse account data and concurrent lookups across repeated reply presentations.
-    func resolve(id: String, apiClient: MastodonAPI) async throws -> Account {
-        if let cached = get(id: id) { return cached }
-        let key = RequestKey(instance: apiClient.instanceMetadataCacheKey, accountID: id)
-        let request: AccountRequest
-        if let existing = requests[key] {
-            request = existing
-        } else {
-            request = AccountRequest(task: Task {
-                let account = try await apiClient.fetchAccount(id: id)
-                try Task.checkCancellation()
-                guard account.id == id, !account.acct.isEmpty || !account.username.isEmpty else {
-                    throw URLError(.cannotParseResponse)
-                }
-                return account
-            })
-            requests[key] = request
-        }
-        let requestGeneration = generation
-        defer {
-            if requests[key]?.id == request.id { requests[key] = nil }
-        }
-        let account = try await request.task.value
-        guard generation == requestGeneration else { throw CancellationError() }
-        set(account)
         return account
     }
 
@@ -125,9 +86,6 @@ final class AccountCache: ObservableObject {
     
     /// Clear all cached accounts
     func clear() {
-        generation = UUID()
-        requests.values.forEach { $0.task.cancel() }
-        requests.removeAll()
         cache.removeAll()
         accessTick.removeAll()
         tick = 0
