@@ -592,7 +592,10 @@ struct moroTests {
             status: initialStatus,
             apiClient: api,
             threadCache: threadCache,
-            accountCache: AccountCache()
+            accountCache: AccountCache(),
+            // This case verifies a fresh cache hit, independent of CI scheduling delays.
+            // Stale-cache revalidation is exercised separately below.
+            cacheFreshnessInterval: .infinity
         )
 
         await viewModel.loadThread()
