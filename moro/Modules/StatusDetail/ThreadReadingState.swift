@@ -21,6 +21,11 @@ struct ThreadReadingRow: Identifiable {
     let replyCount: Int
     var id: String { item.id }
     var isNestedReply: Bool { item.replyGroupRootID.map { $0 != id } ?? false }
+
+    func showsBranchControl(isCollapsed: Bool) -> Bool {
+        // Keep hidden replies reachable if a refresh reduces an already collapsed branch.
+        replyCount >= 3 || (isCollapsed && replyCount > 0)
+    }
 }
 
 /// The conversation model owns ordering and branch membership. Reading controls only

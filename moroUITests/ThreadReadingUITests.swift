@@ -22,12 +22,20 @@ final class ThreadReadingUITests: XCTestCase {
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
         let branch = app.buttons["thread.branch.a"]
         reveal(branch, app: app)
-        XCTAssertGreaterThanOrEqual(branch.frame.height, 44 - 0.01)
-        branch.tap()
-        XCTAssertTrue(branch.label.contains("展开 2"))
+        assertFullWidthControl(branch, app: app)
+        attach(app, "thread-control-expanded-\(scheme)")
+        let controlY = branch.frame.minY
+        // Empty space near either edge must activate the same full-row control.
+        branch.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        XCTAssertTrue(branch.label.contains("展开 3"))
+        XCTAssertEqual(branch.frame.minY, controlY, accuracy: 1)
+        XCTAssertFalse(app.otherElements["thread.row.a1"].exists)
         XCTAssertFalse(app.buttons["thread.parent.a1"].exists)
         attach(app, "thread-collapsed-\(scheme)")
-        branch.tap()
+        branch.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5)).tap()
+        XCTAssertTrue(branch.label.contains("收起 3"))
+        XCTAssertEqual(branch.frame.minY, controlY, accuracy: 1)
+        XCTAssertTrue(app.otherElements["thread.row.a1"].waitForExistence(timeout: 5))
         // Reply metadata stays out of the reading column, including after expanding.
         XCTAssertFalse(app.buttons["thread.parent.a1"].exists)
         XCTAssertFalse(app.buttons["thread.branch.a1"].exists)
@@ -47,7 +55,12 @@ final class ThreadReadingUITests: XCTestCase {
         XCTAssertTrue(focused.waitForExistence(timeout: 5))
         XCTAssertTrue(focused.isHittable)
         reveal(branch, app: app)
-        XCTAssertTrue(branch.label.contains("收起 2"))
+        XCTAssertTrue(branch.label.contains("收起 3"))
+        let shortReply = app.staticTexts["回复 short2"]
+        reveal(shortReply, app: app)
+        XCTAssertFalse(app.buttons["thread.branch.short"].exists)
+        XCTAssertFalse(app.buttons["thread.branch.short1"].exists)
+        attach(app, "thread-short-discussion-\(scheme)")
     }
 
     @MainActor private func verifySuppliedThread(scheme: String) {
@@ -77,13 +90,16 @@ final class ThreadReadingUITests: XCTestCase {
         let branch = app.buttons["thread.branch.117116945719580606"]
         reveal(branch, app: app)
         XCTAssertTrue(branch.label.contains("收起 7"))
-        XCTAssertGreaterThanOrEqual(branch.frame.height, 44 - 0.01)
+        assertFullWidthControl(branch, app: app)
         attach(app, "thread-sample-discussion-\(scheme)")
+        let controlY = branch.frame.minY
         branch.tap()
         XCTAssertTrue(branch.label.contains("展开 7"))
+        XCTAssertEqual(branch.frame.minY, controlY, accuracy: 1)
         XCTAssertFalse(app.otherElements["thread.row.117116973265571189"].exists)
         attach(app, "thread-sample-collapsed-\(scheme)")
         branch.tap()
+        XCTAssertEqual(branch.frame.minY, controlY, accuracy: 1)
         XCTAssertTrue(app.otherElements["thread.row.117116973265571189"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["thread.branch.117116973265571189"].exists)
 
@@ -100,6 +116,13 @@ final class ThreadReadingUITests: XCTestCase {
         app.buttons["thread.returnToPost"].tap()
         let focused = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "一直以为我老家村子里的老头老太们")).firstMatch
         XCTAssertTrue(focused.isHittable)
+    }
+
+    @MainActor private func assertFullWidthControl(_ button: XCUIElement, app: XCUIApplication) {
+        let scrollFrame = app.scrollViews.firstMatch.frame
+        XCTAssertGreaterThanOrEqual(button.frame.height, 44 - 0.01)
+        XCTAssertEqual(button.frame.minX, scrollFrame.minX, accuracy: 1)
+        XCTAssertEqual(button.frame.width, scrollFrame.width, accuracy: 1)
     }
 
     @MainActor private func reveal(_ element: XCUIElement, app: XCUIApplication) {

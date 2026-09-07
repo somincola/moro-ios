@@ -27,6 +27,17 @@ import SwiftUI
             status("orphan", parent: "missing", own: false),
         ])
     }
+
+    /// Exercise both sides of the disclosure threshold without changing the graph fixtures.
+    static var controlsContext: StatusContext {
+        let base = context
+        return StatusContext(ancestors: base.ancestors, descendants: base.descendants + [
+            status("a3", parent: "a2", own: false),
+            status("short", parent: "focus", own: false),
+            status("short1", parent: "short", own: false),
+            status("short2", parent: "short1", own: false),
+        ])
+    }
 }
 
 struct ThreadReadingHarnessView: View {
@@ -42,7 +53,7 @@ struct ThreadReadingHarnessView: View {
         focusedStatus = useSample ? ThreadReadingSample.focus : ThreadReadingFixtures.focus
         client = ThreadFixtureProtocol.makeClient(
             focus: focusedStatus,
-            context: useSample ? ThreadReadingSample.context : ThreadReadingFixtures.context
+            context: useSample ? ThreadReadingSample.context : ThreadReadingFixtures.controlsContext
         )
     }
 

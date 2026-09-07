@@ -2,6 +2,50 @@ import Testing
 @testable import moro
 
 @MainActor struct ThreadReadingTests {
+    @Test func branchControlRequiresThreeLoadedSubsequentReplies() {
+        let focus = ThreadReadingFixtures.status("focus")
+        for count in 0...4 {
+            let replies = [ThreadReadingFixtures.status("branch", parent: "focus", own: false)]
+                + (0..<count).map { index in
+                    ThreadReadingFixtures.status("child\(index)", parent: index == 0 ? "branch" : "child\(index - 1)")
+                }
+            let model = ThreadedConversationModel(focusedStatus: focus, context: StatusContext(ancestors: [], descendants: replies))
+            let rows = ThreadReadingProjection(items: Array(model.threadItems.dropFirst()), authorID: "author", state: ThreadReadingState()).rows
+            let branch = rows.first { $0.id == "branch" }
+            // Count all loaded descendants, excluding the opening reply and its server count.
+            #expect(branch?.replyCount == count)
+            #expect(branch?.showsBranchControl(isCollapsed: false) == (count >= 3))
+            #expect(rows.dropFirst().allSatisfy { !$0.showsBranchControl(isCollapsed: false) })
+            #expect(rows.count == count + 1)
+        }
+    }
+
+    @Test func shortenedCollapsedDiscussionCanStillExpand() {
+        let focus = ThreadReadingFixtures.status("focus")
+        let replies = [
+            ThreadReadingFixtures.status("branch", parent: "focus", own: false),
+            ThreadReadingFixtures.status("child1", parent: "branch"),
+            ThreadReadingFixtures.status("child2", parent: "child1"),
+            ThreadReadingFixtures.status("child3", parent: "child2"),
+        ]
+        var state = ThreadReadingState()
+        state.toggleBranch("branch")
+        // Simulate refreshed context losing replies while this discussion remains collapsed.
+        for remaining in [3, 2, 1, 0] {
+            let model = ThreadedConversationModel(focusedStatus: focus,
+                context: StatusContext(ancestors: [], descendants: Array(replies.prefix(remaining + 1))))
+            let items = Array(model.threadItems.dropFirst())
+            let rows = ThreadReadingProjection(items: items, authorID: "author", state: state).rows
+            #expect(rows.map(\.id) == ["branch"])
+            #expect(rows.first?.showsBranchControl(isCollapsed: true) == (remaining > 0))
+            var expanded = state
+            expanded.toggleBranch("branch")
+            let revealed = ThreadReadingProjection(items: items, authorID: "author", state: expanded).rows
+            #expect(revealed.count == remaining + 1)
+            #expect(revealed.first?.showsBranchControl(isCollapsed: false) == (remaining >= 3))
+        }
+    }
+
     @Test func collapsedBranchKeepsRootAndUnrelatedReplies() {
         let source = ThreadedConversationModel(focusedStatus: ThreadReadingFixtures.focus, context: ThreadReadingFixtures.context)
         let items = Array(source.threadItems.dropFirst(2))
@@ -111,6 +155,7 @@ import Testing
 
         let rows = ThreadReadingProjection(items: items, authorID: ThreadReadingSample.focus.account.id, state: ThreadReadingState()).rows
         #expect(rows.filter { $0.replyCount > 0 }.count == 11)
+        #expect(rows.filter { $0.showsBranchControl(isCollapsed: false) }.count == 6)
         #expect(rows.filter { $0.item.replyBranchID == $0.id }.count == 22)
         #expect(rows.filter(\.isNestedReply).allSatisfy { $0.replyCount == 0 })
         // The server count is direct replies, not the number that a branch will hide.

@@ -12,6 +12,8 @@ struct ThreadDiscussionRow: View {
     let actions: PostActions
     let onToggleBranch: () -> Void
 
+    private var showsBranchControl: Bool { row.showsBranchControl(isCollapsed: isCollapsed) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ThreadPostRow(
@@ -21,20 +23,31 @@ struct ThreadDiscussionRow: View {
                 actions: actions
             )
 
-            if row.replyCount > 0 {
-                Button(action: onToggleBranch) {
-                    Label(
-                        isCollapsed ? MoroL10n.ThreadReading.expand(row.replyCount) : MoroL10n.ThreadReading.collapse(row.replyCount),
-                        systemImage: isCollapsed ? "chevron.down" : "chevron.up"
-                    )
+            if showsBranchControl {
+                MoroDivider(leadingInset: theme.spacing.l, trailingInset: theme.spacing.l)
+
+                Button {
+                    // Content below this control changes; keep its current reading position.
+                    var transaction = Transaction()
+                    transaction.scrollContentOffsetAdjustmentBehavior = .disabled
+                    withTransaction(transaction) { onToggleBranch() }
+                } label: {
+                    HStack(spacing: theme.spacing.s) {
+                        Text(isCollapsed ? MoroL10n.ThreadReading.expand(row.replyCount) : MoroL10n.ThreadReading.collapse(row.replyCount))
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: theme.spacing.s)
+                        Image(systemName: isCollapsed ? "chevron.down" : "chevron.up")
+                            .fontWeight(.medium)
+                            .accessibilityHidden(true)
+                    }
                     .font(theme.typography.caption)
                     .foregroundStyle(theme.colors.textSecondary)
-                    .frame(minHeight: 44, alignment: .leading)
+                    .padding(.horizontal, theme.spacing.l)
+                    .padding(.vertical, theme.spacing.s)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .padding(.leading, theme.spacing.timelineDividerInset)
-                .padding(.trailing, theme.spacing.l)
+                .buttonStyle(ThreadBranchButtonStyle(pressedBackground: theme.colors.surfaceSubtle))
                 .accessibilityIdentifier("thread.branch.\(row.id)")
             }
 
@@ -43,13 +56,22 @@ struct ThreadDiscussionRow: View {
                     .padding(.vertical, theme.spacing.s)
             } else {
                 MoroDivider(
-                    leadingInset: theme.spacing.timelineDividerInset,
+                    leadingInset: showsBranchControl ? theme.spacing.l : theme.spacing.timelineDividerInset,
                     trailingInset: theme.spacing.l
                 )
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("thread.row.\(row.id)")
+    }
+}
+
+private struct ThreadBranchButtonStyle: ButtonStyle {
+    let pressedBackground: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? pressedBackground : Color.clear)
     }
 }
 
