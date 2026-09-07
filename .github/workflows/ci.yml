@@ -13,23 +13,23 @@ concurrency:
 jobs:
   test:
     name: Build & Unit Test
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 40
     env:
       SCHEME: moro
       PROJECT: moro.xcodeproj
+      TEST_PLAN: Moro-UnitTests
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # The project deploys to iOS 26.1, so it needs an Xcode 26.x toolchain for
-      # the iOS 26 SDK. The matching simulator runtime is not always pre-installed
-      # on the runner — the "Ensure an iOS simulator" step below installs it.
-      - name: Select latest Xcode
+      # Keep this pin aligned with Xcode Cloud's "Moro Stable Xcode" alias.
+      # Validate GitHub CI and Cloud Release before upgrading both environments.
+      - name: Select Xcode 26.6
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: "26.6"
 
       - name: Toolchain versions
         run: |
@@ -44,8 +44,8 @@ jobs:
         run: |
           set -uxo pipefail
           # -showdestinations lists only destinations the scheme can actually run
-          # on, so simulators on runtimes older than the iOS 26.1 deployment
-          # target are filtered out (plain `simctl list` does not filter).
+          # on, so simulators on runtimes older than the deployment target
+          # are filtered out (plain `simctl list` does not filter).
           # `-showdestinations` is not ordered by runtime version. Selecting its
           # first iPhone can therefore run the suite on an older simulator even
           # when a newer runtime is installed. Parse every eligible destination
@@ -77,10 +77,9 @@ jobs:
           SELECTION="$(pick)"
           UDID="${SELECTION%%|*}"
           if [ -z "$UDID" ]; then
-            echo "No eligible iPhone destination — ensuring an iOS 26 runtime is present."
+            echo "No eligible iPhone destination — ensuring an iOS runtime is present."
             # The runner's Xcode does not always bundle its matching iOS simulator
-            # runtime; the iOS 26.1 target needs a >= 26.1 runtime, so download it
-            # when none is available (a no-op if already installed).
+            # runtime, so download it when none is available.
             if ! xcrun simctl list runtimes | grep 'iOS' | grep -vi -q unavailable; then
               echo "Downloading iOS platform (a few minutes)…"
               xcodebuild -downloadPlatform iOS || sudo xcodebuild -downloadPlatform iOS || true
@@ -117,7 +116,7 @@ jobs:
             -project "$PROJECT" \
             -scheme "$SCHEME" \
             -destination "id=${{ steps.sim.outputs.udid }}" \
-            -only-testing:moroTests \
+            -testPlan "$TEST_PLAN" \
             -resultBundlePath TestResults.xcresult \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="-" \
