@@ -158,9 +158,14 @@ private struct ProfileFieldEditor: View {
     }
 
     private var valid: Bool {
-        !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !draft.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && draft.name.count <= limits.fieldNameLength && draft.value.count <= limits.fieldValueLength
+        let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = draft.value.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Preserve server-accepted text; current limits apply to edited parts.
+        let nameIsValid = (isExisting && draft.name == original.name)
+            || (!name.isEmpty && name.count <= limits.fieldNameLength)
+        let valueIsValid = (isExisting && draft.value == original.value)
+            || (!value.isEmpty && value.count <= limits.fieldValueLength)
+        return nameIsValid && valueIsValid
     }
 
     var body: some View {

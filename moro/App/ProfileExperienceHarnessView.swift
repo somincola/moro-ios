@@ -76,6 +76,8 @@ private final class ProfileFixtureToken: AuthTokenProvider {
 private final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
     private static let legacy = ProcessInfo.processInfo.environment["UITEST_PROFILE_LEGACY"] == "1"
+    // Keep persisted instance limits isolated between test app launches.
+    private static let instanceURL = URL(string: "https://\(UUID().uuidString.lowercased()).profile-fixture.invalid")!
     private static var profile: [String: Any] = [
         "id": "fixture-profile", "display_name": "Moro Tester",
         "note": "Building for the open web.\nhttps://example.com/a/long/path?first=1&second=2",
@@ -95,7 +97,7 @@ private final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     @MainActor static func makeClient() -> MastodonClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [Self.self]
-        return MastodonClient(baseURL: URL(string: "https://profile-fixture.invalid")!,
+        return MastodonClient(baseURL: instanceURL,
             session: URLSession(configuration: configuration),
             authInterceptor: AuthInterceptor(tokenProvider: ProfileFixtureToken()))
     }
@@ -205,8 +207,10 @@ private final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
         if path.contains("/statuses/") { return (200, post(url.lastPathComponent)) }
         if path.contains("/accounts/") { return (200, accountPayload()) }
         if path.hasSuffix("/instance") {
+            let fieldValueLimit = ProcessInfo.processInfo.environment["UITEST_PROFILE_LOWER_FIELD_LIMIT"] == "1" ? 20 : 255
             return (200, ["domain": "profile-fixture.invalid", "title": "Profile fixture", "version": "4.7.1",
-                          "configuration": ["accounts": ["max_profile_fields": 4, "max_featured_tags": 10]]])
+                          "configuration": ["accounts": ["max_profile_fields": 4, "max_featured_tags": 10,
+                                                         "profile_field_value_limit": fieldValueLimit]]])
         }
         return (200, [])
     }

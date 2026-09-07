@@ -4,6 +4,41 @@ import XCTest
 final class ProfileExperienceUITests: XCTestCase {
     private let rawLink = "https://example.com/a/long/path?first=1&second=2"
 
+    func testRenamingFieldPreservesExistingValueAboveLoweredLimit() {
+        let app = launch(extra: ["UITEST_PROFILE_LOWER_FIELD_LIMIT": "1"])
+        defer { app.terminate() }
+        openOverview(app)
+        app.buttons["profile.edit.fields"].tap()
+        let first = app.buttons["profile.field.0"]
+        XCTAssertTrue(first.waitForExistence(timeout: 8))
+        first.tap()
+        let name = app.textFields["profile.field.name"]
+        let value = app.textFields["profile.field.value"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        XCTAssertEqual(value.value as? String, rawLink)
+        name.tap()
+        name.typeText("Link ")
+        let editedName = (name.value as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        XCTAssertTrue(editedName.contains("Link"))
+        let done = app.buttons["profile.field.done"]
+        guard done.isEnabled else {
+            XCTFail("An untouched existing value must not block renaming the field")
+            return
+        }
+        done.tap()
+        app.buttons["profile.fields.save"].tap()
+        XCTAssertTrue(app.buttons["profile.edit.fields"].waitForExistence(timeout: 8))
+        app.buttons["profile.edit.fields"].tap()
+        waitLabel(first, contains: editedName)
+        first.tap()
+        XCTAssertTrue(value.waitForExistence(timeout: 5))
+        XCTAssertEqual(value.value as? String, rawLink)
+        // Once the value itself is edited, the current server limit applies.
+        value.tap()
+        value.typeText("x")
+        XCTAssertFalse(done.isEnabled)
+    }
+
     func testFieldDragOrderAndRawLinkSurviveSaving() {
         let app = launch()
         defer { app.terminate() }
