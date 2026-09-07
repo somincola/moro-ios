@@ -20,7 +20,7 @@ struct ThreadReadingRow: Identifiable {
     let item: ThreadItem
     let replyCount: Int
     var id: String { item.id }
-    var isNestedReply: Bool { item.replyBranchID.map { $0 != id } ?? false }
+    var isNestedReply: Bool { item.replyGroupRootID.map { $0 != id } ?? false }
 }
 
 /// The conversation model owns ordering and branch membership. Reading controls only

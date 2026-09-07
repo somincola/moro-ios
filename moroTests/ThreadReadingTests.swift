@@ -137,4 +137,20 @@ import Testing
         #expect(authorRows.count == 21)
         #expect(authorRows.allSatisfy { $0.replyCount == 0 })
     }
+
+    @Test func suppliedAuthorRepliesKeepSiblingForksAndSeparateRootReplies() {
+        let model = ThreadedConversationModel(focusedStatus: ThreadReadingSample.focus, context: ThreadReadingSample.context)
+        let rows = ThreadReadingProjection(
+            items: Array(model.threadItems.dropFirst()),
+            authorID: ThreadReadingSample.focus.account.id,
+            state: ThreadReadingState()
+        ).rows.filter { $0.item.isAuthorContinuation }
+        let first = "117117597063812357" // 因为太震撼了…
+        let separate = "117125384303241460" // 我这个砖…
+        #expect(rows.map { $0.item.status.inReplyToID } == [ThreadReadingSample.focus.id, first, first, ThreadReadingSample.focus.id])
+        #expect(rows.map { $0.item.replyGroupRootID } == [first, first, first, separate])
+        #expect(rows.map { $0.item.replyDepth } == [0, 1, 1, 0])
+        #expect(rows.map(\.isNestedReply) == [false, true, true, false])
+        #expect(rows.allSatisfy { $0.item.replyBranchID == nil && $0.replyCount == 0 })
+    }
 }

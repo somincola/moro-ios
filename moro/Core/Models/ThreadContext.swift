@@ -90,7 +90,7 @@ enum ThreadPosition: Equatable {
 // MARK: - Thread Item
 
 enum ThreadReplyGroup: Equatable {
-    case authorContinuation
+    case authorContinuation(rootID: String)
     case discussion(rootID: String)
 }
 
@@ -103,7 +103,17 @@ struct ThreadItem: Identifiable {
     
     var id: String { status.id }
 
-    var isAuthorContinuation: Bool { replyGroup == .authorContinuation }
+    var isAuthorContinuation: Bool {
+        if case .authorContinuation = replyGroup { return true }
+        return false
+    }
+
+    var replyGroupRootID: String? {
+        switch replyGroup {
+        case .authorContinuation(let rootID), .discussion(let rootID): return rootID
+        case nil: return nil
+        }
+    }
 
     var replyBranchID: String? {
         guard case .discussion(let rootID) = replyGroup else { return nil }
@@ -207,6 +217,7 @@ final class ThreadedConversationModel: ObservableObject {
         items.append(ThreadItem(status: focusedStatus, position: focusedPosition, replyDepth: 0))
 
         var replyDepthByStatusID = [focusedStatus.id: -1]
+        var continuationRootByStatusID: [String: String] = [:]
         var branchByStatusID: [String: String] = [:]
         
         for (index, status) in descendants.enumerated() {
@@ -270,7 +281,10 @@ final class ThreadedConversationModel: ObservableObject {
             
             let replyGroup: ThreadReplyGroup
             if orderedReplies.continuationIDs.contains(status.id) {
-                replyGroup = .authorContinuation
+                // Keep each root-connected self-reply subtree distinct, including its forks.
+                let rootID = status.inReplyToID.flatMap { continuationRootByStatusID[$0] } ?? status.id
+                continuationRootByStatusID[status.id] = rootID
+                replyGroup = .authorContinuation(rootID: rootID)
             } else {
                 // Replies to the main post or an author continuation start separate discussions.
                 let branchID = status.inReplyToID.flatMap { branchByStatusID[$0] } ?? status.id
