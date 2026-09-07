@@ -101,36 +101,6 @@ struct ComposeTextSelectionCommand: Equatable {
 }
 
 enum ComposeTextEditing {
-    static func prependingReplyMention(
-        acct: String,
-        to text: String,
-        selection: NSRange
-    ) -> ComposeTextInsertionResult {
-        let safeSelection = clamped(selection, in: (text as NSString).length)
-        let mention = acct.hasPrefix("@") ? acct : "@\(acct)"
-        guard !text.contains(mention) else {
-            return ComposeTextInsertionResult(text: text, selection: safeSelection)
-        }
-
-        let prefix = "\(mention) "
-        let prefixLength = (prefix as NSString).length
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return ComposeTextInsertionResult(
-                text: prefix,
-                selection: NSRange(location: prefixLength, length: 0)
-            )
-        }
-
-        // Keep the final mention's separator and any text already entered while loading.
-        return ComposeTextInsertionResult(
-            text: prefix + text,
-            selection: NSRange(
-                location: prefixLength + safeSelection.location,
-                length: safeSelection.length
-            )
-        )
-    }
-
     static func insertingEmoji(
         shortcode: String,
         into text: String,
@@ -191,6 +161,7 @@ struct ComposeView: View {
     @State private var emojiViewModel: CustomEmojiViewModel?
     @State private var pendingScheduledDate = ComposeViewModel.defaultScheduledDate()
     @State private var hasProcessedSharedImport = false
+    @State private var replyPreparationAttempt = 0
     
     private let draftStore: ComposeDraftStore
     private let sharedImport: SharedComposeAttachmentImportPayload?
@@ -202,6 +173,7 @@ struct ComposeView: View {
         currentUserID: String? = nil,
         draftStore: ComposeDraftStore? = nil,
         initialDraft: ComposeDraft? = nil,
+        accountCache: AccountCache? = nil,
         sharedImport: SharedComposeAttachmentImportPayload? = nil,
         onPublish: ((Status) -> Void)? = nil
     ) {
@@ -210,6 +182,7 @@ struct ComposeView: View {
             context: context,
             apiClient: apiClient,
             currentUserID: currentUserID,
+            accountCache: accountCache,
             initialDraft: initialDraft
         )
         self.draftStore = resolvedDraftStore
@@ -256,7 +229,7 @@ struct ComposeView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if isExpandedEditor && viewModel.isEditingSourceReady {
+                if isExpandedEditor && viewModel.isComposerReady {
                     VStack(spacing: theme.spacing.s) {
                         if viewModel.isContentWarningActive { contentWarningSection }
                         textInputSection
@@ -273,10 +246,12 @@ struct ComposeView: View {
                                 )
                             }
 
-                            if viewModel.isEditingSourceReady {
+                            if viewModel.isComposerReady {
                                 inputSection
-                            } else {
+                            } else if !viewModel.isEditingSourceReady {
                                 editSourcePlaceholder
+                            } else {
+                                replyRecipientsPlaceholder
                             }
                         }
                     }
@@ -288,7 +263,7 @@ struct ComposeView: View {
                 
                 // Bottom: Quote policy selector (new post mode) + Toolbar
                 bottomSection
-                    .disabled(!viewModel.isEditingSourceReady)
+                    .disabled(!viewModel.isComposerReady)
             }
             .background(theme.colors.background)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -340,7 +315,7 @@ struct ComposeView: View {
                     } label: {
                         Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44)
                     }
-                    .disabled(!viewModel.isEditingSourceReady || viewModel.isPublishing)
+                    .disabled(!viewModel.isComposerReady || viewModel.isPublishing)
                     .accessibilityLabel(MoroL10n.ComposeReading.options)
                     .accessibilityIdentifier("compose.editorOptions")
 
@@ -437,7 +412,6 @@ struct ComposeView: View {
                 }
             }
             .onAppear {
-                fetchOriginalAuthorMentionIfNeeded()
                 if let sharedImport, !hasProcessedSharedImport {
                     hasProcessedSharedImport = true
                     Task {
@@ -458,6 +432,9 @@ struct ComposeView: View {
             }
             .task {
                 await loadEditingSource()
+            }
+            .task(id: replyPreparationAttempt) {
+                await prepareReplyRecipients()
             }
         }
     }
@@ -489,6 +466,47 @@ struct ComposeView: View {
         }
         .frame(maxWidth: .infinity, minHeight: fixedTextInputHeight)
         .padding(theme.spacing.m)
+    }
+
+    private var replyRecipientsPlaceholder: some View {
+        VStack(spacing: theme.spacing.m) {
+            if viewModel.replyRecipientsState == .failed {
+                Text(MoroL10n.Compose.replyRecipientsFailed)
+                    .font(theme.typography.body)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                Button {
+                    replyPreparationAttempt += 1
+                } label: {
+                    Text(MoroL10n.Compose.retry)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityIdentifier("compose.retryReplyRecipients")
+                Button {
+                    if viewModel.continueWithKnownReplyRecipients() { placeCaretAfterReplyRecipients() }
+                } label: {
+                    Text(MoroL10n.Compose.replyRecipientsContinue)
+                        .multilineTextAlignment(.center)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityIdentifier("compose.continueReplyRecipients")
+            } else {
+                ProgressView(MoroL10n.Compose.replyRecipientsLoading)
+                    .accessibilityIdentifier("compose.replyRecipientsLoading")
+            }
+        }
+        .tint(theme.colors.primary500)
+        .frame(maxWidth: .infinity, minHeight: fixedTextInputHeight)
+        .padding(theme.spacing.m)
+    }
+
+    private func prepareReplyRecipients() async {
+        if await viewModel.prepareReplyRecipientsIfNeeded() { placeCaretAfterReplyRecipients() }
+    }
+
+    private func placeCaretAfterReplyRecipients() {
+        textSelection = NSRange(location: (viewModel.content as NSString).length, length: 0)
+        textSelectionCommand = ComposeTextSelectionCommand(range: textSelection, scrollsToSelection: true)
     }
 
     private func loadEditingSource() async {
@@ -1650,17 +1668,6 @@ struct ComposeView: View {
         }
     }
     
-    private func fetchOriginalAuthorMentionIfNeeded() {
-        guard viewModel.isReplyingToReply,
-              let originalStatus = viewModel.originalStatus,
-              let inReplyToAccountID = originalStatus.inReplyToAccountID else {
-            return
-        }
-        Task {
-            await fetchAndAddOriginalAuthorMention(accountID: inReplyToAccountID)
-        }
-    }
-
     private func openSchedulePicker() {
         if viewModel.isSchedulingEnabled {
             pendingScheduledDate = max(viewModel.scheduledAt, viewModel.minimumScheduledDate)
@@ -1835,29 +1842,6 @@ struct ComposeView: View {
 
     private func scheduledDateText(_ date: Date) -> String {
         date.formatted(.dateTime.month().day().hour().minute())
-    }
-    
-    // MARK: - Original Author Fetching
-    
-    private func fetchAndAddOriginalAuthorMention(accountID: String) async {
-        do {
-            let account = try await viewModel.apiClient.fetchAccount(id: accountID)
-            let result = ComposeTextEditing.prependingReplyMention(
-                acct: account.acct,
-                to: viewModel.content,
-                selection: textSelection
-            )
-            guard result.text != viewModel.content else { return }
-            viewModel.content = result.text
-            textSelection = result.selection
-            textSelectionCommand = ComposeTextSelectionCommand(
-                range: result.selection, scrollsToSelection: true
-            )
-        } catch {
-            AppFeedbackCenter.shared.showInfo(MoroL10n.Compose.toastAuthorMentionFailed)
-            AppLogger.error("Failed to fetch original author account: \(error)")
-            // Continue without the mention - user can add it manually
-        }
     }
     
     private func handleFileSelection(_ url: URL) async {

@@ -7,13 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		43D000032FA0000100D00001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 43D000022FA0000100D00001 /* SwiftSoup */; };
 		40473AFF2FC851A8003DE073 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 40473AFE2FC851A8003DE073 /* InfoPlist.xcstrings */; };
 		41A86B602F5F220100A1B2C3 /* SDWebImage in Frameworks */ = {isa = PBXBuildFile; productRef = 41A86B5F2F5F220100A1B2C3 /* SDWebImage */; };
 		42C090042F70000100A1D001 /* MoroLocalization in Frameworks */ = {isa = PBXBuildFile; productRef = 42C090032F70000100A1D001 /* MoroLocalization */; };
 		42D001002F71000100A1D001 /* moroShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 42D001022F71000100A1D001 /* moroShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		42E002002F72000100A1D001 /* moroNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 42E002022F72000100A1D001 /* moroNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		42F003002F73000100A1D001 /* moroWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 42F003022F73000100A1D001 /* moroWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		43D000032FA0000100D00001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 43D000022FA0000100D00001 /* SwiftSoup */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */

@@ -244,46 +244,6 @@ struct ComposeFixesTests {
         #expect(ComposeInputMode.emoji.updatingTextFocus(false) == .idle)
     }
 
-    @Test(arguments: ["", "@bob@example.com ", "@bob@example.com @carol "])
-    func composerReplyMentionsKeepTrailingSpaceAndCaret(content: String) {
-        let result = ComposeTextEditing.prependingReplyMention(
-            acct: "alice@example.com",
-            to: content,
-            selection: NSRange(location: (content as NSString).length, length: 0)
-        )
-
-        #expect(result.text == "@alice@example.com " + content)
-        #expect(result.selection == NSRange(location: (result.text as NSString).length, length: 0))
-        let typedReply = (result.text as NSString).replacingCharacters(in: result.selection, with: "hello")
-        #expect(typedReply == "@alice@example.com " + content + "hello")
-    }
-
-    @Test func composerReplyMentionPreservesExistingTextAndSelection() {
-        let content = "@bob@example.com \n\n👋 已输入的正文  \n"
-        let selection = (content as NSString).range(of: "已输入的正文")
-        let result = ComposeTextEditing.prependingReplyMention(
-            acct: "@alice@example.com",
-            to: content,
-            selection: selection
-        )
-
-        #expect(result.text == "@alice@example.com " + content)
-        #expect((result.text as NSString).substring(with: result.selection) == "已输入的正文")
-    }
-
-    @Test func composerReplyMentionAlreadyPresentKeepsTextAndCaret() {
-        let content = "@alice@example.com @bob@example.com "
-        let selection = NSRange(location: (content as NSString).length, length: 0)
-        let result = ComposeTextEditing.prependingReplyMention(
-            acct: "alice@example.com",
-            to: content,
-            selection: selection
-        )
-
-        #expect(result.text == content)
-        #expect(result.selection == selection)
-    }
-
     @Test func composerEmojiInsertionUsesCurrentCaret() {
         let result = ComposeTextEditing.insertingEmoji(
             shortcode: "cat",

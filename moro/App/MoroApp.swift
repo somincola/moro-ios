@@ -52,6 +52,8 @@ struct MoroApp: App {
                     threadReadingHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseComposeReadingHarness {
                     composeReadingHarness.preferredColorScheme(colorScheme)
+                } else if shouldUseComposeReplyHarness {
+                    composeReplyHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseTopicsHarness {
                     topicsHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseProfileExperienceHarness {
@@ -187,6 +189,20 @@ struct MoroApp: App {
     @ViewBuilder private var composeReadingHarness: some View {
         #if DEBUG
         ComposeReadingHarnessView()
+        #endif
+    }
+
+    private var shouldUseComposeReplyHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_COMPOSE_REPLY")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var composeReplyHarness: some View {
+        #if DEBUG
+        ComposeReplyHarnessView()
         #endif
     }
 

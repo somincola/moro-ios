@@ -300,6 +300,9 @@ public enum MoroL10n {
     }
 
     public enum Compose {
+        public static var replyRecipientsLoading: String { text("compose.replyRecipients.loading") }
+        public static var replyRecipientsFailed: String { text("compose.replyRecipients.failed") }
+        public static var replyRecipientsContinue: String { text("compose.replyRecipients.continue") }
         public static var editSourceLoading: String { text("compose.editSource.loading") }
         public static var editSourceFailed: String { text("compose.editSource.failed") }
         public static var navigationNewPost: String { text("compose.navigation.newPost") }

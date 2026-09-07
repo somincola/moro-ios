@@ -7170,7 +7170,7 @@ private extension moroTests {
     }
 }
 
-private struct MockAccountStatusesCall {
+struct MockAccountStatusesCall {
     let id: String
     let maxID: String?
     let limit: Int
@@ -7180,7 +7180,7 @@ private struct MockAccountStatusesCall {
     let pinned: Bool
 }
 
-private struct MockUpdateAccountProfileCall {
+struct MockUpdateAccountProfileCall {
     let displayName: String?
     let note: String?
     let avatar: AccountProfileImageUpload?
@@ -7199,7 +7199,7 @@ private final class BadgeValueRecorder {
     }
 }
 
-private final class MockMastodonAPI: MastodonAPI {
+final class MockMastodonAPI: MastodonAPI {
     var ownFeaturedTagsHandler: (() async throws -> [FeaturedTag])?
     var unfeatureTagHandler: ((String) async throws -> Void)?
     func fetchOwnFeaturedTags() async throws -> [FeaturedTag] {
@@ -7363,7 +7363,11 @@ private final class MockMastodonAPI: MastodonAPI {
         if let verifyCredentialsHandler { return try await verifyCredentialsHandler() }
         throw MockError.unimplemented
     }
-    func fetchAccount(id: String) async throws -> Account { throw MockError.unimplemented }
+    var fetchAccountHandler: ((String) async throws -> Account)?
+    func fetchAccount(id: String) async throws -> Account {
+        if let fetchAccountHandler { return try await fetchAccountHandler(id) }
+        throw MockError.unimplemented
+    }
     func lookupAccount(acct: String) async throws -> Account { throw MockError.unimplemented }
     func fetchAccountStatuses(
         id: String,
