@@ -108,6 +108,32 @@ final class ThreadReadingUITests: XCTestCase {
         reveal(fork, app: app)
         XCTAssertFalse(app.buttons["thread.parent.117117388752166120"].exists)
         attach(app, "thread-sample-reply-fork-\(scheme)")
+
+        // The author's response to a reader belongs to that reader's discussion too.
+        let readerBranch = app.buttons["thread.branch.117117689679969635"]
+        reveal(readerBranch, app: app)
+        XCTAssertTrue(readerBranch.label.contains("收起 3"))
+        let readerControlY = readerBranch.frame.minY
+        attach(app, "thread-reader-three-expanded-\(scheme)")
+        readerBranch.tap()
+        XCTAssertTrue(readerBranch.label.contains("展开 3"))
+        XCTAssertEqual(readerBranch.frame.minY, readerControlY, accuracy: 1)
+        XCTAssertTrue(app.otherElements["thread.row.117117689679969635"].exists)
+        for replyID in ["117117695638809878", "117118009864271692", "117118175009985659"] {
+            XCTAssertFalse(app.otherElements["thread.row.\(replyID)"].exists)
+            XCTAssertFalse(app.buttons["thread.branch.\(replyID)"].exists)
+        }
+        attach(app, "thread-reader-three-collapsed-\(scheme)")
+        readerBranch.tap()
+        XCTAssertTrue(readerBranch.label.contains("收起 3"))
+        XCTAssertEqual(readerBranch.frame.minY, readerControlY, accuracy: 1)
+        let authorReply = app.otherElements["thread.row.117117695638809878"]
+        reveal(authorReply, app: app)
+        XCTAssertFalse(app.buttons["thread.branch.117117695638809878"].exists)
+        reveal(app.otherElements["thread.row.117118009864271692"], app: app)
+        reveal(app.otherElements["thread.row.117118175009985659"], app: app)
+        attach(app, "thread-reader-three-restored-\(scheme)")
+
         menu.tap()
         app.buttons["thread.authorOnly"].tap()
         XCTAssertTrue(app.staticTexts["thread.authorOnlyHint"].waitForExistence(timeout: 5))

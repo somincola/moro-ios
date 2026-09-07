@@ -198,4 +198,30 @@ import Testing
         #expect(rows.map(\.isNestedReply) == [false, true, true, false])
         #expect(rows.allSatisfy { $0.item.replyBranchID == nil && $0.replyCount == 0 })
     }
+
+    @Test func suppliedReaderDiscussionIncludesTheAuthorsFirstReplyInItsCollapseCount() {
+        let model = ThreadedConversationModel(focusedStatus: ThreadReadingSample.focus, context: ThreadReadingSample.context)
+        let items = Array(model.threadItems.dropFirst())
+        let root = "117117689679969635" // 我的有些表亲…
+        let replies = [
+            "117117695638809878", // 1. 作者：我们家小孩…
+            "117118009864271692", // 2. 伊丽莎白猫：我们家也是迄今无人生娃…
+            "117118175009985659", // 3. 白石京：我们家也是…
+        ]
+        var state = ThreadReadingState()
+        let expanded = ThreadReadingProjection(items: items, authorID: ThreadReadingSample.focus.account.id, state: state).rows
+        let discussion = expanded.filter { $0.item.replyBranchID == root }
+        #expect(discussion.map(\.id) == [root] + replies)
+        #expect(discussion.map { $0.item.status.inReplyToID } == ["117117597063812357", root, replies[0], replies[1]])
+        #expect(discussion.map(\.replyCount) == [3, 0, 0, 0])
+        #expect(discussion.allSatisfy { !$0.item.isAuthorContinuation })
+        #expect(discussion.filter { $0.showsBranchControl(isCollapsed: false) }.map(\.id) == [root])
+
+        state.toggleBranch(root)
+        let collapsed = ThreadReadingProjection(items: items, authorID: ThreadReadingSample.focus.account.id, state: state).rows
+        #expect(collapsed.map(\.id) == expanded.map(\.id).filter { !replies.contains($0) })
+        #expect(collapsed.first { $0.id == root }?.replyCount == 3)
+        state.toggleBranch(root)
+        #expect(ThreadReadingProjection(items: items, authorID: ThreadReadingSample.focus.account.id, state: state).rows.map(\.id) == expanded.map(\.id))
+    }
 }
