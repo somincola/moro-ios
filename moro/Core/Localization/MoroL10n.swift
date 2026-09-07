@@ -97,6 +97,8 @@ public enum MoroL10n {
     }
 
     public enum ThreadReading {
+        public static var authorContinuations: String { text("threadReading.authorContinuations") }
+        public static var replies: String { text("threadReading.replies") }
         public static var options: String { text("threadReading.options") }
         public static var authorOnly: String { text("threadReading.authorOnly") }
         public static var authorOnlyHint: String { text("threadReading.authorOnlyHint") }

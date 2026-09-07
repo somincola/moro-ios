@@ -225,6 +225,7 @@ struct StatusDetailView: View {
             Array(threadItems.dropFirst($0 + 1))
         } ?? []
         let rows = ThreadReadingProjection(items: descendants, authorID: viewModel.focusedStatus.account.id, state: readingState).rows
+        let statusesByID = Dictionary(uniqueKeysWithValues: threadItems.map { ($0.id, $0.status) })
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(ancestors) { item in
@@ -252,43 +253,31 @@ struct StatusDetailView: View {
                 } else {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                         let isLast = index == rows.count - 1
-                        let nextStartsGroup = !isLast && rows[index + 1].item.replyDepth == 0
+                        let endsGroup = isLast || rows[index + 1].item.replyGroup != row.item.replyGroup
+                        let previousID = index == 0 ? viewModel.focusedStatus.id : rows[index - 1].id
+                        let parentID = row.item.status.inReplyToID
+                        let parent = parentID != viewModel.focusedStatus.id && parentID != previousID
+                            ? parentID.flatMap { statusesByID[$0] } : nil
                         VStack(alignment: .leading, spacing: 0) {
-                            if let parentID = row.item.status.inReplyToID,
-                                let parent = threadItems.first(where: { $0.id == parentID }),
-                                parentID != viewModel.focusedStatus.id {
-                                Button {
-                                    readingState.setAuthorOnly(false)
-                                    jumpToPost(parentID)
-                                } label: {
-                                    Label(MoroL10n.ThreadReading.parent(parent.status.account.displayName), systemImage: "arrow.turn.up.left")
-                                        .font(theme.typography.caption)
-                                        .foregroundStyle(theme.colors.textSecondary)
-                                        .frame(minHeight: 44)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .padding(.horizontal, theme.spacing.l)
-                                .accessibilityIdentifier("thread.parent.\(row.id)")
+                            if index == 0 && row.item.isAuthorContinuation {
+                                ThreadSectionLabel(title: MoroL10n.ThreadReading.authorContinuations)
+                                    .accessibilityIdentifier("thread.authorContinuations")
                             }
-                            descendantPost(row.item, nextStartsGroup: nextStartsGroup, isLast: isLast)
-                            if row.replyCount > 0 {
-                                Button {
-                                    readingState.toggleBranch(row.id)
-                                } label: {
-                                    Label(readingState.collapsedIDs.contains(row.id)
-                                        ? MoroL10n.ThreadReading.expand(row.replyCount)
-                                        : MoroL10n.ThreadReading.collapse(row.replyCount),
-                                        systemImage: readingState.collapsedIDs.contains(row.id) ? "chevron.down" : "chevron.up")
-                                        .font(theme.typography.caption)
-                                        .foregroundStyle(theme.colors.textSecondary)
-                                        .frame(minHeight: 44)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .padding(.horizontal, theme.spacing.l)
-                                .accessibilityIdentifier("thread.branch.\(row.id)")
+                            if !row.item.isAuthorContinuation && (index == 0 || rows[index - 1].item.isAuthorContinuation) {
+                                ThreadSectionLabel(title: MoroL10n.ThreadReading.replies)
+                                    .accessibilityIdentifier("thread.replies")
                             }
+                            ThreadDiscussionRow(
+                                row: row,
+                                parent: parent,
+                                endsGroup: endsGroup,
+                                isCollapsed: readingState.collapsedIDs.contains(row.id),
+                                apiClient: apiClient,
+                                accountCache: accountCache,
+                                actions: postActions(for: row.item.status),
+                                onToggleBranch: { readingState.toggleBranch(row.id) },
+                                onJumpToParent: jumpToParent
+                            )
                         }
                         .background(highlightedStatusID == row.id ? theme.colors.surfaceSubtle : Color.clear)
                         .id(row.id)
@@ -304,6 +293,11 @@ struct StatusDetailView: View {
         readingState.expandAll()
         highlightedStatusID = id
         withAnimation { visibleStatusID = id }
+    }
+
+    private func jumpToParent(_ id: String) {
+        readingState.setAuthorOnly(false)
+        jumpToPost(id)
     }
 
     @ViewBuilder
@@ -387,31 +381,6 @@ struct StatusDetailView: View {
             accountCache: accountCache,
             actions: postActions(for: item.status)
         )
-    }
-
-    @ViewBuilder
-    private func descendantPost(
-        _ item: ThreadItem,
-        nextStartsGroup: Bool,
-        isLast: Bool
-    ) -> some View {
-        threadPostCard(item: item)
-            .padding(.leading, item.replyDepth > 0 ? theme.spacing.m : 0)
-
-        if isLast {
-            MoroDivider()
-        } else if nextStartsGroup {
-            MoroDivider(
-                leadingInset: theme.spacing.l,
-                trailingInset: theme.spacing.l
-            )
-            .padding(.vertical, theme.spacing.xs)
-        } else {
-            MoroDivider(
-                leadingInset: theme.spacing.timelineDividerInset + theme.spacing.m
-            )
-            .opacity(0.55)
-        }
     }
 
     // MARK: - Post Interaction Handlers

@@ -34,10 +34,21 @@ struct ThreadReadingHarnessView: View {
     @StateObject private var appState = AppState()
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    private let client = ThreadFixtureProtocol.makeClient()
+    private let focusedStatus: Status
+    private let client: MastodonClient
+
+    init() {
+        let useSample = ProcessInfo.processInfo.arguments.contains("UITEST_THREAD_REAL_SAMPLE")
+        focusedStatus = useSample ? ThreadReadingSample.focus : ThreadReadingFixtures.focus
+        client = ThreadFixtureProtocol.makeClient(
+            focus: focusedStatus,
+            context: useSample ? ThreadReadingSample.context : ThreadReadingFixtures.context
+        )
+    }
+
     var body: some View {
         NavigationStack(path: $router.path) {
-            StatusDetailView(status: ThreadReadingFixtures.focus, apiClient: client, threadCache: ThreadCache())
+            StatusDetailView(status: focusedStatus, apiClient: client, threadCache: ThreadCache())
                 .navigationDestination(for: Route.self) { route in
                     AppRouteViewFactory(apiClient: client, appState: appState, cacheManager: .shared).view(for: route)
                 }
@@ -54,16 +65,31 @@ final class ThreadFixtureProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
     private static var payloads: [String: Data] = [:]
 
-    @MainActor static func makeClient() -> MastodonClient {
+    @MainActor static func makeClient(focus: Status, context: StatusContext) -> MastodonClient {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        let context = ThreadReadingFixtures.context
-        let all = context.ancestors + [ThreadReadingFixtures.focus] + context.descendants
+        let all = context.ancestors + [focus] + context.descendants
+        let byID = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
+        let children = Dictionary(grouping: all, by: { $0.inReplyToID ?? "" })
         var prepared: [String: Data] = [:]
         for status in all {
+            var ancestors: [Status] = []
+            var parentID = status.inReplyToID
+            var seen: Set<String> = [status.id]
+            while let id = parentID, let parent = byID[id], seen.insert(id).inserted {
+                ancestors.append(parent)
+                parentID = parent.inReplyToID
+            }
+            var descendants: [Status] = []
+            var pending = Array((children[status.id] ?? []).reversed())
+            while let reply = pending.popLast() {
+                guard seen.insert(reply.id).inserted else { continue }
+                descendants.append(reply)
+                pending.append(contentsOf: (children[reply.id] ?? []).reversed())
+            }
             prepared["/api/v1/statuses/\(status.id)"] = try! encoder.encode(status)
             prepared["/api/v1/statuses/\(status.id)/context"] = try! encoder.encode(
-                status.id == "focus" ? context : StatusContext(ancestors: [], descendants: []))
+                status.id == focus.id ? context : StatusContext(ancestors: ancestors.reversed(), descendants: descendants))
         }
         lock.withLock { payloads = prepared }
         let configuration = URLSessionConfiguration.ephemeral

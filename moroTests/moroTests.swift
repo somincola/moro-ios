@@ -521,7 +521,7 @@ struct moroTests {
         #expect(viewModel.statuses.allSatisfy { $0.displayStatus.reblogsCount == 2 })
     }
 
-    @Test func threadedConversationOrdersAllDescendantsWithDepth() {
+    @Test func threadedConversationPreservesAPISiblingOrderAndDepth() {
         let baseDate = Date(timeIntervalSince1970: 1_000)
         let focusedAccount = makeAccount(id: "focused-author")
         let focused = makeStatus(
@@ -558,11 +558,12 @@ struct moroTests {
             )
         )
 
+        // Keep sibling order from the API even when children arrive before their parent.
         #expect(
             model.threadItems.map(\.status.id)
-                == ["focused", "first", "nested", "hidden", "second"]
+                == ["focused", "second", "first", "hidden", "nested"]
         )
-        #expect(model.threadItems.map(\.replyDepth) == [0, 0, 1, 1, 0])
+        #expect(model.threadItems.map(\.replyDepth) == [0, 0, 0, 1, 1])
     }
 
     @Test @MainActor func statusDetailUsesCountsFromFreshCachedThread() async throws {
