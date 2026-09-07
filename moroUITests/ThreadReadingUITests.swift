@@ -28,7 +28,7 @@ final class ThreadReadingUITests: XCTestCase {
         XCTAssertFalse(app.buttons["thread.parent.a1"].exists)
         attach(app, "thread-collapsed-\(scheme)")
         branch.tap()
-        // An adjacent parent is clear from the rail; do not add another header row.
+        // Reply metadata stays out of the reading column, including after expanding.
         XCTAssertFalse(app.buttons["thread.parent.a1"].exists)
         XCTAssertFalse(app.buttons["thread.branch.a1"].exists)
         menu.tap()
@@ -36,10 +36,9 @@ final class ThreadReadingUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["thread.authorOnlyHint"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["thread.branch.a"].exists)
         attach(app, "thread-author-only-\(scheme)")
-        let parent = app.buttons["thread.parent.a1"]
-        reveal(parent, app: app)
-        parent.tap()
-        XCTAssertTrue(branch.isHittable)
+        XCTAssertFalse(app.buttons["thread.parent.a1"].exists)
+        menu.tap()
+        app.buttons["thread.authorOnly"].tap()
         XCTAssertFalse(app.staticTexts["thread.authorOnlyHint"].exists)
         app.scrollViews.firstMatch.swipeUp()
         menu.tap()
@@ -62,7 +61,18 @@ final class ThreadReadingUITests: XCTestCase {
         let menu = app.buttons["thread.readingOptions"]
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
         attach(app, "thread-sample-original-\(scheme)")
-        reveal(app.staticTexts["thread.authorContinuations"], app: app)
+        XCTAssertFalse(app.staticTexts["thread.authorContinuations"].exists)
+        XCTAssertFalse(app.staticTexts["thread.replies"].exists)
+        let opening = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "因为太震撼了")).firstMatch
+        reveal(opening, app: app)
+        let contentLeadingEdge = opening.frame.minX
+        let child = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "她妈以前一直")).firstMatch
+        reveal(child, app: app)
+        XCTAssertEqual(child.frame.minX, contentLeadingEdge, accuracy: 1)
+        let sibling = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "另一个朋友贡献了")).firstMatch
+        reveal(sibling, app: app)
+        XCTAssertEqual(sibling.frame.minX, contentLeadingEdge, accuracy: 1)
+        XCTAssertFalse(app.buttons["thread.parent.117118126512386830"].exists)
         attach(app, "thread-sample-additions-\(scheme)")
         let branch = app.buttons["thread.branch.117116945719580606"]
         reveal(branch, app: app)
@@ -77,12 +87,11 @@ final class ThreadReadingUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["thread.row.117116973265571189"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["thread.branch.117116973265571189"].exists)
 
-        // This fork replies to an earlier post rather than the immediately preceding row.
-        let parent = app.buttons["thread.parent.117117388752166120"]
-        reveal(parent, app: app)
+        // A deeper fork keeps the same reading layout without an extra parent header.
+        let fork = app.otherElements["thread.row.117117388752166120"]
+        reveal(fork, app: app)
+        XCTAssertFalse(app.buttons["thread.parent.117117388752166120"].exists)
         attach(app, "thread-sample-reply-fork-\(scheme)")
-        parent.tap()
-        XCTAssertTrue(app.otherElements["thread.row.117117285240878821"].isHittable)
         menu.tap()
         app.buttons["thread.authorOnly"].tap()
         XCTAssertTrue(app.staticTexts["thread.authorOnlyHint"].waitForExistence(timeout: 5))

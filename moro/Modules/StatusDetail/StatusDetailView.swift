@@ -225,7 +225,6 @@ struct StatusDetailView: View {
             Array(threadItems.dropFirst($0 + 1))
         } ?? []
         let rows = ThreadReadingProjection(items: descendants, authorID: viewModel.focusedStatus.account.id, state: readingState).rows
-        let statusesByID = Dictionary(uniqueKeysWithValues: threadItems.map { ($0.id, $0.status) })
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(ancestors) { item in
@@ -239,7 +238,12 @@ struct StatusDetailView: View {
                 focusedPostCard(status: viewModel.focusedStatus)
                 .id(viewModel.focusedStatus.id)
 
-                MoroDivider()
+                if rows.isEmpty {
+                    MoroDivider()
+                } else {
+                    ThreadGroupDivider()
+                        .padding(.vertical, theme.spacing.s)
+                }
                 if readingState.authorOnly {
                     Text(MoroL10n.ThreadReading.authorOnlyHint)
                         .font(theme.typography.caption)
@@ -254,31 +258,15 @@ struct StatusDetailView: View {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                         let isLast = index == rows.count - 1
                         let endsGroup = isLast || rows[index + 1].item.replyGroup != row.item.replyGroup
-                        let previousID = index == 0 ? viewModel.focusedStatus.id : rows[index - 1].id
-                        let parentID = row.item.status.inReplyToID
-                        let parent = parentID != viewModel.focusedStatus.id && parentID != previousID
-                            ? parentID.flatMap { statusesByID[$0] } : nil
-                        VStack(alignment: .leading, spacing: 0) {
-                            if index == 0 && row.item.isAuthorContinuation {
-                                ThreadSectionLabel(title: MoroL10n.ThreadReading.authorContinuations)
-                                    .accessibilityIdentifier("thread.authorContinuations")
-                            }
-                            if !row.item.isAuthorContinuation && (index == 0 || rows[index - 1].item.isAuthorContinuation) {
-                                ThreadSectionLabel(title: MoroL10n.ThreadReading.replies)
-                                    .accessibilityIdentifier("thread.replies")
-                            }
-                            ThreadDiscussionRow(
-                                row: row,
-                                parent: parent,
-                                endsGroup: endsGroup,
-                                isCollapsed: readingState.collapsedIDs.contains(row.id),
-                                apiClient: apiClient,
-                                accountCache: accountCache,
-                                actions: postActions(for: row.item.status),
-                                onToggleBranch: { readingState.toggleBranch(row.id) },
-                                onJumpToParent: jumpToParent
-                            )
-                        }
+                        ThreadDiscussionRow(
+                            row: row,
+                            endsGroup: endsGroup,
+                            isCollapsed: readingState.collapsedIDs.contains(row.id),
+                            apiClient: apiClient,
+                            accountCache: accountCache,
+                            actions: postActions(for: row.item.status),
+                            onToggleBranch: { readingState.toggleBranch(row.id) }
+                        )
                         .background(highlightedStatusID == row.id ? theme.colors.surfaceSubtle : Color.clear)
                         .id(row.id)
                     }
@@ -293,11 +281,6 @@ struct StatusDetailView: View {
         readingState.expandAll()
         highlightedStatusID = id
         withAnimation { visibleStatusID = id }
-    }
-
-    private func jumpToParent(_ id: String) {
-        readingState.setAuthorOnly(false)
-        jumpToPost(id)
     }
 
     @ViewBuilder
