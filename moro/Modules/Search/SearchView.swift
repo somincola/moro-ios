@@ -17,6 +17,9 @@ enum SearchLayoutMetrics {
     static let searchBarInternalFieldInset: CGFloat = 8
     static let searchBarOuterHorizontalInset: CGFloat =
         contentHorizontalInset - searchBarInternalFieldInset
+    static let searchFieldHeight: CGFloat = 36
+    static let searchFieldVerticalInset: CGFloat = 4
+    static let searchFieldCornerRadius: CGFloat = 10
     static let maximumSearchFieldPointSize: CGFloat = 22
     static let maximumScopePointSize: CGFloat = 20
     static let searchGlyphPointSize: CGFloat = 16
