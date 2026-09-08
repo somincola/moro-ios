@@ -45,7 +45,7 @@ extension MainTab {
 extension Route {
     var sceneDescriptor: MoroSceneDescriptor {
         switch self {
-        case .statusDetail, .announcementDetail, .webPreview, .instanceDetails:
+        case .statusDetail, .statusLink, .announcementDetail, .webPreview, .instanceDetails:
             return MoroSceneDescriptor(kind: .detail)
 
         case .announcements:

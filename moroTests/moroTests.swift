@@ -1497,12 +1497,61 @@ struct moroTests {
 
     @Test @MainActor func urlHandlerParsesStatusRouteFromWebStatusesPath() async throws {
         let url = URL(string: "https://mastodon.social/web/statuses/1234567890")!
-        #expect(URLHandler.shared.parseMastodonURL(url) == .statusDetail(makeStatus(id: "1234567890")))
+        #expect(URLHandler.shared.parseMastodonURL(url) == .statusLink(url))
     }
 
     @Test @MainActor func urlHandlerParsesStatusRouteFromMentionPath() async throws {
         let url = URL(string: "https://mastodon.social/@alice/9988776655")!
-        #expect(URLHandler.shared.parseMastodonURL(url) == .statusDetail(makeStatus(id: "9988776655")))
+        #expect(URLHandler.shared.parseMastodonURL(url) == .statusLink(url))
+    }
+
+    @Test @MainActor func statusLinksKeepTheOriginAndResolveToTheActiveServersID() async throws {
+        let url = try #require(URL(string: "https://remote.example/@alice/100"))
+        let api = MockMastodonAPI()
+        let resolved = makeStatus(id: "200", content: "Resolved remote post")
+        api.searchHandler = { query, type, resolve, limit, offset in
+            #expect(query == url.absoluteString)
+            #expect(type == .statuses && resolve && limit == 1 && offset == nil)
+            return SearchResults(accounts: [], statuses: [resolved], hashtags: [])
+        }
+
+        let route = await URLHandler.shared.resolveStatusLink(url, apiClient: api)
+        guard case .statusDetail(let status)? = route else {
+            Issue.record("Expected the resolved status")
+            return
+        }
+        #expect(status.id == "200")
+        #expect(status.content == "Resolved remote post")
+        #expect(api.fetchStatusDetailCallIDs.isEmpty)
+        #expect(api.fetchStatusContextCallIDs.isEmpty)
+
+        let otherURL = try #require(URL(string: "https://another.example/@alice/100"))
+        #expect(Set<Route>([.statusLink(url), .statusLink(otherURL)]).count == 2)
+    }
+
+    @Test @MainActor func unresolvedStatusLinksOpenTheOriginalWebpage() async throws {
+        let url = try #require(URL(string: "https://remote.example/@alice/100"))
+        let api = MockMastodonAPI()
+        api.searchHandler = { _, _, _, _, _ in
+            SearchResults(accounts: [], statuses: [], hashtags: [])
+        }
+        #expect(await URLHandler.shared.resolveStatusLink(url, apiClient: api) == .webPreview(url))
+
+        api.searchHandler = { _, _, _, _, _ in throw URLError(.notConnectedToInternet) }
+        #expect(await URLHandler.shared.resolveStatusLink(url, apiClient: api) == .webPreview(url))
+        #expect(api.fetchStatusDetailCallIDs.isEmpty && api.fetchStatusContextCallIDs.isEmpty)
+    }
+
+    @Test @MainActor func cancelledStatusResolutionDoesNotOpenAnotherDestination() async throws {
+        let url = try #require(URL(string: "https://remote.example/@alice/100"))
+        let api = MockMastodonAPI()
+        api.searchHandler = { _, _, _, _, _ in throw CancellationError() }
+        #expect(await URLHandler.shared.resolveStatusLink(url, apiClient: api) == nil)
+        api.searchHandler = { _, _, _, _, _ in throw URLError(.cancelled) }
+        #expect(await URLHandler.shared.resolveStatusLink(url, apiClient: api) == nil)
+        let httpURL = try #require(URL(string: "http://remote.example/@alice/100"))
+        #expect(await URLHandler.shared.resolveStatusLink(httpURL, apiClient: api) == .webPreview(httpURL))
+        #expect(URLHandler.shared.parseMastodonURL(URL(string: "custom://remote.example/@alice/100")!) == nil)
     }
 
     @Test @MainActor func urlHandlerParsesMentionPathToAccountLookupRoute() async throws {

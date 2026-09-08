@@ -26,6 +26,9 @@ enum Route: Hashable {
     /// Navigate to status detail (thread view)
     case statusDetail(Status)
 
+    /// Resolve a status URL through the active server before opening a detail.
+    case statusLink(URL)
+
     /// Navigate to hashtag timeline
     case hashtag(String)
 
@@ -97,6 +100,9 @@ enum Route: Hashable {
         case .statusDetail(let status):
             hasher.combine("statusDetail")
             hasher.combine(status.id)
+        case .statusLink(let url):
+            hasher.combine("statusLink")
+            hasher.combine(url)
         case .hashtag(let tag):
             hasher.combine("hashtag")
             hasher.combine(tag)
@@ -158,6 +164,8 @@ enum Route: Hashable {
         switch (lhs, rhs) {
         case (.statusDetail(let l), .statusDetail(let r)):
             return l.id == r.id
+        case (.statusLink(let l), .statusLink(let r)):
+            return l == r
         case (.hashtag(let l), .hashtag(let r)):
             return l == r
         case (.search(let l, let ls), .search(let r, let rs)):
