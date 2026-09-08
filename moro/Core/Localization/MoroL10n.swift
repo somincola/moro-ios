@@ -624,6 +624,8 @@ public enum MoroL10n {
         public static var filteredEmptyNoContent: String { text("notifications.empty.filteredNoContent") }
         public static var filteredEmptyMessage: String { text("notifications.empty.filteredMessage") }
         public static var viewAll: String { text("notifications.empty.viewAll") }
+        public static var loadMore: String { text("notifications.empty.loadMore") }
+        public static var moreAvailable: String { text("notifications.empty.moreAvailable") }
 
         // Actor list header
         public static var actorListFavouriters: String { text("notifications.actorList.favouriters") }

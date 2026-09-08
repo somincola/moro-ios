@@ -42,6 +42,7 @@ final class NotificationsViewModel: ObservableObject {
     enum LoadingState {
         case idle
         case loading
+        case refreshing
         case loadingMore
         case loaded
         case error(Error)
@@ -51,13 +52,14 @@ final class NotificationsViewModel: ObservableObject {
     @Published var loadingState: LoadingState = .idle
     /// True when the most recent load-more page failed; drives the inline retry footer.
     @Published var loadMoreFailed: Bool = false
+    @Published private(set) var hasMore = true
     @Published private(set) var acceptingFollowRequestIDs: Set<String> = []
     @Published private(set) var rejectingFollowRequestIDs: Set<String> = []
     @Published private(set) var filterInsight: NotificationFilterInsight = .empty
 
     private let apiClient: MastodonAPI
     private var currentMaxID: String?
-    private var hasMore = true
+    private var newestNotificationID: String?
     private let settings = AppSettings.shared
     private var rawNotifications: [NotificationItem] = []
     private let prefetchCoordinator: StatusDetailPrefetchCoordinator
@@ -94,9 +96,10 @@ final class NotificationsViewModel: ObservableObject {
         do {
             let items = try await apiClient.fetchNotifications(maxID: nil, sinceID: nil, limit: 30)
             let filtered = await filterNotifications(items)
-            rawNotifications = filtered
-            notifications = NotificationDisplayItem.consolidate(rawNotifications)
+            rawNotifications = items
+            notifications = NotificationDisplayItem.consolidate(filtered)
             currentMaxID = items.last?.id
+            newestNotificationID = items.first?.id
             hasMore = items.count >= 30
             loadingState = .loaded
             return items.first?.id
@@ -110,21 +113,45 @@ final class NotificationsViewModel: ObservableObject {
     func refresh() async -> String? {
         // Don't race an in-flight initial load or pagination (which mutate the same state).
         switch loadingState {
-        case .loading, .loadingMore:
+        case .loading, .loadingMore, .refreshing:
             return nil
         default:
             break
         }
 
+        loadingState = .refreshing
+        let sinceID = newestNotificationID
         do {
-            let items = try await apiClient.fetchNotifications(maxID: nil, sinceID: nil, limit: 30)
-            let filtered = await filterNotifications(items)
-            rawNotifications = filtered
-            notifications = NotificationDisplayItem.consolidate(rawNotifications)
-            currentMaxID = items.last?.id
-            hasMore = items.count >= 30
+            // Fetch all new pages up to the previous newest item, without moving
+            // the independent cursor used to read older notifications.
+            var items: [NotificationItem] = []
+            var pageMaxID: String?
+            var visitedCursors: Set<String> = []
+            repeat {
+                let page = try await apiClient.fetchNotifications(
+                    maxID: pageMaxID, sinceID: sinceID, limit: 30
+                )
+                try Task.checkCancellation()
+                items.append(contentsOf: page)
+                guard sinceID != nil, page.count >= 30,
+                    let next = page.last?.id, visitedCursors.insert(next).inserted
+                else { break }
+                pageMaxID = next
+            } while true
+
+            var seenIDs: Set<String> = []
+            let merged = (items + rawNotifications).filter { seenIDs.insert($0.id).inserted }
+            let filtered = await filterNotifications(merged)
+            try Task.checkCancellation()
+            rawNotifications = merged
+            notifications = NotificationDisplayItem.consolidate(filtered)
+            newestNotificationID = items.first?.id ?? newestNotificationID
+            if sinceID == nil {
+                currentMaxID = items.last?.id
+                hasMore = items.count >= 30
+            }
             loadingState = .loaded
-            return items.first?.id
+            return newestNotificationID
         } catch {
             // Keep the existing list usable and pagination enabled on a transient refresh
             // failure; only show the full error state when there's nothing to display.
@@ -141,11 +168,11 @@ final class NotificationsViewModel: ObservableObject {
 
         do {
             let items = try await apiClient.fetchNotifications(maxID: currentMaxID, sinceID: nil, limit: 30)
-            let filtered = await filterNotifications(items)
-            appendRawNotifications(filtered)
-            notifications = NotificationDisplayItem.consolidate(rawNotifications)
+            appendRawNotifications(items)
+            let filtered = await filterNotifications(rawNotifications)
+            notifications = NotificationDisplayItem.consolidate(filtered)
+            hasMore = items.count >= 30 && items.last?.id != currentMaxID
             currentMaxID = items.last?.id
-            hasMore = items.count >= 30
             loadingState = .loaded
         } catch {
             loadingState = .loaded
@@ -298,15 +325,15 @@ final class NotificationsViewModel: ObservableObject {
 
     private func appendRawNotifications(_ newItems: [NotificationItem]) {
         guard !newItems.isEmpty else { return }
-        let existingIDs = Set(rawNotifications.map(\.id))
-        let uniqueItems = newItems.filter { !existingIDs.contains($0.id) }
+        var existingIDs = Set(rawNotifications.map(\.id))
+        let uniqueItems = newItems.filter { existingIDs.insert($0.id).inserted }
         rawNotifications.append(contentsOf: uniqueItems)
     }
 
     private func removeDisplayItem(_ item: NotificationDisplayItem) {
         let sourceIDs = Set(item.sourceNotificationIDs)
         rawNotifications.removeAll { sourceIDs.contains($0.id) }
-        notifications = NotificationDisplayItem.consolidate(rawNotifications)
+        notifications.removeAll { $0.id == item.id }
     }
 
     func prefetchStatusAndQuoteIfNeeded(for status: Status) async {

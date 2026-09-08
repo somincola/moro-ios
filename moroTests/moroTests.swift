@@ -13,6 +13,132 @@ import UIKit
 import Combine
 
 struct moroTests {
+    @Test @MainActor func notificationEmptyFilterCanLoadOlderMatchesAndRetryTheSameCursor() async {
+        let settings = AppSettings.shared
+        let oldPolicy = settings.notificationPolicy
+        let oldMentions = settings.receiveMentionsAndReplies
+        settings.notificationPolicy = .anyone
+        settings.receiveMentionsAndReplies = true
+        defer {
+            settings.notificationPolicy = oldPolicy
+            settings.receiveMentionsAndReplies = oldMentions
+        }
+        let api = MockMastodonAPI()
+        var failPagination = true
+        var cursors: [String?] = []
+        api.fetchNotificationsHandler = { maxID, _, _ in
+            cursors.append(maxID)
+            if maxID == nil {
+                return (31...60).reversed().map {
+                    self.makeNotification(id: String($0), type: "update")
+                }
+            }
+            if failPagination { throw URLError(.notConnectedToInternet) }
+            return [self.makeNotification(id: "30", type: "mention")]
+        }
+        let model = NotificationsViewModel(apiClient: api)
+        await model.loadInitial()
+        #expect(model.notifications.filter(NotificationFilter.mentions.matches).isEmpty)
+        #expect(model.hasMore)
+        await model.loadMore()
+        #expect(model.loadMoreFailed && model.hasMore)
+        failPagination = false
+        await model.loadMore()
+        #expect(model.notifications.filter(NotificationFilter.mentions.matches).map(\.id) == ["30"])
+        #expect(!model.hasMore && !model.loadMoreFailed)
+        #expect(cursors == [nil, "31", "31"])
+    }
+
+    @Test @MainActor func notificationRefreshMergesEveryNewPageAndPreservesTheHistoryCursor() async {
+        let settings = AppSettings.shared
+        let oldPolicy = settings.notificationPolicy
+        settings.notificationPolicy = .anyone
+        defer { settings.notificationPolicy = oldPolicy }
+        let api = MockMastodonAPI()
+        var calls: [(String?, String?)] = []
+        func page(_ range: ClosedRange<Int>) -> [NotificationItem] {
+            range.reversed().map {
+                self.makeNotification(id: String($0), type: "update", createdAt: Date(timeIntervalSince1970: Double($0)))
+            }
+        }
+        api.fetchNotificationsHandler = { maxID, sinceID, _ in
+            calls.append((maxID, sinceID))
+            if sinceID == "300" {
+                if maxID == nil { return page(331...360) }
+                if maxID == "331" { return page(301...330) }
+                return []
+            }
+            if maxID == nil { return page(271...300) }
+            if maxID == "271" { return page(241...270) }
+            return page(240...240)
+        }
+        let model = NotificationsViewModel(apiClient: api)
+        await model.loadInitial()
+        await model.loadMore()
+        let originalIDs = Set(model.notifications.map(\.id))
+        let newest = await model.refresh()
+        #expect(newest == "360")
+        #expect(model.notifications.count == 120)
+        #expect(originalIDs.isSubset(of: Set(model.notifications.map(\.id))))
+        #expect(model.notifications.first?.id == "360")
+        #expect(model.notifications.last?.id == "241")
+        #expect(calls[3].0 == "331" && calls[3].1 == "300")
+        #expect(calls[4].0 == "301" && calls[4].1 == "300")
+        await model.loadMore()
+        #expect(calls.last?.0 == "241" && calls.last?.1 == nil)
+        #expect(model.notifications.last?.id == "240")
+    }
+
+    @Test @MainActor func notificationRefreshFailureAndRepeatedPagesKeepExistingContentUsable() async {
+        let settings = AppSettings.shared
+        let oldPolicy = settings.notificationPolicy
+        settings.notificationPolicy = .anyone
+        defer { settings.notificationPolicy = oldPolicy }
+        let api = MockMastodonAPI()
+        let page = (1...30).reversed().map {
+            makeNotification(id: String($0), type: "update", createdAt: Date(timeIntervalSince1970: Double($0)))
+        }
+        api.fetchNotificationsHandler = { _, _, _ in page }
+        let model = NotificationsViewModel(apiClient: api)
+        await model.loadInitial()
+        api.fetchNotificationsHandler = { _, _, _ in throw URLError(.notConnectedToInternet) }
+        #expect(await model.refresh() == nil)
+        #expect(model.notifications.count == 30 && model.hasMore)
+        if case .loaded = model.loadingState {} else { Issue.record("Keep loaded content after refresh failure") }
+
+        api.fetchNotificationsHandler = { _, _, _ in page }
+        await model.loadMore()
+        #expect(model.notifications.count == 30 && !model.hasMore)
+        await model.refresh()
+        #expect(model.notifications.count == 30 && !model.hasMore)
+    }
+
+    @Test @MainActor func notificationRefreshReappliesSettingsToRetainedHistory() async {
+        let settings = AppSettings.shared
+        let oldPolicy = settings.notificationPolicy
+        let oldMentions = settings.receiveMentionsAndReplies
+        settings.notificationPolicy = .anyone
+        settings.receiveMentionsAndReplies = true
+        defer {
+            settings.notificationPolicy = oldPolicy
+            settings.receiveMentionsAndReplies = oldMentions
+        }
+        let api = MockMastodonAPI()
+        let mention = makeNotification(id: "100", type: "mention")
+        api.fetchNotificationsHandler = { _, sinceID, _ in sinceID == nil ? [mention] : [] }
+        let model = NotificationsViewModel(apiClient: api)
+        await model.loadInitial()
+        #expect(model.notifications.map(\.id) == ["100"])
+        settings.receiveMentionsAndReplies = false
+        await model.refresh()
+        #expect(model.notifications.isEmpty)
+        #expect(model.filterInsight.hidesEverything)
+        settings.receiveMentionsAndReplies = true
+        await model.refresh()
+        #expect(model.notifications.map(\.id) == ["100"])
+        #expect(!model.filterInsight.hidesAnything)
+    }
+
     @Test @MainActor func profileStopsAutomaticallyScanningAfterThreeEmptyReplyPages() async {
         let api = MockMastodonAPI()
         var page = 0
