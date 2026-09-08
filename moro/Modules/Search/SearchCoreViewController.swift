@@ -77,6 +77,7 @@ final class SearchCoreViewController: UIViewController {
     var onOpenProfile: ((Account) -> Void)?
     var onOpenStatus: ((Status) -> Void)?
     var onOpenHashtag: ((String) -> Void)?
+    var onEntryStateChanged: ((Bool) -> Void)?
 
     let initialPageSize = 20
     let paginationPageSize = 40

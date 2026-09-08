@@ -65,7 +65,7 @@ struct SearchFlowHarnessView: View {
     }
 
     private func searchRoot(router: AppRouter) -> some View {
-        SearchView(apiClient: client)
+        SearchView(apiClient: client, onEntryStateChanged: tabs.setExploreSearchEntryActive)
             .environment(\.activeAccountKey, accountKey)
             .environment(\.appRouter, router)
             .environmentObject(appState)

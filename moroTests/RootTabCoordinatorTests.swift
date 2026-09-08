@@ -21,6 +21,32 @@ final class RootTabCoordinatorTests: XCTestCase {
         XCTAssertTrue(coordinator.router(for: .me) === coordinator.meRouter)
     }
 
+    func testSearchEntryHidesOnlyTheExploreTabBar() {
+        let coordinator = RootTabCoordinator(selectedTab: .explore)
+        XCTAssertFalse(coordinator.isTabBarHidden)
+        coordinator.setExploreSearchEntryActive(true)
+        XCTAssertTrue(coordinator.isTabBarHidden)
+
+        for tab in [MainTab.home, .inbox, .me] {
+            coordinator.selectTab(tab)
+            XCTAssertFalse(coordinator.isTabBarHidden)
+        }
+        coordinator.selectTab(.explore)
+        XCTAssertTrue(coordinator.isTabBarHidden)
+        coordinator.setExploreSearchEntryActive(false)
+        XCTAssertFalse(coordinator.isTabBarHidden)
+    }
+
+    func testLeavingSearchEntryDoesNotRevealTabBarOnDetailRoutes() {
+        let coordinator = RootTabCoordinator(selectedTab: .explore)
+        coordinator.setExploreSearchEntryActive(true)
+        coordinator.setIsAtRoot(false, for: .explore)
+        coordinator.setExploreSearchEntryActive(false)
+        XCTAssertTrue(coordinator.isTabBarHidden)
+        coordinator.setIsAtRoot(true, for: .explore)
+        XCTAssertFalse(coordinator.isTabBarHidden)
+    }
+
     func testComposePresentationKeepsOriginTabSelected() async {
         let coordinator = RootTabCoordinator(selectedTab: .explore)
 

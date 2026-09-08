@@ -31,9 +31,11 @@ struct SearchView: View {
     let apiClient: MastodonAPI
     var initialQuery: String? = nil
     var initialScope: SearchViewModel.Scope = .accounts
+    var onEntryStateChanged: ((Bool) -> Void)? = nil
 
     var body: some View {
-        SearchContentView(apiClient: apiClient, initialQuery: initialQuery, initialScope: initialScope)
+        SearchContentView(apiClient: apiClient, initialQuery: initialQuery, initialScope: initialScope,
+                          onEntryStateChanged: onEntryStateChanged)
             .id(accountKey)
     }
 }
@@ -54,11 +56,14 @@ struct SearchContentView: View {
     let apiClient: MastodonAPI
     let initialQuery: String?
     let initialScope: SearchViewModel.Scope
+    let onEntryStateChanged: ((Bool) -> Void)?
 
-    init(apiClient: MastodonAPI, initialQuery: String?, initialScope: SearchViewModel.Scope) {
+    init(apiClient: MastodonAPI, initialQuery: String?, initialScope: SearchViewModel.Scope,
+         onEntryStateChanged: ((Bool) -> Void)? = nil) {
         self.apiClient = apiClient
         self.initialQuery = initialQuery
         self.initialScope = initialScope
+        self.onEntryStateChanged = onEntryStateChanged
         _interactionService = StateObject(wrappedValue: PostInteractionService(apiClient: apiClient))
         _postMenuActionCenter = StateObject(wrappedValue: PostMenuActionCenter(apiClient: apiClient))
     }
@@ -94,8 +99,12 @@ struct SearchContentView: View {
             },
             onOpenProfile: { router.navigate(to: .userProfile($0)) },
             onOpenStatus: { router.navigate(to: .statusDetail($0.displayStatus)) },
-            onOpenHashtag: { router.navigate(to: .hashtag($0)) }
+            onOpenHashtag: { router.navigate(to: .hashtag($0)) },
+            onEntryStateChanged: onEntryStateChanged
         )
+        // Extend the UIKit list behind the native tab bar, like the timeline.
+        // Its scroll view still uses UIKit's automatic safe-area content insets.
+        .ignoresSafeArea(.container, edges: .bottom)
         .background((sceneDescriptor?.canvas ?? .content).backgroundColor(in: theme))
     }
 }
@@ -111,6 +120,7 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
     let onOpenProfile: (Account) -> Void
     let onOpenStatus: (Status) -> Void
     let onOpenHashtag: (String) -> Void
+    let onEntryStateChanged: ((Bool) -> Void)?
 
     func makeUIViewController(context: Context) -> SearchCoreViewController {
         let controller = SearchCoreViewController(
@@ -131,11 +141,13 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
         controller.onOpenProfile = onOpenProfile
         controller.onOpenStatus = onOpenStatus
         controller.onOpenHashtag = onOpenHashtag
+        controller.onEntryStateChanged = onEntryStateChanged
     }
 
     static func dismantleUIViewController(_ controller: SearchCoreViewController, coordinator: ()) {
         controller.cancelInFlightSearchRequests()
         controller.cancelDiscoveryRequests()
+        controller.onEntryStateChanged?(false)
     }
 }
 #endif

@@ -398,7 +398,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
                     guard let self else { return }
                     self.coordinator.setIsAtRoot(isAtRoot, for: tab)
                     if self.coordinator.selectedTab == tab {
-                        self.mainTabController.tabBar.isHidden = !isAtRoot
+                        self.updateTabBarVisibility()
                     }
                 },
                 onSceneChanged: { [weak self] descriptor in
@@ -410,8 +410,15 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
         private func applySelectedTabPresentation(_ tab: MainTab) {
             guard let navigationController = navigationController(for: tab) else { return }
-            mainTabController.tabBar.isHidden = !coordinator.isAtRoot(tab)
+            updateTabBarVisibility()
             applyScenePresentation(navigationController.currentSceneDescriptor)
+        }
+
+        private func updateTabBarVisibility() {
+            let hidden = coordinator.isTabBarHidden
+            guard mainTabController.isTabBarHidden != hidden else { return }
+            // Let UIKit update the bar and its safe area together.
+            mainTabController.setTabBarHidden(hidden, animated: false)
         }
 
         private func applyScenePresentation(_ descriptor: MoroSceneDescriptor) {

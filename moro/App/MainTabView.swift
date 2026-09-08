@@ -482,7 +482,7 @@ private struct ExploreTabRootView: View {
     let apiClient: MastodonAPI
 
     var body: some View {
-        SearchView(apiClient: apiClient)
+        SearchView(apiClient: apiClient, onEntryStateChanged: coordinator.setExploreSearchEntryActive)
             .environment(\.selectedTabScrollToTop, coordinator.selectedTabScrollToTop)
     }
 }

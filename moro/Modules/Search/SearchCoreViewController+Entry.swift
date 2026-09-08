@@ -107,5 +107,6 @@ extension SearchCoreViewController {
         updateScopePresentation()
         let palette = appliedTheme.uiKitPalette
         entryHost.view.backgroundColor = palette.canvasBackground
+        onEntryStateChanged?(isEntry)
     }
 }
