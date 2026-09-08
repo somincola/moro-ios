@@ -139,6 +139,32 @@ struct moroTests {
         #expect(!model.filterInsight.hidesAnything)
     }
 
+    @Test @MainActor func conversationRefreshFailurePreservesHistoryLiveMessagesAndDraft() async {
+        let api = MockMastodonAPI()
+        let ancestor = makeStatus(id: "99", createdAt: Date(timeIntervalSince1970: 99))
+        let last = makeStatus(id: "100", createdAt: Date(timeIntervalSince1970: 100))
+        let incoming = makeStatus(id: "101", createdAt: Date(timeIntervalSince1970: 101))
+        let model = ConversationDetailViewModel(
+            conversation: makeConversation(id: "conversation", unread: false, lastStatus: last),
+            apiClient: api
+        )
+        api.fetchStatusContextHandler = { _ in StatusContext(ancestors: [ancestor], descendants: []) }
+        await model.loadInitial()
+        model.handleStreamEvent(.conversation(conversationId: "conversation", unread: false, lastStatus: incoming))
+        model.draftMessage = "Keep this unfinished message"
+        api.fetchStatusContextHandler = { _ in throw URLError(.notConnectedToInternet) }
+        await model.refresh()
+        #expect(model.messages.map(\.id) == ["99", "100", "101"])
+        #expect(model.draftMessage == "Keep this unfinished message")
+        if case .error = model.loadingState {} else { Issue.record("Expose a recoverable refresh error") }
+
+        api.fetchStatusContextHandler = { _ in StatusContext(ancestors: [ancestor, last], descendants: []) }
+        await model.refresh()
+        #expect(model.messages.map(\.id) == ["99", "100", "101"])
+        #expect(model.draftMessage == "Keep this unfinished message")
+        if case .loaded = model.loadingState {} else { Issue.record("Clear the error after retry") }
+    }
+
     @Test @MainActor func profileStopsAutomaticallyScanningAfterThreeEmptyReplyPages() async {
         let api = MockMastodonAPI()
         var page = 0
@@ -3449,7 +3475,7 @@ struct moroTests {
 
     @Test @MainActor func conversationThreadPresentationSeparatesRootStatusFromReplies() async throws {
         let sender = makeAccount(id: "alice", username: "alice")
-        let root = makeStatus(id: "root", account: sender)
+        let root = makeStatus(id: "root", account: sender, visibility: "public")
         let firstReply = makeStatus(id: "reply-1", account: sender, inReplyToID: root.id)
         let secondReply = makeStatus(id: "reply-2", account: sender, inReplyToID: firstReply.id)
         let messages = [root, firstReply, secondReply]
@@ -3462,6 +3488,60 @@ struct moroTests {
 
         #expect(resolvedRoot?.id == root.id)
         #expect(replies.map(\.id) == [firstReply.id, secondReply.id])
+    }
+
+    @Test @MainActor func conversationDirectRootKeepsItsFullMessageBody() {
+        for visibility in ["direct", nil] {
+            let root = makeStatus(id: "direct-root", visibility: visibility)
+            let reply = makeStatus(id: "reply", inReplyToID: root.id, visibility: "direct")
+            let messages = [root, reply]
+            let context = ConversationThreadPresentation.rootStatus(in: messages)
+
+            #expect(context == nil)
+            #expect(ConversationThreadPresentation.replyMessages(in: messages, rootStatus: context).map(\.id)
+                    == [root.id, reply.id])
+        }
+    }
+
+    @Test @MainActor func conversationContentRetainsEllipsisAnchorAndParagraphs() {
+        let url = URL(string: "https://remote.example/@reader/123456789")!
+        let status = makeStatus(id: "direct-link", content: """
+            <p><a href="https://local.example/@reader" class="mention">@reader</a></p>
+            <p><a href="\(url.absoluteString)"><span class="invisible">https://</span><span class="ellipsis">remote.example/@reader/123</span><span class="invisible">456789</span></a></p>
+            <p>Second paragraph<br>Another line</p>
+            """, visibility: "direct")
+        let elements = ConversationMessageContent.elements(for: status)
+        #expect(elements.contains { element in
+            if case .link(let label, let target) = element {
+                return label.contains("remote.example/@reader/123") && target == url
+            }
+            return false
+        })
+        #expect(elements.plainTextValue.contains("\n"))
+        #expect(elements.plainTextValue.contains("Second paragraph\nAnother line"))
+        #expect(ConversationMessageContent.summary(for: status).contains("remote.example/@reader/123"))
+        #expect(!ConversationMessageContent.summary(for: status).contains("\n"))
+    }
+
+    @Test @MainActor func conversationContentDetectsPlainLinksWithoutPreviewMetadata() {
+        let status = makeStatus(id: "plain-link", content: "<p>Read https://example.com/article?first=1&amp;second=2</p>", visibility: "direct")
+        #expect(ConversationMessageContent.elements(for: status).contains { element in
+            if case .link(_, let url) = element {
+                return url.absoluteString == "https://example.com/article?first=1&second=2"
+            }
+            return false
+        })
+    }
+
+    @Test @MainActor func conversationSummaryFallsBackToExistingLinkCard() throws {
+        for title in ["An article", ""] {
+            let card = try JSONDecoder().decode(Status.PreviewCard.self, from: Data("""
+                {"url":"https://example.com/article","title":"\(title)","description":"","type":"link"}
+                """.utf8))
+            let status = makeStatus(id: "card-only", content: "<p></p>", visibility: "direct", card: card)
+            #expect(ConversationMessageContent.summary(for: status)
+                    == (title.isEmpty ? "https://example.com/article" : title))
+        }
     }
 
     @Test @MainActor func conversationThreadPresentationKeepsAllMessagesWhenRootIsUnavailable() async throws {
@@ -7271,7 +7351,8 @@ private extension moroTests {
         mentions: [Status.Mention]? = nil,
         tags: [Status.Tag]? = nil,
         filtered: [Status.FilterResult]? = nil,
-        pinned: Bool? = nil
+        pinned: Bool? = nil,
+        card: Status.PreviewCard? = nil
     ) -> Status {
         Status(
             id: id,
@@ -7293,6 +7374,7 @@ private extension moroTests {
             language: language,
             mentions: mentions,
             tags: tags,
+            card: card,
             poll: poll,
             filtered: filtered,
             pinned: pinned

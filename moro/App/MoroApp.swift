@@ -61,6 +61,8 @@ struct MoroApp: App {
                 } else if shouldUseSearchFlowHarness {
                     searchFlowHarness
                         .preferredColorScheme(colorScheme)
+                } else if shouldUseDirectMessagesHarness {
+                    directMessagesHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseEditSourceHarness {
                     editSourceHarness
                         .preferredColorScheme(colorScheme)
@@ -239,6 +241,21 @@ struct MoroApp: App {
         launchArguments.contains("UITEST_SEARCH_FLOW")
         #else
         false
+        #endif
+    }
+
+    private var shouldUseDirectMessagesHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_DIRECT_MESSAGES")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder
+    private var directMessagesHarness: some View {
+        #if DEBUG
+        DirectMessagesHarnessView()
         #endif
     }
 

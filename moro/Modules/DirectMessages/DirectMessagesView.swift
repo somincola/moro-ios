@@ -79,7 +79,7 @@ struct DirectMessagesView: View {
             ) { account in
                 openConversation(with: account)
             }
-            .moroSheetSurface(detents: [.medium, .large])
+            .moroSheetSurface(detents: [.large])
         }
         .task(id: isActive) {
             guard isActive else { return }
@@ -128,6 +128,7 @@ struct DirectMessagesView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(MoroL10n.DirectMessages.newMessage)
+        .accessibilityIdentifier("directMessages.newConversation")
     }
 
     private var isLoadingMore: Bool {
@@ -352,22 +353,7 @@ private struct DirectMessageConversationRow: View {
     private var previewText: String {
         guard let lastStatus = conversation.lastStatus else { return MoroL10n.DirectMessages.noContent }
         let sender = lastStatus.account.displayNameFormatted
-        let body = HTMLParser.stripHTML(lastStatus.content)
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedBody: String
-
-        if !body.isEmpty {
-            resolvedBody = body
-        } else if !lastStatus.mediaAttachments.isEmpty {
-            resolvedBody = lastStatus.mediaAttachments.count == 1
-                ? MoroL10n.DirectMessages.sentMedia1
-                : MoroL10n.DirectMessages.sentMediaCount(lastStatus.mediaAttachments.count)
-        } else if lastStatus.poll != nil {
-            resolvedBody = MoroL10n.DirectMessages.sentPoll
-        } else {
-            resolvedBody = MoroL10n.DirectMessages.noContent
-        }
+        let resolvedBody = ConversationMessageContent.summary(for: lastStatus)
 
         if participants.count > 1 {
             return "\(sender)：\(resolvedBody)"
@@ -439,6 +425,7 @@ private struct DirectMessageConversationRow: View {
         .buttonStyle(.plain)
         .accessibilityLabel(isUnread ? MoroL10n.DirectMessages.accessibilityLabelUnread(titleText, previewText) : MoroL10n.DirectMessages.accessibilityLabel(titleText, previewText))
         .accessibilityHint(MoroL10n.DirectMessages.accessibilityOpenDetail)
+        .accessibilityIdentifier("directMessages.conversation.\(conversation.id)")
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive, action: onDelete) {
                 Label(MoroL10n.DirectMessages.swipeDelete, systemImage: "trash")

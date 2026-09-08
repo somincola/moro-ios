@@ -1541,6 +1541,7 @@ public enum MoroL10n {
         public static var loadFailed: String { text("conversation.loadFailed") }
         public static var retry: String { text("conversation.retry") }
         public static var inputPlaceholder: String { text("conversation.inputPlaceholder") }
+        public static var send: String { text("conversation.send") }
         public static var hasQuote: String { text("conversation.hasQuote") }
         public static var mediaCount1: String { text("conversation.mediaCount1") }
 
@@ -1687,6 +1688,7 @@ public enum MoroL10n {
         public static var selectHint: String { text("newConversation.selectHint") }
         public static var selectDesc: String { text("newConversation.selectDesc") }
         public static var searchPlaceholder: String { text("newConversation.searchPlaceholder") }
+        public static var clearSearch: String { text("newConversation.clearSearch") }
         public static var recentContacts: String { text("newConversation.recentContacts") }
         public static var searchResults: String { text("newConversation.searchResults") }
         public static var searching: String { text("newConversation.searching") }
