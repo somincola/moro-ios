@@ -65,6 +65,7 @@ struct NotificationsView: View {
     @ObservedObject private var notificationUnreadStore = NotificationUnreadStore.shared
     @State private var actorsSheet: NotificationActorsSheetState?
     @State private var localSelectedFilter: NotificationFilter = .all
+    @State private var scrollPositionID: String?
     private let presentation: NotificationsPresentation
     private let isActive: Bool
     private let selectedFilterOverride: Binding<NotificationFilter>?
@@ -140,6 +141,10 @@ struct NotificationsView: View {
                     }
                 ))
         }
+        // An empty local filter is not the end of the server's notification list.
+        if filteredNotifications.isEmpty, viewModel.hasMore {
+            return .loaded
+        }
         if viewModel.notifications.isEmpty {
             if viewModel.filterInsight.hidesEverything {
                 return .empty(
@@ -193,72 +198,90 @@ struct NotificationsView: View {
     private var notificationsList: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
+                if filteredNotifications.isEmpty, viewModel.hasMore {
+                    EmptyStateView(spec: EmptyStateSpec(
+                        icon: "line.3.horizontal.decrease.circle",
+                        title: MoroL10n.Notifications.filteredEmptyTitle,
+                        message: MoroL10n.Notifications.moreAvailable,
+                        actionTitle: viewModel.loadMoreFailed
+                            ? MoroL10n.Notifications.retryAction
+                            : MoroL10n.Notifications.loadMore,
+                        action: { Task { await viewModel.loadMore() } }
+                    ))
+                    .disabled(isLoadingMore)
+                    .padding(.vertical, theme.spacing.xl)
+                    .accessibilityIdentifier("notifications.loadOlderEmptyState")
+                }
+
                 ForEach(Array(filteredNotifications.enumerated()), id: \.element.id) {
                     index, notification in
                     let isNearBottom = filteredNotifications.count - index <= 3
 
-                    NotificationRow(
-                        notification: notification,
-                        onAvatarTap: {
-                            if let account = notification.presentationAccount {
-                                router.navigate(to: .userProfile(account))
-                            }
-                        },
-                        onStatusTap: { status in
-                            let targetStatus = status.displayStatus
-                            Task {
-                                await viewModel.traceAndWarmStatusDetailOpen(
-                                    for: targetStatus,
-                                    source: notification.kind == .quotedUpdate
-                                        ? "notification-quoted-update"
-                                        : "notification-main"
+                    VStack(spacing: 0) {
+                        NotificationRow(
+                            notification: notification,
+                            onAvatarTap: {
+                                if let account = notification.presentationAccount {
+                                    router.navigate(to: .userProfile(account))
+                                }
+                            },
+                            onStatusTap: { status in
+                                let targetStatus = status.displayStatus
+                                Task {
+                                    await viewModel.traceAndWarmStatusDetailOpen(
+                                        for: targetStatus,
+                                        source: notification.kind == .quotedUpdate
+                                            ? "notification-quoted-update"
+                                            : "notification-main"
+                                    )
+                                }
+                                router.navigate(to: .statusDetail(targetStatus))
+                            },
+                            onAccountTap: {
+                                if let account = notification.presentationAccount {
+                                    router.navigate(to: .userProfile(account))
+                                }
+                            },
+                            onActorsTap: {
+                                actorsSheet = NotificationActorsSheetState(
+                                    id: notification.id,
+                                    title: actorsSheetTitle(for: notification),
+                                    accounts: notification.accounts
                                 )
+                            },
+                            onAcceptFollowRequest: {
+                                Task { await viewModel.acceptFollowRequest(notification) }
+                            },
+                            onRejectFollowRequest: {
+                                Task { await viewModel.rejectFollowRequest(notification) }
+                            },
+                            isAcceptingFollowRequest: viewModel.isAcceptingFollowRequest(id: notification.id),
+                            isRejectingFollowRequest: viewModel.isRejectingFollowRequest(id: notification.id)
+                        )
+                        .onAppear {
+                            let prefetchWindowSize = 8
+                            guard index < prefetchWindowSize else { return }
+                            guard let status = notification.status else { return }
+                            Task {
+                                await viewModel.prefetchStatusAndQuoteIfNeeded(for: status.displayStatus)
                             }
-                            router.navigate(to: .statusDetail(targetStatus))
-                        },
-                        onAccountTap: {
-                            if let account = notification.presentationAccount {
-                                router.navigate(to: .userProfile(account))
-                            }
-                        },
-                        onActorsTap: {
-                            actorsSheet = NotificationActorsSheetState(
-                                id: notification.id,
-                                title: actorsSheetTitle(for: notification),
-                                accounts: notification.accounts
-                            )
-                        },
-                        onAcceptFollowRequest: {
-                            Task { await viewModel.acceptFollowRequest(notification) }
-                        },
-                        onRejectFollowRequest: {
-                            Task { await viewModel.rejectFollowRequest(notification) }
-                        },
-                        isAcceptingFollowRequest: viewModel.isAcceptingFollowRequest(id: notification.id),
-                        isRejectingFollowRequest: viewModel.isRejectingFollowRequest(id: notification.id)
-                    )
-                    .onAppear {
-                        let prefetchWindowSize = 8
-                        guard index < prefetchWindowSize else { return }
-                        guard let status = notification.status else { return }
-                        Task {
-                            await viewModel.prefetchStatusAndQuoteIfNeeded(for: status.displayStatus)
+                        }
+
+                        if index < filteredNotifications.count - 1 {
+                            Rectangle()
+                                .fill(theme.colors.borderSubtle)
+                                .frame(height: 1)
+                        }
+
+                        if isNearBottom {
+                            Color.clear
+                                .frame(height: 1)
+                                .onAppear {
+                                    Task { await viewModel.loadMore() }
+                                }
                         }
                     }
-
-                    if index < filteredNotifications.count - 1 {
-                        Rectangle()
-                            .fill(theme.colors.borderSubtle)
-                            .frame(height: 1)
-                    }
-
-                    if isNearBottom {
-                        Color.clear
-                            .frame(height: 1)
-                            .onAppear {
-                                Task { await viewModel.loadMore() }
-                            }
-                    }
+                    .id(notification.id)
                 }
 
                 PaginationFooter(
@@ -267,7 +290,9 @@ struct NotificationsView: View {
                     onRetry: { Task { await viewModel.loadMore() } }
                 )
             }
+            .scrollTargetLayout()
         }
+        .scrollPosition(id: $scrollPositionID, anchor: .top)
         .refreshable {
             await refreshAndMarkRead()
         }

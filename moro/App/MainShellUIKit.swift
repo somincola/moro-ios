@@ -60,8 +60,6 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
     final class MainShellViewController: UIViewController, UITabBarControllerDelegate {
         private let coordinator: RootTabCoordinator
         private let mainTabController = UITabBarController()
-        private let bottomSafeAreaFillView = UIView()
-        private var bottomSafeAreaFillHeightConstraint: NSLayoutConstraint?
 
         private var currentContentVersion: String
         private var homeRootView: AnyView
@@ -142,10 +140,6 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
         override func viewDidLayoutSubviews() {
             super.viewDidLayoutSubviews()
-            bottomSafeAreaFillHeightConstraint?.constant = max(
-                view.safeAreaInsets.bottom,
-                view.window?.safeAreaInsets.bottom ?? 0
-            )
             publishTabBarHeight()
         }
 
@@ -201,22 +195,11 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             addChild(mainTabController)
             view.addSubview(mainTabController.view)
             mainTabController.view.translatesAutoresizingMaskIntoConstraints = false
-            bottomSafeAreaFillView.translatesAutoresizingMaskIntoConstraints = false
-            bottomSafeAreaFillView.isUserInteractionEnabled = false
-            bottomSafeAreaFillView.isHidden = true
-            view.addSubview(bottomSafeAreaFillView)
-            bottomSafeAreaFillHeightConstraint = bottomSafeAreaFillView.heightAnchor.constraint(
-                equalToConstant: view.safeAreaInsets.bottom
-            )
             NSLayoutConstraint.activate([
                 mainTabController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                 mainTabController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
                 mainTabController.view.topAnchor.constraint(equalTo: view.topAnchor),
                 mainTabController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                bottomSafeAreaFillView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                bottomSafeAreaFillView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                bottomSafeAreaFillView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                bottomSafeAreaFillHeightConstraint!,
             ])
             mainTabController.didMove(toParent: self)
         }
@@ -415,8 +398,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
                     guard let self else { return }
                     self.coordinator.setIsAtRoot(isAtRoot, for: tab)
                     if self.coordinator.selectedTab == tab {
-                        self.mainTabController.tabBar.isHidden = !isAtRoot
-                        self.bottomSafeAreaFillView.isHidden = isAtRoot
+                        self.updateTabBarVisibility()
                     }
                 },
                 onSceneChanged: { [weak self] descriptor in
@@ -428,11 +410,20 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
         private func applySelectedTabPresentation(_ tab: MainTab) {
             guard let navigationController = navigationController(for: tab) else { return }
-            mainTabController.tabBar.isHidden = !coordinator.isAtRoot(tab)
+            updateTabBarVisibility()
             applyScenePresentation(navigationController.currentSceneDescriptor)
         }
 
+        private func updateTabBarVisibility() {
+            let hidden = coordinator.isTabBarHidden
+            guard mainTabController.isTabBarHidden != hidden else { return }
+            // Let UIKit update the bar and its safe area together.
+            mainTabController.setTabBarHidden(hidden, animated: false)
+        }
+
         private func applyScenePresentation(_ descriptor: MoroSceneDescriptor) {
+            // Paint the container behind its child. An overlay at the bottom of
+            // this view covers the composer when SwiftUI resizes for a keyboard.
             let color = UIColor(descriptor.canvas.backgroundColor(in: appliedTheme))
             view.backgroundColor = color
             view.window?.backgroundColor = color
@@ -440,8 +431,6 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             mainTabController.tabBar.backgroundColor = descriptor.presentation == .root
                 ? .clear
                 : color
-            bottomSafeAreaFillView.backgroundColor = color
-            bottomSafeAreaFillView.isHidden = descriptor.presentation == .root
         }
 
         private func navigationController(for tab: MainTab) -> MainShellNavigationController? {

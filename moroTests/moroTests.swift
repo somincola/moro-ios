@@ -13,6 +13,158 @@ import UIKit
 import Combine
 
 struct moroTests {
+    @Test @MainActor func notificationEmptyFilterCanLoadOlderMatchesAndRetryTheSameCursor() async {
+        let settings = AppSettings.shared
+        let oldPolicy = settings.notificationPolicy
+        let oldMentions = settings.receiveMentionsAndReplies
+        settings.notificationPolicy = .anyone
+        settings.receiveMentionsAndReplies = true
+        defer {
+            settings.notificationPolicy = oldPolicy
+            settings.receiveMentionsAndReplies = oldMentions
+        }
+        let api = MockMastodonAPI()
+        var failPagination = true
+        var cursors: [String?] = []
+        api.fetchNotificationsHandler = { maxID, _, _ in
+            cursors.append(maxID)
+            if maxID == nil {
+                return (31...60).reversed().map {
+                    self.makeNotification(id: String($0), type: "update")
+                }
+            }
+            if failPagination { throw URLError(.notConnectedToInternet) }
+            return [self.makeNotification(id: "30", type: "mention")]
+        }
+        let model = NotificationsViewModel(apiClient: api)
+        await model.loadInitial()
+        #expect(model.notifications.filter(NotificationFilter.mentions.matches).isEmpty)
+        #expect(model.hasMore)
+        await model.loadMore()
+        #expect(model.loadMoreFailed && model.hasMore)
+        failPagination = false
+        await model.loadMore()
+        #expect(model.notifications.filter(NotificationFilter.mentions.matches).map(\.id) == ["30"])
+        #expect(!model.hasMore && !model.loadMoreFailed)
+        #expect(cursors == [nil, "31", "31"])
+    }
+
+    @Test @MainActor func notificationRefreshMergesEveryNewPageAndPreservesTheHistoryCursor() async {
+        let settings = AppSettings.shared
+        let oldPolicy = settings.notificationPolicy
+        settings.notificationPolicy = .anyone
+        defer { settings.notificationPolicy = oldPolicy }
+        let api = MockMastodonAPI()
+        var calls: [(String?, String?)] = []
+        func page(_ range: ClosedRange<Int>) -> [NotificationItem] {
+            range.reversed().map {
+                self.makeNotification(id: String($0), type: "update", createdAt: Date(timeIntervalSince1970: Double($0)))
+            }
+        }
+        api.fetchNotificationsHandler = { maxID, sinceID, _ in
+            calls.append((maxID, sinceID))
+            if sinceID == "300" {
+                if maxID == nil { return page(331...360) }
+                if maxID == "331" { return page(301...330) }
+                return []
+            }
+            if maxID == nil { return page(271...300) }
+            if maxID == "271" { return page(241...270) }
+            return page(240...240)
+        }
+        let model = NotificationsViewModel(apiClient: api)
+        await model.loadInitial()
+        await model.loadMore()
+        let originalIDs = Set(model.notifications.map(\.id))
+        let newest = await model.refresh()
+        #expect(newest == "360")
+        #expect(model.notifications.count == 120)
+        #expect(originalIDs.isSubset(of: Set(model.notifications.map(\.id))))
+        #expect(model.notifications.first?.id == "360")
+        #expect(model.notifications.last?.id == "241")
+        #expect(calls[3].0 == "331" && calls[3].1 == "300")
+        #expect(calls[4].0 == "301" && calls[4].1 == "300")
+        await model.loadMore()
+        #expect(calls.last?.0 == "241" && calls.last?.1 == nil)
+        #expect(model.notifications.last?.id == "240")
+    }
+
+    @Test @MainActor func notificationRefreshFailureAndRepeatedPagesKeepExistingContentUsable() async {
+        let settings = AppSettings.shared
+        let oldPolicy = settings.notificationPolicy
+        settings.notificationPolicy = .anyone
+        defer { settings.notificationPolicy = oldPolicy }
+        let api = MockMastodonAPI()
+        let page = (1...30).reversed().map {
+            makeNotification(id: String($0), type: "update", createdAt: Date(timeIntervalSince1970: Double($0)))
+        }
+        api.fetchNotificationsHandler = { _, _, _ in page }
+        let model = NotificationsViewModel(apiClient: api)
+        await model.loadInitial()
+        api.fetchNotificationsHandler = { _, _, _ in throw URLError(.notConnectedToInternet) }
+        #expect(await model.refresh() == nil)
+        #expect(model.notifications.count == 30 && model.hasMore)
+        if case .loaded = model.loadingState {} else { Issue.record("Keep loaded content after refresh failure") }
+
+        api.fetchNotificationsHandler = { _, _, _ in page }
+        await model.loadMore()
+        #expect(model.notifications.count == 30 && !model.hasMore)
+        await model.refresh()
+        #expect(model.notifications.count == 30 && !model.hasMore)
+    }
+
+    @Test @MainActor func notificationRefreshReappliesSettingsToRetainedHistory() async {
+        let settings = AppSettings.shared
+        let oldPolicy = settings.notificationPolicy
+        let oldMentions = settings.receiveMentionsAndReplies
+        settings.notificationPolicy = .anyone
+        settings.receiveMentionsAndReplies = true
+        defer {
+            settings.notificationPolicy = oldPolicy
+            settings.receiveMentionsAndReplies = oldMentions
+        }
+        let api = MockMastodonAPI()
+        let mention = makeNotification(id: "100", type: "mention")
+        api.fetchNotificationsHandler = { _, sinceID, _ in sinceID == nil ? [mention] : [] }
+        let model = NotificationsViewModel(apiClient: api)
+        await model.loadInitial()
+        #expect(model.notifications.map(\.id) == ["100"])
+        settings.receiveMentionsAndReplies = false
+        await model.refresh()
+        #expect(model.notifications.isEmpty)
+        #expect(model.filterInsight.hidesEverything)
+        settings.receiveMentionsAndReplies = true
+        await model.refresh()
+        #expect(model.notifications.map(\.id) == ["100"])
+        #expect(!model.filterInsight.hidesAnything)
+    }
+
+    @Test @MainActor func conversationRefreshFailurePreservesHistoryLiveMessagesAndDraft() async {
+        let api = MockMastodonAPI()
+        let ancestor = makeStatus(id: "99", createdAt: Date(timeIntervalSince1970: 99))
+        let last = makeStatus(id: "100", createdAt: Date(timeIntervalSince1970: 100))
+        let incoming = makeStatus(id: "101", createdAt: Date(timeIntervalSince1970: 101))
+        let model = ConversationDetailViewModel(
+            conversation: makeConversation(id: "conversation", unread: false, lastStatus: last),
+            apiClient: api
+        )
+        api.fetchStatusContextHandler = { _ in StatusContext(ancestors: [ancestor], descendants: []) }
+        await model.loadInitial()
+        model.handleStreamEvent(.conversation(conversationId: "conversation", unread: false, lastStatus: incoming))
+        model.draftMessage = "Keep this unfinished message"
+        api.fetchStatusContextHandler = { _ in throw URLError(.notConnectedToInternet) }
+        await model.refresh()
+        #expect(model.messages.map(\.id) == ["99", "100", "101"])
+        #expect(model.draftMessage == "Keep this unfinished message")
+        if case .error = model.loadingState {} else { Issue.record("Expose a recoverable refresh error") }
+
+        api.fetchStatusContextHandler = { _ in StatusContext(ancestors: [ancestor, last], descendants: []) }
+        await model.refresh()
+        #expect(model.messages.map(\.id) == ["99", "100", "101"])
+        #expect(model.draftMessage == "Keep this unfinished message")
+        if case .loaded = model.loadingState {} else { Issue.record("Clear the error after retry") }
+    }
+
     @Test @MainActor func profileStopsAutomaticallyScanningAfterThreeEmptyReplyPages() async {
         let api = MockMastodonAPI()
         var page = 0
@@ -1497,12 +1649,61 @@ struct moroTests {
 
     @Test @MainActor func urlHandlerParsesStatusRouteFromWebStatusesPath() async throws {
         let url = URL(string: "https://mastodon.social/web/statuses/1234567890")!
-        #expect(URLHandler.shared.parseMastodonURL(url) == .statusDetail(makeStatus(id: "1234567890")))
+        #expect(URLHandler.shared.parseMastodonURL(url) == .statusLink(url))
     }
 
     @Test @MainActor func urlHandlerParsesStatusRouteFromMentionPath() async throws {
         let url = URL(string: "https://mastodon.social/@alice/9988776655")!
-        #expect(URLHandler.shared.parseMastodonURL(url) == .statusDetail(makeStatus(id: "9988776655")))
+        #expect(URLHandler.shared.parseMastodonURL(url) == .statusLink(url))
+    }
+
+    @Test @MainActor func statusLinksKeepTheOriginAndResolveToTheActiveServersID() async throws {
+        let url = try #require(URL(string: "https://remote.example/@alice/100"))
+        let api = MockMastodonAPI()
+        let resolved = makeStatus(id: "200", content: "Resolved remote post")
+        api.searchHandler = { query, type, resolve, limit, offset in
+            #expect(query == url.absoluteString)
+            #expect(type == .statuses && resolve && limit == 1 && offset == nil)
+            return SearchResults(accounts: [], statuses: [resolved], hashtags: [])
+        }
+
+        let route = await URLHandler.shared.resolveStatusLink(url, apiClient: api)
+        guard case .statusDetail(let status)? = route else {
+            Issue.record("Expected the resolved status")
+            return
+        }
+        #expect(status.id == "200")
+        #expect(status.content == "Resolved remote post")
+        #expect(api.fetchStatusDetailCallIDs.isEmpty)
+        #expect(api.fetchStatusContextCallIDs.isEmpty)
+
+        let otherURL = try #require(URL(string: "https://another.example/@alice/100"))
+        #expect(Set<Route>([.statusLink(url), .statusLink(otherURL)]).count == 2)
+    }
+
+    @Test @MainActor func unresolvedStatusLinksOpenTheOriginalWebpage() async throws {
+        let url = try #require(URL(string: "https://remote.example/@alice/100"))
+        let api = MockMastodonAPI()
+        api.searchHandler = { _, _, _, _, _ in
+            SearchResults(accounts: [], statuses: [], hashtags: [])
+        }
+        #expect(await URLHandler.shared.resolveStatusLink(url, apiClient: api) == .webPreview(url))
+
+        api.searchHandler = { _, _, _, _, _ in throw URLError(.notConnectedToInternet) }
+        #expect(await URLHandler.shared.resolveStatusLink(url, apiClient: api) == .webPreview(url))
+        #expect(api.fetchStatusDetailCallIDs.isEmpty && api.fetchStatusContextCallIDs.isEmpty)
+    }
+
+    @Test @MainActor func cancelledStatusResolutionDoesNotOpenAnotherDestination() async throws {
+        let url = try #require(URL(string: "https://remote.example/@alice/100"))
+        let api = MockMastodonAPI()
+        api.searchHandler = { _, _, _, _, _ in throw CancellationError() }
+        #expect(await URLHandler.shared.resolveStatusLink(url, apiClient: api) == nil)
+        api.searchHandler = { _, _, _, _, _ in throw URLError(.cancelled) }
+        #expect(await URLHandler.shared.resolveStatusLink(url, apiClient: api) == nil)
+        let httpURL = try #require(URL(string: "http://remote.example/@alice/100"))
+        #expect(await URLHandler.shared.resolveStatusLink(httpURL, apiClient: api) == .webPreview(httpURL))
+        #expect(URLHandler.shared.parseMastodonURL(URL(string: "custom://remote.example/@alice/100")!) == nil)
     }
 
     @Test @MainActor func urlHandlerParsesMentionPathToAccountLookupRoute() async throws {
@@ -3274,7 +3475,7 @@ struct moroTests {
 
     @Test @MainActor func conversationThreadPresentationSeparatesRootStatusFromReplies() async throws {
         let sender = makeAccount(id: "alice", username: "alice")
-        let root = makeStatus(id: "root", account: sender)
+        let root = makeStatus(id: "root", account: sender, visibility: "public")
         let firstReply = makeStatus(id: "reply-1", account: sender, inReplyToID: root.id)
         let secondReply = makeStatus(id: "reply-2", account: sender, inReplyToID: firstReply.id)
         let messages = [root, firstReply, secondReply]
@@ -3287,6 +3488,60 @@ struct moroTests {
 
         #expect(resolvedRoot?.id == root.id)
         #expect(replies.map(\.id) == [firstReply.id, secondReply.id])
+    }
+
+    @Test @MainActor func conversationDirectRootKeepsItsFullMessageBody() {
+        for visibility in ["direct", nil] {
+            let root = makeStatus(id: "direct-root", visibility: visibility)
+            let reply = makeStatus(id: "reply", inReplyToID: root.id, visibility: "direct")
+            let messages = [root, reply]
+            let context = ConversationThreadPresentation.rootStatus(in: messages)
+
+            #expect(context == nil)
+            #expect(ConversationThreadPresentation.replyMessages(in: messages, rootStatus: context).map(\.id)
+                    == [root.id, reply.id])
+        }
+    }
+
+    @Test @MainActor func conversationContentRetainsEllipsisAnchorAndParagraphs() {
+        let url = URL(string: "https://remote.example/@reader/123456789")!
+        let status = makeStatus(id: "direct-link", content: """
+            <p><a href="https://local.example/@reader" class="mention">@reader</a></p>
+            <p><a href="\(url.absoluteString)"><span class="invisible">https://</span><span class="ellipsis">remote.example/@reader/123</span><span class="invisible">456789</span></a></p>
+            <p>Second paragraph<br>Another line</p>
+            """, visibility: "direct")
+        let elements = ConversationMessageContent.elements(for: status)
+        #expect(elements.contains { element in
+            if case .link(let label, let target) = element {
+                return label.contains("remote.example/@reader/123") && target == url
+            }
+            return false
+        })
+        #expect(elements.plainTextValue.contains("\n"))
+        #expect(elements.plainTextValue.contains("Second paragraph\nAnother line"))
+        #expect(ConversationMessageContent.summary(for: status).contains("remote.example/@reader/123"))
+        #expect(!ConversationMessageContent.summary(for: status).contains("\n"))
+    }
+
+    @Test @MainActor func conversationContentDetectsPlainLinksWithoutPreviewMetadata() {
+        let status = makeStatus(id: "plain-link", content: "<p>Read https://example.com/article?first=1&amp;second=2</p>", visibility: "direct")
+        #expect(ConversationMessageContent.elements(for: status).contains { element in
+            if case .link(_, let url) = element {
+                return url.absoluteString == "https://example.com/article?first=1&second=2"
+            }
+            return false
+        })
+    }
+
+    @Test @MainActor func conversationSummaryFallsBackToExistingLinkCard() throws {
+        for title in ["An article", ""] {
+            let card = try JSONDecoder().decode(Status.PreviewCard.self, from: Data("""
+                {"url":"https://example.com/article","title":"\(title)","description":"","type":"link"}
+                """.utf8))
+            let status = makeStatus(id: "card-only", content: "<p></p>", visibility: "direct", card: card)
+            #expect(ConversationMessageContent.summary(for: status)
+                    == (title.isEmpty ? "https://example.com/article" : title))
+        }
     }
 
     @Test @MainActor func conversationThreadPresentationKeepsAllMessagesWhenRootIsUnavailable() async throws {
@@ -7096,7 +7351,8 @@ private extension moroTests {
         mentions: [Status.Mention]? = nil,
         tags: [Status.Tag]? = nil,
         filtered: [Status.FilterResult]? = nil,
-        pinned: Bool? = nil
+        pinned: Bool? = nil,
+        card: Status.PreviewCard? = nil
     ) -> Status {
         Status(
             id: id,
@@ -7118,6 +7374,7 @@ private extension moroTests {
             language: language,
             mentions: mentions,
             tags: tags,
+            card: card,
             poll: poll,
             filtered: filtered,
             pinned: pinned

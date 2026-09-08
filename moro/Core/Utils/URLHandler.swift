@@ -66,6 +66,9 @@ struct URLHandler {
     /// Parse Mastodon URL and return a Route if possible.
     /// Exposed internally to keep parser behavior testable.
     func parseMastodonURL(_ url: URL) -> Route? {
+        guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+            url.host != nil
+        else { return nil }
         let components = normalizedPathComponents(from: url)
         guard !components.isEmpty else { return nil }
 
@@ -73,13 +76,8 @@ struct URLHandler {
             return .hashtag(tag)
         }
 
-        if let statusContext = parseStatusContext(components) {
-            let placeholder = makePlaceholderStatus(
-                id: statusContext.statusID,
-                sourceURL: url,
-                usernameHint: statusContext.username
-            )
-            return .statusDetail(placeholder)
+        if parseStatusContext(components) != nil {
+            return .statusLink(url)
         }
 
         if let route = parseProfileRoute(components, sourceURL: url) {
@@ -87,6 +85,33 @@ struct URLHandler {
         }
 
         return nil
+    }
+
+    /// Status IDs belong to the server that returned them. A URL path is only
+    /// a candidate: resolve the complete URL using the logged-in server, and
+    /// open the original webpage when it cannot supply a real Status.
+    func resolveStatusLink(_ url: URL, apiClient: MastodonAPI) async -> Route? {
+        guard !Task.isCancelled else { return nil }
+        // Mastodon's URL resolution contract applies to HTTPS queries.
+        guard url.scheme?.lowercased() == "https" else { return .webPreview(url) }
+        do {
+            let results = try await apiClient.search(
+                query: url.absoluteString,
+                type: .statuses,
+                resolve: true,
+                limit: 1,
+                offset: nil
+            )
+            guard !Task.isCancelled else { return nil }
+            if let status = results.statuses.first {
+                return .statusDetail(status.displayStatus)
+            }
+        } catch {
+            guard !Task.isCancelled, !(error is CancellationError),
+                (error as? URLError)?.code != .cancelled
+            else { return nil }
+        }
+        return .webPreview(url)
     }
 
     private func normalizedPathComponents(from url: URL) -> [String] {
@@ -224,26 +249,4 @@ struct URLHandler {
         )
     }
 
-    private func makePlaceholderStatus(id: String, sourceURL: URL, usernameHint: String?) -> Status {
-        let username = (usernameHint?.isEmpty == false ? usernameHint : nil) ?? "unknown"
-        let account = makePlaceholderAccount(
-            id: usernameHint ?? "unknown-\(id)",
-            username: username,
-            sourceURL: sourceURL
-        )
-        return Status(
-            id: id,
-            content: "",
-            createdAt: Date(),
-            account: account,
-            mediaAttachments: [],
-            favouritesCount: 0,
-            reblogsCount: 0,
-            repliesCount: 0,
-            bookmarked: false,
-            favourited: false,
-            reblogged: false,
-            url: sourceURL
-        )
-    }
 }

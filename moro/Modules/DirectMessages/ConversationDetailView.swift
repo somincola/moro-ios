@@ -2,7 +2,7 @@
 //  ConversationDetailView.swift
 //  moro
 //
-//  Direct-message conversation detail (read-only MVP).
+//  Direct-message conversation reading and replies.
 //
 
 import SwiftUI
@@ -55,8 +55,25 @@ struct ConversationDetailView: View {
                             }
                         }
                     }
-                    .safeAreaInset(edge: .bottom) {
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
                         inputBar(proxy: proxy)
+                    }
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        if case .error = viewModel.loadingState, !viewModel.messages.isEmpty {
+                            HStack {
+                                Text(MoroL10n.Conversation.loadFailed)
+                                    .font(theme.typography.caption)
+                                    .foregroundStyle(theme.colors.textSecondary)
+                                Spacer()
+                                Button(MoroL10n.Conversation.retry) {
+                                    Task { await viewModel.refresh() }
+                                }
+                                .frame(minHeight: 44)
+                            }
+                            .padding(.horizontal, theme.spacing.m)
+                            .background(sceneCanvasColor)
+                            .accessibilityIdentifier("conversation.refreshError")
+                        }
                     }
                     .task {
                         ensureDirectStreamSubscription()
@@ -324,10 +341,12 @@ struct ConversationDetailView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
+                    .frame(minHeight: 44)
                     .background(
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .fill(theme.colors.surfaceSubtle)
                     )
+                    .accessibilityIdentifier("conversation.input")
 
                 Button {
                     sendDraftMessage(proxy: proxy, retryFailed: false)
@@ -336,12 +355,12 @@ struct ConversationDetailView: View {
                         ProgressView()
                             .progressViewStyle(.circular)
                             .tint(viewModel.canSendMessage ? theme.colors.primaryForeground : theme.colors.surfaceBase)
-                            .frame(width: 38, height: 38)
+                            .frame(width: 44, height: 44)
                     } else {
                         Image(systemName: "arrow.up")
-                            .moroScaledFont(size: 16, weight: .semibold)
+                            .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(viewModel.canSendMessage ? theme.colors.primaryForeground : theme.colors.surfaceBase)
-                            .frame(width: 38, height: 38)
+                            .frame(width: 44, height: 44)
                     }
                 }
                 .background(
@@ -352,11 +371,12 @@ struct ConversationDetailView: View {
                 )
                 .disabled(!viewModel.canSendMessage)
                 .buttonStyle(.plain)
+                .accessibilityLabel(MoroL10n.Conversation.send)
+                .accessibilityIdentifier("conversation.send")
             }
-            .padding(.horizontal, 12)
             .padding(.top, 2)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, theme.spacing.m)
         .padding(.top, 8)
         .padding(.bottom, ConversationKeyboardMetrics.inputBottomPadding(isKeyboardVisible: isKeyboardVisible))
         .animation(.easeOut(duration: keyboardAnimationDuration), value: isKeyboardVisible)
@@ -531,9 +551,7 @@ private struct ConversationRootStatusCard: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var messageText: String {
-        HTMLParser.stripHTML(status.content)
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        ConversationMessageContent.summary(for: status)
     }
 
     private var supportedMediaAttachments: [Status.Attachment] {
@@ -575,7 +593,7 @@ private struct ConversationRootStatusCard: View {
 
     private var cardText: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(messageText.isEmpty ? mediaFallbackText : messageText)
+            Text(messageText)
                 .font(theme.typography.body)
                 .foregroundStyle(theme.colors.textPrimary)
                 .multilineTextAlignment(.leading)
@@ -602,12 +620,6 @@ private struct ConversationRootStatusCard: View {
         }
     }
 
-    private var mediaFallbackText: String {
-        if supportedMediaAttachments.count == 1 {
-            return MoroL10n.Conversation.mediaCount1
-        }
-        return MoroL10n.Conversation.mediaCount(supportedMediaAttachments.count)
-    }
 }
 
 private struct ConversationMessageRow: View {
@@ -617,11 +629,11 @@ private struct ConversationMessageRow: View {
     let onAvatarTap: () -> Void
     @Environment(\.moroTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.appRouter) private var router
+    @Environment(\.openURL) private var openURL
 
-    private var messageText: String {
-        HTMLParser.stripHTML(status.content)
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    private var contentElements: [ContentElement] {
+        ConversationMessageContent.elements(for: status)
     }
 
     private var previewableMediaAttachments: [Status.Attachment] {
@@ -686,27 +698,33 @@ private struct ConversationMessageRow: View {
     @ViewBuilder
     private var bubble: some View {
         VStack(alignment: .trailing, spacing: theme.spacing.xs) {
-            if !messageText.isEmpty {
-                Text(messageText)
-                    .font(theme.typography.body)
-                    .foregroundStyle(isOutgoing ? theme.colors.primaryForeground : theme.colors.textPrimary)
-                    .multilineTextAlignment(.leading)
+            if !contentElements.isEmpty {
+                RichTextContentView(
+                    elements: contentElements,
+                    textColorOverride: isOutgoing ? theme.colors.primaryForeground : theme.colors.textPrimary,
+                    linkColorOverride: isOutgoing ? theme.colors.primaryForeground : theme.colors.primary500,
+                    underlinesLinks: true
+                )
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("conversation.body.\(status.id)")
             }
 
             if !previewableMediaAttachments.isEmpty {
-                VStack(alignment: .trailing, spacing: theme.spacing.xs) {
-                    ConversationCompactMediaGrid(
-                        attachments: previewableMediaAttachments,
-                        isSensitive: status.sensitive
-                    )
-
-                    supportingMetadata
-                }
+                ConversationCompactMediaGrid(
+                    attachments: previewableMediaAttachments,
+                    isSensitive: status.sensitive
+                )
                 .frame(maxWidth: .infinity, alignment: .center)
-            } else {
-                supportingMetadata
             }
+
+            if let card = status.card {
+                LinkPreviewCardView(card: card) {
+                    URLHandler.shared.handleURL(card.url, router: router, systemOpenURL: openURL)
+                }
+                .accessibilityIdentifier("conversation.link.\(status.id)")
+            }
+
+            supportingMetadata
         }
         .padding(.horizontal, 12)
         .padding(.vertical, theme.spacing.s)

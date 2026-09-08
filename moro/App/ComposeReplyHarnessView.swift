@@ -11,9 +11,12 @@ struct ComposeReplyHarnessView: View {
     private let client: MastodonClient
     private let status: Status
     private let draft: ComposeDraft?
+    private let isNewPost: Bool
+    private let draftStore = ComposeDraftStore(userDefaults: UserDefaults(suiteName: "ui-compose-reply")!)
 
     init() {
         let mode = ProcessInfo.processInfo.environment["UITEST_REPLY_MODE"] ?? "mentions"
+        isNewPost = mode == "new" || mode == "long"
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ReplyFixtureProtocol.self]
         let client = MastodonClient(
@@ -38,10 +41,12 @@ struct ComposeReplyHarnessView: View {
             mentions: mentions, filtered: nil
         )
         self.status = status
-        if mode == "draft" {
-            let model = ComposeViewModel(context: .reply(to: status), apiClient: client,
+        if mode == "draft" || mode == "long" {
+            let model = ComposeViewModel(context: isNewPost ? .newPost : .reply(to: status), apiClient: client,
                                          currentUserID: "me", accountCache: cache)
-            model.content = "@bob@example.com 草稿 👋  \n"
+            model.content = mode == "long"
+                ? (1...45).map { "Line \($0): A longer post with room to keep writing." }.joined(separator: "\n") + "\n"
+                : "@bob@example.com 草稿 👋  \n"
             draft = model.makeDraft(category: .manual)
         } else {
             draft = nil
@@ -56,8 +61,8 @@ struct ComposeReplyHarnessView: View {
                 .accessibilityIdentifier("replyHarness.recipientRequests")
         }
         .fullScreenCover(isPresented: $presentsReply) {
-            ComposeView(context: .reply(to: status), apiClient: client, currentUserID: "me",
-                        initialDraft: draft, accountCache: accountCache)
+            ComposeView(context: isNewPost ? .newPost : .reply(to: status), apiClient: client, currentUserID: "me",
+                        draftStore: draftStore, initialDraft: draft, accountCache: accountCache)
                 .environmentObject(appState)
                 .moroTheme(MoroTheme(colorScheme: colorScheme, dynamicTypeSize: dynamicTypeSize))
         }
@@ -87,9 +92,48 @@ private final class ReplyFixtureProtocol: URLProtocol, @unchecked Sendable {
         if path.hasPrefix("/api/v1/accounts/") || path.hasPrefix("/api/v1/statuses/") {
             Self.lock.withLock { Self.recipientRequests += 1 }
         }
+        if path == "/api/v2/search", let url = request.url {
+            let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            let query = items.first { $0.name == "q" }?.value ?? ""
+            let type = items.first { $0.name == "type" }?.value
+            let accounts = [
+                account("hanna", acct: "hanna@remote.example", displayName: "Hanna"),
+                account("hanna-garden", acct: "hanna@garden.example", displayName: "hanna🌱"),
+                account("alex-hanna", acct: "alex@social.example", displayName: "Alex Hanna")
+            ]
+            let history = [2, 12, 7, 5, 5, 7, 13].enumerated().map { index, uses in
+                SearchTagHistory(day: String(1_788_825_600 - index * 86_400), uses: String(uses), accounts: "2")
+            }
+            let tags = [
+                SearchTag(name: "SwiftUI", url: URL(string: "https://example.com/tags/SwiftUI")!, history: history),
+                SearchTag(name: "Movies", url: URL(string: "https://example.com/tags/Movies")!, history: history),
+                SearchTag(name: "MovieNight", url: URL(string: "https://example.com/tags/MovieNight")!, history: nil),
+                SearchTag(name: "MovieClub", url: URL(string: "https://example.com/tags/MovieClub")!, history: [SearchTagHistory(day: "1788825600", uses: "8", accounts: "3")]),
+                SearchTag(name: "MovieChat", url: URL(string: "https://example.com/tags/MovieChat")!, history: [])
+            ]
+            let results = SearchResults(
+                accounts: type == "accounts" ? accounts.filter {
+                    $0.acct.localizedCaseInsensitiveContains(query) || $0.displayName.localizedCaseInsensitiveContains(query)
+                } : [],
+                hashtags: type == "hashtags" ? tags.filter { $0.name.localizedCaseInsensitiveContains(query) } : []
+            )
+            let data = try! JSONEncoder().encode(results)
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
+                                           headerFields: ["Content-Type": "application/json"])!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
         client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
     }
 
     override func stopLoading() {}
+
+    private func account(_ id: String, acct: String, displayName: String) -> Account {
+        Account(id: id, username: String(acct.split(separator: "@")[0]), acct: acct, displayName: displayName,
+                note: "", avatar: "", avatarStatic: "", header: "", headerStatic: "",
+                followersCount: 0, followingCount: 0, statusesCount: 1)
+    }
 }
 #endif

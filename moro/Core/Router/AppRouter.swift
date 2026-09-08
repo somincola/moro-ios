@@ -74,6 +74,13 @@ struct AppRouteViewFactory {
 
     func view(for route: Route) -> AnyView {
         switch route {
+        case .statusLink(let url):
+            return AnyView(
+                StatusLinkRouteView(url: url, factory: self)
+                    .id(url)
+                    .toolbar(.hidden, for: .tabBar)
+            )
+
         case .statusDetail(let status):
             return AnyView(
                 StatusDetailRouteView(
@@ -383,6 +390,28 @@ private struct AccountLookupRouteView: View {
 
     private var displayAcct: String {
         normalizedAcct.hasPrefix("@") ? normalizedAcct : "@\(normalizedAcct)"
+    }
+}
+
+@MainActor
+private struct StatusLinkRouteView: View {
+    let url: URL
+    let factory: AppRouteViewFactory
+    @State private var resolvedRoute: Route?
+
+    var body: some View {
+        Group {
+            if let resolvedRoute {
+                factory.view(for: resolvedRoute)
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task(id: url) {
+            guard resolvedRoute == nil else { return }
+            resolvedRoute = await URLHandler.shared.resolveStatusLink(url, apiClient: factory.apiClient)
+        }
     }
 }
 

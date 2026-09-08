@@ -101,6 +101,7 @@ final class RootTabCoordinator: ObservableObject {
     @Published var selectedTabScrollToTop = -1
     @Published var timelineSelection: TimelineType = .home
     @Published var tabBarHeight: CGFloat = 78
+    @Published private(set) var isExploreSearchEntryActive = false
     @Published private var rootStateByTab: [MainTab: Bool]
 
     let homeRouter = AppRouter()
@@ -201,6 +202,15 @@ final class RootTabCoordinator: ObservableObject {
 
     var isCurrentTabAtRoot: Bool {
         isAtRoot(selectedTab)
+    }
+
+    var isTabBarHidden: Bool {
+        !isCurrentTabAtRoot || (selectedTab == .explore && isExploreSearchEntryActive)
+    }
+
+    func setExploreSearchEntryActive(_ active: Bool) {
+        guard isExploreSearchEntryActive != active else { return }
+        isExploreSearchEntryActive = active
     }
 
     func popAllToRoot() {

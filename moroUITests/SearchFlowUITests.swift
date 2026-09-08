@@ -4,6 +4,56 @@ final class SearchFlowUITests: XCTestCase {
     @MainActor func testSearchFlowInLightMode() throws { try verifyFlow(colorScheme: "light") }
     @MainActor func testSearchFlowInDarkMode() throws { try verifyFlow(colorScheme: "dark") }
 
+    @MainActor func testNativeSearchEntryHidesTabBarInLightMode() {
+        verifyEntryTabBar(colorScheme: "light")
+    }
+
+    @MainActor func testNativeSearchEntryHidesTabBarInDarkMode() {
+        verifyEntryTabBar(colorScheme: "dark")
+    }
+
+    @MainActor private func verifyEntryTabBar(colorScheme: String) {
+        let app = launch(colorScheme: colorScheme, nativeShell: true)
+        defer { app.terminate() }
+        let input = app.searchFields["search.input"]
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 3))
+        input.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(tabBar.waitForNonExistence(timeout: 3))
+        let entry = app.scrollViews["search.entry"]
+        XCTAssertTrue(entry.exists)
+        let entryBottomWithKeyboard = entry.frame.maxY
+        // The keyboard's accessibility frame can exclude its prediction bar.
+        XCTAssertLessThanOrEqual(entryBottomWithKeyboard, app.keyboards.firstMatch.frame.minY)
+        attach(app, "search-entry-no-tabs-\(colorScheme)")
+
+        cancelButton(in: app).tap()
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["search.cancel"].exists)
+
+        input.tap()
+        input.typeText("Swift\n")
+        XCTAssertTrue(app.tables["search.results"].cells.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 3))
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        attach(app, "search-results-tabs-restored-\(colorScheme)")
+
+        // Clearing a submitted query also enters the same intermediate page.
+        input.buttons.firstMatch.tap()
+        XCTAssertTrue(app.buttons["search.cancel"].waitForExistence(timeout: 3))
+        XCTAssertTrue(tabBar.waitForNonExistence(timeout: 3))
+        cancelButton(in: app).tap()
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 3))
+        app.buttons["mainTab.home"].tap()
+        XCTAssertTrue(tabBar.exists)
+        app.buttons["mainTab.explore"].tap()
+        XCTAssertTrue(input.waitForExistence(timeout: 3))
+        XCTAssertTrue(tabBar.exists)
+    }
+
     @MainActor func testAccountSwitchSeparatesSearchHistory() throws {
         let app = launch(colorScheme: "light")
         defer { app.terminate() }

@@ -165,7 +165,11 @@ final class ConversationDetailViewModel: ObservableObject {
             )
             loadingState = .loaded
         } catch {
-            messages = [lastStatus]
+            // A refresh failure must not discard the conversation already read.
+            // The last-status preview is only a fallback for a cold open.
+            if messages.isEmpty {
+                messages = [lastStatus]
+            }
             loadingState = .error(error)
         }
     }
@@ -277,7 +281,12 @@ final class ConversationDetailViewModel: ObservableObject {
 
 struct ConversationThreadPresentation {
     static func rootStatus(in messages: [Status]) -> Status? {
-        messages.first { $0.inReplyToID == nil }
+        // A direct root is the first message, with the same content and actions
+        // as later messages. Only a non-direct origin belongs in the context card.
+        messages.first { status in
+            guard let visibility = status.visibility else { return false }
+            return status.inReplyToID == nil && visibility != "direct"
+        }
     }
 
     static func replyMessages(in messages: [Status], rootStatus: Status?) -> [Status] {

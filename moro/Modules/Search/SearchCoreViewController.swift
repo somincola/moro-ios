@@ -77,11 +77,14 @@ final class SearchCoreViewController: UIViewController {
     var onOpenProfile: ((Account) -> Void)?
     var onOpenStatus: ((Status) -> Void)?
     var onOpenHashtag: ((String) -> Void)?
+    var onEntryStateChanged: ((Bool) -> Void)?
 
     let initialPageSize = 20
     let paginationPageSize = 40
 
     let searchBar = UISearchBar(frame: .zero)
+    private var searchBarHeightConstraint: NSLayoutConstraint!
+    private var searchFieldHeightConstraint: NSLayoutConstraint!
     let cancelEntryButton = UIButton(type: .system)
     var searchTrailingRegular: NSLayoutConstraint!
     var searchTrailingWithCancel: NSLayoutConstraint!
@@ -452,6 +455,10 @@ final class SearchCoreViewController: UIViewController {
         view.addSubview(tableView)
 
         scopeHeightConstraint = scopeControl.heightAnchor.constraint(equalToConstant: 40)
+        searchBarHeightConstraint = searchBar.heightAnchor.constraint(
+            equalToConstant: SearchLayoutMetrics.searchFieldHeight
+                + SearchLayoutMetrics.searchFieldVerticalInset * 2
+        )
 
         NSLayoutConstraint.activate([
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
@@ -460,7 +467,7 @@ final class SearchCoreViewController: UIViewController {
                 constant: SearchLayoutMetrics.searchBarOuterHorizontalInset
             ),
             searchTrailingRegular,
-            searchBar.heightAnchor.constraint(equalToConstant: 46),
+            searchBarHeightConstraint,
 
             scopeControl.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 4),
             scopeControl.leadingAnchor.constraint(
@@ -488,6 +495,7 @@ final class SearchCoreViewController: UIViewController {
     private func setupSearchBar() {
         let palette = appliedTheme.uiKitPalette
         searchBar.searchBarStyle = .minimal
+        searchBar.setSearchFieldBackgroundImage(UIImage(), for: .normal)
         searchBar.placeholder = MoroL10n.Search.placeholder
         searchBar.delegate = self
         searchBar.tintColor = palette.primary
@@ -500,19 +508,41 @@ final class SearchCoreViewController: UIViewController {
         searchBar.searchTextField.enablesReturnKeyAutomatically = true
         searchBar.searchTextField.backgroundColor = palette.surfaceSubtle
         searchBar.searchTextField.textColor = palette.textPrimary
-        searchBar.searchTextField.layer.cornerRadius = 12
+        searchBar.searchTextField.layer.cornerRadius = SearchLayoutMetrics.searchFieldCornerRadius
         searchBar.searchTextField.layer.cornerCurve = .continuous
         searchBar.searchTextField.layer.masksToBounds = true
+        // UIKit's default field can overflow a compact bar on newer system versions.
+        searchBar.searchTextField.translatesAutoresizingMaskIntoConstraints = false
+        searchFieldHeightConstraint = searchBar.searchTextField.heightAnchor.constraint(
+            equalToConstant: SearchLayoutMetrics.searchFieldHeight
+        )
+        NSLayoutConstraint.activate([
+            searchFieldHeightConstraint,
+            searchBar.searchTextField.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor),
+            searchBar.searchTextField.leadingAnchor.constraint(
+                equalTo: searchBar.leadingAnchor,
+                constant: SearchLayoutMetrics.searchBarInternalFieldInset
+            ),
+            searchBar.searchTextField.trailingAnchor.constraint(
+                equalTo: searchBar.trailingAnchor,
+                constant: -SearchLayoutMetrics.searchBarInternalFieldInset
+            ),
+        ])
         applySearchChromeSizing(palette: palette)
         setCancelButtonVisible(false)
     }
 
     private func applySearchChromeSizing(palette: MoroUIKitThemePalette) {
-        searchBar.searchTextField.font = chromeFont(
+        let font = chromeFont(
             palette: palette,
             textStyle: .body,
             maximumPointSize: SearchLayoutMetrics.maximumSearchFieldPointSize
         )
+        searchBar.searchTextField.font = font
+        let fieldHeight = max(SearchLayoutMetrics.searchFieldHeight, ceil(font.lineHeight) + 12)
+        searchFieldHeightConstraint.constant = fieldHeight
+        searchBarHeightConstraint.constant = fieldHeight
+            + SearchLayoutMetrics.searchFieldVerticalInset * 2
         if let glassIconView = searchBar.searchTextField.leftView as? UIImageView {
             glassIconView.tintColor = palette.textSecondary
             glassIconView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(

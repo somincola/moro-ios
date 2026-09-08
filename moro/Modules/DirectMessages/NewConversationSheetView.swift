@@ -116,6 +116,7 @@ final class NewConversationViewModel: ObservableObject {
 struct NewConversationSheetView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.moroTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @StateObject private var viewModel: NewConversationViewModel
 
     let onSelectAccount: (Account) -> Void
@@ -139,8 +140,6 @@ struct NewConversationSheetView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: theme.spacing.m) {
-                headerCard
-
                 searchField
 
                 contentView
@@ -154,49 +153,17 @@ struct NewConversationSheetView: View {
             .toolbarBackground(theme.colors.background, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    MoroNavigationControlButton(kind: .close) {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(MoroL10n.Common.cancel) {
                         dismiss()
                     }
+                    .accessibilityIdentifier("newConversation.cancel")
                 }
             }
         }
         .onChange(of: viewModel.query) { _, _ in
             viewModel.scheduleSearch()
         }
-    }
-
-    private var headerCard: some View {
-        HStack(alignment: .top, spacing: theme.spacing.s) {
-            ZStack {
-                Circle()
-                    .fill(theme.colors.primary500.opacity(0.15))
-                    .frame(width: 30, height: 30)
-                Image(systemName: "bubble.left.and.bubble.right.fill")
-                    .moroScaledFont(size: 13, weight: .semibold)
-                    .foregroundStyle(theme.colors.primary500)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(MoroL10n.NewConversation.selectHint)
-                    .font(theme.typography.bodyStrong)
-                    .foregroundStyle(theme.colors.textPrimary)
-                Text(MoroL10n.NewConversation.selectDesc)
-                    .font(theme.typography.caption)
-                    .foregroundStyle(theme.colors.textSecondary)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(theme.spacing.s)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(theme.colors.surfaceSubtle)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(theme.colors.borderSubtle, lineWidth: 1)
-        )
     }
 
     private var searchField: some View {
@@ -206,12 +173,15 @@ struct NewConversationSheetView: View {
                 .foregroundStyle(theme.colors.textSecondary)
 
             TextField(MoroL10n.NewConversation.searchPlaceholder, text: $viewModel.query)
+                .font(theme.typography.body)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
                 .onSubmit {
                     viewModel.searchNow()
                 }
+                .accessibilityIdentifier("newConversation.search")
+                .padding(.vertical, 8)
 
             if !viewModel.query.isEmpty {
                 Button {
@@ -221,19 +191,18 @@ struct NewConversationSheetView: View {
                     Image(systemName: "xmark.circle.fill")
                         .moroScaledFont(size: 14)
                         .foregroundStyle(theme.colors.textTertiary)
+                        .frame(minWidth: 44, minHeight: 44)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(MoroL10n.NewConversation.clearSearch)
+                .accessibilityIdentifier("newConversation.clear")
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .frame(minHeight: 44)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(theme.colors.surfaceSubtle)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(theme.colors.borderSubtle, lineWidth: 1)
         )
     }
 
@@ -274,18 +243,12 @@ struct NewConversationSheetView: View {
 
     private var accountList: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: theme.spacing.xs) {
-                HStack(spacing: 8) {
-                    Text(resultSectionTitle)
-                        .font(theme.typography.caption)
-                        .foregroundStyle(theme.colors.textSecondary)
-                    Spacer()
-                    Text("\(viewModel.displayAccounts.count)")
-                        .font(theme.typography.caption)
-                        .foregroundStyle(theme.colors.textTertiary)
-                }
-                .padding(.horizontal, 4)
-                .padding(.bottom, 4)
+            LazyVStack(alignment: .leading, spacing: 0) {
+                Text(resultSectionTitle)
+                    .font(theme.typography.caption)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .accessibilityAddTraits(.isHeader)
+                    .padding(.bottom, theme.spacing.s)
 
                 ForEach(viewModel.displayAccounts) { account in
                     Button {
@@ -297,10 +260,17 @@ struct NewConversationSheetView: View {
                         accountRow(account)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("newConversation.account.\(account.id)")
+
+                    if account.id != viewModel.displayAccounts.last?.id {
+                        MoroDivider()
+                            .padding(.leading, 54)
+                    }
                 }
             }
             .padding(.bottom, theme.spacing.s)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     @ViewBuilder
@@ -318,36 +288,20 @@ struct NewConversationSheetView: View {
                     account: account,
                     typography: .bodyStrong,
                     textColor: theme.colors.textPrimary,
-                    lineLimit: 1
+                    lineLimit: dynamicTypeSize.isAccessibilitySize ? 3 : 1
                 )
 
                 Text("@\(account.acct)")
                     .font(theme.typography.caption)
                     .foregroundStyle(theme.colors.textSecondary)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
             }
 
             Spacer()
-
-            Image(systemName: "bubble.right")
-                .moroScaledFont(size: 12, weight: .semibold)
-                .foregroundStyle(theme.colors.primary500.opacity(0.85))
-                .padding(8)
-                .background(
-                    Circle()
-                        .fill(theme.colors.primary500.opacity(0.12))
-                )
         }
-        .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(theme.colors.surfaceElevated)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(theme.colors.borderSubtle, lineWidth: 1)
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     private var emptyStateView: some View {

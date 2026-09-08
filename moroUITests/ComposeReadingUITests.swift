@@ -14,13 +14,12 @@ final class ComposeReadingUITests: XCTestCase {
         defer { app.terminate() }
         let editor = app.textViews["compose.textInput"]
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        let originalHeight = editor.frame.height
         editor.tap()
         editor.typeText("[A]")
         let beforeExpansion = editor.value as! String
         select("compose.expandEditor", app: app)
         XCTAssertTrue(editor.waitForExistence(timeout: 3))
-        XCTAssertGreaterThan(editor.frame.height, originalHeight + 20)
+        XCTAssertFalse(app.buttons["compose.audienceMenu"].exists)
         XCTAssertEqual(editor.value as? String, beforeExpansion)
         editor.typeText("[B]")
         let expanded = editor.value as! String
@@ -29,6 +28,7 @@ final class ComposeReadingUITests: XCTestCase {
         attach(app, "compose-expanded-\(scheme)")
         select("compose.expandEditor", app: app)
         XCTAssertTrue(editor.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["compose.audienceMenu"].exists)
         XCTAssertEqual(editor.value as? String, expanded)
         select("compose.preview", app: app)
         XCTAssertTrue(app.buttons["compose.previewDone"].waitForExistence(timeout: 5))

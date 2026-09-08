@@ -302,6 +302,11 @@ public enum MoroL10n {
     }
 
     public enum Compose {
+        public static var suggestionAccountHint: String { text("compose.suggestions.accountHint") }
+        public static var suggestionHashtagHint: String { text("compose.suggestions.hashtagHint") }
+        public static var suggestionSearching: String { text("compose.suggestions.searching") }
+        public static var suggestionEmpty: String { text("compose.suggestions.empty") }
+        public static var suggestionFailed: String { text("compose.suggestions.failed") }
         public static var editSourceLoading: String { text("compose.editSource.loading") }
         public static var editSourceFailed: String { text("compose.editSource.failed") }
         public static var navigationNewPost: String { text("compose.navigation.newPost") }
@@ -624,6 +629,8 @@ public enum MoroL10n {
         public static var filteredEmptyNoContent: String { text("notifications.empty.filteredNoContent") }
         public static var filteredEmptyMessage: String { text("notifications.empty.filteredMessage") }
         public static var viewAll: String { text("notifications.empty.viewAll") }
+        public static var loadMore: String { text("notifications.empty.loadMore") }
+        public static var moreAvailable: String { text("notifications.empty.moreAvailable") }
 
         // Actor list header
         public static var actorListFavouriters: String { text("notifications.actorList.favouriters") }
@@ -1539,6 +1546,7 @@ public enum MoroL10n {
         public static var loadFailed: String { text("conversation.loadFailed") }
         public static var retry: String { text("conversation.retry") }
         public static var inputPlaceholder: String { text("conversation.inputPlaceholder") }
+        public static var send: String { text("conversation.send") }
         public static var hasQuote: String { text("conversation.hasQuote") }
         public static var mediaCount1: String { text("conversation.mediaCount1") }
 
@@ -1685,6 +1693,7 @@ public enum MoroL10n {
         public static var selectHint: String { text("newConversation.selectHint") }
         public static var selectDesc: String { text("newConversation.selectDesc") }
         public static var searchPlaceholder: String { text("newConversation.searchPlaceholder") }
+        public static var clearSearch: String { text("newConversation.clearSearch") }
         public static var recentContacts: String { text("newConversation.recentContacts") }
         public static var searchResults: String { text("newConversation.searchResults") }
         public static var searching: String { text("newConversation.searching") }
