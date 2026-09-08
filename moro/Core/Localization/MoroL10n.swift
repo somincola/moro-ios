@@ -302,6 +302,11 @@ public enum MoroL10n {
     }
 
     public enum Compose {
+        public static var suggestionAccountHint: String { text("compose.suggestions.accountHint") }
+        public static var suggestionHashtagHint: String { text("compose.suggestions.hashtagHint") }
+        public static var suggestionSearching: String { text("compose.suggestions.searching") }
+        public static var suggestionEmpty: String { text("compose.suggestions.empty") }
+        public static var suggestionFailed: String { text("compose.suggestions.failed") }
         public static var editSourceLoading: String { text("compose.editSource.loading") }
         public static var editSourceFailed: String { text("compose.editSource.failed") }
         public static var navigationNewPost: String { text("compose.navigation.newPost") }

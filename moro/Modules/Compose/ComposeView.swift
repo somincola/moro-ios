@@ -143,6 +143,7 @@ enum ComposeTextEditing {
 
 struct ComposeView: View {
     @StateObject private var viewModel: ComposeViewModel
+    @StateObject private var autocomplete: ComposeAutocompleteModel
     @ObservedObject private var settings = AppSettings.shared
     @Environment(\.moroTheme) private var theme
     @Environment(\.dismiss) private var dismiss
@@ -152,12 +153,13 @@ struct ComposeView: View {
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var destination: ComposeDestination?
     @State private var isExpandedEditor = false
-    @State private var inputMode: ComposeInputMode = .idle
+    @State private var inputMode: ComposeInputMode = .keyboard
     @State private var emojiPickerHeight = ComposeInputLayout.defaultEmojiPickerHeight
     @State private var textSelection: NSRange
     @State private var textSelectionCommand: ComposeTextSelectionCommand?
     @State private var editingAltText: String = ""
-    @State private var isComposeTextViewDragging = false
+    @State private var hasMarkedText = false
+    @State private var completedAutocompleteToken: ComposeAutocompleteToken?
     @State private var emojiViewModel: CustomEmojiViewModel?
     @State private var pendingScheduledDate = ComposeViewModel.defaultScheduledDate()
     @State private var hasProcessedSharedImport = false
@@ -187,6 +189,7 @@ struct ComposeView: View {
         self.draftStore = resolvedDraftStore
         self.sharedImport = sharedImport
         _viewModel = StateObject(wrappedValue: resolvedViewModel)
+        _autocomplete = StateObject(wrappedValue: ComposeAutocompleteModel(apiClient: apiClient))
         _textSelection = State(
             initialValue: NSRange(
                 location: (resolvedViewModel.content as NSString).length,
@@ -254,11 +257,17 @@ struct ComposeView: View {
                     }
                     .scrollContentBackground(.hidden)
                     .contentShape(Rectangle())
-                    .scrollDisabled(isComposeTextViewDragging)
+                    .scrollDismissesKeyboard(.interactively)
+                    .accessibilityIdentifier("compose.contentScroll")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                
-                // Bottom: Quote policy selector (new post mode) + Toolbar
+
+                if let token = autocompleteToken {
+                    ComposeSuggestionsView(token: token, model: autocomplete) { suggestion in
+                        insertSuggestion(suggestion, for: token)
+                    }
+                }
+
                 bottomSection
                     .disabled(!viewModel.isEditingSourceReady)
             }
@@ -429,6 +438,9 @@ struct ComposeView: View {
             }
             .task {
                 await loadEditingSource()
+            }
+            .task(id: autocompleteToken) {
+                await autocomplete.load(for: autocompleteToken)
             }
         }
     }
@@ -755,7 +767,9 @@ struct ComposeView: View {
             selection: $textSelection,
             selectionCommand: $textSelectionCommand,
             isFocused: textEditorFocus,
-            isDragging: $isComposeTextViewDragging,
+            hasMarkedText: $hasMarkedText,
+            isExpanded: isExpandedEditor,
+            minimumHeight: usesCompactReplyComposerLayout ? 120 : 180,
             inputMode: inputMode,
             emojiPickerHeight: emojiPickerHeight,
             emojiViewModel: emojiViewModel,
@@ -768,34 +782,15 @@ struct ComposeView: View {
             placeholderColor: UIColor(theme.colors.textSecondary),
             onEmojiSelected: insertEmoji
         )
-        .frame(height: isExpandedEditor ? nil : fixedTextInputHeight)
-        .padding(usesCompactReplyComposerLayout ? theme.spacing.xs : theme.spacing.s)
-        .overlay(alignment: .bottomTrailing) {
-            inlineCharacterCounter
-                .padding(.trailing, usesCompactReplyComposerLayout ? theme.spacing.s : theme.spacing.m)
-                .padding(.bottom, usesCompactReplyComposerLayout ? theme.spacing.s : theme.spacing.m)
-        }
-        .background(
-            RoundedRectangle(cornerRadius: usesCompactReplyComposerLayout ? 10 : 12, style: .continuous)
-                .fill(theme.colors.surfaceSubtle)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: usesCompactReplyComposerLayout ? 10 : 12, style: .continuous)
-                .stroke(theme.colors.borderSubtle, lineWidth: 1)
-        )
     }
 
     private var inlineCharacterCounter: some View {
         Text(inlineCharacterCounterText)
-            .moroScaledFont(size: 11, weight: .semibold)
+            .moroScaledFont(size: 12, weight: .medium)
             .monospacedDigit()
             .foregroundStyle(inlineCharacterCounterColor)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(theme.colors.surfaceSubtle.opacity(0.92))
-            )
+            .fixedSize()
+            .accessibilityIdentifier("compose.characterCounter")
             .accessibilityLabel(MoroL10n.Compose.accessibilityCharacterProgress)
             .accessibilityValue("\(viewModel.characterCount)/\(viewModel.maxCharacters)")
             .allowsHitTesting(false)
@@ -1139,6 +1134,7 @@ struct ComposeView: View {
 
                 }
             }
+            inlineCharacterCounter
         }
         .padding(.horizontal, theme.spacing.m)
         .padding(.vertical, usesCompactReplyComposerLayout ? theme.spacing.xs : theme.spacing.s)
@@ -1612,6 +1608,26 @@ struct ComposeView: View {
             scrollsToSelection: true
         )
     }
+
+    private var autocompleteToken: ComposeAutocompleteToken? {
+        guard inputMode == .keyboard, destination == nil, viewModel.isEditingSourceReady else { return nil }
+        let token = ComposeAutocompleteToken.active(
+            in: viewModel.content, selection: textSelection, isComposing: hasMarkedText
+        )
+        // Selecting a suggestion before existing whitespace or punctuation keeps that
+        // suffix intact, so the caret can still sit at a token boundary. Close its panel.
+        return token == completedAutocompleteToken ? nil : token
+    }
+
+    private func insertSuggestion(_ suggestion: ComposeSuggestion, for token: ComposeAutocompleteToken) {
+        guard !hasMarkedText, autocompleteToken == token,
+              let result = token.inserting(suggestion.completion, into: viewModel.content, selection: textSelection)
+        else { return }
+        viewModel.content = result.text
+        textSelection = result.selection
+        textSelectionCommand = ComposeTextSelectionCommand(range: result.selection, scrollsToSelection: true)
+        completedAutocompleteToken = ComposeAutocompleteToken.active(in: result.text, selection: result.selection)
+    }
     
     private func loadEmojiViewModelIfNeeded() {
         guard let host = accountHost else { return }
@@ -1917,8 +1933,10 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
     @Binding var selection: NSRange
     @Binding var selectionCommand: ComposeTextSelectionCommand?
     @Binding var isFocused: Bool
-    @Binding var isDragging: Bool
+    @Binding var hasMarkedText: Bool
 
+    let isExpanded: Bool
+    let minimumHeight: CGFloat
     let inputMode: ComposeInputMode
     let emojiPickerHeight: CGFloat
     let emojiViewModel: CustomEmojiViewModel?
@@ -1938,11 +1956,11 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
         textView.textColor = textColor
         textView.font = UIFont.preferredFont(forTextStyle: .body)
         textView.adjustsFontForContentSizeCategory = true
-        textView.isScrollEnabled = true
-        textView.alwaysBounceVertical = true
-        textView.showsVerticalScrollIndicator = true
+        textView.isScrollEnabled = isExpanded
+        textView.alwaysBounceVertical = isExpanded
+        textView.showsVerticalScrollIndicator = isExpanded
         textView.keyboardDismissMode = .interactive
-        textView.textContainerInset = UIEdgeInsets(top: 8, left: 5, bottom: 30, right: 5)
+        textView.textContainerInset = UIEdgeInsets(top: 4, left: 0, bottom: 12, right: 0)
         textView.textContainer.lineFragmentPadding = 0
         textView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         textView.setContentHuggingPriority(.defaultLow, for: .vertical)
@@ -1950,19 +1968,17 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
         textView.text = text
         textView.updatePlaceholder(text: placeholder, color: placeholderColor)
         textView.selectedRange = clampedRange(selection, in: textView.textStorage.length)
+        context.coordinator.updateHighlighting(textView)
         textView.delegate = context.coordinator
-        textView.onPanStateChange = { [weak coordinator = context.coordinator] state in
-            coordinator?.setDragging(state == .began || state == .changed)
-        }
+        textView.updateFocusRequest(isFocused)
         return textView
     }
 
     func updateUIView(_ textView: ComposeUIKitTextView, context: Context) {
         context.coordinator.parent = self
-        if textView.textColor != textColor {
-            textView.textColor = textColor
-        }
-
+        textView.isScrollEnabled = isExpanded
+        textView.alwaysBounceVertical = isExpanded
+        textView.showsVerticalScrollIndicator = isExpanded
         if textView.text != text, textView.markedTextRange == nil {
             let preservedSelection = clampedRange(
                 textView.selectedRange,
@@ -1972,6 +1988,7 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
             textView.text = text
             textView.selectedRange = preservedSelection
             context.coordinator.isUpdatingFromSwiftUI = false
+            textView.requestSelectionReveal()
         }
         textView.updatePlaceholder(text: placeholder, color: placeholderColor)
 
@@ -1987,15 +2004,12 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
 
             if command.scrollsToSelection,
                textView.isFirstResponder,
-               !context.coordinator.isDragging {
-                textView.scrollRangeToVisible(desiredSelection)
+               !textView.isDragging {
+                textView.requestSelectionReveal()
             }
         }
 
-        if !isFocused && textView.isFirstResponder {
-            textView.resignFirstResponder()
-        }
-
+        context.coordinator.updateHighlighting(textView)
         textView.updateInputMode(
             inputMode,
             emojiPickerHeight: emojiPickerHeight,
@@ -2015,9 +2029,13 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
             }
         )
 
-        if isFocused && !textView.isFirstResponder {
-            textView.becomeFirstResponder()
-        }
+        textView.updateFocusRequest(isFocused)
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: ComposeUIKitTextView, context: Context) -> CGSize? {
+        guard !isExpanded, let width = proposal.width, width > 0 else { return nil }
+        let fitted = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        return CGSize(width: width, height: max(minimumHeight, ceil(fitted.height)))
     }
 
     func makeCoordinator() -> Coordinator {
@@ -2033,18 +2051,11 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: ComposeTextViewRepresentable
-        var isDragging = false
         var isUpdatingFromSwiftUI = false
         var lastAppliedSelectionCommandID: UUID?
 
         init(parent: ComposeTextViewRepresentable) {
             self.parent = parent
-        }
-
-        func setDragging(_ active: Bool) {
-            guard isDragging != active else { return }
-            isDragging = active
-            parent.isDragging = active
         }
 
         func finishSelectionCommand(_ id: UUID) {
@@ -2055,27 +2066,53 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
+            updateHighlighting(textView)
             updateSelectionIfNeeded(textView.selectedRange)
             updateFocusIfNeeded(true)
+            (textView as? ComposeUIKitTextView)?.requestSelectionReveal()
         }
 
         func textViewDidChange(_ textView: UITextView) {
             guard !isUpdatingFromSwiftUI else { return }
+            updateMarkedText(textView)
+            updateHighlighting(textView)
             if parent.text != textView.text {
                 parent.text = textView.text
             }
             updateSelectionIfNeeded(textView.selectedRange)
+            textView.invalidateIntrinsicContentSize()
+            (textView as? ComposeUIKitTextView)?.requestSelectionReveal()
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
             guard !isUpdatingFromSwiftUI else { return }
+            updateMarkedText(textView)
+            updateHighlighting(textView)
             updateSelectionIfNeeded(textView.selectedRange)
+            (textView as? ComposeUIKitTextView)?.requestSelectionReveal()
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
+            updateHighlighting(textView)
             updateSelectionIfNeeded(textView.selectedRange)
             updateFocusIfNeeded(false)
-            setDragging(false)
+            updateMarkedText(textView)
+        }
+
+        func updateHighlighting(_ textView: UITextView) {
+            guard !isUpdatingFromSwiftUI else { return }
+            isUpdatingFromSwiftUI = true
+            defer { isUpdatingFromSwiftUI = false }
+            ComposeTextHighlighter.apply(
+                to: textView,
+                textColor: parent.textColor,
+                tokenColor: UIColor(parent.theme.colors.contentLink)
+            )
+        }
+
+        private func updateMarkedText(_ textView: UITextView) {
+            let isComposing = textView.markedTextRange != nil
+            if parent.hasMarkedText != isComposing { parent.hasMarkedText = isComposing }
         }
 
         private func updateSelectionIfNeeded(_ selection: NSRange) {
@@ -2091,7 +2128,8 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
 }
 
 private final class ComposeUIKitTextView: UITextView {
-    var onPanStateChange: ((UIGestureRecognizer.State) -> Void)?
+    private var requestsFocus = false
+    private var needsSelectionReveal = false
     private var emojiInputView: ComposeEmojiInputView?
     private let placeholderLabel = UILabel()
     private var placeholderNeedsMeasurement = true
@@ -2106,6 +2144,24 @@ private final class ComposeUIKitTextView: UITextView {
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         configure()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        // The initial focus request can arrive before UIKit attaches the editor.
+        // Apply it here once attached; normal resigning still updates ComposeInputMode.
+        if window != nil, requestsFocus, !isFirstResponder { becomeFirstResponder() }
+    }
+
+    func updateFocusRequest(_ requested: Bool) {
+        requestsFocus = requested
+        if requested, window != nil, !isFirstResponder { becomeFirstResponder() }
+        if !requested, isFirstResponder { resignFirstResponder() }
+    }
+
+    func requestSelectionReveal() {
+        needsSelectionReveal = true
+        setNeedsLayout()
     }
 
     override func layoutSubviews() {
@@ -2136,19 +2192,36 @@ private final class ComposeUIKitTextView: UITextView {
         if placeholderLabel.frame != desiredFrame {
             placeholderLabel.frame = desiredFrame
         }
+
+        if needsSelectionReveal, isFirstResponder, let selectedTextRange {
+            needsSelectionReveal = false
+            let caret = caretRect(for: selectedTextRange.end).insetBy(dx: 0, dy: -12)
+            scrollRectToVisible(caret, animated: false)
+        }
+    }
+
+    override func scrollRectToVisible(_ rect: CGRect, animated: Bool) {
+        if isScrollEnabled {
+            super.scrollRectToVisible(rect, animated: animated)
+        } else {
+            // A growing editor delegates caret visibility to the page's single scroll view.
+            var ancestor = superview
+            while let view = ancestor {
+                if let scrollView = view as? UIScrollView {
+                    scrollView.scrollRectToVisible(convert(rect, to: scrollView), animated: animated)
+                    break
+                }
+                ancestor = view.superview
+            }
+        }
     }
 
     private func configure() {
-        panGestureRecognizer.addTarget(self, action: #selector(handlePan(_:)))
         placeholderLabel.numberOfLines = 0
         placeholderLabel.adjustsFontForContentSizeCategory = true
         placeholderLabel.isUserInteractionEnabled = false
         placeholderLabel.isAccessibilityElement = false
         addSubview(placeholderLabel)
-    }
-
-    deinit {
-        panGestureRecognizer.removeTarget(self, action: #selector(handlePan(_:)))
     }
 
     func updatePlaceholder(text: String, color: UIColor) {
@@ -2225,9 +2298,6 @@ private final class ComposeUIKitTextView: UITextView {
         }
     }
 
-    @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
-        onPanStateChange?(recognizer.state)
-    }
 }
 
 private final class ComposeEmojiInputView: UIInputView {
