@@ -1,186 +1,115 @@
-//
-//  TimelineHomeView+Overlays.swift
-//  moro
-//
-//  Top new-posts/refresh indicator — extracted from TimelineHomeView as an extension (pure relocation, no behaviour change).
-//
-
 import SwiftUI
 
 extension TimelineHomeView {
-    // MARK: - Top Indicator
-
-    /// Helper computed property to check if current timeline is at top
-    var isCurrentTimelineAtTop: Bool {
-        scrollBridge.isAtTop(selectedTimeline)
-    }
+    var isCurrentTimelineAtTop: Bool { scrollBridge.isAtTop(selectedTimeline) }
+    var currentDetectionCount: Int { viewModel.newPostCount }
 
     @ViewBuilder
     var topIndicator: some View {
         VStack {
-            if settings.timelineInAppNewPostBannerEnabled
-                && currentDetectionCount > 0
-                && isNewPostsIndicatorVisible
-            {
+            if settings.timelineInAppNewPostBannerEnabled, !isCurrentTimelineAtTop,
+                currentDetectionCount > 0 || viewModel.newPostsHaveMore {
                 Button {
                     loadDetectedPosts(scrollToTop: true, providesFeedback: true)
                 } label: {
-                    MoroNoticePill(
-                        icon: isLoadingDetectedPosts ? "arrow.trianglehead.2.clockwise" : "arrow.up",
-                        text: isLoadingDetectedPosts
-                            ? MoroL10n.Timeline.refreshing
-                            : currentDetectionCount > 99
-                                ? MoroL10n.Timeline.newPostsMany
-                                : MoroL10n.Timeline.newPosts(currentDetectionCount)
-                    )
+                    MoroNoticePill(icon: "arrow.up", text: newPostsNoticeText)
+                        .frame(minHeight: 44)
                 }
                 .buttonStyle(.plain)
-                .disabled(isLoadingDetectedPosts)
+                .accessibilityIdentifier("timeline.newPosts")
                 .frame(maxWidth: 280)
                 .padding(.horizontal, theme.spacing.m)
-                .transition(.move(edge: .top).combined(with: .opacity))
             } else if showsTopRefreshIndicator {
-                MoroNoticePill(
-                    icon: "arrow.trianglehead.2.clockwise",
-                    text: MoroL10n.Timeline.refreshing
-                )
-                .frame(maxWidth: 280)
-                .padding(.horizontal, theme.spacing.m)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                MoroNoticePill(icon: "arrow.trianglehead.2.clockwise", text: MoroL10n.Timeline.refreshing)
+                    .frame(maxWidth: 280)
             }
-
             Spacer()
         }
         .padding(.top, headerHeight + 8)
-        .animation(.easeInOut(duration: 0.2), value: isNewPostsIndicatorVisible)
+    }
+
+    private var newPostsNoticeText: String {
+        if currentDetectionCount > 99 { return MoroL10n.Timeline.newPostsMany }
+        if viewModel.newPostsHaveMore {
+            return currentDetectionCount > 0
+                ? MoroL10n.Timeline.newPostsAtLeast(currentDetectionCount)
+                : MoroL10n.Timeline.hasNewPosts
+        }
+        return MoroL10n.Timeline.newPosts(currentDetectionCount)
     }
 
     var showsTopRefreshIndicator: Bool {
         guard case .refreshing(let trigger) = viewModel.refreshState else { return false }
-        switch trigger {
-        case .tabRetap, .foreground, .compose:
-            return true
-        case .pull, .newPosts:
-            return false
-        }
+        return trigger == .tabRetap || trigger == .compose
     }
 
     func refreshCurrentTimelineFromTab() {
         let timeline = selectedTimeline
-        let targetViewModel = viewModel
-        let detectionSnapshot = detectionDimension(for: timeline).map {
-            detectionManager.snapshot(for: $0)
-        }
-        guard !targetViewModel.isRefreshing else { return }
-
+        let target = viewModel
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         Task { @MainActor in
-            let result = await targetViewModel.refresh(trigger: .tabRetap)
-            switch result {
-            case .success:
-                targetViewModel.clearPendingStatuses()
-                if let detectionSnapshot {
-                    detectionManager.resolve(detectionSnapshot)
-                }
+            let result = await target.refresh(trigger: .tabRetap)
+            guard selectedTimeline == timeline else { return }
+            if result.succeeded {
+                processLiveUpdates(for: timeline, viewModel: target)
                 syncDetectionTopID(for: timeline)
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-            case .failure:
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            } else if case .failure = result {
                 AppFeedbackCenter.shared.showError(MoroL10n.Timeline.loadFailed)
-            case .cancelled:
-                break
             }
         }
     }
 
-    func updateNewPostsIndicator(for count: Int) {
-        guard count > 0 else {
-            hideNewPostsIndicator()
-            return
+    func processLiveUpdates(for timeline: TimelineType, viewModel target: TimelineViewModel) {
+        guard target.hasReadingState, scrollBridge.canPresentUpdates(for: timeline) else { return }
+        let session = pageSessionStore.session(for: timeline)
+        if !session.hasRestoredReadingAnchor, !target.statuses.isEmpty {
+            session.hasRestoredReadingAnchor = true
+            if let saved = target.savedReadingAnchor {
+                scrollBridge.restoreReadingAnchor(saved, for: timeline)
+                return
+            }
         }
-
-        if isCurrentTimelineAtTop {
-            hideNewPostsIndicator()
-            loadDetectedPosts(scrollToTop: false, providesFeedback: false)
-        } else if settings.timelineInAppNewPostBannerEnabled {
-            showNewPostsIndicator()
-        } else {
-            hideNewPostsIndicator()
+        if target.hasUnappliedUpdates {
+            guard scrollBridge.prepareContentUpdate(for: timeline, revision: target.presentationRevision + 1, retainedIDs: target.canonicalStatusIDs) else { return }
+            target.applyLiveUpdates()
+            return // The matching row layout event will finish the transaction.
         }
-    }
-
-    func showNewPostsIndicator() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            isNewPostsIndicatorVisible = true
+        if scrollBridge.latestIsVisible(for: timeline, statusID: target.statuses.first?.id,
+            revision: target.presentationRevision) {
+            target.acknowledgePresentedUpdates(through: target.presentedSequence)
         }
-    }
-
-    func hideNewPostsIndicator() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            isNewPostsIndicatorVisible = false
+        if let anchor = scrollBridge.readingAnchors(for: timeline).first {
+            target.saveReadingAnchor(anchor)
+            if timeline == .home, target.currentTopVisibleStatusID != anchor.statusID {
+                target.currentTopVisibleStatusID = anchor.statusID
+            }
         }
+        target.fillRecentGapsIfNeeded()
     }
 
     func loadDetectedPosts(scrollToTop: Bool, providesFeedback: Bool) {
-        guard !isLoadingDetectedPosts,
-            let dimension = detectionDimension(for: selectedTimeline)
-        else { return }
-
         let timeline = selectedTimeline
-        let detectedCount = detectionManager.newItemsCounts[dimension] ?? 0
-        let detectionSnapshot = detectionManager.snapshot(for: dimension)
-        let targetViewModel = viewModel
-        guard detectedCount > 0 else { return }
-
-        isLoadingDetectedPosts = true
-        hideNewPostsIndicator()
-
-        Task { @MainActor in
-            let succeeded = await targetViewModel.fetchNewStatuses(
-                force: true,
-                providesFeedback: providesFeedback
-            )
-            if succeeded {
-                detectionManager.resolve(detectionSnapshot)
+        let target = viewModel
+        if providesFeedback { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+        if scrollToTop {
+            if target.hasUnappliedUpdates,
+                scrollBridge.prepareContentUpdate(for: timeline,
+                    revision: target.presentationRevision + 1, jumpToLatest: true) {
+                target.applyLiveUpdates()
+            } else {
+                scrollBridge.scrollToTop(timeline)
             }
-
-            isLoadingDetectedPosts = false
-            guard selectedTimeline == timeline else {
-                updateNewPostsIndicator(for: currentDetectionCount)
-                return
-            }
-
-            if succeeded {
-                syncDetectionTopID(for: timeline)
-                if scrollToTop {
-                    scrollBridge.resetChrome()
-                    onChromeFraction?(0)
-                    withAnimation {
-                        scrollBridge.scrollToTop(timeline)
-                    }
-                }
-                updateNewPostsIndicator(
-                    for: detectionManager.newItemsCounts[dimension] ?? 0
-                )
-            } else if settings.timelineInAppNewPostBannerEnabled {
-                showNewPostsIndicator()
-            }
+        } else {
+            processLiveUpdates(for: timeline, viewModel: target)
         }
     }
 
     func detectionDimension(for timeline: TimelineType) -> TimelineDimension? {
         switch timeline {
-        case .home: return .following
-        case .local: return .local
-        case .federated: return .federated
-        case .list: return nil
+        case .home: .following
+        case .local: .local
+        case .federated: .federated
+        case .list: nil
         }
     }
-
-    /// Unified detection count for the currently selected timeline dimension
-    var currentDetectionCount: Int {
-        guard let dimension = detectionDimension(for: selectedTimeline) else { return 0 }
-        return detectionManager.newItemsCounts[dimension] ?? 0
-    }
-
 }

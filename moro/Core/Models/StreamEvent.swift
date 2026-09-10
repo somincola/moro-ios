@@ -16,6 +16,15 @@ struct RawStreamEvent: Decodable, Sendable {
     let payload: String?
 }
 
+/// Preserve multiplexed stream provenance for timeline insertion. Edits and
+/// deletions can update existing rows, but only user-stream additions enter Home.
+struct SourcedStreamEvent {
+    let event: StreamEvent
+    let streams: [String]
+
+    var canInsertIntoHome: Bool { streams.contains("user") }
+}
+
 // MARK: - Stream Event Enum
 
 /// Unified stream event enum for type-safe event handling

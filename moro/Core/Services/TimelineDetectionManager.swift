@@ -3,7 +3,7 @@
 //  moro
 //
 //  Manages timeline new post detection based on user settings and system context.
-//  Detection ONLY updates counts, never auto-inserts into timeline.
+//  Detection delivers complete pages; each timeline owns merging and presentation.
 //
 //  Policy dimensions:
 //  - Following (Home)
@@ -85,18 +85,26 @@ struct TimelineDetectionSnapshot {
     let anonymousCount: Int
 }
 
+struct TimelineDetectedPage {
+    let scopeID: String
+    let timeline: TimelineType
+    let sinceID: String?
+    let page: TimelinePage
+}
+
 // MARK: - Detection Manager
 
 /// Manager responsible for timeline new post detection
 ///
 /// Key principles:
-/// 1. Detection ONLY updates counts, never modifies timeline arrays
+/// 1. Detection delivers pages; the page view model owns the timeline array
 /// 2. UI updates are debounced to prevent frequent updates
 /// 3. Respects app lifecycle and power state
 @MainActor
 final class TimelineDetectionManager: ObservableObject {
 
     static let shared = TimelineDetectionManager()
+    let pages = PassthroughSubject<TimelineDetectedPage, Never>()
 
     // MARK: - Published State
 
@@ -119,6 +127,8 @@ final class TimelineDetectionManager: ObservableObject {
     private var latestDetectedIDs: [TimelineDimension: String] = [:]
     private var lastCheckDates: [TimelineDimension: Date] = [:]
     private var debounceTask: Task<Void, Never>?
+    private var generation = UUID()
+    private var requests: [TimelineDimension: UUID] = [:]
 
     private var isInForeground = true
     private var isLowPowerMode = false
@@ -136,6 +146,9 @@ final class TimelineDetectionManager: ObservableObject {
     // Note: Cannot use weak because MastodonAPI is a protocol. The manager should be
     // stopped (stopDetection) when the API client is no longer valid.
     private var apiClient: (any MastodonAPI)?
+    /// The visible shell supplies its source models so automatic and manual
+    /// checks share each model's single in-flight latest-page request.
+    private var refreshTimeline: ((TimelineType) async -> String?)?
 
     // MARK: - Initialization
 
@@ -147,7 +160,8 @@ final class TimelineDetectionManager: ObservableObject {
 
     /// Configure the manager with API client
     /// Must be called before starting detection
-    func configure(apiClient: MastodonAPI, scopeID: String) {
+    func configure(apiClient: MastodonAPI, scopeID: String,
+        refreshTimeline: ((TimelineType) async -> String?)? = nil) {
         if configuredScopeID != scopeID {
             stopDetection()
             clearAllCounts()
@@ -158,6 +172,7 @@ final class TimelineDetectionManager: ObservableObject {
             configuredScopeID = scopeID
         }
         self.apiClient = apiClient
+        self.refreshTimeline = refreshTimeline
     }
 
     func setActiveDimension(_ dimension: TimelineDimension?) {
@@ -167,6 +182,8 @@ final class TimelineDetectionManager: ObservableObject {
             applyPolicy(computePolicy())
         }
     }
+
+    func isConfigured(for scopeID: String) -> Bool { configuredScopeID == scopeID }
 
     // MARK: - Public API
 
@@ -180,6 +197,8 @@ final class TimelineDetectionManager: ObservableObject {
 
     /// Stop all detection
     func stopDetection() {
+        generation = UUID()
+        requests.removeAll()
         for task in pollingTasks.values {
             task.cancel()
         }
@@ -237,10 +256,11 @@ final class TimelineDetectionManager: ObservableObject {
     /// Increment count from streaming event (called by StreamWatcher integration)
     func incrementCount(for dimension: TimelineDimension, latestID: String? = nil) {
         if let id = latestID {
-            guard detectedStatusIDs[dimension, default: []].insert(id).inserted else { return }
+            guard detectedStatusIDs[dimension, default: []].count < 200,
+                detectedStatusIDs[dimension, default: []].insert(id).inserted else { return }
             latestDetectedIDs[dimension] = id
         } else {
-            pendingCounts[dimension, default: 0] += 1
+            pendingCounts[dimension] = min(200, pendingCounts[dimension, default: 0] + 1)
         }
         scheduleDebounceFlush()
     }
@@ -310,8 +330,8 @@ final class TimelineDetectionManager: ObservableObject {
 
         let removedEnabledDimensions = oldEnabledDimensions.subtracting(newPolicy.enabledDimensions)
         for dimension in removedEnabledDimensions {
-            clearCount(for: dimension)
-            lastKnownTopIDs[dimension] = nil
+            // Preserve each source's baseline and notice when another page is selected.
+            pollingTasks[dimension]?.cancel()
         }
 
         currentPolicy = newPolicy
@@ -356,48 +376,41 @@ final class TimelineDetectionManager: ObservableObject {
         // instead of duplicating its work every interval.
         if dimension == .following,
             StreamWatcher.shared.isWatching,
-            !allowWhileStreaming
+            !allowWhileStreaming,
+            Date().timeIntervalSince(lastCheckDates[dimension] ?? .distantPast) < 300
         {
             return
         }
 
-        guard let sinceID = lastKnownTopIDs[dimension], !sinceID.isEmpty else {
-            // Baseline not established yet (timeline not loaded); skip polling.
-            return
-        }
+        // An initial 206 response has no verified head yet; retry the newest page.
+        let sinceID = lastKnownTopIDs[dimension]
+
+        guard requests[dimension] == nil, let scopeID = configuredScopeID else { return }
+        let requestID = UUID()
+        let requestGeneration = generation
+        requests[dimension] = requestID
+        defer { if requests[dimension] == requestID { requests[dimension] = nil } }
 
         lastCheckDates[dimension] = Date()
+
+        if let refreshTimeline {
+            let headID = await refreshTimeline(dimension.timelineType)
+            guard !Task.isCancelled, configuredScopeID == scopeID,
+                generation == requestGeneration, requests[dimension] == requestID else { return }
+            if let headID { lastKnownTopIDs[dimension] = headID }
+            return
+        }
 
         do {
             // Fetch timeline with since_id to get only newer items
             // We only need the count and possibly the latest ID
-            let statuses: [Status]
-            switch dimension {
-            case .following:
-                statuses = try await apiClient.fetchHomeTimeline(
-                    maxID: nil, sinceID: sinceID, limit: 20)
-            case .local:
-                statuses = try await apiClient.fetchPublicTimeline(
-                    local: true, maxID: nil, sinceID: sinceID, minID: nil, limit: 20)
-            case .federated:
-                statuses = try await apiClient.fetchPublicTimeline(
-                    local: false, maxID: nil, sinceID: sinceID, minID: nil, limit: 20)
-            }
+            let page = try await apiClient.fetchTimelinePage(timeline: dimension.timelineType,
+                maxID: nil, sinceID: sinceID, limit: 20)
+            guard !Task.isCancelled, configuredScopeID == scopeID,
+                generation == requestGeneration, requests[dimension] == requestID else { return }
+            pages.send(TimelineDetectedPage(scopeID: scopeID, timeline: dimension.timelineType,
+                sinceID: sinceID, page: page))
 
-            if !statuses.isEmpty {
-                var insertedAny = false
-                for status in statuses {
-                    if detectedStatusIDs[dimension, default: []].insert(status.id).inserted {
-                        insertedAny = true
-                    }
-                }
-                if let newestID = statuses.first?.id {
-                    latestDetectedIDs[dimension] = newestID
-                }
-                if insertedAny {
-                    scheduleDebounceFlush()
-                }
-            }
         } catch {
             // Silently ignore errors during polling
             // (network issues, etc. - we'll retry on next interval)
@@ -408,11 +421,12 @@ final class TimelineDetectionManager: ObservableObject {
 
     /// Schedule a debounced flush of pending counts to published counts
     private func scheduleDebounceFlush() {
-        debounceTask?.cancel()
+        guard debounceTask == nil else { return }
         debounceTask = Task { [weak self] in
             try? await Task.sleep(
                 nanoseconds: UInt64((self?.debounceInterval ?? 3.0) * 1_000_000_000))
             guard !Task.isCancelled else { return }
+            self?.debounceTask = nil
             self?.flushPendingCounts()
         }
     }
@@ -443,6 +457,17 @@ final class TimelineDetectionManager: ObservableObject {
 
     /// Setup observers for app lifecycle and settings changes
     private func setupObservers() {
+        NotificationCenter.default.publisher(for: .timelineContentWillClear)
+            .sink { [weak self] notification in
+                guard notification.object as? TimelineCache === CacheManager.shared.timelineCache,
+                    let self else { return }
+                self.stopDetection()
+                self.clearAllCounts()
+                self.lastKnownTopIDs.removeAll()
+                self.lastCheckDates.removeAll()
+            }
+            .store(in: &cancellables)
+
         // App lifecycle
         NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)
             .receive(on: DispatchQueue.main)

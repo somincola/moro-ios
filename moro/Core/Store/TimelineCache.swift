@@ -24,6 +24,10 @@ actor TimelineCache {
         let status: Status
         let cachedAt: Date
     }
+    private struct CachedSnapshot: Codable {
+        let items: [CachedItem]
+        let live: TimelineLiveMetadata?
+    }
     private struct CacheMetadata: Codable {
         var lastUpdated: Date
         var itemCount: Int
@@ -35,6 +39,7 @@ actor TimelineCache {
     private let cacheDirectory: URL
     private var memoryCache: [String: [CachedItem]] = [:]
     private var metadata: [String: CacheMetadata] = [:]
+    private var liveMetadata: [String: TimelineLiveMetadata] = [:]
     private var dirtyKeys: Set<String> = []
     private var dirtyMetadataKeys: Set<String> = []
     private var persistenceTask: Task<Void, Never>?
@@ -52,6 +57,38 @@ actor TimelineCache {
 
     func getStatuses(for client: String, filter: TimelineFilter) async -> [Status]? {
         items(for: cacheKey(client: client, filter: filter))?.map(\.status)
+    }
+
+    func getLiveMetadata(for client: String, filter: TimelineFilter) -> TimelineLiveMetadata? {
+        let key = cacheKey(client: client, filter: filter)
+        guard items(for: key) != nil else { return nil }
+        return liveMetadata[key]
+    }
+
+    func setLiveSnapshot(statuses: [Status], live: TimelineLiveMetadata, for client: String, filter: TimelineFilter) {
+        let key = cacheKey(client: client, filter: filter)
+        var snapshot = statuses
+        var state = live
+        if statuses.count > maxCachedStatuses,
+            let anchorID = live.readingAnchor?.statusID,
+            let anchorIndex = statuses.firstIndex(where: { $0.id == anchorID }),
+            anchorIndex >= maxCachedStatuses {
+            let headCount = min(40, maxCachedStatuses / 2)
+            let windowCount = maxCachedStatuses - headCount
+            let start = max(headCount, min(anchorIndex - windowCount / 2, statuses.count - windowCount))
+            snapshot = Array(statuses.prefix(headCount)) + Array(statuses[start..<(start + windowCount)])
+            if let upper = snapshot.prefix(headCount).last?.id, headCount < snapshot.count {
+                let lower = snapshot[headCount].id
+                state.gaps.append(TimelineGap(afterID: upper, beforeID: lower,
+                    maxID: upper, sinceID: lower, targetHeadID: snapshot[0].id,
+                    sequence: state.acknowledgedSequence))
+            }
+        }
+        assign(snapshot, key: key)
+        let retained = Set(memoryCache[key, default: []].map { $0.status.id })
+        state.newIDs = state.newIDs.filter { retained.contains($0.key) }
+        state.gaps.removeAll { !retained.contains($0.afterID) || !retained.contains($0.beforeID) }
+        liveMetadata[key] = state
     }
 
     func prepend(statuses: [Status], for client: String, filter: TimelineFilter) {
@@ -94,6 +131,7 @@ actor TimelineCache {
     func clearAllCaches() {
         memoryCache.removeAll()
         metadata.removeAll()
+        liveMetadata.removeAll()
         dirtyKeys.removeAll()
         dirtyMetadataKeys.removeAll()
         try? FileManager.default.removeItem(at: cacheDirectory)
@@ -103,6 +141,7 @@ actor TimelineCache {
     /// Settings clears downloaded content while retaining last-seen markers (.meta).
     func clearContentCache() throws {
         memoryCache.removeAll()
+        liveMetadata.removeAll()
         dirtyKeys.removeAll()
         // Pending metadata is user reading state and must survive this operation.
         flushPendingWrites()
@@ -127,6 +166,7 @@ actor TimelineCache {
         flushPendingWrites()
         memoryCache = memoryCache.filter { dirtyKeys.contains($0.key) }
         metadata = metadata.filter { dirtyMetadataKeys.contains($0.key) }
+        liveMetadata = liveMetadata.filter { dirtyKeys.contains($0.key) }
     }
 
     func setLastSeenStatuses(_ statusIds: [String], for client: String, filter: TimelineFilter) {
@@ -165,7 +205,8 @@ actor TimelineCache {
             do {
                 let encoder = JSONEncoder()
                 encoder.dateEncodingStrategy = .iso8601
-                try encoder.encode(items).write(to: fileURL(key, extension: "cache"), options: .atomic)
+                try encoder.encode(CachedSnapshot(items: items, live: liveMetadata[key]))
+                    .write(to: fileURL(key, extension: "cache"), options: .atomic)
                 dirtyKeys.remove(key)
             } catch { /* Retain dirty state so the next flush can retry. */ }
         }
@@ -179,6 +220,7 @@ actor TimelineCache {
     }
 
     private func assign(_ statuses: [Status], key: String) {
+        liveMetadata[key] = nil
         var seen = Set<String>()
         let unique = statuses.filter { seen.insert($0.id).inserted }.prefix(maxCachedStatuses)
         let now = Date()
@@ -196,8 +238,14 @@ actor TimelineCache {
         else {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            cached = (try? Data(contentsOf: fileURL(key, extension: "cache")))
-                .flatMap { try? decoder.decode([CachedItem].self, from: $0) }
+            if let data = try? Data(contentsOf: fileURL(key, extension: "cache")) {
+                if let snapshot = try? decoder.decode(CachedSnapshot.self, from: data) {
+                    cached = snapshot.items
+                    liveMetadata[key] = snapshot.live
+                } else {
+                    cached = try? decoder.decode([CachedItem].self, from: data)
+                }
+            } else { cached = nil }
         }
         guard let cached else { return nil }
         if let first = cached.first, Date().timeIntervalSince(first.cachedAt) >= cacheExpirationInterval {
@@ -231,6 +279,7 @@ actor TimelineCache {
     private func clear(key: String) {
         memoryCache[key] = nil
         metadata[key] = nil
+        liveMetadata[key] = nil
         dirtyKeys.remove(key)
         dirtyMetadataKeys.remove(key)
         try? FileManager.default.removeItem(at: fileURL(key, extension: "cache"))
@@ -241,4 +290,8 @@ actor TimelineCache {
     private func fileURL(_ key: String, extension ext: String) -> URL {
         cacheDirectory.appendingPathComponent("\(key).\(ext)")
     }
+}
+
+extension Notification.Name {
+    static let timelineContentWillClear = Notification.Name("moro.timelineContentWillClear")
 }

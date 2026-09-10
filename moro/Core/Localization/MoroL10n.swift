@@ -756,6 +756,10 @@ public enum MoroL10n {
     }
 
     public enum Timeline {
+        public static var hasNewPosts: String { text("timeline.hasNewPosts") }
+        public static var loadGap: String { text("timeline.loadGap") }
+        public static var gapRetry: String { text("timeline.gapRetry") }
+        public static func newPostsAtLeast(_ count: Int) -> String { format("timeline.newPostsAtLeast", Int64(count)) }
         public static var refreshing: String { text("timeline.refreshing") }
         public static var newPostsMany: String { text("timeline.newPostsMany") }
         public static var confirmBoostTitle: String { text("timeline.confirmBoost.title") }

@@ -66,7 +66,8 @@ final class PinnedTimelineViewModelStore: ObservableObject {
         let viewModel = TimelineViewModel(
             apiClient: apiClient,
             timelineType: type,
-            cacheClientID: cacheClientID
+            cacheClientID: cacheClientID,
+            defersLivePresentation: true
         )
         viewModels[type.id] = viewModel
         return viewModel
@@ -84,6 +85,7 @@ final class PinnedTimelineViewModelStore: ObservableObject {
 
 @MainActor
 final class TimelinePageSession: ObservableObject {
+    var hasRestoredReadingAnchor = false
     private(set) var contentOffsetY: CGFloat = 0
     private(set) var nativeContentOffset: CGPoint?
     private(set) var topVisibleStatusID: String?

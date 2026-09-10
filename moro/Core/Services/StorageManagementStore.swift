@@ -34,6 +34,7 @@ final class StorageManagementStore: ObservableObject {
         guard !isClearing else { return }
         isClearing = true
         failed = false
+        NotificationCenter.default.post(name: .timelineContentWillClear, object: CacheManager.shared.timelineCache)
         CacheManager.shared.threadCache.invalidateAll()
         CacheManager.shared.accountCache.clear()
         SDWebImageManager.shared.cancelAll()

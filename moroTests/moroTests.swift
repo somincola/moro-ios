@@ -2526,7 +2526,8 @@ struct moroTests {
         let api = MockMastodonAPI()
         api.fetchHomeTimelineHandler = { _, _, _ in [] }
 
-        let viewModel = TimelineViewModel(apiClient: api, timelineType: .home)
+        let viewModel = TimelineViewModel(apiClient: api, timelineType: .home,
+            timelineCache: TimelineCache(), cacheClientID: "empty-refresh-\(UUID().uuidString)")
         await viewModel.loadInitial()   // loads empty → .idle, statuses == []
         await viewModel.refresh()       // empty refresh on an empty list
 
@@ -6708,7 +6709,7 @@ private extension moroTests {
         #expect(ids.contains("s0"))           // the genuinely-new item was appended
     }
 
-    @Test @MainActor func refreshResetsOnFullPageToAvoidGap() async {
+    @Test @MainActor func refreshPreservesOldRowsWithAnExplicitGap() async {
         let api = MockMastodonAPI()
         let config = TimelineViewModel.BootstrapConfig(
             initialLoadLimit: 2,
@@ -6738,9 +6739,9 @@ private extension moroTests {
         await viewModel.loadInitial()
         await viewModel.refresh()
 
-        // A full-page refresh resets to the fresh batch instead of inserting and leaving a
-        // gap between the new batch and the old top.
-        #expect(viewModel.statuses.map(\.id) == ["new2", "new1"])
+        #expect(viewModel.statuses.map(\.id) == ["new2", "new1", "old2", "old1"])
+        #expect(viewModel.gaps.first?.afterID == "new1")
+        #expect(viewModel.gaps.first?.beforeID == "old2")
     }
 
     @Test @MainActor func timelinePullRefreshDisarmsWhenPulledBackBeforeRelease() {
@@ -6878,7 +6879,7 @@ private extension moroTests {
         #expect(viewModel.loadMoreFailed == false)
     }
 
-    @Test @MainActor func refreshCatchesUpMultiplePagesWithoutTimelineGap() async {
+    @Test @MainActor func refreshShowsLatestPageBeforeFillingTheGap() async {
         let api = MockMastodonAPI()
         let config = TimelineViewModel.BootstrapConfig(
             initialLoadLimit: 2,
@@ -6915,11 +6916,17 @@ private extension moroTests {
         let result = await viewModel.refresh(trigger: .newPosts)
 
         if case .success(let insertedCount, let replaced) = result {
-            #expect(insertedCount == 4)
+            #expect(insertedCount == 2)
             #expect(replaced == false)
         } else {
             Issue.record("Expected catch-up refresh success")
         }
+        #expect(viewModel.statuses.map(\.id) == ["new4", "new3", "old2", "old1"])
+        if let gap = viewModel.gaps.first {
+            #expect(await viewModel.loadGap(id: gap.id))
+            #expect(await viewModel.loadGap(id: gap.id))
+        } else { Issue.record("Expected a pageable gap") }
+        #expect(viewModel.gaps.isEmpty)
         #expect(
             viewModel.statuses.map(\.id)
                 == ["new4", "new3", "new2", "new1", "old2", "old1"]

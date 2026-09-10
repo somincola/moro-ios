@@ -101,6 +101,9 @@ struct StatusPublishPayload: Encodable {
 }
 
 protocol MastodonAPI {
+    func fetchTimelinePage(
+        timeline: TimelineType, maxID: String?, sinceID: String?, limit: Int
+    ) async throws -> TimelinePage
     /// Stable identifier for instance-scoped metadata caches.
     /// Test doubles and clients without a stable server identity may keep the default `nil`.
     var instanceMetadataCacheKey: String? { get }
@@ -343,6 +346,21 @@ protocol MastodonAPI {
 }
 
 extension MastodonAPI {
+    func fetchTimelinePage(
+        timeline: TimelineType, maxID: String?, sinceID: String?, limit: Int
+    ) async throws -> TimelinePage {
+        let statuses: [Status]
+        switch timeline {
+        case .home:
+            statuses = try await fetchHomeTimeline(maxID: maxID, sinceID: sinceID, limit: limit)
+        case .local, .federated:
+            statuses = try await fetchPublicTimeline(local: timeline == .local,
+                maxID: maxID, sinceID: sinceID, minID: nil, limit: limit)
+        case .list(let id, _):
+            statuses = try await fetchListTimeline(id: id, maxID: maxID, sinceID: sinceID, limit: limit)
+        }
+        return TimelinePage(statuses: statuses)
+    }
     func fetchNotification(id: String) async throws -> NotificationItem {
         throw APIError.http(statusCode: 501, data: nil)
     }

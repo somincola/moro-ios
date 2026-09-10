@@ -64,6 +64,12 @@ final class StreamWatcher {
     /// Lossless in-process event channel. Consumers that must handle every edit/delete/update
     /// subscribe here instead of observing `latestEvent`, whose value semantics may coalesce.
     let events = PassthroughSubject<StreamEvent, Never>()
+    let sourcedEvents = PassthroughSubject<SourcedStreamEvent, Never>()
+
+    func matchesCredentials(baseURL: URL, accessToken: String?) -> Bool {
+        guard let accessToken else { return false }
+        return self.baseURL == baseURL && self.accessToken == accessToken
+    }
 
     /// Whether the watcher is actively watching
     var isWatching: Bool {
@@ -479,6 +485,9 @@ final class StreamWatcher {
             let rawEvent = try decoder.decode(RawStreamEvent.self, from: data)
 
             if let event = convertRawEvent(rawEvent) {
+                let streams = rawEvent.stream
+                    ?? (watchedStreams.count == 1 ? watchedStreams.map(\.rawValue) : [])
+                sourcedEvents.send(SourcedStreamEvent(event: event, streams: streams))
                 appendEvent(event)
                 verboseDebug("Received stream event: \(rawEvent.event)")
             }

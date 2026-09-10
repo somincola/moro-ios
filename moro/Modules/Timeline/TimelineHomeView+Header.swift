@@ -12,26 +12,17 @@ extension TimelineHomeView {
     func handleFeedCoordinatorUpdate(_ update: UpdatedElement) {
         guard case .createdPost(let status) = update else { return }
 
-        let pendingCount = detectionManager.newItemsCounts[.following] ?? 0
-        if selectedTimeline == .home,
-            scrollBridge.isAtTop(.home),
-            pendingCount == 0
-        {
-            homeViewModel.insertCreatedStatus(status)
-            syncDetectionTopID(for: .home)
-        } else {
-            homeViewModel.stageCreatedStatus(status)
-            detectionManager.incrementCount(for: .following, latestID: status.id)
-        }
+        homeViewModel.receiveLiveStatus(status, authoredByCurrentUser: true)
     }
 
     func handleStreamEvent(_ event: StreamEvent) {
+        guard detectionManager.isConfigured(for: cacheClientID),
+            streamWatcher.matchesCredentials(baseURL: AppEnvironment.apiBaseURL, accessToken: appState.authToken)
+        else { return }
         switch event {
         case .update(let status):
-            homeViewModel.trackPendingStatusID(status.id)
-            if status.account.id != appState.currentAccount?.id {
-                detectionManager.incrementCount(for: .following, latestID: status.id)
-            }
+            homeViewModel.receiveLiveStatus(status,
+                authoredByCurrentUser: status.account.id == appState.currentAccount?.id)
 
         case .statusUpdate, .delete:
             let viewModels = [homeViewModel, localViewModel, federatedViewModel]

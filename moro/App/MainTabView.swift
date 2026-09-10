@@ -444,7 +444,9 @@ private struct HomeTabRootView: View {
                 coordinator.timelineSelection = timeline
             },
             onChromeFraction: nil,
-            isActive: coordinator.selectedTab == .home && coordinator.isAtRoot(.home),
+            isActive: coordinator.selectedTab == .home && coordinator.isAtRoot(.home)
+                && coordinator.presentedSheet == nil && coordinator.composeContext == nil
+                && !coordinator.showAddAccountLogin,
             bottomContentInset: coordinator.tabBarHeight + composeButtonClearance
         )
         .environment(\.selectedTabScrollToTop, coordinator.selectedTabScrollToTop)

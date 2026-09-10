@@ -40,10 +40,6 @@ struct TimelineHomeView: View {
     /// Lazily-built view models for pinned timelines (lists).
     @StateObject var pinnedTimelineStore = PinnedTimelineViewModelStore()
 
-    /// The new-post notice remains visible until its pending batch is handled.
-    @State var isNewPostsIndicatorVisible = false
-    @State var isLoadingDetectedPosts = false
-
     /// Scroll proxies, header visibility and per-timeline at-top flags — shared by
     /// reference so they survive the pager's per-timeline UIHostingController boundary.
     @StateObject var scrollBridge = TimelineScrollBridge()
@@ -83,6 +79,7 @@ struct TimelineHomeView: View {
     @State var startupDeferredTask: Task<Void, Never>?
     @State var lastAnnouncementRefreshAt: Date = .distantPast
     @State var lastInactiveAt: Date?
+    @State var presentationToken = UUID()
     /// The root header grows for larger content sizes while keeping its normal compact height.
     @ScaledMetric(relativeTo: .body) var scaledHeaderHeight: CGFloat = 48
     var headerHeight: CGFloat { min(max(scaledHeaderHeight, 48), 72) }
@@ -126,7 +123,8 @@ struct TimelineHomeView: View {
         onTimelineSelectionChange: ((TimelineType) -> Void)? = nil,
         onChromeFraction: ((CGFloat) -> Void)? = nil,
         isActive: Bool = true,
-        bottomContentInset: CGFloat = 0
+        bottomContentInset: CGFloat = 0,
+        homeViewModel: TimelineViewModel? = nil
     ) {
         self.apiClient = apiClient
         self.cacheClientID = cacheClientID
@@ -139,22 +137,25 @@ struct TimelineHomeView: View {
         _postMenuActionCenter = StateObject(
             wrappedValue: PostMenuActionCenter(apiClient: apiClient))
         _homeViewModel = StateObject(
-            wrappedValue: TimelineViewModel(
+            wrappedValue: homeViewModel ?? TimelineViewModel(
                 apiClient: apiClient,
                 timelineType: .home,
-                cacheClientID: cacheClientID
+                cacheClientID: cacheClientID,
+                defersLivePresentation: true
             ))
         _localViewModel = StateObject(
             wrappedValue: TimelineViewModel(
                 apiClient: apiClient,
                 timelineType: .local,
-                cacheClientID: cacheClientID
+                cacheClientID: cacheClientID,
+                defersLivePresentation: true
             ))
         _federatedViewModel = StateObject(
             wrappedValue: TimelineViewModel(
                 apiClient: apiClient,
                 timelineType: .federated,
-                cacheClientID: cacheClientID
+                cacheClientID: cacheClientID,
+                defersLivePresentation: true
             ))
         _interactionService = StateObject(
             wrappedValue: PostInteractionService(apiClient: apiClient))
@@ -185,13 +186,13 @@ struct TimelineHomeView: View {
 
         switch timeline {
         case .home:
-            topID = homeViewModel.statuses.first?.id
+            topID = homeViewModel.detectionBaselineID
             dimension = .following
         case .local:
-            topID = localViewModel.statuses.first?.id
+            topID = localViewModel.detectionBaselineID
             dimension = .local
         case .federated:
-            topID = federatedViewModel.statuses.first?.id
+            topID = federatedViewModel.detectionBaselineID
             dimension = .federated
         case .list:
             // Pinned timelines have no detection dimension.
@@ -231,29 +232,41 @@ struct TimelineHomeView: View {
                 floatingHeader
             }
 
-            // New posts indicator
-            topIndicator
+            // Pinned models live in a retained store, so the notice observes the
+            // active model directly as well as the three built-in StateObjects.
+            TimelineObservedPage(viewModel: viewModel) { topIndicator }
+        }
+        .onChange(of: hasLocalModal) { _, modal in
+            scrollBridge.setActive(isActive && scenePhase == .active && !modal)
         }
         .background(sceneCanvasColor)
         // Extend content + background under the bottom safe area.
         .ignoresSafeArea(.container, edges: .bottom)
         .onAppear {
             scrollBridge.setPresentedTimeline(selectedTimeline)
+            scrollBridge.setActive(isActive && scenePhase == .active && !hasLocalModal)
             onTimelineSelectionChange?(selectedTimeline)
         }
         .task {
             // ── Phase 1: Critical Path (T=0) ──
             // Only timeline API; no WebSocket, no side-requests.
-            detectionManager.configure(
-                apiClient: apiClient,
-                scopeID: cacheClientID
-            )
+            let sourceModels: [TimelineType: TimelineViewModel] = [
+                .home: homeViewModel, .local: localViewModel, .federated: federatedViewModel]
+            detectionManager.configure(apiClient: apiClient, scopeID: cacheClientID,
+                refreshTimeline: { timeline in
+                    guard let target = sourceModels[timeline] else { return nil }
+                    await target.refresh(trigger: .foreground)
+                    return target.detectionBaselineID
+                })
             detectionManager.setActiveDimension(.following)
             StartupPerformanceTracker.shared.markTimelineBootstrapProfile(
                 tier: homeViewModel.bootstrapTierLabel,
                 summary: homeViewModel.bootstrapProfileSummary
             )
 
+            homeViewModel.currentAccountID = appState.currentAccount?.id
+            localViewModel.currentAccountID = appState.currentAccount?.id
+            federatedViewModel.currentAccountID = appState.currentAccount?.id
             await homeViewModel.loadInitial()
             StartupPerformanceTracker.shared.markTimelineDataReady(
                 count: homeViewModel.statuses.count
@@ -268,8 +281,61 @@ struct TimelineHomeView: View {
             // ── Phase 2/3: Post-First-Paint low priority work ──
             scheduleDeferredStartupTasks()
         }
-        .onReceive(streamWatcher.events) { event in
-            handleStreamEvent(event)
+        .onReceive(scrollBridge.layoutEvents) { timeline in
+            guard timeline == selectedTimeline else { return }
+            processLiveUpdates(for: timeline, viewModel: viewModel)
+        }
+        .onReceive(detectionManager.pages) { event in
+            guard event.scopeID == cacheClientID else { return }
+            let target: TimelineViewModel
+            switch event.timeline {
+            case .home: target = homeViewModel
+            case .local: target = localViewModel
+            case .federated: target = federatedViewModel
+            case .list: target = pinnedViewModel(for: event.timeline)
+            }
+            target.currentAccountID = appState.currentAccount?.id
+            target.receiveDetectedPage(event.page, sinceID: event.sinceID)
+            syncDetectionTopID(for: event.timeline)
+        }
+        .onChange(of: isActive) { _, active in
+            scrollBridge.setActive(active && scenePhase == .active && !hasLocalModal)
+            detectionManager.setActiveDimension(active ? detectionDimension(for: selectedTimeline) : nil)
+            if active, viewModel.statuses.isEmpty {
+                let target = viewModel
+                let timeline = selectedTimeline
+                Task {
+                    await target.loadInitial()
+                    syncDetectionTopID(for: timeline)
+                    detectionManager.startDetection()
+                }
+            }
+            if !active {
+                viewModel.cancelBackgroundTasks()
+                if let anchor = scrollBridge.readingAnchors(for: selectedTimeline).first {
+                    viewModel.saveReadingAnchor(anchor)
+                }
+            }
+        }
+        .task(id: activeListPollingKey) {
+            guard let _ = activeListPollingKey else { return }
+            let target = viewModel
+            while !Task.isCancelled {
+                if case .loaded = target.initialLoadState,
+                    Date().timeIntervalSince(target.lastLatestCheckAt ?? .distantPast) >= 60 {
+                    await target.refresh(trigger: .foreground)
+                }
+                do { try await Task.sleep(for: .seconds(90)) } catch { return }
+            }
+        }
+        .onChange(of: streamWatcher.connectionState) { old, new in
+            guard new == .connected, old != .connected, hasLoadedHome,
+                scenePhase == .active, detectionManager.isConfigured(for: cacheClientID) else { return }
+            Task { await detectionManager.checkForNewItems(dimension: .following, force: true) }
+        }
+        .onReceive(streamWatcher.sourcedEvents) { message in
+            if case .update = message.event, !message.canInsertIntoHome { return }
+            handleStreamEvent(message.event)
         }
         .onReceive(FeedCoordinator.shared.updates) { update in
             handleFeedCoordinatorUpdate(update)
@@ -290,6 +356,8 @@ struct TimelineHomeView: View {
 
             let wasAlreadyLoaded = hasFinishedInitialLoad(for: newValue)
             let targetViewModel = viewModel
+            targetViewModel.currentAccountID = appState.currentAccount?.id
+            presentationToken = UUID()
 
             // Load the new timeline if not already loaded
             Task {
@@ -330,14 +398,6 @@ struct TimelineHomeView: View {
             }
             scrollBridge.prepareForTimelineSwitch()
             onTimelineSelectionChange?(newValue)
-            updateNewPostsIndicator(for: currentDetectionCount)
-        }
-        .onChange(of: currentDetectionCount) { _, newCount in
-            updateNewPostsIndicator(for: newCount)
-        }
-        .onChange(of: isCurrentTimelineAtTop) { _, isAtTop in
-            guard isAtTop, currentDetectionCount > 0 else { return }
-            loadDetectedPosts(scrollToTop: false, providesFeedback: false)
         }
         .onChange(of: pinnedTimelineTypes) { _, newPinned in
             // Unpin / rename / refund while a pinned page is selected: fall back to
@@ -361,14 +421,11 @@ struct TimelineHomeView: View {
                 refreshCurrentTimelineFromTab()
             } else {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                scrollBridge.resetChrome()
-                onChromeFraction?(0)
-                withAnimation {
-                    scrollBridge.scrollToTop(selectedTimeline)
-                }
+                loadDetectedPosts(scrollToTop: true, providesFeedback: false)
             }
         }
         .onChange(of: scenePhase) { _, newValue in
+            scrollBridge.setActive(isActive && newValue == .active && !hasLocalModal)
             switch newValue {
             case .active:
                 guard hasLoadedHome else { return }
@@ -397,6 +454,9 @@ struct TimelineHomeView: View {
                 }
 
             case .inactive, .background:
+                let models = [homeViewModel, localViewModel, federatedViewModel] + pinnedTimelineStore.allViewModels
+                for model in models { model.cancelBackgroundTasks() }
+                Task { for model in models where model.hasReadingState { await model.flushCacheWrites() } }
                 if lastInactiveAt == nil {
                     lastInactiveAt = Date()
                 }
@@ -405,6 +465,7 @@ struct TimelineHomeView: View {
             }
         }
         .onDisappear {
+            scrollBridge.setActive(false)
             startupDeferredTask?.cancel()
             announcementBadgeTask?.cancel()
         }
@@ -517,6 +578,17 @@ struct TimelineHomeView: View {
         }
     }
 
+    private var hasLocalModal: Bool {
+        actionSurface.composeContext != nil || actionSurface.boostDialogStatus != nil
+            || actionSurface.reportStatus != nil || actionSurface.statusToDelete != nil
+            || interactionService.activeAlert != nil
+    }
+
+    private var activeListPollingKey: String? {
+        guard isActive, scenePhase == .active, case .list = selectedTimeline else { return nil }
+        return "\(cacheClientID):\(selectedTimeline.id)"
+    }
+
     var sceneCanvasColor: Color {
         (sceneDescriptor?.canvas ?? .content).backgroundColor(in: theme)
     }
@@ -550,6 +622,7 @@ struct TimelineHomeView: View {
         let session = pageSessionStore.session(for: timeline)
         session.captureNativeContentOffset(scrollBridge.nativeContentOffset(for: timeline))
         session.freezeVisibility()
+        scrollBridge.setFrozen(true, for: timeline)
     }
 
     @MainActor
@@ -560,8 +633,10 @@ struct TimelineHomeView: View {
         let statusID = session.topVisibleStatusID
         let shouldRestore = savedOffset > 1 && statusID != nil
 
+        let token = presentationToken
         Task { @MainActor in
             await Task.yield()
+            guard selectedTimeline == timeline, token == presentationToken else { return }
             let chromeFraction = scrollBridge.setPresentedTimeline(timeline)
             onChromeFraction?(chromeFraction)
             if let nativeContentOffset,
@@ -575,7 +650,9 @@ struct TimelineHomeView: View {
                 scrollBridge.restoreScrollPosition(timeline, targetID: targetID)
                 await Task.yield()
             }
+            guard selectedTimeline == timeline, token == presentationToken else { return }
             session.resumeVisibilityTracking()
+            scrollBridge.setFrozen(false, for: timeline)
         }
     }
 

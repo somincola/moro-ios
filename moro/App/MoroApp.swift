@@ -49,6 +49,8 @@ struct MoroApp: App {
                     ComposeMediaGridHarnessView()
                         .moroTheme(MoroTheme(accent: .monochrome))
                         .preferredColorScheme(colorScheme)
+                } else if shouldUseTimelineLiveHarness {
+                    timelineLiveHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseListCacheHarness {
                     listCacheHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseBookmarksHarness {
@@ -172,6 +174,20 @@ struct MoroApp: App {
     private var shouldUseComposeCounterHarness: Bool {
         launchArguments.contains("UITEST_COMPOSE_COUNTER")
             || launchEnvironment["UITEST_COMPOSE_COUNTER"] == "1"
+    }
+
+    private var shouldUseTimelineLiveHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_TIMELINE_LIVE")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var timelineLiveHarness: some View {
+        #if DEBUG
+        TimelineLiveHarnessView()
+        #endif
     }
 
     private var shouldUseListCacheHarness: Bool {
