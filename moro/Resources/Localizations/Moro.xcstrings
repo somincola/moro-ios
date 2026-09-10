@@ -1,6 +1,65 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
+    "compose.publish.unconfirmed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Veröffentlichung konnte nicht bestätigt werden. Bitte versuche es später erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not confirm whether your post was published. Please try again shortly."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo confirmar si se publicó tu mensaje. Inténtalo de nuevo en unos momentos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de confirmer la publication de votre message. Réessayez dans un instant."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non è stato possibile confermare la pubblicazione del messaggio. Riprova tra poco."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿されたか確認できませんでした。少し待ってからもう一度お試しください。"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível confirmar se a publicação foi enviada. Volte a tentar dentro de instantes."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未能确认帖子是否发布成功，请稍后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未能確認貼文是否發佈成功，請稍後重試。"
+          }
+        }
+      }
+    },
     "appSupport.cacheDetail" : {
       "extractionState" : "manual",
       "localizations" : {

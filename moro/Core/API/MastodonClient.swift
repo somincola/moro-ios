@@ -47,34 +47,6 @@ struct MastodonClient: MastodonAPI {
         return URLSession(configuration: configuration)
     }()
 
-    private struct StatusPayload: Encodable {
-        let status: String
-        let visibility: MastodonVisibility
-        let mediaIDs: [String]?
-        let inReplyToID: String?
-        let spoilerText: String?
-        let sensitive: Bool?
-        let quoteID: String?
-        let quoteApprovalPolicy: MastodonQuoteApprovalPolicy?
-        let language: String?
-        let scheduledAt: String?
-        let poll: StatusPollPayload?
-
-        enum CodingKeys: String, CodingKey {
-            case status
-            case visibility
-            case mediaIDs = "media_ids"
-            case inReplyToID = "in_reply_to_id"
-            case spoilerText = "spoiler_text"
-            case sensitive
-            case quoteID = "quoted_status_id"
-            case quoteApprovalPolicy = "quote_approval_policy"
-            case language
-            case scheduledAt = "scheduled_at"
-            case poll
-        }
-    }
-
     /// Editing must not re-send creation-only fields or reset an existing quote.
     private struct StatusEditPayload: Encodable {
         let status: String
@@ -732,9 +704,10 @@ struct MastodonClient: MastodonAPI {
         quoteApprovalPolicy: MastodonQuoteApprovalPolicy? = nil,
         language: String?,
         scheduledAt: Date?,
-        poll: StatusPollPayload?
+        poll: StatusPollPayload?,
+        idempotencyKey: String? = nil
     ) async throws -> StatusPublishResult {
-        let payload = StatusPayload(
+        let payload = StatusPublishPayload(
             status: text,
             visibility: visibility,
             mediaIDs: mediaIDs,
@@ -748,7 +721,8 @@ struct MastodonClient: MastodonAPI {
             poll: poll
         )
         let endpoint = MastodonEndpoint.postStatus
-        let request = try authorizedRequest(for: endpoint, body: payload)
+        var request = try authorizedRequest(for: endpoint, body: payload)
+        request.setValue(idempotencyKey ?? UUID().uuidString, forHTTPHeaderField: "Idempotency-Key")
         if scheduledAt != nil {
             let scheduled: ScheduledStatus = try await perform(request)
             return .scheduled(scheduled)

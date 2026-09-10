@@ -355,6 +355,7 @@ public enum MoroL10n {
         public static var optionScheduleDate: String { text("compose.option.scheduleDate") }
         public static var optionLanguage: String { text("compose.option.language") }
         public static var successPosted: String { text("compose.success.posted") }
+        public static var publishUnconfirmed: String { text("compose.publish.unconfirmed") }
         public static var validationMediaUploading: String { text("compose.validation.mediaUploading") }
         public static var validationMediaUploadFailed: String { text("compose.validation.mediaUploadFailed") }
         public static var validationPollNeedsMoreOptions: String {

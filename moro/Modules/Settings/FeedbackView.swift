@@ -60,7 +60,8 @@ struct FeedbackView: View {
         .sheet(item: $draft) { draft in
             if let apiClient {
                 ComposeView(context: .newPost, apiClient: apiClient,
-                            currentUserID: appState.currentAccount?.id, initialDraft: draft)
+                            currentUserID: appState.currentAccount?.id, initialDraft: draft,
+                            onDismiss: { self.draft = nil })
                     .environmentObject(appState)
                     .moroSheetSurface(detents: [.large], cornerRadius: 20)
             }

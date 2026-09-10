@@ -190,7 +190,8 @@ struct StatusDetailView: View {
                 context: wrapper.context,
                 apiClient: apiClient,
                 currentUserID: appState.currentAccount?.id,
-                initialDraft: wrapper.draft
+                initialDraft: wrapper.draft,
+                onDismiss: { actionSurface.composeContext = nil }
             ) { publishedStatus in
                 Task {
                     await viewModel.refresh()

@@ -96,7 +96,8 @@ extension SearchContentView {
                 context: wrapper.context,
                 apiClient: apiClient,
                 currentUserID: appState.currentAccount?.id,
-                initialDraft: wrapper.draft
+                initialDraft: wrapper.draft,
+                onDismiss: { actionSurface.composeContext = nil }
             ) { status in
                 FeedCoordinator.shared.publishUpdate(.post(status))
             }

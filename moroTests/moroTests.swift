@@ -8159,6 +8159,8 @@ final class MockMastodonAPI: MastodonAPI {
         }
         throw MockError.unimplemented
     }
+    var publishIdempotencyKeys: [String?] = []
+
     func publishStatus(
         text: String,
         visibility: MastodonVisibility,
@@ -8170,8 +8172,10 @@ final class MockMastodonAPI: MastodonAPI {
         quoteApprovalPolicy: MastodonQuoteApprovalPolicy?,
         language: String?,
         scheduledAt: Date?,
-        poll: StatusPollPayload?
+        poll: StatusPollPayload?,
+        idempotencyKey: String?
     ) async throws -> StatusPublishResult {
+        publishIdempotencyKeys.append(idempotencyKey)
         if let publishStatusResultHandler {
             return try await publishStatusResultHandler(
                 text,

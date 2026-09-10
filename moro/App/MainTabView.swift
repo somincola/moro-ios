@@ -123,7 +123,8 @@ struct MainTabView: View {
                 apiClient: apiClient,
                 currentUserID: appState.currentAccount?.id,
                 initialDraft: wrapper.draft,
-                sharedImport: wrapper.sharedImport
+                sharedImport: wrapper.sharedImport,
+                onDismiss: { coordinator.composeContext = nil }
             ) { _ in }
             .environmentObject(appState)
         }

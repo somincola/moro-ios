@@ -75,6 +75,31 @@ enum StatusPublishResult {
     case scheduled(ScheduledStatus)
 }
 
+/// The exact creation payload, shared by transport encoding and retry identity.
+struct StatusPublishPayload: Encodable {
+    let status: String
+    let visibility: MastodonVisibility
+    let mediaIDs: [String]?
+    let inReplyToID: String?
+    let spoilerText: String?
+    let sensitive: Bool?
+    let quoteID: String?
+    let quoteApprovalPolicy: MastodonQuoteApprovalPolicy?
+    let language: String?
+    let scheduledAt: String?
+    let poll: StatusPollPayload?
+
+    enum CodingKeys: String, CodingKey {
+        case status, visibility, sensitive, language, poll
+        case mediaIDs = "media_ids"
+        case inReplyToID = "in_reply_to_id"
+        case spoilerText = "spoiler_text"
+        case quoteID = "quoted_status_id"
+        case quoteApprovalPolicy = "quote_approval_policy"
+        case scheduledAt = "scheduled_at"
+    }
+}
+
 protocol MastodonAPI {
     /// Stable identifier for instance-scoped metadata caches.
     /// Test doubles and clients without a stable server identity may keep the default `nil`.
@@ -299,7 +324,8 @@ protocol MastodonAPI {
         quoteApprovalPolicy: MastodonQuoteApprovalPolicy?,
         language: String?,
         scheduledAt: Date?,
-        poll: StatusPollPayload?
+        poll: StatusPollPayload?,
+        idempotencyKey: String?
     ) async throws -> StatusPublishResult
 
     // Reports

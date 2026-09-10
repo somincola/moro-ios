@@ -39,7 +39,8 @@ private struct ProfileActionPresentationsModifier: ViewModifier {
                     context: wrapper.context,
                     apiClient: apiClient,
                     currentUserID: appState.currentAccount?.id,
-                    initialDraft: wrapper.draft
+                    initialDraft: wrapper.draft,
+                    onDismiss: { actionSurface.composeContext = nil }
                 ) { _ in
                     Task {
                         await refreshProfile()

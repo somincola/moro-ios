@@ -211,6 +211,7 @@ struct ComposeDraft: Identifiable, Codable, Equatable {
     var payload: ComposeDraftPayload
     let createdAt: Date
     var updatedAt: Date
+    var publishAttempt: ComposePublishAttempt? = nil
 
     var displayPreviewText: String {
         let preview = payload.previewText

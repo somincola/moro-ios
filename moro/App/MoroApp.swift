@@ -33,7 +33,9 @@ struct MoroApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if shouldUsePushHarness {
+                if shouldUsePublishingHarness {
+                    publishingHarness.preferredColorScheme(colorScheme)
+                } else if shouldUsePushHarness {
                     pushHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseSettingsSheetHarness {
                     SettingsSheetHarnessView()
@@ -118,6 +120,20 @@ struct MoroApp: App {
         launchArguments.contains("UITEST_PUSH_OPEN")
         #else
         false
+        #endif
+    }
+
+    private var shouldUsePublishingHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_PUBLISHING")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var publishingHarness: some View {
+        #if DEBUG
+        ComposePublishingHarnessView().moroTheme(MoroTheme(accent: .monochrome))
         #endif
     }
 
