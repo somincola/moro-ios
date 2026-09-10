@@ -169,6 +169,25 @@ final class RootTabCoordinator: ObservableObject {
         inboxRouter.replace(with: .conversationDetail(conversation))
     }
 
+    func openPushNotification(_ destination: PushNotificationDestination) {
+        switch destination {
+        case .notifications:
+            openInbox(.notifications)
+            inboxRouter.popToRoot()
+        case .messages:
+            openInbox(.messages)
+            inboxRouter.popToRoot()
+        case .status(let status):
+            openInbox(.notifications)
+            inboxRouter.replace(with: .statusDetail(status))
+        case .profile(let account):
+            openInbox(.notifications)
+            inboxRouter.replace(with: .userProfile(account))
+        case .conversation(let conversation):
+            openConversation(conversation)
+        }
+    }
+
     func navigate(to route: Route, on tab: MainTab? = nil) {
         let targetTab = tab ?? selectedTab
         let router = router(for: targetTab)

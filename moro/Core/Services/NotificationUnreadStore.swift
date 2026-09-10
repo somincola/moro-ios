@@ -18,10 +18,7 @@ final class NotificationUnreadStore: ObservableObject {
 
     @Published private(set) var activeUnreadCount = 0
     @Published private(set) var refreshVersion = 0
-    @Published private(set) var pendingOpenSessionID: String?
-    @Published private(set) var pendingOpenNotificationID: String?
-    @Published private(set) var pendingOpenNotificationType: String?
-    @Published private(set) var pendingOpenVersion = 0
+    @Published private(set) var pendingOpenRequest: PendingNotificationOpen?
     @Published private(set) var isNotificationListVisible = false
 
     private enum Keys {
@@ -123,11 +120,15 @@ final class NotificationUnreadStore: ObservableObject {
     }
 
     func receiveRemoteNotification(userInfo: [AnyHashable: Any]) async -> Bool {
-        let sessionID = payloadSessionID(in: userInfo) ?? activeSessionID
+        receiveRemoteNotification(PushNotificationPayload(userInfo: userInfo))
+    }
+
+    func receiveRemoteNotification(_ payload: PushNotificationPayload) -> Bool {
+        let sessionID = payload.sessionID ?? activeSessionID
         if let sessionID {
             recordIncomingNotification(
                 sessionID: sessionID,
-                notificationID: payloadNotificationID(in: userInfo)
+                notificationID: payload.notificationID
             )
             if isNotificationListVisible, sessionID == activeSessionID {
                 refreshVersion &+= 1
@@ -138,24 +139,23 @@ final class NotificationUnreadStore: ObservableObject {
     }
 
     func handleNotificationResponse(userInfo: [AnyHashable: Any]) async {
-        let sessionID = payloadSessionID(in: userInfo) ?? activeSessionID
+        handleNotificationResponse(PushNotificationPayload(userInfo: userInfo))
+    }
+
+    func handleNotificationResponse(_ payload: PushNotificationPayload) {
+        let sessionID = payload.sessionID ?? activeSessionID
         if let sessionID {
             recordIncomingNotification(
                 sessionID: sessionID,
-                notificationID: payloadNotificationID(in: userInfo)
+                notificationID: payload.notificationID
             )
         }
-        pendingOpenSessionID = sessionID
-        pendingOpenNotificationID = payloadNotificationID(in: userInfo)
-        pendingOpenNotificationType = payloadNotificationType(in: userInfo)
-        pendingOpenVersion &+= 1
+        pendingOpenRequest = PendingNotificationOpen(sessionID: sessionID, payload: payload)
     }
 
-    func consumePendingNotificationOpen() {
-        pendingOpenSessionID = nil
-        pendingOpenNotificationID = nil
-        pendingOpenNotificationType = nil
-        pendingOpenVersion = 0
+    func consumePendingNotificationOpen(id: UUID) {
+        guard pendingOpenRequest?.id == id else { return }
+        pendingOpenRequest = nil
     }
 
     func markActiveNotificationsRead(through notificationID: String) async {
@@ -357,22 +357,6 @@ final class NotificationUnreadStore: ObservableObject {
     private func payloadSessionID(in userInfo: [AnyHashable: Any]) -> String? {
         guard let rawValue = userInfo["x"] as? String, !rawValue.isEmpty else { return nil }
         return rawValue.removingPercentEncoding ?? rawValue
-    }
-
-    private func payloadNotificationID(in userInfo: [AnyHashable: Any]) -> String? {
-        if let id = userInfo["notification_id"] as? String {
-            return id
-        }
-        if let id = userInfo["notification_id"] as? NSNumber {
-            return id.stringValue
-        }
-        return nil
-    }
-
-    private func payloadNotificationType(in userInfo: [AnyHashable: Any]) -> String? {
-        guard let type = userInfo["notification_type"] as? String else { return nil }
-        let normalized = type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return normalized.isEmpty ? nil : normalized
     }
 
     private func removeDeliveredNotifications(for sessionID: String) async {

@@ -846,6 +846,11 @@ struct MastodonClient: MastodonAPI {
         return response.count
     }
 
+    func fetchNotification(id: String) async throws -> NotificationItem {
+        let request = try authorizedRequest(for: .notification(id: id))
+        return try await perform(request)
+    }
+
     func fetchScheduledStatuses(maxID: String? = nil, sinceID: String? = nil, limit: Int = 20)
         async throws -> [ScheduledStatus]
     {

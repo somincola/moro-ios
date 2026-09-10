@@ -37,11 +37,18 @@ final class PushRegistrationCenter: NSObject, ObservableObject {
     private let userDefaults = UserDefaults.standard
     private let tokenStorageKey = "push_device_token_hex"
     private let tokenUpdatedAtKey = "push_device_token_updated_at"
+    private let notificationStore: NotificationUnreadStore
 
     override init() {
+        notificationStore = .shared
         super.init()
         deviceTokenHex = userDefaults.string(forKey: tokenStorageKey)
         lastTokenUpdatedAt = userDefaults.object(forKey: tokenUpdatedAtKey) as? Date
+    }
+
+    init(notificationStore: NotificationUnreadStore) {
+        self.notificationStore = notificationStore
+        super.init()
     }
 
     func configure() {
@@ -127,20 +134,39 @@ final class PushRegistrationCenter: NSObject, ObservableObject {
 extension PushRegistrationCenter: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        let shouldPresent = await NotificationUnreadStore.shared.receiveRemoteNotification(
-            userInfo: notification.request.content.userInfo
-        )
-        return shouldPresent ? [.banner, .list, .sound] : []
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        let payload = PushNotificationPayload(userInfo: notification.request.content.userInfo)
+        Task { @MainActor in
+            let shouldPresent = notificationStore.receiveRemoteNotification(payload)
+            completionHandler(shouldPresent ? [.banner, .list, .sound] : [])
+        }
     }
 
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
-        await NotificationUnreadStore.shared.handleNotificationResponse(
-            userInfo: response.notification.request.content.userInfo
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        handleResponse(
+            PushNotificationPayload(userInfo: response.notification.request.content.userInfo),
+            actionIdentifier: response.actionIdentifier,
+            completionHandler: completionHandler
         )
+    }
+
+    nonisolated func handleResponse(
+        _ payload: PushNotificationPayload,
+        actionIdentifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        // Complete on main to avoid lifecycle issues from the async delegate's
+        // generated background completion on affected OS versions.
+        Task { @MainActor in
+            defer { completionHandler() }
+            guard actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+            notificationStore.handleNotificationResponse(payload)
+        }
     }
 }

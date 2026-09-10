@@ -46,6 +46,9 @@ final class NotificationService: UNNotificationServiceExtension {
             if let id = message.notificationID {
                 content.userInfo["notification_id"] = id
             }
+            if let url = message.statusURL {
+                content.userInfo["status_url"] = url
+            }
         }
         applyUnreadBadge(to: content)
         contentHandler(content)
@@ -127,12 +130,28 @@ final class NotificationService: UNNotificationServiceExtension {
         let body: String?
         let notificationID: ID?
         let notificationType: String?
+        let url: String?
+        let statusURL: String?
 
         enum CodingKeys: String, CodingKey {
             case title
             case body
             case notificationID = "notification_id"
             case notificationType = "notification_type"
+            case url
+            case statusURL = "status_url"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            // A server-specific optional field must not discard otherwise usable
+            // notification text or the notification ID needed for navigation.
+            title = try? container.decode(String.self, forKey: .title)
+            body = try? container.decode(String.self, forKey: .body)
+            notificationID = try? container.decode(ID.self, forKey: .notificationID)
+            notificationType = try? container.decode(String.self, forKey: .notificationType)
+            url = try? container.decode(String.self, forKey: .url)
+            statusURL = try? container.decode(String.self, forKey: .statusURL)
         }
 
         /// Mastodon has sent both numeric and string IDs over time.
@@ -163,6 +182,7 @@ final class NotificationService: UNNotificationServiceExtension {
         let body: String?
         let notificationID: String?
         let notificationType: String?
+        let statusURL: String?
     }
 
     private func decryptedMessage(from userInfo: [AnyHashable: Any]) -> DecodedMessage? {
@@ -201,7 +221,8 @@ final class NotificationService: UNNotificationServiceExtension {
             title: message.title,
             body: message.body,
             notificationID: message.notificationID?.value,
-            notificationType: message.notificationType
+            notificationType: message.notificationType,
+            statusURL: message.statusURL ?? message.url
         )
     }
 }

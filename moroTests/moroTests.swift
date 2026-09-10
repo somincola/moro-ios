@@ -4956,7 +4956,7 @@ struct moroTests {
         #expect(inboxStore.totalUnreadCount == 2)
     }
 
-    @Test @MainActor func inboxUnreadStoreResolvesDirectMentionNotificationToConversation() async throws {
+    @Test @MainActor func notificationOpenResolvesDirectMentionToConversation() async throws {
         let suiteName = "InboxUnreadStoreTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -4974,8 +4974,9 @@ struct moroTests {
         )
         let api = MockMastodonAPI()
         api.fetchConversationsHandler = { _, _, _ in [conversation] }
-        api.fetchNotificationsHandler = { _, _, _ in
-            [self.makeNotification(id: "notification-1", type: "mention", account: sender, status: status)]
+        api.fetchNotificationHandler = { id in
+            #expect(id == "notification-1")
+            return self.makeNotification(id: id, type: "mention", account: sender, status: status)
         }
         let notificationStore = NotificationUnreadStore(
             userDefaults: defaults,
@@ -5000,13 +5001,16 @@ struct moroTests {
                 "notification_type": "mention",
             ]
         )
-        let resolved = await inboxStore.resolveConversation(
-            forNotificationID: notificationStore.pendingOpenNotificationID ?? ""
-        )
+        let request = try #require(notificationStore.pendingOpenRequest)
+        let resolved = await PushNotificationResolver.resolve(request.payload, apiClient: api)
 
-        #expect(notificationStore.pendingOpenSessionID == "session-a")
-        #expect(notificationStore.pendingOpenNotificationType == "mention")
-        #expect(resolved?.id == "conversation-1")
+        #expect(request.sessionID == "session-a")
+        #expect(request.payload.notificationType == "mention")
+        guard case .conversation(let resolvedConversation) = resolved else {
+            Issue.record("Expected the exact direct-message conversation")
+            return
+        }
+        #expect(resolvedConversation.id == "conversation-1")
     }
 
     @Test @MainActor func statusTranslationViewModelUsesRemoteProvider() async throws {
@@ -7513,6 +7517,7 @@ final class MockMastodonAPI: MastodonAPI {
     var fetchStatusDetailCallIDs: [String] = []
     var fetchStatusContextCallIDs: [String] = []
     var fetchNotificationsHandler: ((String?, String?, Int) async throws -> [NotificationItem])?
+    var fetchNotificationHandler: ((String) async throws -> NotificationItem)?
     var fetchUnreadNotificationCountHandler: (() async throws -> Int)?
     var fetchMarkersHandler: (([MarkerTimeline]) async throws -> Marker)?
     var saveMarkerHandler: ((String?, String?) async throws -> Marker)?
@@ -7919,6 +7924,11 @@ final class MockMastodonAPI: MastodonAPI {
             return try await fetchUnreadNotificationCountHandler()
         }
         return 0
+    }
+
+    func fetchNotification(id: String) async throws -> NotificationItem {
+        guard let fetchNotificationHandler else { throw MockError.unimplemented }
+        return try await fetchNotificationHandler(id)
     }
     func fetchScheduledStatuses(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [ScheduledStatus]

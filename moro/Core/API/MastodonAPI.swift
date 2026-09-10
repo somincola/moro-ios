@@ -180,6 +180,7 @@ protocol MastodonAPI {
     func cancelScheduledStatus(id: String) async throws
     func fetchNotifications(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [NotificationItem]
+    func fetchNotification(id: String) async throws -> NotificationItem
     func fetchUnreadNotificationCount() async throws -> Int
     func fetchConversations(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Conversation]
@@ -316,6 +317,9 @@ protocol MastodonAPI {
 }
 
 extension MastodonAPI {
+    func fetchNotification(id: String) async throws -> NotificationItem {
+        throw APIError.http(statusCode: 501, data: nil)
+    }
     var instanceMetadataCacheKey: String? { nil }
     func fetchEditableProfile() async throws -> EditableProfile {
         try EditableProfile.credentials(await verifyCredentials())

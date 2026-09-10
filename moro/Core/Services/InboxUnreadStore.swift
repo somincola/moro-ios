@@ -157,47 +157,6 @@ final class InboxUnreadStore: ObservableObject {
         updateUnreadState(false, conversationID: id, sessionID: sessionID, recordsOverride: true)
     }
 
-    func resolveConversation(forNotificationID notificationID: String) async -> Conversation? {
-        guard let apiClient = activeAPIClient else { return nil }
-
-        do {
-            let notifications = try await apiClient.fetchNotifications(
-                maxID: nil,
-                sinceID: nil,
-                limit: 80
-            )
-            guard let notification = notifications.first(where: { $0.id == notificationID }),
-                let status = notification.status,
-                status.visibility?.lowercased() == "direct"
-            else {
-                return nil
-            }
-
-            let snapshot = try await fetchConversationSnapshot(apiClient: apiClient)
-            guard let sessionID = activeSessionID else { return nil }
-            conversationsBySession[sessionID] = Dictionary(
-                uniqueKeysWithValues: snapshot.conversations.map { ($0.id, $0) }
-            )
-
-            if let exactMatch = snapshot.conversations.first(where: {
-                $0.lastStatus?.id == status.id
-            }) {
-                return exactMatch
-            }
-
-            return snapshot.conversations
-                .filter { conversation in
-                    conversation.accounts.contains(where: { $0.id == notification.account.id })
-                }
-                .max { lhs, rhs in
-                    Self.activityDate(for: lhs) < Self.activityDate(for: rhs)
-                }
-        } catch {
-            AppLogger.error("[Inbox] failed to resolve direct-message notification: \(error)")
-            return nil
-        }
-    }
-
     private func receiveConversationEvent(
         id: String,
         unread: Bool,
