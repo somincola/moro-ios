@@ -100,6 +100,28 @@ actor TimelineCache {
         try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
     }
 
+    /// Settings clears downloaded content while retaining last-seen markers (.meta).
+    func clearContentCache() throws {
+        memoryCache.removeAll()
+        dirtyKeys.removeAll()
+        // Pending metadata is user reading state and must survive this operation.
+        flushPendingWrites()
+        let files = try FileManager.default.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil)
+        for file in files where file.pathExtension == "cache" {
+            try FileManager.default.removeItem(at: file)
+        }
+    }
+
+    func contentDiskSize() -> Int64 {
+        flushPendingWrites()
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: cacheDirectory, includingPropertiesForKeys: [.fileSizeKey]
+        )) ?? []
+        return files.filter { $0.pathExtension == "cache" }.reduce(0) {
+            $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+    }
+
     /// Memory pressure must not discard the offline copy on disk.
     func releaseMemory() {
         flushPendingWrites()

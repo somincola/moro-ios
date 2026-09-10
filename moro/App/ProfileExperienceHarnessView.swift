@@ -5,17 +5,24 @@ import SwiftUI
 struct ProfileExperienceHarnessView: View {
     @StateObject private var coordinator = RootTabCoordinator(selectedTab: .me)
     @StateObject private var appState: AppState
+    @StateObject private var updates: AppUpdateStore
+    @State private var showsSettings = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let client = ProfileFixtureProtocol.makeClient()
     private static let accountKey = "ui-profile-experience"
 
     init() {
         _appState = StateObject(wrappedValue: Self.makeState())
+        _updates = StateObject(wrappedValue: AppUpdateStore(
+            currentVersion: "1.0.5", defaults: UserDefaults(suiteName: "ui-support-" + UUID().uuidString)!,
+            country: { "US" }, fetch: { _ in AppStoreRelease(version: "9.0") }
+        ))
     }
 
     private static func makeState() -> AppState {
         let state = AppState()
-        state.currentAccount = ProfileFixtureProtocol.account()
+        state.currentAccount = ProfileFixtureProtocol.account(
+            id: ProcessInfo.processInfo.environment["UITEST_OTHER_PROFILE"] == "1" ? "fixture-viewer" : nil)
         state.authToken = "profile-fixture-token"
         state.isAuthenticated = true
         ProfilePresentationPreferences.shared.setShowsFeaturedTags(
@@ -37,7 +44,7 @@ struct ProfileExperienceHarnessView: View {
             exploreView: AnyView(EmptyView()),
             inboxView: AnyView(EmptyView()),
             meView: routedView(
-                AnyView(ProfileView(account: appState.currentAccount, onLogout: {}, apiClient: client)),
+                AnyView(ProfileView(account: ProfileFixtureProtocol.account(), onLogout: {}, apiClient: client)),
                 router: coordinator.meRouter),
             routeView: { route, router in
                 routedView(
@@ -49,6 +56,13 @@ struct ProfileExperienceHarnessView: View {
         .environmentObject(appState)
         .environment(\.activeAccountKey, Self.accountKey)
         .moroTheme(theme)
+        .sheet(isPresented: $showsSettings) {
+            SettingsSheetView(apiClient: client, updates: updates)
+                .environmentObject(appState)
+                .moroTheme(theme)
+                .moroSheetSurface(detents: [.large], cornerRadius: 20)
+        }
+        .task { await updates.check() }
     }
 
     private var theme: MoroTheme {
@@ -59,6 +73,7 @@ struct ProfileExperienceHarnessView: View {
 
     private func routedView(_ content: AnyView, router: AppRouter) -> AnyView {
         AnyView(content
+            .environment(\.settingsPresentationAction, { showsSettings = true })
             .environment(\.appRouter, router)
             .environment(\.activeAccountKey, Self.accountKey)
             .environment(\.dynamicTypeSize, dynamicTypeSize)
@@ -102,9 +117,11 @@ private final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             authInterceptor: AuthInterceptor(tokenProvider: ProfileFixtureToken()))
     }
 
-    static func account() -> Account {
+    static func account(id: String? = nil) -> Account {
         lock.withLock {
-            try! JSONDecoder().decode(Account.self, from: JSONSerialization.data(withJSONObject: accountPayload()))
+            var payload = accountPayload()
+            if let id { payload["id"] = id }
+            return try! JSONDecoder().decode(Account.self, from: JSONSerialization.data(withJSONObject: payload))
         }
     }
 

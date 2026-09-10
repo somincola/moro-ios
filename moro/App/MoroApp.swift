@@ -17,6 +17,7 @@ struct MoroApp: App {
     @StateObject private var settings = AppSettings.shared
 
     init() {
+        StorageManagementStore.configureImageCache()
         let appState = AppState()
         let interceptor = AuthInterceptor(tokenProvider: appState)
         let client = MastodonClient(authInterceptor: interceptor)
@@ -85,11 +86,13 @@ struct MoroApp: App {
                         .task {
                             await coordinator.start()
                         }
+                        .task { await AppUpdateStore.shared.check() }
                         .onChange(of: scenePhase) { _, newPhase in
                             if newPhase == .background {
                                 Task { await CacheManager.shared.timelineCache.flushPendingWrites() }
                             }
                             guard newPhase == .active else { return }
+                            Task { await AppUpdateStore.shared.check() }
                             Task {
                                 await coordinator.refreshCurrentAccountIfNeeded()
                             }

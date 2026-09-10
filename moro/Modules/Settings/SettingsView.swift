@@ -13,6 +13,8 @@ struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
 
     let apiClient: MastodonAPI?
+    @ObservedObject var updates: AppUpdateStore
+    @ObservedObject private var storage = StorageManagementStore.shared
 
     private enum Metrics {
         static let iconColumnWidth: CGFloat = 26
@@ -24,8 +26,9 @@ struct SettingsView: View {
 
     @State private var showLogoutConfirmation = false
 
-    init(apiClient: MastodonAPI? = nil) {
+    init(apiClient: MastodonAPI? = nil, updates: AppUpdateStore? = nil) {
         self.apiClient = apiClient
+        self.updates = updates ?? .shared
     }
 
     private var currentAccountDomain: String? {
@@ -52,6 +55,7 @@ struct SettingsView: View {
         .moroSettingsSwitchStyle()
         .navigationTitle(MoroL10n.Settings.title)
         .navigationBarTitleDisplayMode(.inline)
+        .task { await storage.refresh() }
         .alert(MoroL10n.Settings.logoutAlertTitle, isPresented: $showLogoutConfirmation) {
             Button(MoroL10n.Common.cancel, role: .cancel) {}
             Button(MoroL10n.Settings.logoutAction, role: .destructive) {
@@ -86,6 +90,18 @@ struct SettingsView: View {
             }
 
             emojiRow
+            NavigationLink {
+                StorageSettingsView()
+            } label: {
+                HStack {
+                    settingsRow(MoroL10n.AppSupport.storage, icon: "internaldrive")
+                    if let usage = storage.usage {
+                        Text(StorageManagementStore.formatted(usage.total))
+                            .font(.subheadline).foregroundStyle(theme.colors.textSecondary)
+                    }
+                }
+            }
+            .accessibilityIdentifier("settings.storage")
         } header: {
             Text(MoroL10n.Settings.appSection)
         }
@@ -98,6 +114,16 @@ struct SettingsView: View {
                     settingsRow(MoroL10n.Settings.thisServer, icon: "building.2")
                 }
             }
+
+            NavigationLink {
+                FeedbackView(apiClient: apiClient)
+            } label: { settingsRow(MoroL10n.AppSupport.feedback, icon: "bubble.left") }
+            .accessibilityIdentifier("settings.feedback")
+
+            Link(destination: MoroAppStore.reviewURL) {
+                settingsRow(MoroL10n.AppSupport.rate, icon: "star")
+            }
+            .accessibilityIdentifier("settings.rate")
 
             aboutRow
         } header: {
@@ -152,10 +178,19 @@ struct SettingsView: View {
 
     private var aboutRow: some View {
         NavigationLink {
-            AboutView()
+            AboutView(updates: updates)
         } label: {
-            settingsRow(MoroL10n.Settings.aboutMoro, icon: "info.circle")
+            HStack(spacing: 8) {
+                settingsRow(MoroL10n.Settings.aboutMoro, icon: "info.circle")
+                if updates.hasUnseenUpdate {
+                    Circle().fill(.red).frame(width: 7, height: 7)
+                        .accessibilityLabel(MoroL10n.AppSupport.updateAvailable)
+                        .accessibilityIdentifier("settings.updateDot")
+                }
+            }
         }
+        .accessibilityIdentifier("settings.about")
+        .accessibilityValue(updates.hasUnseenUpdate ? MoroL10n.AppSupport.updateAvailable : "")
     }
 
     private var logoutRow: some View {

@@ -77,17 +77,8 @@ struct ProfileMoreButton: View {
                 }
             }
 
-            if let onSettings {
-                Button(action: onSettings) {
-                    MoroMenuItemLabel(
-                        title: MoroL10n.Settings.title,
-                        systemImage: "gearshape"
-                    )
-                }
-            }
-
             if onBookmarks != nil || onFavourites != nil {
-                if onEditProfile != nil || onSettings != nil {
+                if onEditProfile != nil {
                     Divider()
                 }
 
@@ -110,7 +101,7 @@ struct ProfileMoreButton: View {
                 }
             }
 
-            if onEditProfile != nil || onSettings != nil || onBookmarks != nil
+            if onEditProfile != nil || onBookmarks != nil
                 || onFavourites != nil
             {
                 Divider()
@@ -156,7 +147,7 @@ struct ProfileMoreButton: View {
             }
 
             if let onBlock {
-                Button(action: onBlock) {
+                Button(role: relationship?.blocking == true ? nil : .destructive, action: onBlock) {
                     MoroMenuItemLabel(
                         title: relationship?.blocking == true
                             ? MoroL10n.Profile.unblock
@@ -171,13 +162,24 @@ struct ProfileMoreButton: View {
 
             if let onReport {
                 Divider()
-                Button(action: onReport) {
+                Button(role: .destructive, action: onReport) {
                     MoroMenuItemLabel(
                         title: MoroL10n.Profile.report,
                         systemImage: "flag",
                         isDestructive: true
                     )
                 }
+            }
+
+            if let onSettings {
+                Divider()
+                Button(action: onSettings) {
+                    MoroMenuItemLabel(
+                        title: MoroL10n.Settings.title,
+                        systemImage: "gearshape"
+                    )
+                }
+                .accessibilityIdentifier("profile.settings")
             }
         } label: {
             Image(systemName: "ellipsis")

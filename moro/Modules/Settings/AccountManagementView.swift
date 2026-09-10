@@ -67,6 +67,7 @@ struct AccountManagementView: View {
                         } label: {
                             Label(MoroL10n.AccountMgmt.remove, systemImage: "trash")
                         }
+                        .tint(.red)
                     }
             }
 

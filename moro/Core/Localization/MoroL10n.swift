@@ -36,6 +36,34 @@ public enum MoroL10n {
         )
     }
 
+    public enum AppSupport {
+        public static var feedback: String { text("appSupport.feedback") }
+        public static var invitation: String { text("appSupport.invitation") }
+        public static var invitationDetail: String { text("appSupport.invitationDetail") }
+        public static var mastodonFeedback: String { text("appSupport.mastodonFeedback") }
+        public static var feedbackPrivacy: String { text("appSupport.feedbackPrivacy") }
+        public static var rate: String { text("appSupport.rate") }
+        public static var storage: String { text("appSupport.storage") }
+        public static var currentVersion: String { text("appSupport.currentVersion") }
+        public static var latestVersion: String { text("appSupport.latestVersion") }
+        public static var checkFailed: String { text("appSupport.checkFailed") }
+        public static var unavailable: String { text("appSupport.unavailable") }
+        public static var upToDate: String { text("appSupport.upToDate") }
+        public static var checking: String { text("appSupport.checking") }
+        public static var checkUpdates: String { text("appSupport.checkUpdates") }
+        public static var update: String { text("appSupport.update") }
+        public static var updateAvailable: String { text("appSupport.updateAvailable") }
+        public static var images: String { text("appSupport.images") }
+        public static var timelines: String { text("appSupport.timelines") }
+        public static var responses: String { text("appSupport.responses") }
+        public static var total: String { text("appSupport.total") }
+        public static var cacheDetail: String { text("appSupport.cacheDetail") }
+        public static var clearing: String { text("appSupport.clearing") }
+        public static var clearCache: String { text("appSupport.clearCache") }
+        public static var preservedData: String { text("appSupport.preservedData") }
+        public static var clearFailed: String { text("appSupport.clearFailed") }
+    }
+
     public enum ProfileEditing {
         public static var posts: String { text("profileEditing.posts") }
         public static var replies: String { text("profileEditing.replies") }

@@ -8,34 +8,20 @@
 import SwiftUI
 import UIKit
 
-#if canImport(MessageUI)
-    import MessageUI
-#endif
 
 struct AboutView: View {
     @Environment(\.moroTheme) private var theme
-    @Environment(\.openURL) private var openURL
-    @EnvironmentObject private var appState: AppState
+    @ObservedObject var updates: AppUpdateStore = .shared
 
     private let githubURL = URL(string: "https://github.com/somincola/moro-ios")!
     private let mastodonURL = URL(string: "https://joinmastodon.org")!
-    @State private var showFeedbackMethodPicker = false
-    @State private var showFeedbackMailComposer = false
 
     private var appIconName: String {
         AppIconManager.shared.currentChoice.previewAssetName
     }
 
-    private var appVersion: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? MoroL10n.About.unknown
-    }
-
     private var currentYear: Int {
         Calendar.current.component(.year, from: Date())
-    }
-
-    private var feedbackBody: String {
-        FeedbackMailContext.messageBody(currentAccount: appState.currentAccount)
     }
 
     var body: some View {
@@ -44,8 +30,9 @@ struct AboutView: View {
                 hero
                     .padding(.bottom, theme.spacing.xl)
 
-                divider
-                feedbackRow
+                AppUpdateSection(store: updates)
+                    .padding(.bottom, theme.spacing.l)
+
                 divider
                 externalLinkRow(
                     title: "Moro",
@@ -103,34 +90,12 @@ struct AboutView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(theme.colors.background, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
-        .confirmationDialog(
-            MoroL10n.Settings.feedbackDialogTitle,
-            isPresented: $showFeedbackMethodPicker,
-            titleVisibility: .visible
-        ) {
-            if FeedbackMailContext.canUseInAppComposer {
-                Button(MoroL10n.Settings.feedbackInApp) {
-                    showFeedbackMailComposer = true
-                }
-            }
-            Button(MoroL10n.Settings.feedbackMailApp) {
-                openFeedbackInMailApp()
-            }
-            Button(MoroL10n.Common.cancel, role: .cancel) {}
-        } message: {
-            Text(MoroL10n.Settings.feedbackDestination(FeedbackMailContext.supportEmail))
+        .task {
+            updates.markUpdateSeen()
+            await updates.check()
+            updates.markUpdateSeen()
         }
-        #if canImport(MessageUI)
-            .sheet(isPresented: $showFeedbackMailComposer) {
-                FeedbackMailComposerView(
-                    to: FeedbackMailContext.supportEmail,
-                    subject: FeedbackMailContext.subject,
-                    body: feedbackBody
-                ) { result, error in
-                    handleFeedbackMailResult(result: result, error: error)
-                }
-            }
-        #endif
+        .onChange(of: updates.latestRelease) { _, _ in updates.markUpdateSeen() }
     }
 
     private var hero: some View {
@@ -146,10 +111,6 @@ struct AboutView: View {
                 .font(theme.typography.body)
                 .foregroundStyle(theme.colors.textSecondary)
                 .multilineTextAlignment(.center)
-
-            Text("\(MoroL10n.About.version) \(appVersion)")
-                .font(theme.typography.caption)
-                .foregroundStyle(theme.colors.textTertiary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -172,20 +133,6 @@ struct AboutView: View {
                         .foregroundStyle(theme.colors.textSecondary)
                 )
         }
-    }
-
-    private var feedbackRow: some View {
-        Button {
-            showFeedbackMethodPicker = true
-        } label: {
-            rowLabel(
-                title: MoroL10n.About.feedbackEmail,
-                subtitle: FeedbackMailContext.supportEmail,
-                systemImage: "envelope",
-                accessory: "paperplane"
-            )
-        }
-        .buttonStyle(.plain)
     }
 
     private var acknowledgementsRow: some View {
@@ -269,44 +216,7 @@ struct AboutView: View {
             .frame(height: 1)
     }
 
-    private func openFeedbackInMailApp() {
-        guard let url = FeedbackMailContext.mailtoURL(
-            email: FeedbackMailContext.supportEmail,
-            subject: FeedbackMailContext.subject,
-            body: feedbackBody
-        ) else {
-            AppFeedbackCenter.shared.showError(MoroL10n.Settings.feedbackMailLinkError)
-            return
-        }
 
-        openURL(url) { accepted in
-            if !accepted {
-                AppFeedbackCenter.shared.showError(MoroL10n.Settings.feedbackMailAppError)
-            }
-        }
-    }
-
-    #if canImport(MessageUI)
-        private func handleFeedbackMailResult(result: MFMailComposeResult, error: Error?) {
-            if error != nil {
-                AppFeedbackCenter.shared.showError(MoroL10n.Settings.feedbackMailFailed)
-                return
-            }
-
-            switch result {
-            case .sent:
-                AppFeedbackCenter.shared.showSuccess(MoroL10n.Settings.feedbackMailSent)
-            case .saved:
-                AppFeedbackCenter.shared.showInfo(MoroL10n.Settings.feedbackMailSaved)
-            case .cancelled:
-                break
-            case .failed:
-                AppFeedbackCenter.shared.showError(MoroL10n.Settings.feedbackMailFailed)
-            @unknown default:
-                break
-            }
-        }
-    #endif
 }
 
 struct AcknowledgementsView: View {
