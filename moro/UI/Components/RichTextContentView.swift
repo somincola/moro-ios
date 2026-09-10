@@ -643,15 +643,14 @@ struct MixedTextEmojiView: UIViewRepresentable {
         // Update text container size to match available width (height is unlimited)
         textView.textContainer.size = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
 
-        // Load emojis and build attributed string
-        context.coordinator.loadEmojiAssets(
-            elements: self.elements, emojiSize: self.emojiSize
-        ) { [
+        let render: ([URL: UIImage]) -> Void = { [
+            weak textView,
             textColor = self.textColor,
             linkColor = self.linkColor,
             codeBackgroundColor = self.codeBackgroundColor,
             underlinesLinks = self.underlinesLinks
         ] emojiAssets in
+            guard let textView else { return }
             let attributedString = self.buildAttributedString(
                 emojiAssets: emojiAssets,
                 textColor: textColor,
@@ -678,6 +677,12 @@ struct MixedTextEmojiView: UIViewRepresentable {
                 }
             }
         }
+        // Text is available now. A slow or unavailable emoji host must never
+        // leave the entire post body blank until its image requests finish.
+        context.coordinator.loadEmojiAssets(
+            elements: elements, emojiSize: emojiSize,
+            initial: render, completion: render
+        )
     }
 
     /// Everything that affects the rendered attributed string. updateUIView skips the
@@ -765,6 +770,7 @@ struct MixedTextEmojiView: UIViewRepresentable {
 
         func loadEmojiAssets(
             elements: [ContentElement], emojiSize: CGFloat,
+            initial: (([URL: UIImage]) -> Void)? = nil,
             completion: @escaping ([URL: UIImage]) -> Void
         ) {
             _ = emojiSize
@@ -806,6 +812,10 @@ struct MixedTextEmojiView: UIViewRepresentable {
                 completion(assets)
                 return
             }
+
+            // Populate the UITextView synchronously using cached images and
+            // readable shortcodes. Completion replaces those once assets arrive.
+            initial?(assets)
 
             let emojiDataLoader = self.emojiDataLoader
             for emojiURL in missingURLs {
