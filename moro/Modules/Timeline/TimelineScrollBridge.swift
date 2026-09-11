@@ -57,6 +57,7 @@ final class TimelineScrollBridge: ObservableObject {
     @Published var atTop: [TimelineType: Bool] = [:]
 
     let layoutEvents = PassthroughSubject<TimelineType, Never>()
+    let userScrollEvents = PassthroughSubject<TimelineType, Never>()
     private var rows: [TimelineType: [String: WeakRow]] = [:]
     private var phases: [TimelineType: ScrollPhase] = [:]
     private var headerHeights: [TimelineType: CGFloat] = [:]
@@ -103,19 +104,30 @@ final class TimelineScrollBridge: ObservableObject {
             pendingLayouts[timeline] = nil
             waitingForTop.remove(timeline)
         }
+        if phase == .interacting, active, isPresented(timeline) {
+            userScrollEvents.send(timeline)
+        }
         if phase == .idle { scheduleLayoutEvent(for: timeline) }
+    }
+
+    func isUserScrolling(_ timeline: TimelineType) -> Bool {
+        phases[timeline] == .interacting || phases[timeline] == .decelerating
     }
 
     func updateGeometry(for timeline: TimelineType, headerHeight: CGFloat) {
         headerHeights[timeline] = headerHeight
         guard let scrollView = nativeScrollViews[timeline]?.value else { return }
+        updateTopPosition(for: timeline, scrollView: scrollView)
+        if !scrollView.isDragging && !scrollView.isDecelerating {
+            scheduleLayoutEvent(for: timeline)
+        }
+    }
+
+    private func updateTopPosition(for timeline: TimelineType, scrollView: UIScrollView) {
         let distance = scrollView.contentOffset.y + scrollView.adjustedContentInset.top
         setAtTop(abs(distance) <= 2, for: timeline)
         if abs(distance) <= 2, phases[timeline, default: .idle] == .idle {
             waitingForTop.remove(timeline)
-        }
-        if !scrollView.isDragging && !scrollView.isDecelerating {
-            scheduleLayoutEvent(for: timeline)
         }
     }
 
@@ -190,6 +202,12 @@ final class TimelineScrollBridge: ObservableObject {
             self.scheduledLayoutEvents.remove(timeline)
             self.rows[timeline] = self.rows[timeline]?.filter { $0.value.value?.window != nil }
             self.completeLayout(for: timeline)
+            // Native scrolling can settle after SwiftUI's last geometry callback.
+            // Recheck on the existing idle/layout completion before acknowledging
+            // the latest batch; reading the position must not enqueue another event.
+            if let scrollView = self.nativeScrollViews[timeline]?.value {
+                self.updateTopPosition(for: timeline, scrollView: scrollView)
+            }
             self.layoutEvents.send(timeline)
         }
     }

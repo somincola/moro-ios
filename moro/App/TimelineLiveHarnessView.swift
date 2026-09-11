@@ -33,6 +33,7 @@ struct TimelineLiveHarnessView: View {
                         Button("覆盖") { covered.toggle() }.accessibilityIdentifier("timeline.fixture.cover")
                         Text("\(model.statuses.count)/\(model.newPostCount)")
                             .accessibilityIdentifier("timeline.fixture.count")
+                            .accessibilityValue(model.lastLatestCheckAt.map { String($0.timeIntervalSince1970) } ?? "no-refresh")
                     }
                     .buttonStyle(.bordered)
                     .padding(8)

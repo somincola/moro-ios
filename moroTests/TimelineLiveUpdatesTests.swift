@@ -237,6 +237,40 @@ struct TimelineLiveUpdatesTests {
         #expect(scroll.contentOffset.y == 800)
     }
 
+    @Test func idleScrollConfirmsLatestFromFinalNativePosition() async throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
+        let scroll = UIScrollView(frame: window.bounds)
+        scroll.contentSize = CGSize(width: 400, height: 3000)
+        window.addSubview(scroll)
+        window.isHidden = false
+        defer { window.isHidden = true }
+        let bridge = TimelineScrollBridge()
+        bridge.setActive(true)
+        bridge.register(scroll, for: .home)
+        let row = TimelineRowAnchorView(frame: CGRect(x: 0, y: 48, width: 400, height: 200))
+        row.statusID = "latest"
+        row.revision = 1
+        row.bridge = bridge
+        scroll.addSubview(row)
+        row.setNeedsLayout()
+        row.layoutIfNeeded()
+        scroll.contentOffset.y = 200
+        bridge.updateGeometry(for: .home, headerHeight: 48)
+        bridge.updatePhase(.decelerating, for: .home)
+        #expect(!bridge.isAtTop(.home))
+
+        let events = AsyncStream<TimelineType>.makeStream()
+        let subscription = bridge.layoutEvents.sink { events.continuation.yield($0) }
+        defer { subscription.cancel() }
+        // The final native offset can settle after the last SwiftUI geometry callback.
+        scroll.contentOffset.y = -scroll.adjustedContentInset.top
+        bridge.updatePhase(.idle, for: .home)
+        var iterator = events.stream.makeAsyncIterator()
+        _ = await iterator.next()
+        #expect(bridge.isAtTop(.home))
+        #expect(bridge.latestIsVisible(for: .home, statusID: "latest", revision: 1))
+    }
+
     @Test func onlyUserStreamAdditionsBelongInHome() {
         let event = StreamEvent.update(status: post("101"))
         #expect(SourcedStreamEvent(event: event, streams: ["user"]).canInsertIntoHome)
