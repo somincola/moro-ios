@@ -5,7 +5,6 @@ import SwiftUI
 struct ProfileExperienceHarnessView: View {
     @StateObject private var coordinator = RootTabCoordinator(selectedTab: .me)
     @StateObject private var appState: AppState
-    @StateObject private var updates: AppUpdateStore
     @State private var showsSettings = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let client = ProfileFixtureProtocol.makeClient()
@@ -13,10 +12,6 @@ struct ProfileExperienceHarnessView: View {
 
     init() {
         _appState = StateObject(wrappedValue: Self.makeState())
-        _updates = StateObject(wrappedValue: AppUpdateStore(
-            currentVersion: "1.0.5", defaults: UserDefaults(suiteName: "ui-support-" + UUID().uuidString)!,
-            country: { "US" }, fetch: { _ in AppStoreRelease(version: "9.0") }
-        ))
     }
 
     private static func makeState() -> AppState {
@@ -57,12 +52,11 @@ struct ProfileExperienceHarnessView: View {
         .environment(\.activeAccountKey, Self.accountKey)
         .moroTheme(theme)
         .sheet(isPresented: $showsSettings) {
-            SettingsSheetView(apiClient: client, updates: updates)
+            SettingsSheetView(apiClient: client)
                 .environmentObject(appState)
                 .moroTheme(theme)
                 .moroSheetSurface(detents: [.large], cornerRadius: 20)
         }
-        .task { await updates.check() }
     }
 
     private var theme: MoroTheme {

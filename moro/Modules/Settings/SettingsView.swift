@@ -13,7 +13,6 @@ struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
 
     let apiClient: MastodonAPI?
-    @ObservedObject var updates: AppUpdateStore
     @ObservedObject private var storage = StorageManagementStore.shared
 
     private enum Metrics {
@@ -26,9 +25,8 @@ struct SettingsView: View {
 
     @State private var showLogoutConfirmation = false
 
-    init(apiClient: MastodonAPI? = nil, updates: AppUpdateStore? = nil) {
+    init(apiClient: MastodonAPI? = nil) {
         self.apiClient = apiClient
-        self.updates = updates ?? .shared
     }
 
     private var currentAccountDomain: String? {
@@ -120,11 +118,6 @@ struct SettingsView: View {
             } label: { settingsRow(MoroL10n.AppSupport.feedback, icon: "bubble.left") }
             .accessibilityIdentifier("settings.feedback")
 
-            Link(destination: MoroAppStore.reviewURL) {
-                settingsRow(MoroL10n.AppSupport.rate, icon: "star")
-            }
-            .accessibilityIdentifier("settings.rate")
-
             aboutRow
         } header: {
             Text(MoroL10n.Settings.aboutSection)
@@ -178,19 +171,11 @@ struct SettingsView: View {
 
     private var aboutRow: some View {
         NavigationLink {
-            AboutView(updates: updates)
+            AboutView()
         } label: {
-            HStack(spacing: 8) {
-                settingsRow(MoroL10n.Settings.aboutMoro, icon: "info.circle")
-                if updates.hasUnseenUpdate {
-                    Circle().fill(.red).frame(width: 7, height: 7)
-                        .accessibilityLabel(MoroL10n.AppSupport.updateAvailable)
-                        .accessibilityIdentifier("settings.updateDot")
-                }
-            }
+            settingsRow(MoroL10n.Settings.aboutMoro, icon: "info.circle")
         }
         .accessibilityIdentifier("settings.about")
-        .accessibilityValue(updates.hasUnseenUpdate ? MoroL10n.AppSupport.updateAvailable : "")
     }
 
     private var logoutRow: some View {

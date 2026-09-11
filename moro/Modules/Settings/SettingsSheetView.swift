@@ -12,11 +12,10 @@ struct SettingsSheetView: View {
     @Environment(\.moroTheme) private var theme
 
     let apiClient: MastodonAPI?
-    var updates: AppUpdateStore? = nil
 
     var body: some View {
         NavigationStack {
-            SettingsView(apiClient: apiClient, updates: updates)
+            SettingsView(apiClient: apiClient)
                 .toolbarBackground(theme.colors.groupedBackground, for: .navigationBar)
                 .toolbarBackground(.visible, for: .navigationBar)
                 .toolbar {

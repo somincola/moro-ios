@@ -90,13 +90,11 @@ struct MoroApp: App {
                         .task {
                             await coordinator.start()
                         }
-                        .task { await AppUpdateStore.shared.check() }
                         .onChange(of: scenePhase) { _, newPhase in
                             if newPhase == .background {
                                 Task { await CacheManager.shared.timelineCache.flushPendingWrites() }
                             }
                             guard newPhase == .active else { return }
-                            Task { await AppUpdateStore.shared.check() }
                             Task {
                                 await coordinator.refreshCurrentAccountIfNeeded()
                             }
