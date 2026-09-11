@@ -194,7 +194,9 @@ public enum MoroL10n {
     public enum Settings {
         public static var title: String { text("settings.title") }
         public static var accountPrivacySection: String { text("settings.section.accountPrivacy") }
+        public static var accountServerSection: String { text("settings.section.accountServer") }
         public static var appSection: String { text("settings.section.app") }
+        public static var supportAboutSection: String { text("settings.section.supportAbout") }
         public static var aboutSection: String { text("settings.section.about") }
         public static var serverSection: String { text("settings.section.server") }
         public static var accountActionsSection: String { text("settings.section.accountActions") }
