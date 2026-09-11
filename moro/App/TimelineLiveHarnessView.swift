@@ -12,10 +12,13 @@ struct TimelineLiveHarnessView: View {
     @State private var covered = false
     private let client: MastodonClient
     private let key: String
+    private let testsGaps: Bool
 
     init() {
         let key = "timeline-live-ui-\(UUID().uuidString)"
-        let client = TimelineLiveFixtureProtocol.makeClient()
+        let testsGaps = ProcessInfo.processInfo.arguments.contains("UITEST_TIMELINE_GAPS")
+        let client = TimelineLiveFixtureProtocol.makeClient(testsGaps: testsGaps)
+        self.testsGaps = testsGaps
         self.key = key
         self.client = client
         _model = StateObject(wrappedValue: TimelineViewModel(apiClient: client,
@@ -29,11 +32,25 @@ struct TimelineLiveHarnessView: View {
                 isActive: !covered, bottomContentInset: 80, homeViewModel: model)
                 .overlay(alignment: .bottom) {
                     HStack {
-                        Button("+20") { insert(20) }.accessibilityIdentifier("timeline.fixture.insert")
-                        Button("覆盖") { covered.toggle() }.accessibilityIdentifier("timeline.fixture.cover")
+                        if testsGaps {
+                            Button("完整更新") { insertHead(hasGap: false) }
+                                .accessibilityIdentifier("timeline.fixture.complete")
+                            Button("缺口") { insertHead(hasGap: true) }
+                                .accessibilityIdentifier("timeline.fixture.gap")
+                            Button("失败") {
+                                TimelineLiveFixtureProtocol.failNextGapRequest = true
+                                insertHead(hasGap: true)
+                            }
+                            .accessibilityIdentifier("timeline.fixture.gapFailure")
+                        } else {
+                            Button("+20") { insert(20) }.accessibilityIdentifier("timeline.fixture.insert")
+                            Button("覆盖") { covered.toggle() }.accessibilityIdentifier("timeline.fixture.cover")
+                        }
                         Text("\(model.statuses.count)/\(model.newPostCount)")
                             .accessibilityIdentifier("timeline.fixture.count")
-                            .accessibilityValue(model.lastLatestCheckAt.map { String($0.timeIntervalSince1970) } ?? "no-refresh")
+                            .accessibilityValue(testsGaps
+                                ? "gaps:\(model.gaps.count);failed:\(model.failedGapIDs.count)"
+                                : model.lastLatestCheckAt.map { String($0.timeIntervalSince1970) } ?? "no-refresh")
                     }
                     .buttonStyle(.bordered)
                     .padding(8)
@@ -52,12 +69,23 @@ struct TimelineLiveHarnessView: View {
             nextID += 1
         }
     }
+
+    private func insertHead(hasGap: Bool) {
+        let latest = nextID + (hasGap ? 7 : 1)
+        let ids = hasGap ? [latest] : [latest, latest - 1]
+        model.receiveDetectedPage(TimelinePage(statuses: ids.map { TimelineLiveFixtureProtocol.post($0) }),
+            sinceID: model.detectionBaselineID)
+        nextID = latest + 1
+    }
 }
 
 final class TimelineLiveFixtureProtocol: URLProtocol, @unchecked Sendable {
-    @MainActor static func makeClient() -> MastodonClient {
+    @MainActor static var failNextGapRequest = false
+
+    @MainActor static func makeClient(testsGaps: Bool = false) -> MastodonClient {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [Self.self]
+        if testsGaps { config.httpAdditionalHeaders = ["X-Moro-Fixture-Gaps": "1"] }
         return MastodonClient(baseURL: URL(string: "https://timeline-live-fixture.invalid")!,
             session: URLSession(configuration: config),
             authInterceptor: AuthInterceptor(tokenProvider: TimelineLiveFixtureToken()))
@@ -71,10 +99,22 @@ final class TimelineLiveFixtureProtocol: URLProtocol, @unchecked Sendable {
             let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let isInitial = request.url!.path.contains("timelines") && query.isEmpty == false
                 && !query.contains { $0.name == "max_id" || $0.name == "since_id" }
-            let posts: [Status] = isInitial ? (41...100).reversed().map { id in
-                ThreadReadingFixtures.status("\(id)", own: false, content:
-                    "<p>Timeline fixture \(id)</p>" + String(repeating: "<p>这是用于验证阅读位置的长正文。自动插入后，这一段应该保持在原来的位置。</p>", count: id % 3 + 1))
-            } : []
+            let posts: [Status]
+            if isInitial {
+                posts = (41...100).reversed().map(Self.post)
+            } else if request.value(forHTTPHeaderField: "X-Moro-Fixture-Gaps") == "1",
+                let upper = query.first(where: { $0.name == "max_id" })?.value.flatMap(Int.init),
+                let lower = query.first(where: { $0.name == "since_id" })?.value.flatMap(Int.init)
+            {
+                if Self.failNextGapRequest {
+                    Self.failNextGapRequest = false
+                    self.client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+                    return
+                }
+                posts = upper > lower + 1 ? ((lower + 1)..<upper).reversed().prefix(2).map(Self.post) : []
+            } else {
+                posts = []
+            }
             let data = (try? encoder.encode(posts)) ?? Data("[]".utf8)
             self.client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200,
                 httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
@@ -83,6 +123,11 @@ final class TimelineLiveFixtureProtocol: URLProtocol, @unchecked Sendable {
         }
     }
     override func stopLoading() {}
+
+    @MainActor static func post(_ id: Int) -> Status {
+        ThreadReadingFixtures.status("\(id)", own: false, content:
+            "<p>Timeline fixture \(id)</p>" + String(repeating: "<p>这是用于验证阅读位置的长正文。自动插入后，这一段应该保持在原来的位置。</p>", count: id % 3 + 1))
+    }
 }
 private final class TimelineLiveFixtureToken: AuthTokenProvider { var authToken: String? { "timeline-fixture" } }
 #endif
