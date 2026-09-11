@@ -44,15 +44,6 @@ public enum MoroL10n {
         public static var feedbackPrivacy: String { text("appSupport.feedbackPrivacy") }
         public static var rate: String { text("appSupport.rate") }
         public static var storage: String { text("appSupport.storage") }
-        public static var currentVersion: String { text("appSupport.currentVersion") }
-        public static var latestVersion: String { text("appSupport.latestVersion") }
-        public static var checkFailed: String { text("appSupport.checkFailed") }
-        public static var unavailable: String { text("appSupport.unavailable") }
-        public static var upToDate: String { text("appSupport.upToDate") }
-        public static var checking: String { text("appSupport.checking") }
-        public static var checkUpdates: String { text("appSupport.checkUpdates") }
-        public static var update: String { text("appSupport.update") }
-        public static var updateAvailable: String { text("appSupport.updateAvailable") }
         public static var images: String { text("appSupport.images") }
         public static var timelines: String { text("appSupport.timelines") }
         public static var responses: String { text("appSupport.responses") }
@@ -203,7 +194,9 @@ public enum MoroL10n {
     public enum Settings {
         public static var title: String { text("settings.title") }
         public static var accountPrivacySection: String { text("settings.section.accountPrivacy") }
+        public static var accountServerSection: String { text("settings.section.accountServer") }
         public static var appSection: String { text("settings.section.app") }
+        public static var supportAboutSection: String { text("settings.section.supportAbout") }
         public static var aboutSection: String { text("settings.section.about") }
         public static var serverSection: String { text("settings.section.server") }
         public static var accountActionsSection: String { text("settings.section.accountActions") }
@@ -1179,20 +1172,14 @@ public enum MoroL10n {
         public static var buildNumber: String { text("about.buildNumber") }
         public static var sectionLinks: String { text("about.sectionLinks") }
         public static var githubRepo: String { text("about.githubRepo") }
-        public static var mastodonOfficial: String { text("about.mastodonOfficial") }
+        public static var website: String { text("about.website") }
+        public static var versionHistory: String { text("about.versionHistory") }
+        public static var openSourceLicenses: String { text("about.openSourceLicenses") }
         public static var feedbackEmail: String { text("about.feedbackEmail") }
-        public static var support: String { text("about.support") }
         public static var sectionAcknowledgements: String { text("about.sectionAcknowledgements") }
-        public static var viewAcknowledgements: String { text("about.viewAcknowledgements") }
-        public static var footer: String { text("about.footer") }
-        public static var acknowledgementsTitle: String { text("about.acknowledgementsTitle") }
-        public static var ackMastodon: String { text("about.ackMastodon") }
-        public static var ackSwiftUI: String { text("about.ackSwiftUI") }
-        public static var ackSDWebImage: String { text("about.ackSDWebImage") }
         public static var unknown: String { text("about.unknown") }
 
         public static func versionBuild(_ version: String, _ build: String) -> String { format("about.versionBuild", version, build) }
-        public static func copyright(_ year: Int) -> String { format("about.copyright", Int64(year)) }
     }
 
     public enum Lists {

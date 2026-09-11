@@ -2,25 +2,6 @@ import XCTest
 
 @MainActor
 final class AppSupportUITests: XCTestCase {
-    func testUpdateBadgeIsSeenOnceAndUpdateRemainsAvailable() {
-        let app = launch()
-        defer { app.terminate() }
-        openSettings(app)
-        let about = reveal("settings.about", in: app)
-        XCTAssertTrue((about.value as? String ?? "").contains("Update available"))
-        about.tap()
-        XCTAssertTrue(app.buttons["about.update"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Feedback Email")).firstMatch.exists)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "9.0")).firstMatch.exists)
-        app.buttons["about.checkUpdates"].tap()
-        XCTAssertTrue(app.buttons["about.update"].exists)
-        attach(app, "about-update")
-        app.navigationBars.buttons["BackButton"].firstMatch.tap()
-        XCTAssertFalse((about.value as? String ?? "").contains("Update available"))
-        about.tap()
-        XCTAssertTrue(app.buttons["about.update"].waitForExistence(timeout: 5))
-    }
-
     func testFeedbackOpensAnEditablePublicDraftWithKeyboard() {
         let app = launch()
         defer { app.terminate() }

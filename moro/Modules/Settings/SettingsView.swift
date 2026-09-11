@@ -10,25 +10,29 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.settingsContext) private var ctx
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var appState: AppState
 
     let apiClient: MastodonAPI?
-    @ObservedObject var updates: AppUpdateStore
     @ObservedObject private var storage = StorageManagementStore.shared
+    @ScaledMetric(relativeTo: .body) private var iconColumnWidth = Metrics.iconColumnWidth
 
     private enum Metrics {
-        static let iconColumnWidth: CGFloat = 26
+        static let iconColumnWidth: CGFloat = 24
         static let iconSymbolSize: CGFloat = 18
-        static let minimumRowHeight: CGFloat = 44
-        static let rowVerticalPadding: CGFloat = 4
-        static let rowSpacing: CGFloat = 14
+        static let minimumRowHeight: CGFloat = 52
+        static let rowVerticalPadding: CGFloat = 10
+        static let rowSpacing: CGFloat = 12
     }
 
     @State private var showLogoutConfirmation = false
 
-    init(apiClient: MastodonAPI? = nil, updates: AppUpdateStore? = nil) {
+    init(apiClient: MastodonAPI? = nil) {
         self.apiClient = apiClient
-        self.updates = updates ?? .shared
+    }
+
+    private var hasAccountContext: Bool {
+        appState.currentAccount != nil || apiClient != nil
     }
 
     private var currentAccountDomain: String? {
@@ -48,8 +52,11 @@ struct SettingsView: View {
     var body: some View {
         List {
             menuRows
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                .listRowSeparator(.visible, edges: .bottom)
         }
         .moroSettingsListChrome()
+        .listSectionSpacing(20)
         .environment(\.defaultMinListRowHeight, Metrics.minimumRowHeight)
         .listRowSeparatorTint(theme.colors.borderSubtle)
         .moroSettingsSwitchStyle()
@@ -70,12 +77,28 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var menuRows: some View {
-        Section {
-            accountManagementRow
+        if hasAccountContext {
+            Section {
+                accountManagementRow
 
+                if let apiClient {
+                    NavigationLink {
+                        InstanceDetailsView(apiClient: apiClient)
+                    } label: {
+                        settingsRow(MoroL10n.Settings.thisServer, icon: "building.2")
+                    }
+                    .accessibilityIdentifier("settings.server")
+                    .listRowSeparator(.hidden, edges: .bottom)
+                }
+            } header: {
+                sectionHeader(MoroL10n.Settings.accountServerSection)
+            }
+        }
+
+        Section {
             preferencesRow
 
-            if appState.currentAccount != nil || apiClient != nil {
+            if hasAccountContext {
                 NavigationLink {
                     NotificationSettingsView(apiClient: apiClient)
                 } label: {
@@ -93,44 +116,30 @@ struct SettingsView: View {
             NavigationLink {
                 StorageSettingsView()
             } label: {
-                HStack {
-                    settingsRow(MoroL10n.AppSupport.storage, icon: "internaldrive")
-                    if let usage = storage.usage {
-                        Text(StorageManagementStore.formatted(usage.total))
-                            .font(.subheadline).foregroundStyle(theme.colors.textSecondary)
-                    }
-                }
+                settingsRow(
+                    MoroL10n.AppSupport.storage,
+                    icon: "internaldrive",
+                    value: storage.usage.map { StorageManagementStore.formatted($0.total) }
+                )
             }
             .accessibilityIdentifier("settings.storage")
+            .listRowSeparator(.hidden, edges: .bottom)
         } header: {
-            Text(MoroL10n.Settings.appSection)
+            sectionHeader(MoroL10n.Settings.appSection)
         }
 
         Section {
-            if let apiClient {
-                NavigationLink {
-                    InstanceDetailsView(apiClient: apiClient)
-                } label: {
-                    settingsRow(MoroL10n.Settings.thisServer, icon: "building.2")
-                }
-            }
-
             NavigationLink {
                 FeedbackView(apiClient: apiClient)
             } label: { settingsRow(MoroL10n.AppSupport.feedback, icon: "bubble.left") }
             .accessibilityIdentifier("settings.feedback")
 
-            Link(destination: MoroAppStore.reviewURL) {
-                settingsRow(MoroL10n.AppSupport.rate, icon: "star")
-            }
-            .accessibilityIdentifier("settings.rate")
-
             aboutRow
         } header: {
-            Text(MoroL10n.Settings.aboutSection)
+            sectionHeader(MoroL10n.Settings.supportAboutSection)
         }
 
-        if appState.currentAccount != nil || apiClient != nil {
+        if hasAccountContext {
             Section {
                 logoutRow
             }
@@ -139,7 +148,7 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var accountManagementRow: some View {
-        if appState.currentAccount != nil || apiClient != nil {
+        if hasAccountContext {
             NavigationLink {
                 AccountManagementView(
                     accountSessions: ctx.accountSessions,
@@ -152,6 +161,8 @@ struct SettingsView: View {
             } label: {
                 settingsRow(MoroL10n.Settings.switchAccount, icon: "person.2")
             }
+            .accessibilityIdentifier("settings.accounts")
+            .listRowSeparator(apiClient == nil ? .hidden : .visible, edges: .bottom)
         }
     }
 
@@ -162,6 +173,7 @@ struct SettingsView: View {
         } label: {
             settingsRow(MoroL10n.Settings.readingBrowsingSection, icon: "slider.horizontal.3")
         }
+        .accessibilityIdentifier("settings.preferences")
     }
 
     private var emojiRow: some View {
@@ -174,23 +186,17 @@ struct SettingsView: View {
         } label: {
             settingsRow(MoroL10n.Settings.emojiManagement, icon: "face.smiling")
         }
+        .accessibilityIdentifier("settings.emoji")
     }
 
     private var aboutRow: some View {
         NavigationLink {
-            AboutView(updates: updates)
+            AboutView()
         } label: {
-            HStack(spacing: 8) {
-                settingsRow(MoroL10n.Settings.aboutMoro, icon: "info.circle")
-                if updates.hasUnseenUpdate {
-                    Circle().fill(.red).frame(width: 7, height: 7)
-                        .accessibilityLabel(MoroL10n.AppSupport.updateAvailable)
-                        .accessibilityIdentifier("settings.updateDot")
-                }
-            }
+            settingsRow(MoroL10n.Settings.aboutMoro, icon: "info.circle")
         }
         .accessibilityIdentifier("settings.about")
-        .accessibilityValue(updates.hasUnseenUpdate ? MoroL10n.AppSupport.updateAvailable : "")
+        .listRowSeparator(.hidden, edges: .bottom)
     }
 
     private var logoutRow: some View {
@@ -206,31 +212,61 @@ struct SettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .listRowSeparator(.hidden, edges: .bottom)
     }
 
     // MARK: - Reusable Components
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(theme.typography.caption)
+            .fontWeight(.medium)
+            .foregroundStyle(theme.colors.textSecondary)
+            .textCase(nil)
+    }
 
     @ViewBuilder
     private func settingsRow(
         _ title: String,
         icon: String,
+        value: String? = nil,
         color: Color? = nil
     ) -> some View {
         let foregroundColor = color ?? theme.colors.textPrimary
 
         HStack(spacing: Metrics.rowSpacing) {
-            settingsIcon(icon, color: foregroundColor)
+            settingsIcon(icon, color: color ?? theme.colors.textSecondary)
 
-            Text(title)
-                .font(theme.typography.body)
-                .foregroundStyle(foregroundColor)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .moroScaledFont(size: 17)
+                    .foregroundStyle(foregroundColor)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            Spacer(minLength: 0)
+                if dynamicTypeSize.isAccessibilitySize, let value {
+                    valueLabel(value)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            if !dynamicTypeSize.isAccessibilitySize, let value {
+                valueLabel(value)
+            }
         }
         .padding(.vertical, Metrics.rowVerticalPadding)
+        .frame(minHeight: Metrics.minimumRowHeight)
         .alignmentGuide(.listRowSeparatorLeading) { dimensions in
-            dimensions[.leading]
+            dimensions[.leading] + iconColumnWidth * theme.fontScale + Metrics.rowSpacing
         }
+    }
+
+    private func valueLabel(_ value: String) -> some View {
+        Text(value)
+            .font(theme.typography.body)
+            .monospacedDigit()
+            .foregroundStyle(theme.colors.textSecondary)
+            .fixedSize()
     }
 
     @ViewBuilder
@@ -239,7 +275,7 @@ struct SettingsView: View {
             .moroScaledFont(size: Metrics.iconSymbolSize, weight: .regular)
             .symbolRenderingMode(.monochrome)
             .foregroundStyle(color ?? theme.colors.textPrimary)
-            .frame(width: Metrics.iconColumnWidth, alignment: .center)
+            .frame(width: iconColumnWidth * theme.fontScale, alignment: .center)
     }
 }
 
