@@ -376,14 +376,15 @@ extension TimelineHomeView {
 
             MoroDivider(leadingInset: theme.spacing.timelineDividerInset, height: 0.5)
 
-            ForEach(viewModel.gaps.filter { $0.afterID == status.id }) { gap in
+            // Unverified intervals are resolved quietly. Only a failed request
+            // needs an action in the timeline; its appearance is anchor-preserved.
+            ForEach(viewModel.gaps.filter { $0.afterID == status.id && viewModel.failedGapIDs.contains($0.id) }) { gap in
                 Button {
                     Task { await viewModel.loadGap(id: gap.id) }
                 } label: {
                     HStack(spacing: theme.spacing.s) {
                         if viewModel.loadingGapIDs.contains(gap.id) { ProgressView() }
-                        Text(viewModel.failedGapIDs.contains(gap.id)
-                            ? MoroL10n.Timeline.gapRetry : MoroL10n.Timeline.loadGap)
+                        Text(MoroL10n.Timeline.gapRetry)
                     }
                     .font(theme.typography.caption)
                     .frame(maxWidth: .infinity, minHeight: 44)

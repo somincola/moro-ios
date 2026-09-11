@@ -1,6 +1,44 @@
 import XCTest
 
 final class TimelineLiveUITests: XCTestCase {
+    @MainActor func testCompleteUpdateDoesNotLeaveAGapAction() throws {
+        let app = launch(scheme: "light", testsGaps: true)
+        defer { app.terminate() }
+        let count = app.staticTexts["timeline.fixture.count"]
+        XCTAssertTrue(post(in: app, id: 100).waitForExistence(timeout: 10))
+        XCTAssertTrue(wait { count.label == "60/0" })
+        app.buttons["timeline.fixture.complete"].tap()
+        XCTAssertTrue(wait { count.label == "62/0" && count.value as? String == "gaps:0;failed:0" })
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "timeline.gap.")).firstMatch.exists)
+        XCTAssertTrue(post(in: app, id: 102).isHittable)
+    }
+
+    @MainActor func testGapFailurePreservesReadingPositionAndRetryResumesAutomaticLoading() throws {
+        let app = launch(scheme: "light", testsGaps: true)
+        defer { app.terminate() }
+        let anchor = try beginReading(in: app)
+        let count = app.staticTexts["timeline.fixture.count"]
+        app.buttons["timeline.fixture.gapFailure"].tap()
+        XCTAssertTrue(wait { (count.value as? String)?.contains("failed:1") == true })
+        assertReadingPosition(anchor, in: app)
+
+        app.buttons["timeline.newPosts"].tap()
+        let retry = app.buttons["timeline.gap.100"]
+        XCTAssertTrue(wait { retry.isHittable })
+        retry.tap()
+        XCTAssertTrue(wait { (count.value as? String)?.contains("failed:0") == true })
+        for _ in 0..<10 {
+            if count.value as? String == "gaps:0;failed:0" { break }
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(wait { count.label == "68/0" && count.value as? String == "gaps:0;failed:0" })
+        XCTAssertFalse(retry.exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Timeline automatic gap loading"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     @MainActor func testInsertionPreservesReadingPositionAndPillJumpsToLatest() throws {
         try exerciseTimeline(scheme: "light")
     }
@@ -194,10 +232,11 @@ final class TimelineLiveUITests: XCTestCase {
         app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Timeline fixture \(id)")).firstMatch
     }
 
-    @MainActor private func launch(scheme: String, disableAnimations: Bool = true) -> XCUIApplication {
+    @MainActor private func launch(scheme: String, disableAnimations: Bool = true, testsGaps: Bool = false) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_TIMELINE_LIVE", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        if testsGaps { app.launchArguments.append("UITEST_TIMELINE_GAPS") }
         if disableAnimations { app.launchArguments.append("UITEST_DISABLE_ANIMATIONS") }
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = scheme

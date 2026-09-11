@@ -157,6 +157,171 @@ struct TimelineLiveUpdatesTests {
         try await cold.clearContentCache()
         #expect(await cold.getLiveMetadata(for: "a", filter: .home) == nil)
     }
+
+    @Test func streamedPostsStillGetAQuietCompletenessProbe() async throws {
+        let api = MockMastodonAPI()
+        var requests = 0
+        api.fetchHomeTimelineHandler = { maxID, sinceID, _ in
+            #expect(maxID == "101" && sinceID == "100")
+            requests += 1
+            return []
+        }
+        let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(), cacheClientID: UUID().uuidString)
+        defer { model.clearStatuses() }
+        model.statuses = [post("100")]
+        model.receiveLiveStatus(post("101"))
+        let inserted = model.receiveDetectedPage(TimelinePage(statuses: [post("101")]), sinceID: "100")
+        #expect(inserted == 0 && model.gaps.count == 1)
+
+        model.fillRecentGapsIfNeeded()
+        try await waitForGapWork { model.gaps.isEmpty }
+        #expect(requests == 1)
+        #expect(model.statuses.map(\.id) == ["101", "100"])
+        #expect(model.failedGapIDs.isEmpty)
+    }
+
+    @Test func approachingAGapContinuesBeyondTheBackgroundProbeBudget() async throws {
+        let api = MockMastodonAPI()
+        var cursors: [String?] = []
+        api.fetchHomeTimelineHandler = { maxID, sinceID, _ in
+            #expect(sinceID == "100")
+            cursors.append(maxID)
+            switch maxID {
+            case "107": return [post("106"), post("105")]
+            case "105": return [post("104"), post("103")]
+            case "103": return [post("102"), post("101")]
+            default: return []
+            }
+        }
+        let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(), cacheClientID: UUID().uuidString)
+        defer { model.clearStatuses() }
+        model.statuses = [post("100")]
+        model.receiveDetectedPage(TimelinePage(statuses: [post("108"), post("107")]), sinceID: "100")
+        model.fillRecentGapsIfNeeded()
+        try await waitForGapWork { cursors.count == 2 && model.loadingGapIDs.isEmpty }
+        #expect(model.gaps.count == 1)
+        #expect(model.statuses.count == 7)
+
+        model.fillRecentGapsIfNeeded(near: ["103", "100"])
+        try await waitForGapWork { model.gaps.isEmpty }
+        #expect(cursors == ["107", "105", "103", "101"])
+        let expectedIDs = (100...108).reversed().map { String($0) }
+        #expect(model.statuses.map(\.id) == expectedIDs)
+    }
+
+    @Test func gapFailuresWaitForAnchoredPresentationAndAnExplicitRetry() async throws {
+        let api = MockMastodonAPI()
+        var requests = 0
+        api.fetchHomeTimelineHandler = { _, _, _ in
+            requests += 1
+            if requests == 1 { throw URLError(.notConnectedToInternet) }
+            return []
+        }
+        let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(),
+            cacheClientID: UUID().uuidString, defersLivePresentation: true)
+        defer { model.clearStatuses() }
+        model.statuses = [post("100")]
+        model.receiveDetectedPage(TimelinePage(statuses: [post("101")]), sinceID: "100")
+        model.applyLiveUpdates()
+        let gap = try #require(model.gaps.first)
+        #expect(await model.loadGap(id: gap.id) == false)
+        #expect(model.failedGapIDs.isEmpty)
+        #expect(model.hasUnappliedUpdates)
+        model.applyLiveUpdates()
+        #expect(model.failedGapIDs == [gap.id])
+
+        model.fillRecentGapsIfNeeded(near: ["101", "100"])
+        await Task.yield()
+        #expect(requests == 1)
+        #expect(await model.loadGap(id: gap.id))
+        // Removing the retry row also waits for the view to preserve its anchor.
+        #expect(model.failedGapIDs == [gap.id])
+        model.applyLiveUpdates()
+        #expect(model.failedGapIDs.isEmpty && model.gaps.isEmpty)
+        #expect(requests == 2)
+    }
+
+    @Test func gapAndOlderPageRequestsQueueInOrderAndCoalesceRepeatedTaps() async throws {
+        let api = MockMastodonAPI()
+        typealias Request = (maxID: String?, sinceID: String?, reply: CheckedContinuation<[Status], Error>)
+        let requests = AsyncStream<Request>.makeStream()
+        api.fetchHomeTimelineHandler = { maxID, sinceID, _ in
+            try await withCheckedThrowingContinuation { requests.continuation.yield((maxID, sinceID, $0)) }
+        }
+        let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(), cacheClientID: UUID().uuidString)
+        defer { model.clearStatuses(); requests.continuation.finish() }
+        model.statuses = [post("100")]
+        model.receiveDetectedPage(TimelinePage(statuses: [post("102"), post("101")]), sinceID: "100")
+        model.receiveDetectedPage(TimelinePage(statuses: [post("104"), post("103")]), sinceID: "102")
+        let firstGap = try #require(model.gaps.first)
+        let secondGap = try #require(model.gaps.last)
+        let first = Task { await model.loadGap(id: firstGap.id) }
+        var iterator = requests.stream.makeAsyncIterator()
+        let request1 = try #require(await iterator.next())
+        #expect(request1.maxID == "101" && request1.sinceID == "100")
+        let older = Task { await model.loadMore() }
+        try await waitForGapWork { if case .loading = model.paginationState { return true }; return false }
+        let second = Task { await model.loadGap(id: secondGap.id) }
+        try await waitForGapWork { model.loadingGapIDs.count == 2 }
+        let repeated = Task { await model.loadGap(id: firstGap.id) }
+        await Task.yield()
+
+        request1.reply.resume(returning: [])
+        let request2 = try #require(await iterator.next())
+        #expect(request2.maxID == "100" && request2.sinceID == nil)
+        request2.reply.resume(returning: [post("99")])
+        let request3 = try #require(await iterator.next())
+        #expect(request3.maxID == "103" && request3.sinceID == "102")
+        request3.reply.resume(returning: [])
+        #expect(await first.value)
+        #expect(await repeated.value)
+        #expect(await second.value)
+        await older.value
+        #expect(model.loadingGapIDs.isEmpty && model.failedGapIDs.isEmpty && model.gaps.isEmpty)
+        #expect(model.statuses.map(\.id) == ["104", "103", "102", "101", "100", "99"])
+    }
+
+    @Test func resetCancelsQueuedGapAndPaginationRequestsBeforeTheyReachTheServer() async throws {
+        let api = MockMastodonAPI()
+        let requests = AsyncStream<CheckedContinuation<[Status], Error>>.makeStream()
+        var requestCount = 0
+        api.fetchHomeTimelineHandler = { _, _, _ in
+            requestCount += 1
+            return try await withCheckedThrowingContinuation { requests.continuation.yield($0) }
+        }
+        let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(), cacheClientID: UUID().uuidString)
+        defer { model.clearStatuses(); requests.continuation.finish() }
+        model.statuses = [post("100")]
+        model.receiveDetectedPage(TimelinePage(statuses: [post("102"), post("101")]), sinceID: "100")
+        model.receiveDetectedPage(TimelinePage(statuses: [post("104"), post("103")]), sinceID: "102")
+        let firstGap = try #require(model.gaps.first)
+        let secondGap = try #require(model.gaps.last)
+        let first = Task { await model.loadGap(id: firstGap.id) }
+        var iterator = requests.stream.makeAsyncIterator()
+        let reply = try #require(await iterator.next())
+        let older = Task { await model.loadMore() }
+        try await waitForGapWork { if case .loading = model.paginationState { return true }; return false }
+        let second = Task { await model.loadGap(id: secondGap.id) }
+        try await waitForGapWork { model.loadingGapIDs.count == 2 }
+        model.clearStatuses()
+        reply.resume(returning: [post("101")])
+        #expect(await first.value == false)
+        #expect(await second.value == false)
+        await older.value
+        #expect(requestCount == 1)
+        #expect(model.statuses.isEmpty && model.gaps.isEmpty && model.loadingGapIDs.isEmpty)
+        #expect(model.failedGapIDs.isEmpty && !model.hasUnappliedUpdates)
+    }
+
+    private func waitForGapWork(_ condition: () -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+            if condition() { return }
+        }
+        try #require(condition(), "Timeline gap work did not settle")
+    }
+
     @Test func cancelledRefreshCannotReviveContentAfterHardReset() async throws {
         let api = MockMastodonAPI()
         let requests = AsyncStream<CheckedContinuation<[Status], Error>>.makeStream()

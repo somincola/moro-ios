@@ -59,13 +59,14 @@ extension TimelineHomeView {
             revision: target.presentationRevision) {
             target.acknowledgePresentedUpdates(through: target.presentedSequence)
         }
-        if let anchor = scrollBridge.readingAnchors(for: timeline).first {
+        let visibleAnchors = scrollBridge.readingAnchors(for: timeline)
+        if let anchor = visibleAnchors.first {
             target.saveReadingAnchor(anchor)
             if timeline == .home, target.currentTopVisibleStatusID != anchor.statusID {
                 target.currentTopVisibleStatusID = anchor.statusID
             }
         }
-        target.fillRecentGapsIfNeeded()
+        target.fillRecentGapsIfNeeded(near: Set(visibleAnchors.map(\.statusID)))
     }
 
     func loadDetectedPosts(scrollToTop: Bool, providesFeedback: Bool) {
