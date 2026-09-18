@@ -54,8 +54,10 @@ final class TimelineScrollBridge: ObservableObject {
     }
 
     /// Whether each timeline is scrolled to the very top.
-    @Published var atTop: [TimelineType: Bool] = [:]
-
+    /// Not `@Published`: geometry callbacks write this during view updates. The new-posts
+    /// notice observes `atTopEvents` locally, the same way chrome uses `chromeFractionSubject`.
+    private var atTop: [TimelineType: Bool] = [:]
+    let atTopEvents = PassthroughSubject<TimelineType, Never>()
     let layoutEvents = PassthroughSubject<TimelineType, Never>()
     let userScrollEvents = PassthroughSubject<TimelineType, Never>()
     private var rows: [TimelineType: [String: WeakRow]] = [:]
@@ -331,8 +333,9 @@ final class TimelineScrollBridge: ObservableObject {
     func isAtTop(_ timeline: TimelineType) -> Bool { atTop[timeline] ?? false }
 
     func setAtTop(_ value: Bool, for timeline: TimelineType) {
-        guard atTop[timeline] != value else { return }
+        guard isAtTop(timeline) != value else { return }
         atTop[timeline] = value
+        atTopEvents.send(timeline)
     }
 
     func register(_ proxy: ScrollViewProxy, for timeline: TimelineType) {
@@ -564,3 +567,4 @@ struct TimelineScrollViewResolver: UIViewRepresentable {
         uiView.bridge = bridge
     }
 }
+

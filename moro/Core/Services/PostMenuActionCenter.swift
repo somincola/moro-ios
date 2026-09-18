@@ -113,12 +113,12 @@ final class PostMenuActionCenter: ObservableObject {
 
     private func toggleMute(for status: Status) {
         let account = status.account
-        _ = Task { @MainActor in
+        _ = Task { @MainActor [weak self] in
+            guard let self else { return }
             let relationship = await self.relationship(for: account.id)
             let isMuting = relationship?.muting == true
 
-            let performToggle: () -> Void = { [weak self] in
-                guard let self else { return }
+            let performToggle: () -> Void = {
                 _ = Task { @MainActor in
                     do {
                         let updatedRelationship =
@@ -179,12 +179,12 @@ final class PostMenuActionCenter: ObservableObject {
         afterToggle: (() -> Void)?
     ) {
         let account = status.account
-        _ = Task { @MainActor in
+        _ = Task { @MainActor [weak self] in
+            guard let self else { return }
             let relationship = await self.relationship(for: account.id)
             let isBlocking = relationship?.blocking == true
 
-            let performToggle: () -> Void = { [weak self, afterToggle] in
-                guard let self else { return }
+            let performToggle: () -> Void = {
                 _ = Task { @MainActor in
                     do {
                         let updatedRelationship =
@@ -317,3 +317,4 @@ final class PostMenuActionCenter: ObservableObject {
         presenter.present(alert, animated: true)
     }
 }
+

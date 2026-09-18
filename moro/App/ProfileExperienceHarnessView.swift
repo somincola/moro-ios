@@ -212,7 +212,7 @@ private final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             if parameter("max_id") != nil { return (200, []) }
             let selected = parameter("tagged")
             let ids = parameter("pinned") == "true" ? ["100"] : ["100", "99", "98"]
-            return (200, ids.filter { selected == nil || ($0 == "98" ? "daily" : "app") == selected }.map(post))
+            return (200, ids.filter { selected == nil || ($0 == "98" ? "daily" : "app") == selected }.map { post($0) })
         }
         if path.hasSuffix("/context") { return (200, ["ancestors": [], "descendants": []]) }
         if path.contains("/statuses/") { return (200, post(url.lastPathComponent)) }

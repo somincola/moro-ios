@@ -402,6 +402,23 @@ struct TimelineLiveUpdatesTests {
         #expect(scroll.contentOffset.y == 800)
     }
 
+    @Test func atTopUpdatesSynchronouslyAndKeepsTheLastWrite() {
+        let bridge = TimelineScrollBridge()
+        var events: [TimelineType] = []
+        let subscription = bridge.atTopEvents.sink { events.append($0) }
+        defer { subscription.cancel() }
+
+        #expect(!bridge.isAtTop(.home))
+        bridge.setAtTop(false, for: .home)
+        bridge.setAtTop(true, for: .home)
+        bridge.setAtTop(true, for: .home)
+        bridge.setAtTop(false, for: .home)
+        bridge.setAtTop(true, for: .home)
+
+        #expect(bridge.isAtTop(.home))
+        #expect(events == [.home, .home, .home])
+    }
+
     @Test func idleScrollConfirmsLatestFromFinalNativePosition() async throws {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
         let scroll = UIScrollView(frame: window.bounds)

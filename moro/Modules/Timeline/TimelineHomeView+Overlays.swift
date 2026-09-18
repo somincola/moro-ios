@@ -1,7 +1,6 @@
 import SwiftUI
 
 extension TimelineHomeView {
-    var isCurrentTimelineAtTop: Bool { scrollBridge.isAtTop(selectedTimeline) }
     var currentDetectionCount: Int { viewModel.newPostCount }
 
     var topIndicator: some View {
@@ -9,7 +8,6 @@ extension TimelineHomeView {
             timeline: selectedTimeline,
             count: currentDetectionCount,
             hasMore: viewModel.newPostsHaveMore,
-            isAtTop: isCurrentTimelineAtTop,
             isEnabled: settings.timelineInAppNewPostBannerEnabled,
             isRefreshing: showsTopRefreshIndicator,
             bridge: scrollBridge
@@ -100,7 +98,6 @@ private struct TimelineNewPostsNotice: View {
     let timeline: TimelineType
     let count: Int
     let hasMore: Bool
-    let isAtTop: Bool
     let isEnabled: Bool
     let isRefreshing: Bool
     let bridge: TimelineScrollBridge
@@ -108,7 +105,27 @@ private struct TimelineNewPostsNotice: View {
 
     @Environment(\.moroTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isAtTop: Bool
     @State private var compactTimelines: Set<TimelineType> = []
+
+    init(
+        timeline: TimelineType,
+        count: Int,
+        hasMore: Bool,
+        isEnabled: Bool,
+        isRefreshing: Bool,
+        bridge: TimelineScrollBridge,
+        onTap: @escaping () -> Void
+    ) {
+        self.timeline = timeline
+        self.count = count
+        self.hasMore = hasMore
+        self.isEnabled = isEnabled
+        self.isRefreshing = isRefreshing
+        self.bridge = bridge
+        self.onTap = onTap
+        _isAtTop = State(initialValue: bridge.isAtTop(timeline))
+    }
 
     private var hasPendingPosts: Bool { count > 0 || hasMore }
     private var isCompact: Bool { compactTimelines.contains(timeline) }
@@ -140,6 +157,15 @@ private struct TimelineNewPostsNotice: View {
                     .frame(maxWidth: 280)
             }
             Spacer()
+        }
+        .onReceive(bridge.atTopEvents) { source in
+            guard source == timeline else { return }
+            let value = bridge.isAtTop(source)
+            guard isAtTop != value else { return }
+            isAtTop = value
+        }
+        .onChange(of: timeline) { _, newTimeline in
+            isAtTop = bridge.isAtTop(newTimeline)
         }
         .onReceive(bridge.userScrollEvents) { source in
             guard source == timeline, hasPendingPosts else { return }
