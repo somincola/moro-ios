@@ -2029,6 +2029,7 @@ public enum MoroL10n {
     }
 
     public enum ImagePreview {
+        public static var zoomAction: String { text("imagePreview.zoomAction") }
         public static var altBadge: String { text("imagePreview.altBadge") }
         public static var altAccessibility: String { text("imagePreview.altAccessibility") }
         public static var emptyState: String { text("imagePreview.emptyState") }

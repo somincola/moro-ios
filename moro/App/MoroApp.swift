@@ -33,7 +33,9 @@ struct MoroApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if shouldUsePublishingHarness {
+                if shouldUseImagePreviewHarness {
+                    imagePreviewHarness.preferredColorScheme(colorScheme)
+                } else if shouldUsePublishingHarness {
                     publishingHarness.preferredColorScheme(colorScheme)
                 } else if shouldUsePushHarness {
                     pushHarness.preferredColorScheme(colorScheme)
@@ -124,6 +126,20 @@ struct MoroApp: App {
 
     private var launchArguments: [String] {
         ProcessInfo.processInfo.arguments
+    }
+
+    private var shouldUseImagePreviewHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_IMAGE_PREVIEW")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var imagePreviewHarness: some View {
+        #if DEBUG
+        ImagePreviewHarnessView().moroTheme(MoroTheme(accent: .monochrome))
+        #endif
     }
 
     private var shouldUsePushHarness: Bool {
