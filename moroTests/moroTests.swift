@@ -2040,6 +2040,47 @@ struct moroTests {
         }
     }
 
+    @Test @MainActor func accountDisplayNameParserKeepsFirstDuplicateEmojiShortcode()
+        async throws
+    {
+        let firstAnimatedURL = URL(string: "https://example.com/duplicate-first.gif")!
+        let firstStaticURL = URL(string: "https://example.com/duplicate-first.png")!
+        let secondAnimatedURL = URL(string: "https://example.com/duplicate-second.gif")!
+        let secondStaticURL = URL(string: "https://example.com/duplicate-second.png")!
+        let firstEmoji = Account.Emoji(
+            shortcode: "duplicate_wave",
+            url: firstAnimatedURL,
+            staticURL: firstStaticURL
+        )
+        let secondEmoji = Account.Emoji(
+            shortcode: "duplicate_wave",
+            url: secondAnimatedURL,
+            staticURL: secondStaticURL
+        )
+
+        let content = AccountDisplayNameParser.parse(
+            displayName: "Duplicate :duplicate_wave: account",
+            fallbackUsername: "duplicate-emoji-user",
+            emojis: [firstEmoji, secondEmoji]
+        )
+
+        #expect(content.plainText == "Duplicate :duplicate_wave: account")
+        #expect(content.containsCustomEmoji)
+        #expect(content.emojiURLs == [firstStaticURL])
+
+        guard content.segments.count == 3 else {
+            #expect(Bool(false))
+            return
+        }
+
+        if case .emoji(let resolvedEmoji) = content.segments[1] {
+            #expect(resolvedEmoji.url == firstAnimatedURL)
+            #expect(resolvedEmoji.staticURL == firstStaticURL)
+        } else {
+            #expect(Bool(false))
+        }
+    }
+
     @Test @MainActor func accountDisplayNameFallsBackToUsernameWhenNameIsEffectivelyEmpty()
         async throws
     {
