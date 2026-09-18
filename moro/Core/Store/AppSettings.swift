@@ -106,6 +106,9 @@ final class AppSettings: ObservableObject {
         case paintChaos
         case risoGlitch
         case tornCollage
+        case appleGummy
+        case zebraPrint
+        case notAwake
 
         var title: String {
             switch self {
@@ -115,6 +118,9 @@ final class AppSettings: ObservableObject {
             case .paintChaos: return MoroL10n.AppSettings.appIconPaintChaos
             case .risoGlitch: return MoroL10n.AppSettings.appIconRisoGlitch
             case .tornCollage: return MoroL10n.AppSettings.appIconTornCollage
+            case .appleGummy: return MoroL10n.AppSettings.appIconAppleGummy
+            case .zebraPrint: return MoroL10n.AppSettings.appIconZebraPrint
+            case .notAwake: return MoroL10n.AppSettings.appIconNotAwake
             }
         }
 
@@ -126,6 +132,9 @@ final class AppSettings: ObservableObject {
             case .paintChaos: return "AppIconPaintChaos"
             case .risoGlitch: return "AppIconRisoGlitch"
             case .tornCollage: return "AppIconTornCollage"
+            case .appleGummy: return "AppIconAppleGummy"
+            case .zebraPrint: return "AppIconZebraPrint"
+            case .notAwake: return "AppIconNotAwake"
             }
         }
 
@@ -137,6 +146,9 @@ final class AppSettings: ObservableObject {
             case .paintChaos: return "AppIconPreviewPaintChaos"
             case .risoGlitch: return "AppIconPreviewRisoGlitch"
             case .tornCollage: return "AppIconPreviewTornCollage"
+            case .appleGummy: return "AppIconPreviewAppleGummy"
+            case .zebraPrint: return "AppIconPreviewZebraPrint"
+            case .notAwake: return "AppIconPreviewNotAwake"
             }
         }
 

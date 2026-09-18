@@ -1,6 +1,8 @@
 # 深色 App Icon
 
-为默认图标和 5 款替换图标提供 `Any` / `Dark` 资源：默认、彩虹、液态玻璃、泼彩、故障、拼贴。正式资源直接处理现有 1024 × 1024 原图像素。2026-09-18 调整后四款的构图比例，默认和彩虹的浅色、深色正式图标保持原样。
+为默认图标和 8 款替换图标提供 `Any` / `Dark` 资源：默认、彩虹、液态玻璃、泼彩、故障、拼贴、苹果软糖、斑马印刷、还没醒。正式资源直接处理现有 1024 × 1024 原图像素。2026-09-18 调整后四款的构图比例，随后加入三款大象角色图标。
+
+[三款新图标的资源说明](character-icons/README.md)：软糖和斑马采用第二轮原版，“还没醒”采用第三轮漫画大象。Any 与选定成图逐字节一致，Dark 只调整背景。原有六款图标如下。
 
 ![六款图标的浅色与深色版本对比](comparison.png)
 
@@ -33,11 +35,11 @@ Apple 明确规定传入 `nil` 会选择主图标，见 [setAlternateIconName](h
 
 ## 资源配置
 
-- 6 个 `.appiconset` 使用 Single Size：`idiom: universal`、`platform: ios`、`size: 1024x1024`。
-- `Any` 为不透明 PNG；`Dark` 使用 `luminosity: dark` 和透明 PNG，由系统铺设暗底。资源中没有预先画圆角。
+- 9 个 `.appiconset` 使用 Single Size：`idiom: universal`、`platform: ios`、`size: 1024x1024`。
+- `Any` 为不透明 PNG；`Dark` 使用 `luminosity: dark`。原有六款使用透明 PNG，由系统铺设暗底；新增三款使用不透明深色 PNG，保留各自的背景色调与纹理。资源中没有预先画圆角。
 - 移除手工缩放的 120 / 152 / 167 / 180 px 副本，由 Xcode 生成所需尺寸。
-- 主图标仍为 `AppIcon`，替换图标为 Rainbow、LiquidGlass、PaintChaos、RisoGlitch、TornCollage。
-- 6 个应用内预览图像集均提供 240 × 240 的 Any / Dark 图片。深色预览合成近似暗底，SwiftUI 按资源名加载并跟随应用的外观环境。
+- 主图标仍为 `AppIcon`，替换图标为 Rainbow、LiquidGlass、PaintChaos、RisoGlitch、TornCollage、AppleGummy、ZebraPrint、NotAwake。
+- 9 个应用内预览图像集均提供 240 × 240 的 Any / Dark 图片。透明深色预览合成近似暗底，新增三款保留自己的深色背景；SwiftUI 按资源名加载并跟随应用的外观环境。
 - Tinted 使用系统自动处理。以后手制 Tinted 时应提供灰度图。
 
 主屏幕图标外观由系统自定设置控制，可独立于应用内主题。参考 [Configuring your app icon using an asset catalog](https://developer.apple.com/documentation/xcode/configuring-your-app-icon)。
@@ -74,3 +76,9 @@ python3 scripts/generate-dark-app-icons.py
 ```
 
 实现见 [`scripts/generate-dark-app-icons.py`](../../../scripts/generate-dark-app-icons.py)。
+
+新增三款使用独立脚本，从 `source-originals/` 中已选定的成图生成，不改变原有六款资源：
+
+```sh
+python3 scripts/generate-character-app-icons.py
+```

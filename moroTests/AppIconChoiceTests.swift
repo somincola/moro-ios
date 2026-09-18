@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import UIKit
 
 @testable import moro
 
@@ -28,6 +29,27 @@ final class AppIconChoiceTests: XCTestCase {
             names.count, alternates.count, "every non-default icon needs an alternate name"
         )
         XCTAssertEqual(Set(names).count, names.count, "alternate icon names must be unique")
+    }
+
+    func testSelectableIconsAreBundledWithBothPreviewAppearances() throws {
+        let bundle = Bundle.main
+        let icons = try XCTUnwrap(bundle.infoDictionary?["CFBundleIcons"] as? [String: Any])
+        let alternates = try XCTUnwrap(icons["CFBundleAlternateIcons"] as? [String: Any])
+        let expectedNames = AppSettings.AppIconChoice.allCases.compactMap(\.alternateIconName)
+        XCTAssertEqual(Set(alternates.keys), Set(expectedNames))
+
+        for choice in AppSettings.AppIconChoice.allCases {
+            let light = try XCTUnwrap(UIImage(
+                named: choice.previewAssetName, in: bundle,
+                compatibleWith: UITraitCollection(userInterfaceStyle: .light)
+            ), "Missing light preview for \(choice.rawValue)")
+            let dark = try XCTUnwrap(UIImage(
+                named: choice.previewAssetName, in: bundle,
+                compatibleWith: UITraitCollection(userInterfaceStyle: .dark)
+            ), "Missing dark preview for \(choice.rawValue)")
+            XCTAssertNotEqual(try XCTUnwrap(light.pngData()), try XCTUnwrap(dark.pngData()),
+                              "Dark preview must resolve its own resource for \(choice.rawValue)")
+        }
     }
 
     func testRetiredStoredChoicesAreNoLongerSelectable() {

@@ -1,0 +1,50 @@
+[
+  {
+    "name": "苹果软糖",
+    "asset": "AppIconAppleGummy",
+    "any_sha256": "b1e5740431e691c7ae4d20aa754a63a53e072bf882c1fc9796dfabbcdf905615",
+    "subject_bounds": [
+      128,
+      148,
+      894,
+      877
+    ],
+    "subject_percent": [
+      74.8,
+      71.2
+    ],
+    "foreground_core_preserved": true
+  },
+  {
+    "name": "斑马印刷",
+    "asset": "AppIconZebraPrint",
+    "any_sha256": "5a0a0b6df401c5f12e95616ee07640c7d3c1da4d10c700d32114cfcafe7197ae",
+    "subject_bounds": [
+      128,
+      144,
+      896,
+      882
+    ],
+    "subject_percent": [
+      75.0,
+      72.1
+    ],
+    "foreground_core_preserved": true
+  },
+  {
+    "name": "还没醒",
+    "asset": "AppIconNotAwake",
+    "any_sha256": "b4c54b11d957ca4b19d2b82214a40921b67c3fad9a47afba628cbe633eece77a",
+    "subject_bounds": [
+      148,
+      143,
+      909,
+      879
+    ],
+    "subject_percent": [
+      74.3,
+      71.9
+    ],
+    "foreground_core_preserved": true
+  }
+]

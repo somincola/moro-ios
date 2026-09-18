@@ -31,7 +31,7 @@
 </style>
 <main>
   <h1>Moro · 深色图标对比</h1>
-  <p class="intro">已同步四款图标的比例调整，检查浅色与深色版本的轮廓、留白、材质和小尺寸辨识度。</p>
+  <p class="intro">九款图标的浅色与深色版本。新增苹果软糖、斑马印刷、还没醒，保持选定原版造型，深色仅调整背景。</p>
   <div class="controls">
     <label>预览尺寸
       <select id="size">
@@ -49,8 +49,8 @@
       </select>
     </label>
   </div>
-  <section class="grid" id="grid" aria-label="六款图标对比"></section>
-  <p class="note">右侧底色与圆角是网页模拟；最终呈现以 iOS 主屏幕为准。主屏幕图标外观由系统自定设置控制，可独立于应用内主题。Tinted 继续由系统自动生成。</p>
+  <section class="grid" id="grid" aria-label="九款图标对比"></section>
+  <p class="note">圆角与透明图片的右侧底色为网页模拟；新增三款使用自己的不透明深色背景，不随底色控件变化。最终呈现以 iOS 主屏幕为准。主屏幕图标外观由系统自定设置控制，可独立于应用内主题。Tinted 继续由系统自动生成。</p>
 </main>
 <script>
   const icons = [
@@ -60,6 +60,9 @@
     ['AppIconPaintChaos', 'paintchaos', '泼彩', '中央白色象头放大约 25%，平滑过渡到保留原位置的外围飞溅。'],
     ['AppIconRisoGlitch', 'risoglitch', '故障', '主体缩小 16%，保留套印与颗粒，增加边缘留白。'],
     ['AppIconTornCollage', 'torncollage', '拼贴', '主体缩小 20%，保留纸张、铝箔与撕边，延展原背景。'],
+    ['AppIconAppleGummy', 'applegummy', '苹果软糖', '第二轮原图保持不变；深色使用黑樱桃底，保留青苹果色、耳形与透光细节。'],
+    ['AppIconZebraPrint', 'zebraprint', '斑马印刷', '第二轮原图保持不变；深色使用暗红棕纸底，保留黑白旋纹、身形与纸张颗粒。'],
+    ['AppIconNotAwake', 'notawake', '还没醒', '保留第三轮漫画大象的神态和粗线条；深色使用暖棕纸底，保留蓝色主体与原比例。'],
   ];
   const assetRoot = '../../../moro/Resources/Assets.xcassets/';
   const grid = document.getElementById('grid');
