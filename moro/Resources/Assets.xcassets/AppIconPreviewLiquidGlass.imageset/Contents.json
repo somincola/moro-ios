@@ -1,4 +1,24 @@
 {
-  "images" : [ { "filename" : "appicon-preview-liquidglass.png", "idiom" : "universal", "scale" : "1x" } ],
-  "info" : { "author" : "xcode", "version" : 1 }
+  "images": [
+    {
+      "filename": "appicon-preview-liquidglass.png",
+      "idiom": "universal",
+      "scale": "1x"
+    },
+    {
+      "appearances": [
+        {
+          "appearance": "luminosity",
+          "value": "dark"
+        }
+      ],
+      "filename": "appicon-preview-liquidglass-dark.png",
+      "idiom": "universal",
+      "scale": "1x"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
 }

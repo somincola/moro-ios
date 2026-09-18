@@ -26,7 +26,7 @@ struct AppIconSettingsView: View {
     var body: some View {
         Section {
             LazyVGrid(columns: iconGridColumns, alignment: .leading, spacing: 12) {
-                ForEach(AppSettings.AppIconChoice.allCases.filter { $0 != .lineElephant }, id: \.rawValue) { appIcon in
+                ForEach(AppSettings.AppIconChoice.allCases, id: \.rawValue) { appIcon in
                     appIconCard(appIcon)
                 }
             }
@@ -117,8 +117,8 @@ struct AppIconSettingsView: View {
 
     @ViewBuilder
     private func appIconPreviewImage(for appIcon: AppSettings.AppIconChoice) -> some View {
-        if let image = UIImage(named: appIcon.previewAssetName) {
-            Image(uiImage: image)
+        if UIImage(named: appIcon.previewAssetName) != nil {
+            Image(appIcon.previewAssetName)
                 .resizable()
                 .scaledToFill()
         } else {

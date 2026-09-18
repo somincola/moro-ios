@@ -274,8 +274,6 @@ public enum MoroL10n {
         public static var appearanceLight: String { text("appsettings.appearance.light") }
         public static var appearanceDark: String { text("appsettings.appearance.dark") }
         public static var appIconDefault: String { text("appsettings.icon.default") }
-        public static var appIconClassic: String { text("appsettings.icon.classic") }
-        public static var appIconLineElephant: String { text("appsettings.icon.lineElephant") }
         public static var appIconRainbow: String { text("appsettings.icon.rainbow") }
         public static var appIconLiquidGlass: String { text("appsettings.icon.liquidGlass") }
         public static var appIconPaintChaos: String { text("appsettings.icon.paintChaos") }

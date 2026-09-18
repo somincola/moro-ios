@@ -103,6 +103,17 @@ struct MoroApp: App {
                         }
                 }
             }
+            .onChange(of: scenePhase, initial: true) { _, newPhase in
+                guard newPhase == .active else { return }
+                Task { @MainActor in
+                    do {
+                        settings.appIcon = try await AppIconManager.shared.reconcileSelection()
+                    } catch {
+                        // Keep the existing selection and retry on the next activation.
+                        NSLog("[AppIcon] Failed to restore the primary icon: %@", error.localizedDescription)
+                    }
+                }
+            }
             .environment(
                 \.dynamicTypeSize,
                 uiTestDynamicTypeSizeOverride ?? systemDynamicTypeSize

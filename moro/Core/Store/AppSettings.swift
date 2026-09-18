@@ -101,8 +101,6 @@ final class AppSettings: ObservableObject {
 
     enum AppIconChoice: String, CaseIterable {
         case `default`            // geometric elephant head — the default + App Store icon
-        case classic              // previous playful full-elephant default
-        case lineElephant
         case rainbow
         case liquidGlass
         case paintChaos
@@ -112,8 +110,6 @@ final class AppSettings: ObservableObject {
         var title: String {
             switch self {
             case .default: return MoroL10n.AppSettings.appIconDefault
-            case .classic: return MoroL10n.AppSettings.appIconClassic
-            case .lineElephant: return MoroL10n.AppSettings.appIconLineElephant
             case .rainbow: return MoroL10n.AppSettings.appIconRainbow
             case .liquidGlass: return MoroL10n.AppSettings.appIconLiquidGlass
             case .paintChaos: return MoroL10n.AppSettings.appIconPaintChaos
@@ -125,8 +121,6 @@ final class AppSettings: ObservableObject {
         var alternateIconName: String? {
             switch self {
             case .default: return nil
-            case .classic: return "AppIconClassic"
-            case .lineElephant: return "AppIconLineElephant"
             case .rainbow: return "AppIconRainbow"
             case .liquidGlass: return "AppIconLiquidGlass"
             case .paintChaos: return "AppIconPaintChaos"
@@ -138,8 +132,6 @@ final class AppSettings: ObservableObject {
         var previewAssetName: String {
             switch self {
             case .default: return "AppIconPreviewDefault"
-            case .classic: return "AppIconPreviewClassic"
-            case .lineElephant: return "AppIconPreviewLineElephant"
             case .rainbow: return "AppIconPreviewRainbow"
             case .liquidGlass: return "AppIconPreviewLiquidGlass"
             case .paintChaos: return "AppIconPreviewPaintChaos"
@@ -148,6 +140,12 @@ final class AppSettings: ObservableObject {
             }
         }
 
+        init?(alternateIconName: String?) {
+            guard let choice = Self.allCases.first(where: { $0.alternateIconName == alternateIconName }) else {
+                return nil
+            }
+            self = choice
+        }
     }
 
     @Published var appIcon: AppIconChoice {

@@ -1,0 +1,118 @@
+[
+  {
+    "name": "默认",
+    "slug": "default",
+    "before_percent": [
+      63.6,
+      48.4
+    ],
+    "after_percent": [
+      63.6,
+      48.4
+    ],
+    "after_bbox": [
+      187,
+      274,
+      838,
+      770
+    ]
+  },
+  {
+    "name": "彩虹",
+    "slug": "rainbow",
+    "before_percent": [
+      76.0,
+      68.1
+    ],
+    "after_percent": [
+      76.0,
+      68.1
+    ],
+    "after_bbox": [
+      159,
+      146,
+      937,
+      843
+    ]
+  },
+  {
+    "name": "液态玻璃",
+    "slug": "liquidglass",
+    "before_percent": [
+      56.3,
+      56.2
+    ],
+    "after_percent": [
+      68.7,
+      68.5
+    ],
+    "after_bbox": [
+      136,
+      187,
+      839,
+      888
+    ]
+  },
+  {
+    "name": "泼彩",
+    "slug": "paintchaos",
+    "before_percent": [
+      86.3,
+      81.9
+    ],
+    "after_percent": [
+      88.9,
+      85.1
+    ],
+    "after_bbox": [
+      41,
+      79,
+      951,
+      950
+    ],
+    "before_white_core_percent": [
+      38.4,
+      38.0
+    ],
+    "after_white_core_percent": [
+      48.0,
+      47.8
+    ]
+  },
+  {
+    "name": "故障",
+    "slug": "risoglitch",
+    "before_percent": [
+      91.2,
+      86.7
+    ],
+    "after_percent": [
+      76.6,
+      72.9
+    ],
+    "after_bbox": [
+      97,
+      137,
+      881,
+      883
+    ]
+  },
+  {
+    "name": "拼贴",
+    "slug": "torncollage",
+    "before_percent": [
+      97.3,
+      85.2
+    ],
+    "after_percent": [
+      77.8,
+      68.1
+    ],
+    "after_bbox": [
+      115,
+      163,
+      912,
+      860
+    ]
+  }
+]

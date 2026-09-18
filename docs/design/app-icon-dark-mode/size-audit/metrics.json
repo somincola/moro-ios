@@ -1,0 +1,222 @@
+[
+  {
+    "name": "默认",
+    "slug": "default",
+    "source_size": [
+      1024,
+      1024
+    ],
+    "dark_size": [
+      1024,
+      1024
+    ],
+    "any_mode": "RGB",
+    "dark_mode": "RGBA",
+    "alpha_threshold": 127,
+    "significant_component_minimum_pixels": 300,
+    "raw_bbox": [
+      187,
+      274,
+      838,
+      770
+    ],
+    "significant_bbox": [
+      187,
+      274,
+      838,
+      770
+    ],
+    "significant_bbox_percent": [
+      63.6,
+      48.4
+    ],
+    "foreground_area_percent": 20.1,
+    "recommendation": "保持",
+    "remark": "宽扁轮廓，实心高对比"
+  },
+  {
+    "name": "彩虹",
+    "slug": "rainbow",
+    "source_size": [
+      1024,
+      1024
+    ],
+    "dark_size": [
+      1024,
+      1024
+    ],
+    "any_mode": "RGB",
+    "dark_mode": "RGBA",
+    "alpha_threshold": 127,
+    "significant_component_minimum_pixels": 300,
+    "raw_bbox": [
+      159,
+      146,
+      937,
+      843
+    ],
+    "significant_bbox": [
+      159,
+      146,
+      937,
+      843
+    ],
+    "significant_bbox_percent": [
+      76.0,
+      68.1
+    ],
+    "foreground_area_percent": 40.5,
+    "recommendation": "保持",
+    "remark": "作为这组的视觉参照"
+  },
+  {
+    "name": "液态玻璃",
+    "slug": "liquidglass",
+    "source_size": [
+      1024,
+      1024
+    ],
+    "dark_size": [
+      1024,
+      1024
+    ],
+    "any_mode": "RGB",
+    "dark_mode": "RGBA",
+    "alpha_threshold": 127,
+    "significant_component_minimum_pixels": 300,
+    "raw_bbox": [
+      203,
+      245,
+      780,
+      820
+    ],
+    "significant_bbox": [
+      203,
+      245,
+      780,
+      820
+    ],
+    "significant_bbox_percent": [
+      56.3,
+      56.2
+    ],
+    "foreground_area_percent": 21.8,
+    "recommendation": "主体放大 20–25%",
+    "remark": "暗部多，留白也偏大"
+  },
+  {
+    "name": "泼彩",
+    "slug": "paintchaos",
+    "source_size": [
+      1024,
+      1024
+    ],
+    "dark_size": [
+      1024,
+      1024
+    ],
+    "any_mode": "RGB",
+    "dark_mode": "RGBA",
+    "alpha_threshold": 127,
+    "significant_component_minimum_pixels": 300,
+    "raw_bbox": [
+      41,
+      28,
+      991,
+      969
+    ],
+    "significant_bbox": [
+      41,
+      79,
+      925,
+      918
+    ],
+    "significant_bbox_percent": [
+      86.3,
+      81.9
+    ],
+    "foreground_area_percent": 36.0,
+    "recommendation": "白色象头放大 20–25%",
+    "remark": "飞溅范围基本保持",
+    "white_core_bbox": [
+      390,
+      384,
+      783,
+      773
+    ],
+    "white_core_bbox_percent": [
+      38.4,
+      38.0
+    ]
+  },
+  {
+    "name": "故障",
+    "slug": "risoglitch",
+    "source_size": [
+      1024,
+      1024
+    ],
+    "dark_size": [
+      1024,
+      1024
+    ],
+    "any_mode": "RGB",
+    "dark_mode": "RGBA",
+    "alpha_threshold": 127,
+    "significant_component_minimum_pixels": 1500,
+    "raw_bbox": [
+      0,
+      20,
+      1024,
+      1024
+    ],
+    "significant_bbox": [
+      18,
+      66,
+      952,
+      954
+    ],
+    "significant_bbox_percent": [
+      91.2,
+      86.7
+    ],
+    "foreground_area_percent": 51.1,
+    "recommendation": "图形缩小 15–18%",
+    "remark": "保留条纹，清理外围散点"
+  },
+  {
+    "name": "拼贴",
+    "slug": "torncollage",
+    "source_size": [
+      1024,
+      1024
+    ],
+    "dark_size": [
+      1024,
+      1024
+    ],
+    "any_mode": "RGB",
+    "dark_mode": "RGBA",
+    "alpha_threshold": 127,
+    "significant_component_minimum_pixels": 300,
+    "raw_bbox": [
+      16,
+      76,
+      1012,
+      948
+    ],
+    "significant_bbox": [
+      16,
+      76,
+      1012,
+      948
+    ],
+    "significant_bbox_percent": [
+      97.3,
+      85.2
+    ],
+    "foreground_area_percent": 48.5,
+    "recommendation": "图形缩小 18–20%",
+    "remark": "两侧增加完整留白"
+  }
+]

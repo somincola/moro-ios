@@ -737,7 +737,7 @@
 		408434042ED449B800F038E4 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIconClassic AppIconLineElephant AppIconRainbow AppIconLiquidGlass AppIconPaintChaos AppIconRisoGlitch AppIconTornCollage";
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIconRainbow AppIconLiquidGlass AppIconPaintChaos AppIconRisoGlitch AppIconTornCollage";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = moro/moro.entitlements;
@@ -775,7 +775,7 @@
 		408434052ED449B800F038E4 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIconClassic AppIconLineElephant AppIconRainbow AppIconLiquidGlass AppIconPaintChaos AppIconRisoGlitch AppIconTornCollage";
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIconRainbow AppIconLiquidGlass AppIconPaintChaos AppIconRisoGlitch AppIconTornCollage";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = moro/moroRelease.entitlements;

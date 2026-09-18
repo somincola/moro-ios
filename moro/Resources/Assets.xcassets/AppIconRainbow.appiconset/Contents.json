@@ -1,10 +1,26 @@
 {
-  "images" : [
-    { "filename" : "appicon-rainbow-120.png", "idiom" : "iphone", "scale" : "2x", "size" : "60x60" },
-    { "filename" : "appicon-rainbow-180.png", "idiom" : "iphone", "scale" : "3x", "size" : "60x60" },
-    { "filename" : "appicon-rainbow-152.png", "idiom" : "ipad", "scale" : "2x", "size" : "76x76" },
-    { "filename" : "appicon-rainbow-167.png", "idiom" : "ipad", "scale" : "2x", "size" : "83.5x83.5" },
-    { "filename" : "appicon-rainbow-1024.png", "idiom" : "ios-marketing", "scale" : "1x", "size" : "1024x1024" }
+  "images": [
+    {
+      "filename": "appicon-rainbow-1024.png",
+      "idiom": "universal",
+      "platform": "ios",
+      "size": "1024x1024"
+    },
+    {
+      "appearances": [
+        {
+          "appearance": "luminosity",
+          "value": "dark"
+        }
+      ],
+      "filename": "appicon-rainbow-dark-1024.png",
+      "idiom": "universal",
+      "platform": "ios",
+      "size": "1024x1024"
+    }
   ],
-  "info" : { "author" : "xcode", "version" : 1 }
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
 }
