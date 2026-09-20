@@ -29,17 +29,17 @@ GitHub Actions 的配置位于 `.github/workflows/ci.yml`：
 - 从 Xcode 支持的 iPhone 模拟器中选择最新已安装 iOS runtime。
 - 保留模拟器 ad-hoc 签名，确保涉及 Keychain entitlement 的测试可运行。
 
-Xcode Cloud 使用共享别名：
+Xcode Cloud 的 Release 工作流固定为 API 列出的兼容组合：
 
-- `Moro Stable Xcode`：固定为 Xcode 26.6（17F113）。
-- `Moro Stable macOS`：固定为 macOS Tahoe 26.6.2（25G83）。
-- Release 单元测试使用该环境提供的 iPhone 17 Pro / iOS 26.5 模拟器。
+- Xcode 26.6（17F113）。
+- macOS Tahoe 26.5.1（25F80）。
+- 单元测试使用该环境提供的 iPhone 17 Pro / iOS 26.5 模拟器。
 
-在 App Store Connect → Xcode Cloud → Settings → Custom Aliases 中管理别名。
-升级工具链时先验证，再同步更新 GitHub 的 Xcode 固定版本和 Cloud 别名；
+此前工作流使用 `Moro Stable Xcode` 和 `Moro Stable macOS` 自定义别名。
+2026-09-20，Cloud 报告两者的组合不可用，构建 28 在分配构建机前失败；
+因此改为上述明确版本。别名仍保留在 Settings → Custom Aliases，但 Release 工作流不再引用。
+升级工具链时先核验 Xcode 与 macOS 的兼容组合，再同步更新 GitHub 的 Xcode 固定版本和 Cloud；
 GitHub runner 标签只固定 macOS 大版本，镜像仍会更新；不要自动跟随 Xcode Beta。
-自定义别名目前可能在公开 API 的 `xcodeVersion` / `macOsVersion` 关系中返回 `null`；
-核验时同时检查网页中的别名和实际构建日志，不要因此覆盖为 Latest Release。
 
 ## 测试计划
 
