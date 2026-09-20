@@ -101,53 +101,63 @@ final class AppSettings: ObservableObject {
 
     enum AppIconChoice: String, CaseIterable {
         case `default`            // geometric elephant head — the default + App Store icon
-        case classic              // previous playful full-elephant default
-        case lineElephant
         case rainbow
         case liquidGlass
         case paintChaos
         case risoGlitch
         case tornCollage
+        case appleGummy
+        case zebraPrint
+        case notAwake
 
         var title: String {
             switch self {
             case .default: return MoroL10n.AppSettings.appIconDefault
-            case .classic: return MoroL10n.AppSettings.appIconClassic
-            case .lineElephant: return MoroL10n.AppSettings.appIconLineElephant
             case .rainbow: return MoroL10n.AppSettings.appIconRainbow
             case .liquidGlass: return MoroL10n.AppSettings.appIconLiquidGlass
             case .paintChaos: return MoroL10n.AppSettings.appIconPaintChaos
             case .risoGlitch: return MoroL10n.AppSettings.appIconRisoGlitch
             case .tornCollage: return MoroL10n.AppSettings.appIconTornCollage
+            case .appleGummy: return MoroL10n.AppSettings.appIconAppleGummy
+            case .zebraPrint: return MoroL10n.AppSettings.appIconZebraPrint
+            case .notAwake: return MoroL10n.AppSettings.appIconNotAwake
             }
         }
 
         var alternateIconName: String? {
             switch self {
             case .default: return nil
-            case .classic: return "AppIconClassic"
-            case .lineElephant: return "AppIconLineElephant"
             case .rainbow: return "AppIconRainbow"
             case .liquidGlass: return "AppIconLiquidGlass"
             case .paintChaos: return "AppIconPaintChaos"
             case .risoGlitch: return "AppIconRisoGlitch"
             case .tornCollage: return "AppIconTornCollage"
+            case .appleGummy: return "AppIconAppleGummy"
+            case .zebraPrint: return "AppIconZebraPrint"
+            case .notAwake: return "AppIconNotAwake"
             }
         }
 
         var previewAssetName: String {
             switch self {
             case .default: return "AppIconPreviewDefault"
-            case .classic: return "AppIconPreviewClassic"
-            case .lineElephant: return "AppIconPreviewLineElephant"
             case .rainbow: return "AppIconPreviewRainbow"
             case .liquidGlass: return "AppIconPreviewLiquidGlass"
             case .paintChaos: return "AppIconPreviewPaintChaos"
             case .risoGlitch: return "AppIconPreviewRisoGlitch"
             case .tornCollage: return "AppIconPreviewTornCollage"
+            case .appleGummy: return "AppIconPreviewAppleGummy"
+            case .zebraPrint: return "AppIconPreviewZebraPrint"
+            case .notAwake: return "AppIconPreviewNotAwake"
             }
         }
 
+        init?(alternateIconName: String?) {
+            guard let choice = Self.allCases.first(where: { $0.alternateIconName == alternateIconName }) else {
+                return nil
+            }
+            self = choice
+        }
     }
 
     @Published var appIcon: AppIconChoice {

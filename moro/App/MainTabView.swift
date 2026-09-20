@@ -58,8 +58,24 @@ struct MainTabView: View {
     @StateObject private var coordinator = RootTabCoordinator()
     @ObservedObject private var notificationUnreadStore = NotificationUnreadStore.shared
     @ObservedObject private var inboxUnreadStore = InboxUnreadStore.shared
-    @State private var pendingNotificationOpenVersionInFlight: Int?
     private let sharedComposeImportCoordinator = SharedComposeImportCoordinator()
+
+    private struct NotificationOpenTaskID: Equatable {
+        let requestID: UUID?
+        let sessionID: String?
+        let isActive: Bool
+        let isUnobstructed: Bool
+    }
+
+    private var notificationOpenTaskID: NotificationOpenTaskID {
+        NotificationOpenTaskID(
+            requestID: notificationUnreadStore.pendingOpenRequest?.id,
+            sessionID: activeSessionID,
+            isActive: scenePhase == .active,
+            isUnobstructed: coordinator.presentedSheet == nil
+                && coordinator.composeContext == nil && !coordinator.showAddAccountLogin
+        )
+    }
 
     private var activeAccountIDForSharedImport: String? {
         appState.currentAccount?.id
@@ -107,7 +123,8 @@ struct MainTabView: View {
                 apiClient: apiClient,
                 currentUserID: appState.currentAccount?.id,
                 initialDraft: wrapper.draft,
-                sharedImport: wrapper.sharedImport
+                sharedImport: wrapper.sharedImport,
+                onDismiss: { coordinator.composeContext = nil }
             ) { _ in }
             .environmentObject(appState)
         }
@@ -148,7 +165,6 @@ struct MainTabView: View {
                 apiClient: apiClient
             )
             updateNotificationListVisibility()
-            await handlePendingNotificationOpenIfNeeded()
             await instanceMetadataLoad
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -184,7 +200,7 @@ struct MainTabView: View {
         .onChange(of: coordinator.isAtRoot(.inbox)) { _, _ in
             updateNotificationListVisibility()
         }
-        .task(id: notificationUnreadStore.pendingOpenVersion) {
+        .task(id: notificationOpenTaskID) {
             await handlePendingNotificationOpenIfNeeded()
         }
     }
@@ -353,50 +369,38 @@ struct MainTabView: View {
     }
 
     private func handlePendingNotificationOpenIfNeeded() async {
-        let requestedVersion = notificationUnreadStore.pendingOpenVersion
-        guard requestedVersion > 0,
-            pendingNotificationOpenVersionInFlight != requestedVersion
+        guard notificationOpenTaskID.isActive, notificationOpenTaskID.isUnobstructed,
+            let activeSessionID, let request = notificationUnreadStore.pendingOpenRequest,
+            !Task.isCancelled
         else {
             return
         }
 
-        if let requestedSessionID = notificationUnreadStore.pendingOpenSessionID,
-            requestedSessionID != activeSessionID,
-            accountSessions.contains(where: { $0.id == requestedSessionID })
-        {
-            onSwitchAccount(requestedSessionID)
-            return
-        }
+        // Show a usable fallback before either account switching or target lookup.
+        coordinator.openPushNotification(.notifications)
+        updateNotificationListVisibility()
 
-        guard inboxUnreadStore.isActive(sessionID: activeSessionID) else { return }
-
-        pendingNotificationOpenVersionInFlight = requestedVersion
-        defer {
-            if pendingNotificationOpenVersionInFlight == requestedVersion {
-                pendingNotificationOpenVersionInFlight = nil
-            }
-        }
-
-        if notificationUnreadStore.pendingOpenNotificationType == "mention",
-            let notificationID = notificationUnreadStore.pendingOpenNotificationID,
-            let conversation = await inboxUnreadStore.resolveConversation(
-                forNotificationID: notificationID
-            )
-        {
-            guard notificationUnreadStore.pendingOpenVersion == requestedVersion else { return }
-            notificationUnreadStore.consumePendingNotificationOpen()
-            coordinator.openConversation(conversation)
-            Task {
-                await notificationUnreadStore.markActiveNotificationsRead(
-                    through: notificationID
-                )
+        if let requestedSessionID = request.sessionID, requestedSessionID != activeSessionID {
+            if accountSessions.contains(where: { $0.id == requestedSessionID }) {
+                onSwitchAccount(requestedSessionID)
+            } else {
+                // A removed account's server IDs must never be resolved on another account.
+                notificationUnreadStore.consumePendingNotificationOpen(id: request.id)
             }
             return
         }
 
-        guard notificationUnreadStore.pendingOpenVersion == requestedVersion else { return }
-        notificationUnreadStore.consumePendingNotificationOpen()
-        coordinator.openInbox(.notifications)
+        let destination = await PushNotificationResolver.resolve(request.payload, apiClient: apiClient)
+        guard !Task.isCancelled, self.activeSessionID == activeSessionID,
+            notificationUnreadStore.pendingOpenRequest?.id == request.id
+        else { return }
+
+        notificationUnreadStore.consumePendingNotificationOpen(id: request.id)
+        // Do not pull the user away if they started navigating while resolution ran.
+        guard notificationOpenTaskID.isUnobstructed, coordinator.selectedTab == .inbox,
+            coordinator.inboxSection == .notifications, coordinator.inboxRouter.path.isEmpty
+        else { return }
+        coordinator.openPushNotification(destination)
         updateNotificationListVisibility()
     }
 
@@ -440,7 +444,9 @@ private struct HomeTabRootView: View {
                 coordinator.timelineSelection = timeline
             },
             onChromeFraction: nil,
-            isActive: coordinator.selectedTab == .home && coordinator.isAtRoot(.home),
+            isActive: coordinator.selectedTab == .home && coordinator.isAtRoot(.home)
+                && coordinator.presentedSheet == nil && coordinator.composeContext == nil
+                && !coordinator.showAddAccountLogin,
             bottomContentInset: coordinator.tabBarHeight + composeButtonClearance
         )
         .environment(\.selectedTabScrollToTop, coordinator.selectedTabScrollToTop)

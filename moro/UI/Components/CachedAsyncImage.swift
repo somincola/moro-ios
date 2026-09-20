@@ -163,6 +163,7 @@ public struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     }
 
     private func downloadImage(from url: URL) async throws -> UIImage {
+        let generation = ImageCache.shared.writeGeneration
         var request = URLRequest(url: url)
         request.cachePolicy = .returnCacheDataElseLoad
 
@@ -179,7 +180,7 @@ public struct CachedAsyncImage<Content: View, Placeholder: View>: View {
         }
 
         // Cache the image
-        ImageCache.shared.setImage(image, for: url, data: data)
+        ImageCache.shared.setImage(image, for: url, data: data, generation: generation)
 
         return image
     }
@@ -232,9 +233,10 @@ nonisolated public final class ImageCache: @unchecked Sendable {
     /// Keeping this separate prevents full-size media and tiny icons from evicting
     /// each other from the general image cache.
     private let thumbnailCache = NSCache<NSString, UIImage>()
-    private let diskCacheDirectory: URL
-    private let fileManager = FileManager.default
-    private let queue = DispatchQueue(label: "com.moro.imagecache", qos: .utility)
+    private let disk = ImageDiskCache(directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("ImageCache", isDirectory: true))
+
+    public var writeGeneration: UUID { disk.writeGeneration }
 
     private init() {
         memoryCache.countLimit = 100
@@ -245,10 +247,7 @@ nonisolated public final class ImageCache: @unchecked Sendable {
         thumbnailCache.countLimit = 300
         thumbnailCache.totalCostLimit = 24 * 1024 * 1024
 
-        let cacheDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        diskCacheDirectory = cacheDir.appendingPathComponent("ImageCache", isDirectory: true)
 
-        try? fileManager.createDirectory(at: diskCacheDirectory, withIntermediateDirectories: true)
     }
 
     public func image(for url: URL) -> UIImage? {
@@ -256,12 +255,7 @@ nonisolated public final class ImageCache: @unchecked Sendable {
     }
 
     public func imageFromDisk(for url: URL) -> UIImage? {
-        let path = diskCachePath(for: url)
-        guard fileManager.fileExists(atPath: path.path) else { return nil }
-
-        guard let data = try? Data(contentsOf: path),
-            let image = UIImage(data: data)
-        else { return nil }
+        guard let data = disk.data(for: url), let image = UIImage(data: data) else { return nil }
 
         // Also add to memory cache
         memoryCache.setObject(image, forKey: url as NSURL, cost: Self.memoryCost(of: image))
@@ -275,23 +269,18 @@ nonisolated public final class ImageCache: @unchecked Sendable {
         return cg.bytesPerRow * cg.height
     }
 
-    public func setImage(_ image: UIImage, for url: URL, data: Data? = nil) {
+    public func setImage(_ image: UIImage, for url: URL, data: Data? = nil, generation: UUID? = nil) {
+        let expected = generation ?? writeGeneration
+        guard expected == writeGeneration else { return }
         memoryCache.setObject(image, forKey: url as NSURL, cost: Self.memoryCost(of: image))
-
-        // Save to disk asynchronously
-        if let data = data {
-            queue.async { [weak self] in
-                guard let self = self else { return }
-                let path = self.diskCachePath(for: url)
-                try? data.write(to: path)
-            }
-        }
+        if let data { disk.store(data, for: url, generation: expected) }
     }
 
     /// Memory -> disk -> network load for callers that aren't SwiftUI views
     /// (e.g. UIKit cells). Mirrors CachedAsyncImage's own load path so everything
     /// shares one cache.
     public func load(from url: URL) async -> UIImage? {
+        let generation = writeGeneration
         if let cached = image(for: url) { return cached }
         if let disk = imageFromDisk(for: url) { return disk }
 
@@ -302,7 +291,7 @@ nonisolated public final class ImageCache: @unchecked Sendable {
             let image = UIImage(data: data)
         else { return nil }
 
-        setImage(image, for: url, data: data)
+        setImage(image, for: url, data: data, generation: generation)
         return image
     }
 
@@ -317,9 +306,9 @@ nonisolated public final class ImageCache: @unchecked Sendable {
             return cached
         }
 
-        let diskPath = diskCachePath(for: url)
+        let generation = writeGeneration
         let data: Data
-        if let onDisk = try? Data(contentsOf: diskPath), !onDisk.isEmpty {
+        if let onDisk = disk.data(for: url), !onDisk.isEmpty {
             data = onDisk
         } else {
             var request = URLRequest(url: url)
@@ -328,12 +317,12 @@ nonisolated public final class ImageCache: @unchecked Sendable {
                 let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode
             else { return nil }
             data = downloaded
-            queue.async { try? downloaded.write(to: diskPath) }
+            disk.store(downloaded, for: url, generation: generation)
         }
         guard let image = Self.downsample(data: data, maxPixelSize: maxPixelSize) else {
             return nil
         }
-        downsampledCache.setObject(image, forKey: url as NSURL)
+        if generation == writeGeneration { downsampledCache.setObject(image, forKey: url as NSURL) }
         return image
     }
 
@@ -346,9 +335,9 @@ nonisolated public final class ImageCache: @unchecked Sendable {
             return cached
         }
 
-        let diskPath = diskCachePath(for: url)
+        let generation = writeGeneration
         let data: Data
-        if let onDisk = try? Data(contentsOf: diskPath), !onDisk.isEmpty {
+        if let onDisk = disk.data(for: url), !onDisk.isEmpty {
             data = onDisk
         } else {
             var request = URLRequest(url: url)
@@ -359,14 +348,14 @@ nonisolated public final class ImageCache: @unchecked Sendable {
                 return nil
             }
             data = downloaded
-            queue.async { try? downloaded.write(to: diskPath) }
+            disk.store(downloaded, for: url, generation: generation)
         }
 
         guard !Task.isCancelled,
               let image = Self.downsample(data: data, maxPixelSize: normalizedPixelSize) else {
             return nil
         }
-        thumbnailCache.setObject(image, forKey: cacheKey, cost: Self.memoryCost(of: image))
+        if generation == writeGeneration { thumbnailCache.setObject(image, forKey: cacheKey, cost: Self.memoryCost(of: image)) }
         return image
     }
 
@@ -392,13 +381,15 @@ nonisolated public final class ImageCache: @unchecked Sendable {
         thumbnailCache.removeAllObjects()
     }
 
+    public func diskSize() async -> Int64 { await disk.size() }
+
     public func clearDiskCache() {
-        queue.async { [weak self] in
-            guard let self = self else { return }
-            try? self.fileManager.removeItem(at: self.diskCacheDirectory)
-            try? self.fileManager.createDirectory(
-                at: self.diskCacheDirectory, withIntermediateDirectories: true)
-        }
+        Task { try? await disk.clear() }
+    }
+
+    public func clearAllAndWait() async throws {
+        try await disk.clear()
+        clearMemoryCache()
     }
 
     public func clearAll() {
@@ -406,14 +397,6 @@ nonisolated public final class ImageCache: @unchecked Sendable {
         clearDiskCache()
     }
 
-    private func diskCachePath(for url: URL) -> URL {
-        // Hash the FULL URL. The previous base64(absoluteString).prefix(50) collided for any
-        // URLs sharing a long common prefix (e.g. many custom emojis from the same server),
-        // so distinct images all mapped to one cache file and rendered as the same picture.
-        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
-        let filename = digest.map { String(format: "%02x", $0) }.joined()
-        return diskCacheDirectory.appendingPathComponent(filename)
-    }
 }
 
 // MARK: - BlurHash Decoder

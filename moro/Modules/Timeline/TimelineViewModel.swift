@@ -166,6 +166,38 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
     @Published private(set) var pendingNewStatusIDs: Set<String> = []
     @Published private(set) var pendingCreatedStatuses: [Status] = []
 
+    @Published private(set) var newPostCount = 0
+    @Published private(set) var newPostsHaveMore = false
+    @Published private(set) var liveRevision: UInt64 = 0
+    @Published private(set) var presentationRevision: UInt64 = 0
+    @Published private(set) var gaps: [TimelineGap] = []
+    @Published private(set) var loadingGapIDs: Set<UUID> = []
+    @Published private(set) var failedGapIDs: Set<UUID> = []
+    private var liveTimeline: TimelineLiveUpdates?
+    private var liveVersion: UInt64 = 0
+    private var appliedLiveVersion: UInt64 = 0
+    private(set) var presentedSequence: UInt64 = 0
+    private var publishLiveTask: Task<Void, Never>?
+    private var automaticGapTask: Task<Void, Never>?
+    private var automaticGapBudget = 0
+    private var gapTask: (id: UUID, task: Task<Bool, Never>)?
+    private var gapRequests: [UUID: Task<Bool, Never>] = [:]
+    // Publish failures with the body snapshot so retry rows use the same
+    // anchor-preserving transaction when they appear or disappear.
+    private var failedGapRequestIDs: Set<UUID> = []
+    private var dataGeneration = UUID()
+    private var cacheWriteTask: Task<Void, Never>?
+    private(set) var lastLatestCheckAt: Date?
+    private var anonymousPendingIDs: Set<String> = []
+    private let defersLivePresentation: Bool
+    var currentAccountID: String?
+
+    var hasUnappliedUpdates: Bool { liveVersion != appliedLiveVersion }
+    var detectionBaselineID: String? { liveTimeline?.metadata.fetchedHeadID ?? currentSinceID }
+    var hasReadingState: Bool { liveTimeline != nil }
+    var canonicalStatusIDs: Set<String> { Set((liveTimeline?.statuses ?? statuses).map(\.id)) }
+    var savedReadingAnchor: TimelineReadingAnchor? { liveTimeline?.metadata.readingAnchor }
+
     private let apiClient: MastodonAPI
     private var currentMaxID: String?
     private var currentSinceID: String?
@@ -191,7 +223,6 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
 
     private var activeRefreshRequest: (id: UUID, task: Task<RefreshResult, Never>)?
     private var activeLoadMoreRequest: (id: UUID, task: Task<Void, Never>)?
-    private let maximumCatchUpPages = 10
 
     private static let enableTimelineDebugLogging = false
 
@@ -254,7 +285,8 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         feedCoordinator: FeedCoordinator? = nil,
         timelineCache: TimelineCache? = nil,
         cacheClientID: String = "active-session",
-        bootstrapConfig: BootstrapConfig = .adaptiveDefault()
+        bootstrapConfig: BootstrapConfig = .adaptiveDefault(),
+        defersLivePresentation: Bool = false
     ) {
         self.apiClient = apiClient
         self.timelineType = timelineType
@@ -262,6 +294,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         self.timelineCache = timelineCache ?? CacheManager.shared.timelineCache
         self.cacheClientID = cacheClientID
         self.bootstrapConfig = bootstrapConfig
+        self.defersLivePresentation = defersLivePresentation
         // Use provided cache or fall back to shared instance
         self.accountCache = accountCache ?? CacheManager.shared.accountCache
 
@@ -269,6 +302,13 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         self.feedCoordinator.updates
             .sink { [weak self] update in
                 self?.incorporateUpdate(update)
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .timelineContentWillClear)
+            .sink { [weak self] notification in
+                guard let self, notification.object as? TimelineCache === self.timelineCache else { return }
+                self.clearStatuses()
             }
             .store(in: &cancellables)
 
@@ -291,6 +331,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
             return
         }
 
+        let generation = dataGeneration
         deferredInitialFillTask?.cancel()
         initialLoadState = .loading
         let hydrationTask = Task { [weak self] in
@@ -299,26 +340,12 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         }
         let hydratedFromCache = await awaitCacheHydrationResult(from: hydrationTask)
         let cachedStatusesBeforeNetwork = await loadCachedStatusesSnapshot()
+        guard generation == dataGeneration, !Task.isCancelled else { return }
 
         do {
-            let newStatuses: [Status]
-            switch timelineType {
-            case .home:
-                newStatuses = try await apiClient.fetchHomeTimeline(
-                    maxID: nil, sinceID: nil, limit: bootstrapConfig.initialLoadLimit)
-            case .local:
-                newStatuses = try await apiClient.fetchPublicTimeline(
-                    local: true, maxID: nil, sinceID: nil, minID: nil,
-                    limit: bootstrapConfig.initialLoadLimit)
-            case .federated:
-                newStatuses = try await apiClient.fetchPublicTimeline(
-                    local: false, maxID: nil, sinceID: nil, minID: nil,
-                    limit: bootstrapConfig.initialLoadLimit)
-            case .list(let listID, _):
-                newStatuses = try await apiClient.fetchListTimeline(
-                    id: listID, maxID: nil, sinceID: nil,
-                    limit: bootstrapConfig.initialLoadLimit)
-            }
+            let page = try await apiClient.fetchTimelinePage(timeline: timelineType,
+                maxID: nil, sinceID: nil, limit: bootstrapConfig.initialLoadLimit)
+            let newStatuses = page.statuses
 
             let cachedStatusesForMerge: [Status]
             if hydratedFromCache, !cachedStatusesBeforeNetwork.isEmpty {
@@ -326,20 +353,49 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
             } else {
                 cachedStatusesForMerge = await loadCachedStatusesSnapshot()
             }
-            let mergedStatuses =
-                cachedStatusesForMerge.isEmpty
-                ? newStatuses
-                : mergeInitialNetworkStatuses(newStatuses, withCached: cachedStatusesForMerge)
-
-            let initialStatuses = Array(mergedStatuses.prefix(bootstrapConfig.initialRenderCap))
+            guard generation == dataGeneration, !Task.isCancelled else { return }
+            var initialLive: TimelineLiveUpdates
+            if cachedStatusesForMerge.isEmpty {
+                initialLive = TimelineLiveUpdates(statuses: newStatuses,
+                    metadata: page.isPartial ? TimelineLiveMetadata() : nil)
+            } else {
+                let cachedState = await timelineCache.getLiveMetadata(for: cacheClientID, filter: timelineCacheFilter!)
+                guard generation == dataGeneration, !Task.isCancelled else { return }
+                initialLive = liveTimeline ?? TimelineLiveUpdates(statuses: cachedStatusesForMerge, metadata: cachedState)
+                _ = initialLive.receiveHead(page,
+                    sinceID: initialLive.metadata.fetchedHeadID, currentAccountID: currentAccountID)
+            }
+            if let earlyUpdates = liveTimeline {
+                let knownIDs = Set(initialLive.statuses.map(\.id))
+                for status in earlyUpdates.statuses.reversed() where !knownIDs.contains(status.id) {
+                    initialLive.receive(status, currentAccountID: currentAccountID)
+                }
+            }
+            liveTimeline = initialLive
+            if !initialLive.metadata.gaps.isEmpty { automaticGapBudget = 2 }
+            let mergedStatuses = initialLive.statuses
+            let anchorIndex = initialLive.metadata.readingAnchor.flatMap { anchor in
+                mergedStatuses.firstIndex { $0.id == anchor.statusID }
+            }
+            let renderCount = max(bootstrapConfig.initialRenderCap, anchorIndex.map { $0 + 4 } ?? 0)
+            let initialStatuses = Array(mergedStatuses.prefix(renderCount))
             let deferredStatuses = Array(
-                mergedStatuses.dropFirst(bootstrapConfig.initialRenderCap)
+                mergedStatuses.dropFirst(initialStatuses.count)
             )
             deferredInitialFillTask?.cancel()
-            statuses = initialStatuses
-            currentMaxID = initialStatuses.last?.id
-            currentSinceID = initialStatuses.first?.id
+            let preservesCachedPresentation = defersLivePresentation && !statuses.isEmpty
+            if !preservesCachedPresentation {
+                statuses = initialStatuses
+                currentMaxID = initialStatuses.last?.id
+                gaps = initialLive.metadata.gaps
+                presentedSequence = initialLive.metadata.sequence
+                appliedLiveVersion = liveVersion
+                presentationRevision &+= 1
+            }
+            currentSinceID = initialLive.metadata.fetchedHeadID
             initialLoadState = .loaded
+            if preservesCachedPresentation { liveContentChanged(immediate: true) }
+            else { publishLiveNotice() }
             refreshState = .idle
             hasMore =
                 newStatuses.count >= bootstrapConfig.initialLoadLimit
@@ -351,7 +407,8 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
             // Persist the full merged snapshot before rendering it in small batches.
             // Switching sources during that fill must not truncate the offline tail.
             if let filter = timelineCacheFilter {
-                await timelineCache.set(statuses: mergedStatuses, for: cacheClientID, filter: filter)
+                await timelineCache.setLiveSnapshot(statuses: mergedStatuses, live: initialLive.metadata,
+                    for: cacheClientID, filter: filter)
             }
             if !deferredStatuses.isEmpty {
                 scheduleDeferredInitialFill(with: deferredStatuses)
@@ -359,6 +416,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
                 deferredInitialFillTask = nil
             }
         } catch {
+            guard generation == dataGeneration, !Task.isCancelled else { return }
             // Keep cached timeline usable when first network backfill fails.
             let cachedFallbackStatuses: [Status]
             if hydratedFromCache, !cachedStatusesBeforeNetwork.isEmpty {
@@ -369,7 +427,17 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
 
             if !cachedFallbackStatuses.isEmpty {
                 deferredInitialFillTask?.cancel()
-                statuses = Array(cachedFallbackStatuses.prefix(bootstrapConfig.initialRenderCap))
+                let cachedState = await timelineCache.getLiveMetadata(for: cacheClientID, filter: timelineCacheFilter!)
+                guard generation == dataGeneration, !Task.isCancelled else { return }
+                liveTimeline = TimelineLiveUpdates(statuses: cachedFallbackStatuses, metadata: cachedState)
+                let anchorIndex = cachedState?.readingAnchor.flatMap { anchor in
+                    cachedFallbackStatuses.firstIndex { $0.id == anchor.statusID }
+                }
+                statuses = Array(cachedFallbackStatuses.prefix(max(bootstrapConfig.initialRenderCap, anchorIndex.map { $0 + 4 } ?? 0)))
+                gaps = liveTimeline?.metadata.gaps ?? []
+                presentedSequence = liveTimeline?.metadata.sequence ?? 0
+                presentationRevision &+= 1
+                publishLiveNotice()
                 currentMaxID = statuses.last?.id
                 currentSinceID = statuses.first?.id
                 hasMore = cachedFallbackStatuses.count >= bootstrapConfig.initialLoadLimit
@@ -383,193 +451,219 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         }
     }
 
-    private struct CatchUpBatch {
-        let statuses: [Status]
-        let reachedExistingTimeline: Bool
-    }
-
     @discardableResult
     func refresh(trigger: RefreshTrigger = .pull) async -> RefreshResult {
-        if let activeRefreshRequest {
-            return await activeRefreshRequest.task.value
-        }
-
-        if let activeLoadMoreRequest {
-            activeLoadMoreRequest.task.cancel()
-            await activeLoadMoreRequest.task.value
-        }
-
+        if let activeRefreshRequest { return await activeRefreshRequest.task.value }
         let requestID = UUID()
+        let generation = dataGeneration
         let task = Task { [weak self] in
             guard let self else { return RefreshResult.cancelled }
-            return await self.performRefresh(trigger: trigger)
+            return await self.performRefresh(trigger: trigger, generation: generation)
         }
         activeRefreshRequest = (requestID, task)
-
         let result = await task.value
-        if activeRefreshRequest?.id == requestID {
-            activeRefreshRequest = nil
-        }
+        if activeRefreshRequest?.id == requestID { activeRefreshRequest = nil }
         return result
     }
 
-    private func performRefresh(trigger: RefreshTrigger) async -> RefreshResult {
+    private func performRefresh(trigger: RefreshTrigger, generation: UUID) async -> RefreshResult {
         refreshState = .refreshing(trigger)
-        triggeredLoadMoreForStatusIDs.removeAll()
-
+        lastLatestCheckAt = Date()
+        ensureLiveTimeline()
+        let baseline = detectionBaselineID
         do {
-            let batch = try await fetchCatchUpBatch()
+            let page = try await apiClient.fetchTimelinePage(
+                timeline: timelineType, maxID: nil, sinceID: baseline,
+                limit: bootstrapConfig.refreshLoadLimit)
             try Task.checkCancellation()
-
-            var refreshedStatuses = batch.statuses
-            var refreshedIDs = Set(refreshedStatuses.map(\.id))
-            for stagedStatus in pendingCreatedStatuses
-            where refreshedIDs.insert(stagedStatus.id).inserted {
-                let insertionIndex = refreshedStatuses.firstIndex {
-                    $0.createdAt < stagedStatus.createdAt
-                } ?? refreshedStatuses.endIndex
-                refreshedStatuses.insert(stagedStatus, at: insertionIndex)
-            }
-
-            let shouldReplaceTimeline =
-                !batch.reachedExistingTimeline
-                && !statuses.isEmpty
-                && !refreshedStatuses.isEmpty
-            let insertedCount = refreshedStatuses.count
-
-            if shouldReplaceTimeline {
-                discardDeferredContent()
-                statuses = refreshedStatuses
-                currentMaxID = refreshedStatuses.last?.id
-                currentSinceID = refreshedStatuses.first?.id
-                hasMore = true
-                paginationState = .idle
-            } else if !refreshedStatuses.isEmpty {
-                let existingIDs = Set(statuses.map(\.id))
-                statuses.insert(
-                    contentsOf: refreshedStatuses.filter { !existingIDs.contains($0.id) },
-                    at: 0
-                )
-                currentSinceID = statuses.first?.id
-            }
-
-            if statuses.isEmpty {
-                currentMaxID = nil
-                currentSinceID = nil
-                hasMore = false
-                paginationState = .exhausted
-            } else if currentMaxID == nil {
-                currentMaxID = statuses.last?.id
-            }
-
-            pendingCreatedStatuses.removeAll()
-            accountCache.cacheFromStatuses(refreshedStatuses)
-            persistCurrentStatusesToCache()
+            guard generation == dataGeneration else { return .cancelled }
+            let count = receiveDetectedPage(page, sinceID: baseline)
             initialLoadState = .loaded
             refreshState = .idle
-
-            return .success(
-                insertedCount: insertedCount,
-                replacedTimeline: shouldReplaceTimeline
-            )
+            triggeredLoadMoreForStatusIDs.removeAll()
+            if currentMaxID == nil { currentMaxID = page.statuses.last?.id }
+            return .success(insertedCount: count, replacedTimeline: false)
         } catch is CancellationError {
-            refreshState = .idle
+            if generation == dataGeneration { refreshState = .idle }
             return .cancelled
         } catch {
+            guard generation == dataGeneration else { return .cancelled }
             refreshState = .failed(error)
-            if statuses.isEmpty {
-                initialLoadState = .failed(error)
-            }
+            if statuses.isEmpty { initialLoadState = .failed(error) }
             return .failure(error)
         }
     }
 
-    private func fetchCatchUpBatch() async throws -> CatchUpBatch {
-        let baselineID = statuses.first?.id
-        let existingIDs = Set(statuses.map(\.id))
-        var fetched: [Status] = []
-        var fetchedIDs: Set<String> = []
-        var maxID: String?
-        var reachedExistingTimeline = baselineID == nil
-
-        for _ in 0..<maximumCatchUpPages {
-            try Task.checkCancellation()
-            let page = try await fetchTimelinePage(
-                maxID: maxID,
-                sinceID: timelineType == .federated ? nil : baselineID,
-                limit: bootstrapConfig.refreshLoadLimit
-            )
-
-            if page.isEmpty {
-                reachedExistingTimeline = true
-                break
-            }
-
-            if page.contains(where: { existingIDs.contains($0.id) }) {
-                reachedExistingTimeline = true
-            }
-
-            for status in page
-            where !existingIDs.contains(status.id) && fetchedIDs.insert(status.id).inserted {
-                fetched.append(status)
-            }
-
-            if baselineID == nil
-                || reachedExistingTimeline
-                || page.count < bootstrapConfig.refreshLoadLimit
-            {
-                reachedExistingTimeline = true
-                break
-            }
-
-            guard let nextMaxID = page.last?.id, nextMaxID != maxID else {
-                break
-            }
-            maxID = nextMaxID
-        }
-
-        return CatchUpBatch(
-            statuses: fetched,
-            reachedExistingTimeline: reachedExistingTimeline
-        )
+    private func ensureLiveTimeline() {
+        if liveTimeline == nil { liveTimeline = TimelineLiveUpdates(statuses: statuses) }
     }
 
-    private func fetchTimelinePage(
-        maxID: String?,
-        sinceID: String?,
-        limit: Int
-    ) async throws -> [Status] {
-        switch timelineType {
-        case .home:
-            return try await apiClient.fetchHomeTimeline(
-                maxID: maxID,
-                sinceID: sinceID,
-                limit: limit
-            )
-        case .local:
-            return try await apiClient.fetchPublicTimeline(
-                local: true,
-                maxID: maxID,
-                sinceID: sinceID,
-                minID: nil,
-                limit: limit
-            )
-        case .federated:
-            return try await apiClient.fetchPublicTimeline(
-                local: false,
-                maxID: maxID,
-                sinceID: nil,
-                minID: nil,
-                limit: limit
-            )
-        case .list(let listID, _):
-            return try await apiClient.fetchListTimeline(
-                id: listID,
-                maxID: maxID,
-                sinceID: sinceID,
-                limit: limit
-            )
+    func receiveLiveStatus(_ status: Status, authoredByCurrentUser: Bool = false) {
+        ensureLiveTimeline()
+        liveTimeline?.receive(status,
+            currentAccountID: authoredByCurrentUser ? status.account.id : currentAccountID)
+        liveTimeline?.trimUnapplied(presentedIDs: Set(statuses.map(\.id)))
+        liveContentChanged(immediate: false)
+    }
+
+    @discardableResult
+    func receiveDetectedPage(_ page: TimelinePage, sinceID: String?) -> Int {
+        ensureLiveTimeline()
+        let previousGapIDs = Set(liveTimeline?.metadata.gaps.map(\.id) ?? [])
+        let inserted = liveTimeline?.receiveHead(page, sinceID: sinceID, currentAccountID: currentAccountID) ?? 0
+        liveTimeline?.trimUnapplied(presentedIDs: Set(statuses.map(\.id)))
+        currentSinceID = liveTimeline?.metadata.fetchedHeadID
+        // REST may only confirm posts already delivered by the stream. Its
+        // unverified interval still needs a quiet probe, even with no new rows.
+        if inserted > 0 || liveTimeline?.metadata.gaps.contains(where: { !previousGapIDs.contains($0.id) }) == true {
+            automaticGapBudget = 2
         }
+        accountCache.cacheFromStatuses(page.statuses)
+        liveContentChanged(immediate: true)
+        return inserted
+    }
+
+    private func liveContentChanged(immediate: Bool) {
+        liveVersion &+= 1
+        if !defersLivePresentation {
+            applyLiveUpdates()
+            return
+        }
+        if immediate {
+            publishLiveTask?.cancel()
+            publishLiveTask = nil
+            publishLiveNotice()
+        } else if publishLiveTask == nil {
+            // Fixed deadline: a busy stream cannot keep postponing the flush.
+            publishLiveTask = Task { [weak self] in
+                do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                guard let self else { return }
+                self.publishLiveTask = nil
+                self.publishLiveNotice()
+            }
+        }
+    }
+
+    private func publishLiveNotice() {
+        guard let liveTimeline else { return }
+        anonymousPendingIDs.subtract(liveTimeline.statuses.map(\.id))
+        let nextIDs = Set(liveTimeline.metadata.newIDs.keys).union(anonymousPendingIDs)
+        if pendingNewStatusIDs != nextIDs { pendingNewStatusIDs = nextIDs }
+        if newPostCount != nextIDs.count { newPostCount = nextIDs.count }
+        if newPostsHaveMore != liveTimeline.hasMoreNew { newPostsHaveMore = liveTimeline.hasMoreNew }
+        if liveRevision != liveVersion { liveRevision = liveVersion }
+    }
+
+    /// Called by the owning page after capturing a reading anchor, never by a
+    /// network callback while that page is being dragged or restored.
+    @discardableResult
+    func applyLiveUpdates() -> Bool {
+        guard hasUnappliedUpdates, let liveTimeline else { return false }
+        publishLiveTask?.cancel()
+        publishLiveTask = nil
+        statuses = liveTimeline.statuses
+        currentMaxID = statuses.last?.id
+        gaps = liveTimeline.metadata.gaps
+        failedGapRequestIDs.formIntersection(gaps.map(\.id))
+        failedGapIDs = failedGapRequestIDs
+        presentedSequence = liveTimeline.metadata.sequence
+        appliedLiveVersion = liveVersion
+        presentationRevision &+= 1
+        publishLiveNotice()
+        persistCurrentStatusesToCache()
+        return true
+    }
+
+    func acknowledgePresentedUpdates(through sequence: UInt64) {
+        guard sequence <= presentedSequence, let state = liveTimeline,
+            sequence > state.metadata.acknowledgedSequence else { return }
+        let acknowledgedIDs = liveTimeline!.metadata.newIDs.filter { $0.value <= sequence }.map(\.key)
+        liveTimeline?.acknowledge(through: sequence)
+        pendingNewStatusIDs.subtract(acknowledgedIDs)
+        publishLiveNotice()
+        persistCurrentStatusesToCache()
+    }
+
+    func saveReadingAnchor(_ anchor: TimelineReadingAnchor?) {
+        guard liveTimeline?.metadata.readingAnchor != anchor else { return }
+        ensureLiveTimeline()
+        liveTimeline?.setReadingAnchor(anchor)
+        persistCurrentStatusesToCache()
+    }
+
+    func fillRecentGapsIfNeeded(near visibleStatusIDs: Set<String> = []) {
+        guard automaticGapTask == nil,
+            nextAutomaticGap(near: visibleStatusIDs) != nil else { return }
+        let generation = dataGeneration
+        automaticGapTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if generation == self.dataGeneration { self.automaticGapTask = nil }
+            }
+            // Bound each batch. The next settled layout supplies fresh visible
+            // anchors before another batch, so older gaps load as they approach.
+            for _ in 0..<2 {
+                guard !Task.isCancelled, generation == self.dataGeneration,
+                    let gap = self.nextAutomaticGap(near: visibleStatusIDs) else { break }
+                self.automaticGapBudget = max(0, self.automaticGapBudget - 1)
+                guard await self.loadGap(id: gap.id) else { break }
+            }
+        }
+    }
+
+    private func nextAutomaticGap(near visibleStatusIDs: Set<String>) -> TimelineGap? {
+        let candidates = liveTimeline?.metadata.gaps.filter { !failedGapRequestIDs.contains($0.id) } ?? []
+        return candidates.first { visibleStatusIDs.contains($0.afterID) || visibleStatusIDs.contains($0.beforeID) }
+            ?? (automaticGapBudget > 0 ? candidates.last : nil)
+    }
+
+    @discardableResult
+    func loadGap(id: UUID) async -> Bool {
+        if let request = gapRequests[id] {
+            return await request.value
+        }
+        guard liveTimeline?.metadata.gaps.contains(where: { $0.id == id }) == true else { return false }
+        let generation = dataGeneration
+        let previousGap = gapTask?.task
+        let previousPagination = activeLoadMoreRequest?.task
+        loadingGapIDs.insert(id)
+        let task = Task { [weak self] in
+            guard let self else { return false }
+            defer { if generation == self.dataGeneration { self.loadingGapIDs.remove(id) } }
+            // Capture predecessors before registering this request. This orders
+            // gap and older-page loads without dropping taps or creating cycles.
+            if let previousGap { _ = await previousGap.value }
+            if let previousPagination { await previousPagination.value }
+            guard !Task.isCancelled, generation == self.dataGeneration,
+                let gap = self.liveTimeline?.metadata.gaps.first(where: { $0.id == id }) else { return false }
+            do {
+                let page = try await self.apiClient.fetchTimelinePage(
+                    timeline: self.timelineType, maxID: gap.maxID, sinceID: gap.sinceID,
+                    limit: self.bootstrapConfig.refreshLoadLimit)
+                try Task.checkCancellation()
+                guard generation == self.dataGeneration else { return false }
+                let progressed = self.liveTimeline?.fillGap(id, page: page, currentAccountID: self.currentAccountID) ?? false
+                if progressed { self.failedGapRequestIDs.remove(id) }
+                else { self.failedGapRequestIDs.insert(id) }
+                self.liveContentChanged(immediate: true)
+                return progressed
+            } catch {
+                guard generation == self.dataGeneration else { return false }
+                if !Task.isCancelled {
+                    self.failedGapRequestIDs.insert(id)
+                    self.liveContentChanged(immediate: true)
+                }
+                return false
+            }
+        }
+        gapTask = (id, task)
+        gapRequests[id] = task
+        let result = await task.value
+        if generation == dataGeneration {
+            gapRequests[id] = nil
+            if gapTask?.id == id { gapTask = nil }
+        }
+        return result
     }
 
     func loadMore(triggeredByStatusID: String? = nil) async {
@@ -578,7 +672,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
             return
         }
 
-        guard hasMore, !isRefreshing, let maxID = currentMaxID else { return }
+        guard hasMore, currentMaxID != nil else { return }
         if case .loading = initialLoadState { return }
         // Finish presenting already-cached posts before asking for an older server page.
         guard deferredInitialFillTask == nil else { return }
@@ -599,8 +693,14 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         lastLoadMoreTime = now
 
         let requestID = UUID()
+        let generation = dataGeneration
+        let previousGap = gapTask?.task
+        paginationState = .loading
         let task = Task { [weak self] in
             guard let self else { return }
+            if let previousGap { _ = await previousGap.value }
+            guard !Task.isCancelled, generation == self.dataGeneration,
+                let maxID = self.currentMaxID else { return }
             await self.performLoadMore(maxID: maxID, triggeredByStatusID: triggeredByStatusID)
         }
         activeLoadMoreRequest = (requestID, task)
@@ -611,38 +711,50 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
     }
 
     private func performLoadMore(maxID: String, triggeredByStatusID: String?) async {
+        let generation = dataGeneration
         paginationState = .loading
 
         do {
-            let newStatuses = try await fetchTimelinePage(
-                maxID: maxID,
-                sinceID: nil,
-                limit: bootstrapConfig.paginationLoadLimit
-            )
+            let page = try await apiClient.fetchTimelinePage(timeline: timelineType,
+                maxID: maxID, sinceID: nil, limit: bootstrapConfig.paginationLoadLimit)
+            let newStatuses = page.statuses
             try Task.checkCancellation()
+            guard generation == dataGeneration else { return }
 
             let existingIDs = Set(statuses.map { $0.id })
             let uniqueNewStatuses = newStatuses.filter { !existingIDs.contains($0.id) }
             if !newStatuses.isEmpty {
-                currentMaxID = newStatuses.last?.id
-                hasMore = newStatuses.count >= bootstrapConfig.paginationLoadLimit
+                let next = page.nextMaxID ?? newStatuses.last?.id
+                guard next != maxID else {
+                    paginationState = .failed(URLError(.cannotParseResponse))
+                    return
+                }
+                currentMaxID = next
+                hasMore = page.isPartial || page.nextMaxID != nil || newStatuses.count >= bootstrapConfig.paginationLoadLimit
                 triggeredLoadMoreForStatusIDs.removeAll()
 
                 if !uniqueNewStatuses.isEmpty {
-                    statuses.append(contentsOf: uniqueNewStatuses)
+                    if liveTimeline != nil {
+                        liveTimeline?.appendOlder(uniqueNewStatuses)
+                        liveContentChanged(immediate: true)
+                    } else {
+                        statuses.append(contentsOf: uniqueNewStatuses)
+                        appendStatusesToCache(uniqueNewStatuses)
+                    }
                     accountCache.cacheFromStatuses(uniqueNewStatuses)
-                    appendStatusesToCache(uniqueNewStatuses)
                 }
             } else {
-                hasMore = false
+                hasMore = page.isPartial
             }
             paginationState = hasMore ? .idle : .exhausted
         } catch is CancellationError {
+            guard generation == dataGeneration else { return }
             paginationState = .idle
             if let statusID = triggeredByStatusID {
                 triggeredLoadMoreForStatusIDs.remove(statusID)
             }
         } catch {
+            guard generation == dataGeneration else { return }
             paginationState = .failed(error)
             if let statusID = triggeredByStatusID {
                 triggeredLoadMoreForStatusIDs.remove(statusID)
@@ -653,42 +765,36 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
     func updateStatus(_ status: Status) {
         if deferredInitialStatusIDs.contains(status.id) {
             deferredStatusUpdates[status.id] = status
-            persistSingleStatusUpdateToCache(status)
         }
-        if let index = statuses.firstIndex(where: { $0.id == status.id || $0.displayStatus.id == status.id }) {
-            let mergedStatus = statuses[index].incorporatingDisplayStatusUpdate(status)
-            statuses[index] = mergedStatus
-            persistSingleStatusUpdateToCache(mergedStatus)
-        }
+        guard (liveTimeline?.statuses ?? statuses).contains(where: {
+            $0.id == status.id || $0.displayStatus.id == status.id
+        }) else { return }
+        ensureLiveTimeline()
+        liveTimeline?.update(status)
+        liveContentChanged(immediate: true)
     }
 
     func insertCreatedStatus(_ status: Status) {
         guard timelineType == .home else { return }
-        guard !statuses.contains(where: { $0.id == status.id }) else { return }
-
-        statuses.insert(status, at: 0)
-        currentSinceID = status.id
-        if currentMaxID == nil {
-            currentMaxID = status.id
-        }
+        receiveLiveStatus(status, authoredByCurrentUser: true)
+        applyLiveUpdates()
+        if currentMaxID == nil { currentMaxID = status.id }
         initialLoadState = .loaded
-        accountCache.cacheFromStatuses([status])
-        persistCurrentStatusesToCache()
     }
 
     func stageCreatedStatus(_ status: Status) {
         guard timelineType == .home else { return }
-        guard !statuses.contains(where: { $0.id == status.id }) else { return }
-        guard !pendingCreatedStatuses.contains(where: { $0.id == status.id }) else { return }
-        pendingCreatedStatuses.append(status)
+        receiveLiveStatus(status, authoredByCurrentUser: true)
     }
 
-    /// Remove a status from the timeline (e.g., after deletion)
     func removeStatus(id: String) {
-        if statuses.contains(where: { $0.id == id }) {
-            statuses.removeAll { $0.id == id }
-        }
-        removeStatusFromCache(id: id)
+        ensureLiveTimeline()
+        let removedIDs = liveTimeline!.statuses.filter { $0.id == id || $0.displayStatus.id == id }.map(\.id)
+        liveTimeline?.remove(id)
+        pendingNewStatusIDs.subtract(removedIDs)
+        pendingNewStatusIDs.remove(id)
+        if deferredInitialStatusIDs.contains(id) { deferredDeletedStatusIDs.insert(id) }
+        if !removedIDs.isEmpty { liveContentChanged(immediate: true) }
     }
 
     /// Vote on a poll
@@ -713,6 +819,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
     /// statuses — called when the user switches away from this timeline so the now
     /// off-screen view model stops appending statuses and writing to the cache.
     func cancelBackgroundTasks() {
+        automaticGapTask?.cancel()
         deferredInitialFillTask?.cancel()
         deferredInitialFillTask = nil
     }
@@ -734,6 +841,31 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
 
     /// Clear all statuses and reset state (for timeline switching)
     func clearStatuses() {
+        dataGeneration = UUID()
+        cacheWriteTask?.cancel()
+        cacheWriteTask = nil
+        markerSaveTask?.cancel()
+        anonymousPendingIDs = []
+        lastLatestCheckAt = nil
+        publishLiveTask?.cancel()
+        publishLiveTask = nil
+        automaticGapTask?.cancel()
+        automaticGapTask = nil
+        automaticGapBudget = 0
+        gapRequests.values.forEach { $0.cancel() }
+        gapRequests = [:]
+        gapTask = nil
+        failedGapRequestIDs = []
+        liveTimeline = nil
+        liveVersion = 0
+        appliedLiveVersion = 0
+        presentedSequence = 0
+        gaps = []
+        loadingGapIDs = []
+        failedGapIDs = []
+        pendingNewStatusIDs = []
+        newPostCount = 0
+        newPostsHaveMore = false
         discardDeferredContent()
         activeRefreshRequest?.task.cancel()
         activeRefreshRequest = nil
@@ -761,14 +893,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         case .post(let updatedStatus):
             updateStatus(updatedStatus)
         case .deletedPost(let deletedID):
-            // Only touch the @Published array if this timeline holds the post —
-            // removeAll(where:) fires @Published even on no match, re-rendering inactive
-            // timelines on every unrelated deletion. Cache removal stays unconditional so a
-            // post deleted while this timeline is off-screen is still purged from disk.
-            if statuses.contains(where: { $0.id == deletedID }) {
-                statuses.removeAll { $0.id == deletedID }
-            }
-            removeStatusFromCache(id: deletedID)
+            removeStatus(id: deletedID)
         case .hashtag, .relationship:
             // Not applicable for timeline
             break
@@ -896,6 +1021,8 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         guard !statuses.contains(where: { $0.id == id }) else { return }
         guard pendingNewStatusIDs.count < Self.maxPendingStatusIDs else { return }
         guard pendingNewStatusIDs.insert(id).inserted else { return }
+        anonymousPendingIDs.insert(id)
+        newPostCount = pendingNewStatusIDs.count
 
     }
 
@@ -917,7 +1044,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
             return false
         }
 
-        pendingNewStatusIDs.removeAll()
+        // Presentation, not network success, acknowledges this batch.
 
         if providesFeedback {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -929,6 +1056,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
     /// Clear pending statuses without inserting (e.g., when switching timelines or refreshing)
     func clearPendingStatuses() {
         pendingNewStatusIDs.removeAll()
+        anonymousPendingIDs.removeAll()
         pendingCreatedStatuses.removeAll()
     }
 }
@@ -948,6 +1076,7 @@ extension TimelineViewModel {
     }
 
     fileprivate func hydrateFromCacheIfAvailable() async -> Bool {
+        let generation = dataGeneration
         guard !Task.isCancelled else { return false }
         guard statuses.isEmpty else { return false }
         guard let cacheFilter = timelineCacheFilter else { return false }
@@ -957,12 +1086,21 @@ extension TimelineViewModel {
                 filter: cacheFilter
             ), !cached.isEmpty
         else { return false }
-        guard !Task.isCancelled else { return false }
+        guard generation == dataGeneration, !Task.isCancelled else { return false }
 
-        let initialCached = Array(cached.prefix(bootstrapConfig.initialRenderCap))
-        let deferredCached = Array(cached.dropFirst(bootstrapConfig.initialRenderCap))
+        let metadata = await timelineCache.getLiveMetadata(for: cacheClientID, filter: cacheFilter)
+        guard generation == dataGeneration, !Task.isCancelled else { return false }
+        liveTimeline = TimelineLiveUpdates(statuses: cached, metadata: metadata)
+        let anchorIndex = metadata?.readingAnchor.flatMap { anchor in cached.firstIndex { $0.id == anchor.statusID } }
+        let renderCount = max(bootstrapConfig.initialRenderCap, anchorIndex.map { $0 + 4 } ?? 0)
+        let initialCached = Array(cached.prefix(renderCount))
+        let deferredCached = Array(cached.dropFirst(renderCount))
 
         statuses = initialCached
+        gaps = liveTimeline?.metadata.gaps ?? []
+        presentedSequence = liveTimeline?.metadata.sequence ?? 0
+        presentationRevision &+= 1
+        publishLiveNotice()
         currentMaxID = initialCached.last?.id
         currentSinceID = initialCached.first?.id
         hasMore = true
@@ -1015,6 +1153,20 @@ extension TimelineViewModel {
 
     fileprivate func persistCurrentStatusesToCache() {
         guard let snapshotFilter = timelineCacheFilter else { return }
+        if let liveTimeline {
+            let snapshot = liveTimeline
+            let client = cacheClientID
+            let cache = timelineCache
+            let previous = cacheWriteTask
+            let generation = dataGeneration
+            cacheWriteTask = Task { [weak self] in
+                await previous?.value
+                guard !Task.isCancelled, self?.dataGeneration == generation else { return }
+                await cache.setLiveSnapshot(statuses: snapshot.statuses, live: snapshot.metadata,
+                    for: client, filter: snapshotFilter)
+            }
+            return
+        }
         let statusesSnapshot = statuses
         let snapshotClientID = self.cacheClientID
         let timelineCache = self.timelineCache
@@ -1026,6 +1178,12 @@ extension TimelineViewModel {
                 await timelineCache.set(statuses: statusesSnapshot, for: snapshotClientID, filter: snapshotFilter)
             }
         }
+    }
+
+    func flushCacheWrites() async {
+        persistCurrentStatusesToCache()
+        await cacheWriteTask?.value
+        await timelineCache.flushPendingWrites()
     }
 
     fileprivate func appendStatusesToCache(_ newStatuses: [Status]) {
@@ -1081,9 +1239,11 @@ extension TimelineViewModel {
                         status.incorporatingDisplayStatusUpdate($0)
                     } ?? status
                 }
-                self.statuses.append(contentsOf: chunk)
-                self.currentMaxID = self.statuses.last?.id
-                self.accountCache.cacheFromStatuses(chunk)
+                if !chunk.isEmpty {
+                    self.statuses.append(contentsOf: chunk)
+                    self.currentMaxID = self.statuses.last?.id
+                    self.accountCache.cacheFromStatuses(chunk)
+                }
                 cursor = nextCursor
 
                 if cursor < appendable.count {

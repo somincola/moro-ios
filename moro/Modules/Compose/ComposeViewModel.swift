@@ -72,6 +72,7 @@ final class ComposeViewModel: ObservableObject {
     @Published var visibility: MastodonVisibility = .public
     @Published var mediaAttachments: [MediaAttachment] = []
     @Published var isPublishing: Bool = false
+    @Published private(set) var hasPublished = false
     @Published var publishError: Error?
     @Published var isSchedulingEnabled: Bool = false
     @Published var scheduledAt: Date = ComposeViewModel.defaultScheduledDate()
@@ -183,6 +184,8 @@ final class ComposeViewModel: ObservableObject {
     private var activeDraftCreatedAt: Date?
     private var activeDraftCategory: ComposeDraftCategory?
     private var editSource: StatusSource?
+    private var publishAttempt: ComposePublishAttempt?
+    private var completedPublishResult: StatusPublishResult?
 
     init(
         context: ComposeContext,
@@ -436,6 +439,8 @@ final class ComposeViewModel: ObservableObject {
     }
 
     private func applyDraft(_ draft: ComposeDraft) {
+        guard !isPublishing, !hasPublished else { return }
+        publishAttempt = draft.publishAttempt
         activeDraftID = draft.id
         activeDraftCreatedAt = draft.createdAt
         activeDraftCategory = draft.category
@@ -812,6 +817,8 @@ final class ComposeViewModel: ObservableObject {
     // MARK: - Publishing
     
     func publish() async throws -> StatusPublishResult {
+        // A completed editor can never create another post, even if dismissal is delayed.
+        if let completedPublishResult { return completedPublishResult }
         guard isEditingSourceReady else {
             throw ComposeError.editSourceUnavailable
         }
@@ -857,17 +864,8 @@ final class ComposeViewModel: ObservableObject {
         }
         
         do {
-            // Only sync attachment metadata when it actually changed locally.
-            for attachment in mediaAttachments {
-                if attachment.requiresMetadataSync {
-                    _ = try await apiClient.updateMedia(
-                        id: attachment.id,
-                        description: attachment.description,
-                        focus: attachment.focus
-                    )
-                }
-            }
-            
+            // Freeze the request before the first suspension point.
+            let attachments = mediaAttachments
             // Collect media IDs for posting
             let mediaIDs = mediaAttachments.compactMap { attachment -> String? in
                 guard case .uploaded = attachment.uploadState else { return nil }
@@ -893,6 +891,21 @@ final class ComposeViewModel: ObservableObject {
                 contentWarning: contentWarning
             )
 
+            let publishDate = scheduledPublishDate
+            let payload = StatusPublishPayload(
+                status: content, visibility: visibility,
+                mediaIDs: mediaIDs.isEmpty ? nil : mediaIDs,
+                inReplyToID: publishReplyToID,
+                spoilerText: isContentWarningActive && !contentWarning.isEmpty ? contentWarning : nil,
+                sensitive: isSensitive, quoteID: publishQuotingID,
+                quoteApprovalPolicy: effectiveQuoteApprovalPolicy,
+                language: publishLanguageCode, scheduledAt: publishDate?.ISO8601Format(), poll: pollPayload)
+
+            for attachment in attachments where attachment.requiresMetadataSync {
+                _ = try await apiClient.updateMedia(
+                    id: attachment.id, description: attachment.description, focus: attachment.focus)
+            }
+
             let result: StatusPublishResult
             if case .edit(let status) = context {
                 let warningIsUnchanged = contentWarning == editSource?.spoilerText
@@ -911,22 +924,20 @@ final class ComposeViewModel: ObservableObject {
                 )
                 result = .posted(updatedStatus)
             } else {
+                publishAttempt = try ComposePublishAttempt.resolving(payload, previous: publishAttempt)
                 result = try await apiClient.publishStatus(
-                    text: content,
-                    visibility: visibility,
-                    mediaIDs: mediaIDs.isEmpty ? nil : mediaIDs,
-                    inReplyToID: publishReplyToID,
-                    spoilerText: isContentWarningActive && !contentWarning.isEmpty ? contentWarning : nil,
-                    sensitive: isSensitive,
-                    quotingID: publishQuotingID,
-                    quoteApprovalPolicy: effectiveQuoteApprovalPolicy,
-                    language: publishLanguageCode,
-                    scheduledAt: scheduledPublishDate,
-                    poll: pollPayload
+                    text: payload.status, visibility: payload.visibility, mediaIDs: payload.mediaIDs,
+                    inReplyToID: payload.inReplyToID, spoilerText: payload.spoilerText,
+                    sensitive: payload.sensitive, quotingID: payload.quoteID,
+                    quoteApprovalPolicy: payload.quoteApprovalPolicy, language: payload.language,
+                    scheduledAt: publishDate, poll: payload.poll,
+                    idempotencyKey: publishAttempt?.idempotencyKey
                 )
             }
 
-            AppSettings.shared.recordRecentPostLanguage(publishLanguageCode)
+            completedPublishResult = result
+            hasPublished = true
+            AppSettings.shared.recordRecentPostLanguage(payload.language)
 
             if case .posted(let status) = result {
                 if case .edit = context {
@@ -949,7 +960,7 @@ final class ComposeViewModel: ObservableObject {
         if !isEditingSourceReady {
             return .editSourceUnavailable
         }
-        if isPublishing {
+        if isPublishing || hasPublished {
             return .publishing
         }
 
@@ -1048,7 +1059,7 @@ final class ComposeViewModel: ObservableObject {
     // MARK: - Draft Support
 
     var hasDraftableContent: Bool {
-        guard isEditingSourceReady else { return false }
+        guard isEditingSourceReady, !hasPublished else { return false }
         let hasTextContent = !draftableTextContent.isEmpty
         let hasPollContent = isPollActive && pollOptions.contains {
             !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1146,7 +1157,8 @@ final class ComposeViewModel: ObservableObject {
             target: target,
             payload: payload,
             createdAt: resolvedCreatedAt,
-            updatedAt: now
+            updatedAt: now,
+            publishAttempt: publishAttempt
         )
     }
 

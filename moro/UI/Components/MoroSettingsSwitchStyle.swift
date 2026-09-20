@@ -15,6 +15,8 @@ struct MoroSettingsSwitchStyle: ToggleStyle {
         static let trackHeight: CGFloat = 30
         static let thumbSize: CGFloat = 24
         static let horizontalInset: CGFloat = 3
+        static let minimumTapHeight: CGFloat = 44
+        static let rowInsets = EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16)
     }
 
     func makeBody(configuration: Configuration) -> some View {
@@ -51,10 +53,12 @@ struct MoroSettingsSwitchStyle: ToggleStyle {
                 .frame(width: Metrics.trackWidth, height: Metrics.trackHeight)
                 .accessibilityHidden(true)
             }
-            .frame(minHeight: 44)
+            .frame(minHeight: Metrics.minimumTapHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // Keep the full tap target without adding the list's default vertical padding again.
+        .listRowInsets(Metrics.rowInsets)
         .accessibilityAddTraits(.isToggle)
         .accessibilityValue(configuration.isOn ? MoroL10n.SettingsSwitch.on : MoroL10n.SettingsSwitch.off)
         .opacity(configuration.isOn ? 1 : 0.96)

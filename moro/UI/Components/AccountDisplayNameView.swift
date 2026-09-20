@@ -238,7 +238,10 @@ enum AccountDisplayNameParser {
             return [.text(plainText)]
         }
 
-        let emojiMap = Dictionary(uniqueKeysWithValues: emojis.map { ($0.shortcode, $0) })
+        let emojiMap = Dictionary(
+            emojis.map { ($0.shortcode, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         var segments: [AccountDisplayNameContent.Segment] = []
         var lastEnd = plainText.startIndex
         let matches = emojiShortcodeRegex.matches(

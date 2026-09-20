@@ -2040,6 +2040,47 @@ struct moroTests {
         }
     }
 
+    @Test @MainActor func accountDisplayNameParserKeepsFirstDuplicateEmojiShortcode()
+        async throws
+    {
+        let firstAnimatedURL = URL(string: "https://example.com/duplicate-first.gif")!
+        let firstStaticURL = URL(string: "https://example.com/duplicate-first.png")!
+        let secondAnimatedURL = URL(string: "https://example.com/duplicate-second.gif")!
+        let secondStaticURL = URL(string: "https://example.com/duplicate-second.png")!
+        let firstEmoji = Account.Emoji(
+            shortcode: "duplicate_wave",
+            url: firstAnimatedURL,
+            staticURL: firstStaticURL
+        )
+        let secondEmoji = Account.Emoji(
+            shortcode: "duplicate_wave",
+            url: secondAnimatedURL,
+            staticURL: secondStaticURL
+        )
+
+        let content = AccountDisplayNameParser.parse(
+            displayName: "Duplicate :duplicate_wave: account",
+            fallbackUsername: "duplicate-emoji-user",
+            emojis: [firstEmoji, secondEmoji]
+        )
+
+        #expect(content.plainText == "Duplicate :duplicate_wave: account")
+        #expect(content.containsCustomEmoji)
+        #expect(content.emojiURLs == [firstStaticURL])
+
+        guard content.segments.count == 3 else {
+            #expect(Bool(false))
+            return
+        }
+
+        if case .emoji(let resolvedEmoji) = content.segments[1] {
+            #expect(resolvedEmoji.url == firstAnimatedURL)
+            #expect(resolvedEmoji.staticURL == firstStaticURL)
+        } else {
+            #expect(Bool(false))
+        }
+    }
+
     @Test @MainActor func accountDisplayNameFallsBackToUsernameWhenNameIsEffectivelyEmpty()
         async throws
     {
@@ -2526,7 +2567,8 @@ struct moroTests {
         let api = MockMastodonAPI()
         api.fetchHomeTimelineHandler = { _, _, _ in [] }
 
-        let viewModel = TimelineViewModel(apiClient: api, timelineType: .home)
+        let viewModel = TimelineViewModel(apiClient: api, timelineType: .home,
+            timelineCache: TimelineCache(), cacheClientID: "empty-refresh-\(UUID().uuidString)")
         await viewModel.loadInitial()   // loads empty → .idle, statuses == []
         await viewModel.refresh()       // empty refresh on an empty list
 
@@ -4956,7 +4998,7 @@ struct moroTests {
         #expect(inboxStore.totalUnreadCount == 2)
     }
 
-    @Test @MainActor func inboxUnreadStoreResolvesDirectMentionNotificationToConversation() async throws {
+    @Test @MainActor func notificationOpenResolvesDirectMentionToConversation() async throws {
         let suiteName = "InboxUnreadStoreTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -4974,8 +5016,9 @@ struct moroTests {
         )
         let api = MockMastodonAPI()
         api.fetchConversationsHandler = { _, _, _ in [conversation] }
-        api.fetchNotificationsHandler = { _, _, _ in
-            [self.makeNotification(id: "notification-1", type: "mention", account: sender, status: status)]
+        api.fetchNotificationHandler = { id in
+            #expect(id == "notification-1")
+            return self.makeNotification(id: id, type: "mention", account: sender, status: status)
         }
         let notificationStore = NotificationUnreadStore(
             userDefaults: defaults,
@@ -5000,13 +5043,16 @@ struct moroTests {
                 "notification_type": "mention",
             ]
         )
-        let resolved = await inboxStore.resolveConversation(
-            forNotificationID: notificationStore.pendingOpenNotificationID ?? ""
-        )
+        let request = try #require(notificationStore.pendingOpenRequest)
+        let resolved = await PushNotificationResolver.resolve(request.payload, apiClient: api)
 
-        #expect(notificationStore.pendingOpenSessionID == "session-a")
-        #expect(notificationStore.pendingOpenNotificationType == "mention")
-        #expect(resolved?.id == "conversation-1")
+        #expect(request.sessionID == "session-a")
+        #expect(request.payload.notificationType == "mention")
+        guard case .conversation(let resolvedConversation) = resolved else {
+            Issue.record("Expected the exact direct-message conversation")
+            return
+        }
+        #expect(resolvedConversation.id == "conversation-1")
     }
 
     @Test @MainActor func statusTranslationViewModelUsesRemoteProvider() async throws {
@@ -6704,7 +6750,7 @@ private extension moroTests {
         #expect(ids.contains("s0"))           // the genuinely-new item was appended
     }
 
-    @Test @MainActor func refreshResetsOnFullPageToAvoidGap() async {
+    @Test @MainActor func refreshPreservesOldRowsWithAnExplicitGap() async {
         let api = MockMastodonAPI()
         let config = TimelineViewModel.BootstrapConfig(
             initialLoadLimit: 2,
@@ -6734,9 +6780,9 @@ private extension moroTests {
         await viewModel.loadInitial()
         await viewModel.refresh()
 
-        // A full-page refresh resets to the fresh batch instead of inserting and leaving a
-        // gap between the new batch and the old top.
-        #expect(viewModel.statuses.map(\.id) == ["new2", "new1"])
+        #expect(viewModel.statuses.map(\.id) == ["new2", "new1", "old2", "old1"])
+        #expect(viewModel.gaps.first?.afterID == "new1")
+        #expect(viewModel.gaps.first?.beforeID == "old2")
     }
 
     @Test @MainActor func timelinePullRefreshDisarmsWhenPulledBackBeforeRelease() {
@@ -6874,7 +6920,7 @@ private extension moroTests {
         #expect(viewModel.loadMoreFailed == false)
     }
 
-    @Test @MainActor func refreshCatchesUpMultiplePagesWithoutTimelineGap() async {
+    @Test @MainActor func refreshShowsLatestPageBeforeFillingTheGap() async {
         let api = MockMastodonAPI()
         let config = TimelineViewModel.BootstrapConfig(
             initialLoadLimit: 2,
@@ -6911,11 +6957,17 @@ private extension moroTests {
         let result = await viewModel.refresh(trigger: .newPosts)
 
         if case .success(let insertedCount, let replaced) = result {
-            #expect(insertedCount == 4)
+            #expect(insertedCount == 2)
             #expect(replaced == false)
         } else {
             Issue.record("Expected catch-up refresh success")
         }
+        #expect(viewModel.statuses.map(\.id) == ["new4", "new3", "old2", "old1"])
+        if let gap = viewModel.gaps.first {
+            #expect(await viewModel.loadGap(id: gap.id))
+            #expect(await viewModel.loadGap(id: gap.id))
+        } else { Issue.record("Expected a pageable gap") }
+        #expect(viewModel.gaps.isEmpty)
         #expect(
             viewModel.statuses.map(\.id)
                 == ["new4", "new3", "new2", "new1", "old2", "old1"]
@@ -7513,6 +7565,7 @@ final class MockMastodonAPI: MastodonAPI {
     var fetchStatusDetailCallIDs: [String] = []
     var fetchStatusContextCallIDs: [String] = []
     var fetchNotificationsHandler: ((String?, String?, Int) async throws -> [NotificationItem])?
+    var fetchNotificationHandler: ((String) async throws -> NotificationItem)?
     var fetchUnreadNotificationCountHandler: (() async throws -> Int)?
     var fetchMarkersHandler: (([MarkerTimeline]) async throws -> Marker)?
     var saveMarkerHandler: ((String?, String?) async throws -> Marker)?
@@ -7920,6 +7973,11 @@ final class MockMastodonAPI: MastodonAPI {
         }
         return 0
     }
+
+    func fetchNotification(id: String) async throws -> NotificationItem {
+        guard let fetchNotificationHandler else { throw MockError.unimplemented }
+        return try await fetchNotificationHandler(id)
+    }
     func fetchScheduledStatuses(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [ScheduledStatus]
     {
@@ -8149,6 +8207,8 @@ final class MockMastodonAPI: MastodonAPI {
         }
         throw MockError.unimplemented
     }
+    var publishIdempotencyKeys: [String?] = []
+
     func publishStatus(
         text: String,
         visibility: MastodonVisibility,
@@ -8160,8 +8220,10 @@ final class MockMastodonAPI: MastodonAPI {
         quoteApprovalPolicy: MastodonQuoteApprovalPolicy?,
         language: String?,
         scheduledAt: Date?,
-        poll: StatusPollPayload?
+        poll: StatusPollPayload?,
+        idempotencyKey: String?
     ) async throws -> StatusPublishResult {
+        publishIdempotencyKeys.append(idempotencyKey)
         if let publishStatusResultHandler {
             return try await publishStatusResultHandler(
                 text,

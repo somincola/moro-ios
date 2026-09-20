@@ -132,7 +132,7 @@ struct ListOfflineCacheTests {
         #expect(model.statuses.count == 8)
         #expect(!model.statuses.contains { $0.id == "cached-5" })
         #expect(model.statuses.first { $0.id == "cached-6" }?.content == "<p>Edited elsewhere</p>")
-        await cache.flushPendingWrites()
+        await model.flushCacheWrites()
         let cold = TimelineCache(directory: directory)
         #expect(await cold.getStatuses(for: "a", filter: .list(id: "alpha"))?.contains { $0.id == "cached-5" } == false)
     }
@@ -145,9 +145,11 @@ struct ListOfflineCacheTests {
         await cache.setLastSeenStatuses(["old"], for: "a", filter: .list(id: "alpha"))
         await cache.flushPendingWrites()
         let file = try #require(FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first { $0.pathExtension == "cache" })
-        var records = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [[String: Any]])
+        var envelope = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        var records = try #require(envelope["items"] as? [[String: Any]])
         records[0]["cachedAt"] = "2000-01-01T00:00:00Z"
-        try JSONSerialization.data(withJSONObject: records).write(to: file)
+        envelope["items"] = records
+        try JSONSerialization.data(withJSONObject: envelope).write(to: file)
         let expired = TimelineCache(directory: directory)
         #expect(await expired.getStatuses(for: "a", filter: .list(id: "alpha")) == nil)
         #expect(await expired.getLastSeenStatuses(for: "a", filter: .list(id: "alpha")) == nil)

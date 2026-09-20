@@ -7,6 +7,18 @@
 
 import UIKit
 
+@MainActor
+protocol AppIconApplication: AnyObject {
+    var supportsAlternateIcons: Bool { get }
+    var alternateIconName: String? { get }
+    func setAlternateIconName(
+        _ alternateIconName: String?,
+        completionHandler: (@Sendable (Error?) -> Void)?
+    )
+}
+
+extension UIApplication: AppIconApplication {}
+
 enum AppIconManagerError: LocalizedError {
     case alternateIconsUnsupported
     case resourceBusy
@@ -23,45 +35,45 @@ enum AppIconManagerError: LocalizedError {
 
 @MainActor
 final class AppIconManager {
-    static let shared = AppIconManager()
+    static let shared = AppIconManager(application: UIApplication.shared)
 
+    private let application: AppIconApplication
     private var lastSwitchAt: Date = .distantPast
+    private var isChangingIcon = false
 
-    private init() {}
+    init(application: AppIconApplication) {
+        self.application = application
+    }
 
     var supportsAlternateIcons: Bool {
-        UIApplication.shared.supportsAlternateIcons
+        application.supportsAlternateIcons
     }
 
     var currentChoice: AppSettings.AppIconChoice {
-        switch UIApplication.shared.alternateIconName {
-        case "AppIconClassic":
-            return .classic
-        case "AppIconLineElephant":
-            return .lineElephant
-        case "AppIconRainbow":
-            return .rainbow
-        case "AppIconLiquidGlass":
-            return .liquidGlass
-        case "AppIconPaintChaos":
-            return .paintChaos
-        case "AppIconRisoGlitch":
-            return .risoGlitch
-        case "AppIconTornCollage":
-            return .tornCollage
-        default:
-            return .default
+        AppSettings.AppIconChoice(alternateIconName: application.alternateIconName) ?? .default
+    }
+
+    /// Reconcile the system selection after upgrades retire an alternate icon.
+    /// Return only after UIKit accepts the reset; a failure can retry next activation.
+    func reconcileSelection() async throws -> AppSettings.AppIconChoice {
+        if let choice = AppSettings.AppIconChoice(alternateIconName: application.alternateIconName) {
+            return choice
         }
+        try await apply(.default)
+        return .default
     }
 
     func apply(_ icon: AppSettings.AppIconChoice) async throws {
         guard supportsAlternateIcons else {
-            if icon == .default { return }
+            if icon == .default, application.alternateIconName == nil { return }
             throw AppIconManagerError.alternateIconsUnsupported
         }
 
         let targetName = icon.alternateIconName
-        guard UIApplication.shared.alternateIconName != targetName else { return }
+        guard application.alternateIconName != targetName else { return }
+        guard !isChangingIcon else { throw AppIconManagerError.resourceBusy }
+        isChangingIcon = true
+        defer { isChangingIcon = false }
 
         await enforceSwitchCooldown()
 
@@ -102,7 +114,7 @@ final class AppIconManager {
     private func requestIconChange(to targetName: String?) async throws {
         try await withCheckedThrowingContinuation {
             (continuation: CheckedContinuation<Void, Error>) in
-            UIApplication.shared.setAlternateIconName(targetName) { error in
+            application.setAlternateIconName(targetName) { error in
                 if let error {
                     continuation.resume(throwing: error)
                 } else {

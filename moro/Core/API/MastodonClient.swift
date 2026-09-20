@@ -47,34 +47,6 @@ struct MastodonClient: MastodonAPI {
         return URLSession(configuration: configuration)
     }()
 
-    private struct StatusPayload: Encodable {
-        let status: String
-        let visibility: MastodonVisibility
-        let mediaIDs: [String]?
-        let inReplyToID: String?
-        let spoilerText: String?
-        let sensitive: Bool?
-        let quoteID: String?
-        let quoteApprovalPolicy: MastodonQuoteApprovalPolicy?
-        let language: String?
-        let scheduledAt: String?
-        let poll: StatusPollPayload?
-
-        enum CodingKeys: String, CodingKey {
-            case status
-            case visibility
-            case mediaIDs = "media_ids"
-            case inReplyToID = "in_reply_to_id"
-            case spoilerText = "spoiler_text"
-            case sensitive
-            case quoteID = "quoted_status_id"
-            case quoteApprovalPolicy = "quote_approval_policy"
-            case language
-            case scheduledAt = "scheduled_at"
-            case poll
-        }
-    }
-
     /// Editing must not re-send creation-only fields or reset an existing quote.
     private struct StatusEditPayload: Encodable {
         let status: String
@@ -535,6 +507,25 @@ struct MastodonClient: MastodonAPI {
 
     // MARK: - Timeline & Status
 
+    func fetchTimelinePage(
+        timeline: TimelineType, maxID: String?, sinceID: String?, limit: Int
+    ) async throws -> TimelinePage {
+        let endpoint: MastodonEndpoint
+        switch timeline {
+        case .home:
+            endpoint = .homeTimeline(maxID: maxID, sinceID: sinceID, limit: limit)
+        case .local, .federated:
+            endpoint = .publicTimeline(local: timeline == .local, maxID: maxID,
+                sinceID: sinceID, minID: nil, limit: limit)
+        case .list(let id, _):
+            endpoint = .listTimeline(id: id, maxID: maxID, sinceID: sinceID, limit: limit)
+        }
+        let (statuses, response): ([Status], HTTPURLResponse) = try await performWithResponse(
+            authorizedRequest(for: endpoint))
+        return TimelinePage(statuses: statuses, isPartial: response.statusCode == 206,
+            nextMaxID: MastodonLinkPagination.nextMaxID(in: response))
+    }
+
     func fetchHomeTimeline(maxID: String?, sinceID: String?, limit: Int = 40) async throws
         -> [Status]
     {
@@ -732,9 +723,10 @@ struct MastodonClient: MastodonAPI {
         quoteApprovalPolicy: MastodonQuoteApprovalPolicy? = nil,
         language: String?,
         scheduledAt: Date?,
-        poll: StatusPollPayload?
+        poll: StatusPollPayload?,
+        idempotencyKey: String? = nil
     ) async throws -> StatusPublishResult {
-        let payload = StatusPayload(
+        let payload = StatusPublishPayload(
             status: text,
             visibility: visibility,
             mediaIDs: mediaIDs,
@@ -748,7 +740,8 @@ struct MastodonClient: MastodonAPI {
             poll: poll
         )
         let endpoint = MastodonEndpoint.postStatus
-        let request = try authorizedRequest(for: endpoint, body: payload)
+        var request = try authorizedRequest(for: endpoint, body: payload)
+        request.setValue(idempotencyKey ?? UUID().uuidString, forHTTPHeaderField: "Idempotency-Key")
         if scheduledAt != nil {
             let scheduled: ScheduledStatus = try await perform(request)
             return .scheduled(scheduled)
@@ -844,6 +837,11 @@ struct MastodonClient: MastodonAPI {
         let request = try authorizedRequest(for: endpoint)
         let response: Response = try await perform(request)
         return response.count
+    }
+
+    func fetchNotification(id: String) async throws -> NotificationItem {
+        let request = try authorizedRequest(for: .notification(id: id))
+        return try await perform(request)
     }
 
     func fetchScheduledStatuses(maxID: String? = nil, sinceID: String? = nil, limit: Int = 20)

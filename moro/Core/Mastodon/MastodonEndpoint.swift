@@ -74,6 +74,7 @@ enum MastodonEndpoint {
     case cancelScheduledStatus(id: String)
     case notifications(maxID: String?, sinceID: String?, limit: Int, supportedTypes: [String])
     case notificationUnreadCount
+    case notification(id: String)
     case conversations(maxID: String?, sinceID: String?, limit: Int)
     case bookmarks(maxID: String?, sinceID: String?, limit: Int)
     case favourites(maxID: String?, sinceID: String?, limit: Int)
@@ -274,6 +275,8 @@ enum MastodonEndpoint {
             return "/api/v1/scheduled_statuses/\(id)"
         case .notifications:
             return "/api/v1/notifications"
+        case .notification(let id):
+            return "/api/v1/notifications/\(id)"
         case .notificationUnreadCount:
             return "/api/v1/notifications/unread_count"
         case .conversations:

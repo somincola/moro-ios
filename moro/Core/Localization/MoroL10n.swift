@@ -36,6 +36,25 @@ public enum MoroL10n {
         )
     }
 
+    public enum AppSupport {
+        public static var feedback: String { text("appSupport.feedback") }
+        public static var invitation: String { text("appSupport.invitation") }
+        public static var invitationDetail: String { text("appSupport.invitationDetail") }
+        public static var mastodonFeedback: String { text("appSupport.mastodonFeedback") }
+        public static var feedbackPrivacy: String { text("appSupport.feedbackPrivacy") }
+        public static var rate: String { text("appSupport.rate") }
+        public static var storage: String { text("appSupport.storage") }
+        public static var images: String { text("appSupport.images") }
+        public static var timelines: String { text("appSupport.timelines") }
+        public static var responses: String { text("appSupport.responses") }
+        public static var total: String { text("appSupport.total") }
+        public static var cacheDetail: String { text("appSupport.cacheDetail") }
+        public static var clearing: String { text("appSupport.clearing") }
+        public static var clearCache: String { text("appSupport.clearCache") }
+        public static var preservedData: String { text("appSupport.preservedData") }
+        public static var clearFailed: String { text("appSupport.clearFailed") }
+    }
+
     public enum ProfileEditing {
         public static var posts: String { text("profileEditing.posts") }
         public static var replies: String { text("profileEditing.replies") }
@@ -175,7 +194,9 @@ public enum MoroL10n {
     public enum Settings {
         public static var title: String { text("settings.title") }
         public static var accountPrivacySection: String { text("settings.section.accountPrivacy") }
+        public static var accountServerSection: String { text("settings.section.accountServer") }
         public static var appSection: String { text("settings.section.app") }
+        public static var supportAboutSection: String { text("settings.section.supportAbout") }
         public static var aboutSection: String { text("settings.section.about") }
         public static var serverSection: String { text("settings.section.server") }
         public static var accountActionsSection: String { text("settings.section.accountActions") }
@@ -253,13 +274,14 @@ public enum MoroL10n {
         public static var appearanceLight: String { text("appsettings.appearance.light") }
         public static var appearanceDark: String { text("appsettings.appearance.dark") }
         public static var appIconDefault: String { text("appsettings.icon.default") }
-        public static var appIconClassic: String { text("appsettings.icon.classic") }
-        public static var appIconLineElephant: String { text("appsettings.icon.lineElephant") }
         public static var appIconRainbow: String { text("appsettings.icon.rainbow") }
         public static var appIconLiquidGlass: String { text("appsettings.icon.liquidGlass") }
         public static var appIconPaintChaos: String { text("appsettings.icon.paintChaos") }
         public static var appIconRisoGlitch: String { text("appsettings.icon.risoGlitch") }
         public static var appIconTornCollage: String { text("appsettings.icon.tornCollage") }
+        public static var appIconAppleGummy: String { text("appsettings.icon.appleGummy") }
+        public static var appIconZebraPrint: String { text("appsettings.icon.zebraPrint") }
+        public static var appIconNotAwake: String { text("appsettings.icon.notAwake") }
         public static var videoAutoplayNever: String { text("appsettings.videoAutoplay.never") }
         public static var videoAutoplayWiFi: String { text("appsettings.videoAutoplay.wifi") }
         public static var videoAutoplayAlways: String { text("appsettings.videoAutoplay.always") }
@@ -327,6 +349,7 @@ public enum MoroL10n {
         public static var optionScheduleDate: String { text("compose.option.scheduleDate") }
         public static var optionLanguage: String { text("compose.option.language") }
         public static var successPosted: String { text("compose.success.posted") }
+        public static var publishUnconfirmed: String { text("compose.publish.unconfirmed") }
         public static var validationMediaUploading: String { text("compose.validation.mediaUploading") }
         public static var validationMediaUploadFailed: String { text("compose.validation.mediaUploadFailed") }
         public static var validationPollNeedsMoreOptions: String {
@@ -727,6 +750,10 @@ public enum MoroL10n {
     }
 
     public enum Timeline {
+        public static var hasNewPosts: String { text("timeline.hasNewPosts") }
+        public static var loadGap: String { text("timeline.loadGap") }
+        public static var gapRetry: String { text("timeline.gapRetry") }
+        public static func newPostsAtLeast(_ count: Int) -> String { format("timeline.newPostsAtLeast", Int64(count)) }
         public static var refreshing: String { text("timeline.refreshing") }
         public static var newPostsMany: String { text("timeline.newPostsMany") }
         public static var confirmBoostTitle: String { text("timeline.confirmBoost.title") }
@@ -1146,20 +1173,14 @@ public enum MoroL10n {
         public static var buildNumber: String { text("about.buildNumber") }
         public static var sectionLinks: String { text("about.sectionLinks") }
         public static var githubRepo: String { text("about.githubRepo") }
-        public static var mastodonOfficial: String { text("about.mastodonOfficial") }
+        public static var website: String { text("about.website") }
+        public static var versionHistory: String { text("about.versionHistory") }
+        public static var openSourceLicenses: String { text("about.openSourceLicenses") }
         public static var feedbackEmail: String { text("about.feedbackEmail") }
-        public static var support: String { text("about.support") }
         public static var sectionAcknowledgements: String { text("about.sectionAcknowledgements") }
-        public static var viewAcknowledgements: String { text("about.viewAcknowledgements") }
-        public static var footer: String { text("about.footer") }
-        public static var acknowledgementsTitle: String { text("about.acknowledgementsTitle") }
-        public static var ackMastodon: String { text("about.ackMastodon") }
-        public static var ackSwiftUI: String { text("about.ackSwiftUI") }
-        public static var ackSDWebImage: String { text("about.ackSDWebImage") }
         public static var unknown: String { text("about.unknown") }
 
         public static func versionBuild(_ version: String, _ build: String) -> String { format("about.versionBuild", version, build) }
-        public static func copyright(_ year: Int) -> String { format("about.copyright", Int64(year)) }
     }
 
     public enum Lists {
@@ -2008,6 +2029,7 @@ public enum MoroL10n {
     }
 
     public enum ImagePreview {
+        public static var zoomAction: String { text("imagePreview.zoomAction") }
         public static var altBadge: String { text("imagePreview.altBadge") }
         public static var altAccessibility: String { text("imagePreview.altAccessibility") }
         public static var emptyState: String { text("imagePreview.emptyState") }

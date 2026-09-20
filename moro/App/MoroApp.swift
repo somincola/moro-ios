@@ -17,6 +17,7 @@ struct MoroApp: App {
     @StateObject private var settings = AppSettings.shared
 
     init() {
+        StorageManagementStore.configureImageCache()
         let appState = AppState()
         let interceptor = AuthInterceptor(tokenProvider: appState)
         let client = MastodonClient(authInterceptor: interceptor)
@@ -32,7 +33,13 @@ struct MoroApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if shouldUseSettingsSheetHarness {
+                if shouldUseImagePreviewHarness {
+                    imagePreviewHarness.preferredColorScheme(colorScheme)
+                } else if shouldUsePublishingHarness {
+                    publishingHarness.preferredColorScheme(colorScheme)
+                } else if shouldUsePushHarness {
+                    pushHarness.preferredColorScheme(colorScheme)
+                } else if shouldUseSettingsSheetHarness {
                     SettingsSheetHarnessView()
                         .moroTheme(MoroTheme(accent: .monochrome))
                         .preferredColorScheme(colorScheme)
@@ -44,6 +51,8 @@ struct MoroApp: App {
                     ComposeMediaGridHarnessView()
                         .moroTheme(MoroTheme(accent: .monochrome))
                         .preferredColorScheme(colorScheme)
+                } else if shouldUseTimelineLiveHarness {
+                    timelineLiveHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseListCacheHarness {
                     listCacheHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseBookmarksHarness {
@@ -96,6 +105,17 @@ struct MoroApp: App {
                         }
                 }
             }
+            .onChange(of: scenePhase, initial: true) { _, newPhase in
+                guard newPhase == .active else { return }
+                Task { @MainActor in
+                    do {
+                        settings.appIcon = try await AppIconManager.shared.reconcileSelection()
+                    } catch {
+                        // Keep the existing selection and retry on the next activation.
+                        NSLog("[AppIcon] Failed to restore the primary icon: %@", error.localizedDescription)
+                    }
+                }
+            }
             .environment(
                 \.dynamicTypeSize,
                 uiTestDynamicTypeSizeOverride ?? systemDynamicTypeSize
@@ -106,6 +126,49 @@ struct MoroApp: App {
 
     private var launchArguments: [String] {
         ProcessInfo.processInfo.arguments
+    }
+
+    private var shouldUseImagePreviewHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_IMAGE_PREVIEW")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var imagePreviewHarness: some View {
+        #if DEBUG
+        ImagePreviewHarnessView().moroTheme(MoroTheme(accent: .monochrome))
+        #endif
+    }
+
+    private var shouldUsePushHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_PUSH_OPEN")
+        #else
+        false
+        #endif
+    }
+
+    private var shouldUsePublishingHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_PUBLISHING")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var publishingHarness: some View {
+        #if DEBUG
+        ComposePublishingHarnessView().moroTheme(MoroTheme(accent: .monochrome))
+        #endif
+    }
+
+    @ViewBuilder private var pushHarness: some View {
+        #if DEBUG
+        PushNotificationHarnessView()
+            .moroTheme(MoroTheme(accent: .monochrome))
+        #endif
     }
 
     private var launchEnvironment: [String: String] {
@@ -136,6 +199,20 @@ struct MoroApp: App {
     private var shouldUseComposeCounterHarness: Bool {
         launchArguments.contains("UITEST_COMPOSE_COUNTER")
             || launchEnvironment["UITEST_COMPOSE_COUNTER"] == "1"
+    }
+
+    private var shouldUseTimelineLiveHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_TIMELINE_LIVE")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var timelineLiveHarness: some View {
+        #if DEBUG
+        TimelineLiveHarnessView()
+        #endif
     }
 
     private var shouldUseListCacheHarness: Bool {

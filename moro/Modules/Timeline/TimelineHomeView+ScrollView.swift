@@ -33,8 +33,6 @@ extension TimelineHomeView {
                                 bridge: scrollBridge
                             )
                         )
-                        .onAppear { scrollBridge.setAtTop(true, for: timelineType) }
-                        .onDisappear { scrollBridge.setAtTop(false, for: timelineType) }
 
                     TimelinePullRefreshSlot(
                         maxHeight: pullRefreshReservedHeight,
@@ -56,6 +54,7 @@ extension TimelineHomeView {
                 geometry.contentOffset.y
             } action: { _, offsetY in
                 guard isActive else { return }
+                scrollBridge.updateGeometry(for: timelineType, headerHeight: headerHeight)
                 if scrollBridge.isPresented(timelineType) {
                     pageSession.recordContentOffset(offsetY)
                 }
@@ -71,6 +70,7 @@ extension TimelineHomeView {
                 handleScrollOffset(-offsetY, for: timelineType)
             }
             .onScrollPhaseChange { oldPhase, newPhase in
+                scrollBridge.updatePhase(newPhase, for: timelineType)
                 if scrollBridge.isPresented(timelineType) {
                     pageSession.commitVisibleAnchor(for: newPhase)
                 }
@@ -84,11 +84,15 @@ extension TimelineHomeView {
             .onChange(of: viewModel.statuses.count) { _, _ in
                 updateThreadContexts()
             }
+            .onChange(of: viewModel.liveRevision) { _, _ in
+                processLiveUpdates(for: timelineType, viewModel: viewModel)
+            }
             .onChange(of: viewModel.timelineType) { _, _ in
                 updateThreadContexts()
             }
             .onAppear {
                 scrollBridge.register(proxy, for: timelineType)
+                scrollBridge.updateGeometry(for: timelineType, headerHeight: headerHeight)
             }
         }
     }
@@ -131,7 +135,6 @@ extension TimelineHomeView {
 
         switch result {
         case .success:
-            viewModel.clearPendingStatuses()
             if let detectionSnapshot {
                 detectionManager.resolve(detectionSnapshot)
             }
@@ -318,6 +321,9 @@ extension TimelineHomeView {
                 )
             )
             .id(status.id)
+            .background(TimelineRowAnchor(statusID: status.id, timeline: timelineType,
+                revision: viewModel.presentationRevision, bridge: scrollBridge))
+            .accessibilityIdentifier("timeline.row.\(status.id)")
             .overlay(alignment: .top) {
                 Color.clear
                     .frame(height: 1)
@@ -331,11 +337,7 @@ extension TimelineHomeView {
                     index: index,
                     isVisible: isVisible
                 )
-                if timelineType == .home,
-                    let topVisibleStatusID = pageSession.topVisibleStatusID
-                {
-                    viewModel.currentTopVisibleStatusID = topVisibleStatusID
-                }
+
             }
             .onAppear {
                 if timelineType == .home,
@@ -364,9 +366,7 @@ extension TimelineHomeView {
                     }
                 }
 
-                if isNearBottom,
-                    case .idle = viewModel.loadingState,
-                    viewModel.hasMore
+                if isNearBottom, viewModel.hasMore
                 {
                     Task {
                         await viewModel.loadMore(triggeredByStatusID: status.id)
@@ -375,6 +375,26 @@ extension TimelineHomeView {
             }
 
             MoroDivider(leadingInset: theme.spacing.timelineDividerInset, height: 0.5)
+
+            // Unverified intervals are resolved quietly. Only a failed request
+            // needs an action in the timeline; its appearance is anchor-preserved.
+            ForEach(viewModel.gaps.filter { $0.afterID == status.id && viewModel.failedGapIDs.contains($0.id) }) { gap in
+                Button {
+                    Task { await viewModel.loadGap(id: gap.id) }
+                } label: {
+                    HStack(spacing: theme.spacing.s) {
+                        if viewModel.loadingGapIDs.contains(gap.id) { ProgressView() }
+                        Text(MoroL10n.Timeline.gapRetry)
+                    }
+                    .font(theme.typography.caption)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.colors.textSecondary)
+                .disabled(viewModel.loadingGapIDs.contains(gap.id))
+                .accessibilityIdentifier("timeline.gap.\(gap.beforeID)")
+            }
         }
 
         if case .loadingMore = viewModel.loadingState {

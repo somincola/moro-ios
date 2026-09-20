@@ -1,186 +1,232 @@
-//
-//  TimelineHomeView+Overlays.swift
-//  moro
-//
-//  Top new-posts/refresh indicator — extracted from TimelineHomeView as an extension (pure relocation, no behaviour change).
-//
-
 import SwiftUI
 
 extension TimelineHomeView {
-    // MARK: - Top Indicator
+    var currentDetectionCount: Int { viewModel.newPostCount }
 
-    /// Helper computed property to check if current timeline is at top
-    var isCurrentTimelineAtTop: Bool {
-        scrollBridge.isAtTop(selectedTimeline)
-    }
-
-    @ViewBuilder
     var topIndicator: some View {
-        VStack {
-            if settings.timelineInAppNewPostBannerEnabled
-                && currentDetectionCount > 0
-                && isNewPostsIndicatorVisible
-            {
-                Button {
-                    loadDetectedPosts(scrollToTop: true, providesFeedback: true)
-                } label: {
-                    MoroNoticePill(
-                        icon: isLoadingDetectedPosts ? "arrow.trianglehead.2.clockwise" : "arrow.up",
-                        text: isLoadingDetectedPosts
-                            ? MoroL10n.Timeline.refreshing
-                            : currentDetectionCount > 99
-                                ? MoroL10n.Timeline.newPostsMany
-                                : MoroL10n.Timeline.newPosts(currentDetectionCount)
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(isLoadingDetectedPosts)
-                .frame(maxWidth: 280)
-                .padding(.horizontal, theme.spacing.m)
-                .transition(.move(edge: .top).combined(with: .opacity))
-            } else if showsTopRefreshIndicator {
-                MoroNoticePill(
-                    icon: "arrow.trianglehead.2.clockwise",
-                    text: MoroL10n.Timeline.refreshing
-                )
-                .frame(maxWidth: 280)
-                .padding(.horizontal, theme.spacing.m)
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-
-            Spacer()
+        TimelineNewPostsNotice(
+            timeline: selectedTimeline,
+            count: currentDetectionCount,
+            hasMore: viewModel.newPostsHaveMore,
+            isEnabled: settings.timelineInAppNewPostBannerEnabled,
+            isRefreshing: showsTopRefreshIndicator,
+            bridge: scrollBridge
+        ) {
+            loadDetectedPosts(scrollToTop: true, providesFeedback: true)
         }
         .padding(.top, headerHeight + 8)
-        .animation(.easeInOut(duration: 0.2), value: isNewPostsIndicatorVisible)
     }
 
     var showsTopRefreshIndicator: Bool {
         guard case .refreshing(let trigger) = viewModel.refreshState else { return false }
-        switch trigger {
-        case .tabRetap, .foreground, .compose:
-            return true
-        case .pull, .newPosts:
-            return false
-        }
+        return trigger == .tabRetap || trigger == .compose
     }
 
     func refreshCurrentTimelineFromTab() {
         let timeline = selectedTimeline
-        let targetViewModel = viewModel
-        let detectionSnapshot = detectionDimension(for: timeline).map {
-            detectionManager.snapshot(for: $0)
-        }
-        guard !targetViewModel.isRefreshing else { return }
-
+        let target = viewModel
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         Task { @MainActor in
-            let result = await targetViewModel.refresh(trigger: .tabRetap)
-            switch result {
-            case .success:
-                targetViewModel.clearPendingStatuses()
-                if let detectionSnapshot {
-                    detectionManager.resolve(detectionSnapshot)
-                }
+            let result = await target.refresh(trigger: .tabRetap)
+            guard selectedTimeline == timeline else { return }
+            if result.succeeded {
+                processLiveUpdates(for: timeline, viewModel: target)
                 syncDetectionTopID(for: timeline)
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-            case .failure:
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            } else if case .failure = result {
                 AppFeedbackCenter.shared.showError(MoroL10n.Timeline.loadFailed)
-            case .cancelled:
-                break
             }
         }
     }
 
-    func updateNewPostsIndicator(for count: Int) {
-        guard count > 0 else {
-            hideNewPostsIndicator()
-            return
+    func processLiveUpdates(for timeline: TimelineType, viewModel target: TimelineViewModel) {
+        guard target.hasReadingState, scrollBridge.canPresentUpdates(for: timeline) else { return }
+        let session = pageSessionStore.session(for: timeline)
+        if !session.hasRestoredReadingAnchor, !target.statuses.isEmpty {
+            session.hasRestoredReadingAnchor = true
+            if let saved = target.savedReadingAnchor {
+                scrollBridge.restoreReadingAnchor(saved, for: timeline)
+                return
+            }
         }
-
-        if isCurrentTimelineAtTop {
-            hideNewPostsIndicator()
-            loadDetectedPosts(scrollToTop: false, providesFeedback: false)
-        } else if settings.timelineInAppNewPostBannerEnabled {
-            showNewPostsIndicator()
-        } else {
-            hideNewPostsIndicator()
+        if target.hasUnappliedUpdates {
+            guard scrollBridge.prepareContentUpdate(for: timeline, revision: target.presentationRevision + 1, retainedIDs: target.canonicalStatusIDs) else { return }
+            target.applyLiveUpdates()
+            return // The matching row layout event will finish the transaction.
         }
-    }
-
-    func showNewPostsIndicator() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            isNewPostsIndicatorVisible = true
+        if scrollBridge.latestIsVisible(for: timeline, statusID: target.statuses.first?.id,
+            revision: target.presentationRevision) {
+            target.acknowledgePresentedUpdates(through: target.presentedSequence)
         }
-    }
-
-    func hideNewPostsIndicator() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            isNewPostsIndicatorVisible = false
+        let visibleAnchors = scrollBridge.readingAnchors(for: timeline)
+        if let anchor = visibleAnchors.first {
+            target.saveReadingAnchor(anchor)
+            if timeline == .home, target.currentTopVisibleStatusID != anchor.statusID {
+                target.currentTopVisibleStatusID = anchor.statusID
+            }
         }
+        target.fillRecentGapsIfNeeded(near: Set(visibleAnchors.map(\.statusID)))
     }
 
     func loadDetectedPosts(scrollToTop: Bool, providesFeedback: Bool) {
-        guard !isLoadingDetectedPosts,
-            let dimension = detectionDimension(for: selectedTimeline)
-        else { return }
-
         let timeline = selectedTimeline
-        let detectedCount = detectionManager.newItemsCounts[dimension] ?? 0
-        let detectionSnapshot = detectionManager.snapshot(for: dimension)
-        let targetViewModel = viewModel
-        guard detectedCount > 0 else { return }
-
-        isLoadingDetectedPosts = true
-        hideNewPostsIndicator()
-
-        Task { @MainActor in
-            let succeeded = await targetViewModel.fetchNewStatuses(
-                force: true,
-                providesFeedback: providesFeedback
-            )
-            if succeeded {
-                detectionManager.resolve(detectionSnapshot)
+        let target = viewModel
+        if providesFeedback { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+        if scrollToTop {
+            if target.hasUnappliedUpdates,
+                scrollBridge.prepareContentUpdate(for: timeline,
+                    revision: target.presentationRevision + 1, jumpToLatest: true) {
+                target.applyLiveUpdates()
+            } else {
+                scrollBridge.scrollToTop(timeline)
             }
-
-            isLoadingDetectedPosts = false
-            guard selectedTimeline == timeline else {
-                updateNewPostsIndicator(for: currentDetectionCount)
-                return
-            }
-
-            if succeeded {
-                syncDetectionTopID(for: timeline)
-                if scrollToTop {
-                    scrollBridge.resetChrome()
-                    onChromeFraction?(0)
-                    withAnimation {
-                        scrollBridge.scrollToTop(timeline)
-                    }
-                }
-                updateNewPostsIndicator(
-                    for: detectionManager.newItemsCounts[dimension] ?? 0
-                )
-            } else if settings.timelineInAppNewPostBannerEnabled {
-                showNewPostsIndicator()
-            }
+        } else {
+            processLiveUpdates(for: timeline, viewModel: target)
         }
     }
 
     func detectionDimension(for timeline: TimelineType) -> TimelineDimension? {
         switch timeline {
-        case .home: return .following
-        case .local: return .local
-        case .federated: return .federated
-        case .list: return nil
+        case .home: .following
+        case .local: .local
+        case .federated: .federated
+        case .list: nil
+        }
+    }
+}
+
+private struct TimelineNewPostsNotice: View {
+    let timeline: TimelineType
+    let count: Int
+    let hasMore: Bool
+    let isEnabled: Bool
+    let isRefreshing: Bool
+    let bridge: TimelineScrollBridge
+    let onTap: () -> Void
+
+    @Environment(\.moroTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isAtTop: Bool
+    @State private var compactTimelines: Set<TimelineType> = []
+
+    init(
+        timeline: TimelineType,
+        count: Int,
+        hasMore: Bool,
+        isEnabled: Bool,
+        isRefreshing: Bool,
+        bridge: TimelineScrollBridge,
+        onTap: @escaping () -> Void
+    ) {
+        self.timeline = timeline
+        self.count = count
+        self.hasMore = hasMore
+        self.isEnabled = isEnabled
+        self.isRefreshing = isRefreshing
+        self.bridge = bridge
+        self.onTap = onTap
+        _isAtTop = State(initialValue: bridge.isAtTop(timeline))
+    }
+
+    private var hasPendingPosts: Bool { count > 0 || hasMore }
+    private var isCompact: Bool { compactTimelines.contains(timeline) }
+
+    var body: some View {
+        VStack {
+            if isEnabled, !isAtTop, hasPendingPosts {
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    Button(action: onTap) {
+                        if isCompact {
+                            TimelineNewPostsBadge(text: compactText)
+                                .frame(minWidth: 44, minHeight: 44)
+                                .contentShape(Rectangle())
+                        } else {
+                            MoroNoticePill(icon: "arrow.up", text: noticeText)
+                                .frame(maxWidth: 280)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(noticeText)
+                    .accessibilityIdentifier("timeline.newPosts")
+                    if !isCompact { Spacer(minLength: 0) }
+                }
+                .padding(.horizontal, theme.spacing.m)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isCompact)
+            } else if isRefreshing {
+                MoroNoticePill(icon: "arrow.trianglehead.2.clockwise", text: MoroL10n.Timeline.refreshing)
+                    .frame(maxWidth: 280)
+            }
+            Spacer()
+        }
+        .onReceive(bridge.atTopEvents) { source in
+            guard source == timeline else { return }
+            let value = bridge.isAtTop(source)
+            guard isAtTop != value else { return }
+            isAtTop = value
+        }
+        .onChange(of: timeline) { _, newTimeline in
+            isAtTop = bridge.isAtTop(newTimeline)
+        }
+        .onReceive(bridge.userScrollEvents) { source in
+            guard source == timeline, hasPendingPosts else { return }
+            compactTimelines.insert(timeline)
+        }
+        .onChange(of: hasPendingPosts, initial: true) { _, hasPending in
+            if !hasPending {
+                compactTimelines.remove(timeline)
+            } else if bridge.isUserScrolling(timeline) {
+                compactTimelines.insert(timeline)
+            }
         }
     }
 
-    /// Unified detection count for the currently selected timeline dimension
-    var currentDetectionCount: Int {
-        guard let dimension = detectionDimension(for: selectedTimeline) else { return 0 }
-        return detectionManager.newItemsCounts[dimension] ?? 0
+    private var compactText: String {
+        if count > 99 { return "99+" }
+        if count == 0 { return "•" }
+        return count.formatted()
     }
 
+    private var noticeText: String {
+        if count > 99 { return MoroL10n.Timeline.newPostsMany }
+        if count == 0, hasMore {
+            return MoroL10n.Timeline.hasNewPosts
+        }
+        return MoroL10n.Timeline.newPosts(count)
+    }
+}
+
+private struct TimelineNewPostsBadge: View {
+    let text: String
+    @Environment(\.moroTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Text(text)
+            .moroScaledFont(size: 13, weight: .semibold)
+            .monospacedDigit()
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(minWidth: 28, minHeight: 28)
+            .foregroundStyle(.white)
+            .background(colorScheme == .dark ? theme.colors.surfaceElevated : theme.colors.textPrimary)
+            .clipShape(Capsule())
+            .overlay {
+                Capsule().stroke(colorScheme == .dark ? Color.white.opacity(0.12) : .black.opacity(0.06), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.14), radius: 6, y: 2)
+    }
+}
+
+#Preview("New post notices") {
+    VStack(spacing: 20) {
+        MoroNoticePill(icon: "arrow.up", text: MoroL10n.Timeline.newPosts(20))
+        HStack {
+            Spacer()
+            TimelineNewPostsBadge(text: "20")
+            TimelineNewPostsBadge(text: "99+")
+        }
+    }
+    .padding()
+    .moroTheme(MoroTheme())
 }

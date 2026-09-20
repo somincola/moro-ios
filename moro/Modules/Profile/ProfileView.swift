@@ -83,7 +83,8 @@ struct ProfileView: View {
     private let pullRefreshVisualThreshold: CGFloat = 72
     private let refreshFeedbackMinimumDuration: TimeInterval = 0.85
     private let pullRefreshIndicatorSize: CGFloat = 34
-    private let navigationBarHeight: CGFloat = 44
+    // Used only before the native navigation bar has completed its first layout.
+    @State private var navigationBarHeight: CGFloat = 44
 
     private var profileChromeProgress: CGFloat {
         chromeState.headerProgress(
@@ -227,6 +228,11 @@ struct ProfileView: View {
         }
         .ignoresSafeArea(.container, edges: .top)
         .background(sceneCanvasColor)
+        .background {
+            ProfileNavigationBarHeightReader { navigationBarHeight = $0 }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
         .navigationTitle(
             navChromeVisible
                 ? (viewModel.account?.displayName

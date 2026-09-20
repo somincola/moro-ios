@@ -12,26 +12,17 @@ extension TimelineHomeView {
     func handleFeedCoordinatorUpdate(_ update: UpdatedElement) {
         guard case .createdPost(let status) = update else { return }
 
-        let pendingCount = detectionManager.newItemsCounts[.following] ?? 0
-        if selectedTimeline == .home,
-            scrollBridge.isAtTop(.home),
-            pendingCount == 0
-        {
-            homeViewModel.insertCreatedStatus(status)
-            syncDetectionTopID(for: .home)
-        } else {
-            homeViewModel.stageCreatedStatus(status)
-            detectionManager.incrementCount(for: .following, latestID: status.id)
-        }
+        homeViewModel.receiveLiveStatus(status, authoredByCurrentUser: true)
     }
 
     func handleStreamEvent(_ event: StreamEvent) {
+        guard detectionManager.isConfigured(for: cacheClientID),
+            streamWatcher.matchesCredentials(baseURL: AppEnvironment.apiBaseURL, accessToken: appState.authToken)
+        else { return }
         switch event {
         case .update(let status):
-            homeViewModel.trackPendingStatusID(status.id)
-            if status.account.id != appState.currentAccount?.id {
-                detectionManager.incrementCount(for: .following, latestID: status.id)
-            }
+            homeViewModel.receiveLiveStatus(status,
+                authoredByCurrentUser: status.account.id == appState.currentAccount?.id)
 
         case .statusUpdate, .delete:
             let viewModels = [homeViewModel, localViewModel, federatedViewModel]
@@ -51,24 +42,7 @@ extension TimelineHomeView {
     var floatingHeader: some View {
         HStack(spacing: theme.spacing.m) {
             if let onAvatarTap, let account = appState.currentAccount {
-                Button(
-                    action: onAvatarTap
-                ) {
-                    ZStack(alignment: .bottomTrailing) {
-                        Circle()
-                            .fill(theme.colors.surfaceSubtle)
-                            .frame(width: 38, height: 38)
-                        MoroAvatar(
-                            imageURL: account.avatarAnimatedURL,
-                            staticImageURL: account.avatarURL,
-                            initials: account.displayNameInitials,
-                            size: 32
-                        )
-                    }
-                }
-                .buttonStyle(.plain)
-                .frame(width: 44, height: 44)
-                .accessibilityLabel(MoroL10n.Navigation.settings)
+                SettingsAvatarButton(account: account, action: onAvatarTap)
             } else {
                 Color.clear
                     .frame(width: 38, height: 38)

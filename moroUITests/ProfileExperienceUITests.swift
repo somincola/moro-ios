@@ -1,8 +1,83 @@
+import UIKit
 import XCTest
 
 @MainActor
 final class ProfileExperienceUITests: XCTestCase {
     private let rawLink = "https://example.com/a/long/path?first=1&second=2"
+
+    func testProfileChromeMatchesNativeNavigationBarAfterScrollingAndReturning() {
+        let app = launch(animations: true)
+        defer { app.terminate() }
+        scrollToCollapsedHeader(app)
+        attach(app, "profile-header-partially-scrolled-light")
+        assertNavigationBackgroundIsOpaque(app)
+        assertTabsMeetNavigationBar(app)
+        attach(app, "profile-header-pinned-light")
+
+        openOverview(app)
+        back(app)
+        XCTAssertTrue(app.buttons["profile.moreButton"].waitForExistence(timeout: 5))
+        assertTabsMeetNavigationBar(app)
+        attach(app, "profile-header-after-return")
+    }
+
+    func testProfileChromeMatchesNativeNavigationBarInDarkMode() {
+        let app = launch(scheme: "dark", animations: true)
+        defer { app.terminate() }
+        scrollToCollapsedHeader(app)
+        attach(app, "profile-header-partially-scrolled-dark")
+        assertNavigationBackgroundIsOpaque(app)
+        assertTabsMeetNavigationBar(app)
+        attach(app, "profile-header-pinned-dark")
+    }
+
+    private func scrollToCollapsedHeader(_ app: XCUIApplication) {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
+            .press(forDuration: 0.1,
+                thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.39)),
+                withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertTrue(app.navigationBars.staticTexts["Moro Tester"].waitForExistence(timeout: 5))
+    }
+
+    private func assertTabsMeetNavigationBar(_ app: XCUIApplication,
+        file: StaticString = #filePath, line: UInt = #line) {
+        for _ in 0..<3 { app.swipeUp() }
+        let posts = app.buttons["profile.tab.posts"].firstMatch
+        XCTAssertTrue(posts.waitForExistence(timeout: 5), file: file, line: line)
+        let navigationBar = app.navigationBars.firstMatch
+        // Accessibility exposes the title bounds, below 12 pt section padding
+        // and 10 pt button padding. Compare the actual section edge to UIKit.
+        let sectionTop = posts.frame.minY - 22
+        XCTAssertEqual(sectionTop, navigationBar.frame.maxY, accuracy: 1,
+            "Pinned tabs must meet the native navigation bar without overlap or a gap.", file: file, line: line)
+        XCTAssertTrue(app.buttons["profile.moreButton"].isHittable, file: file, line: line)
+    }
+
+    private func assertNavigationBackgroundIsOpaque(_ app: XCUIApplication,
+        file: StaticString = #filePath, line: UInt = #line) {
+        let bar = app.navigationBars.firstMatch.frame
+        guard let image = app.screenshot().image.cgImage,
+            let data = image.dataProvider?.data, let pixels = CFDataGetBytePtr(data) else {
+            XCTFail("Unable to inspect the navigation bar screenshot", file: file, line: line)
+            return
+        }
+        let scale = CGFloat(image.width) / app.frame.width
+        let channels = image.bitsPerPixel / 8
+        let referenceY = Int((bar.minY + 2) * scale)
+        let bottomY = Int((bar.maxY - 3) * scale)
+        var largestDifference = 0
+        // Both rows are clear of the title and trailing button. A transparent
+        // strip exposes the scrolling username or its blur in the bottom row.
+        for x in Int(16 * scale)..<Int(app.frame.width * 0.6 * scale) {
+            for channel in 0..<channels {
+                let reference = Int(pixels[referenceY * image.bytesPerRow + x * channels + channel])
+                let bottom = Int(pixels[bottomY * image.bytesPerRow + x * channels + channel])
+                largestDifference = max(largestDifference, abs(reference - bottom))
+            }
+        }
+        XCTAssertLessThanOrEqual(largestDifference, 6,
+            "The native navigation bar must remain opaque to its bottom edge.", file: file, line: line)
+    }
 
     func testRenamingFieldPreservesExistingValueAboveLoweredLimit() {
         let app = launch(extra: ["UITEST_PROFILE_LOWER_FIELD_LIMIT": "1"])
@@ -380,10 +455,15 @@ final class ProfileExperienceUITests: XCTestCase {
         }
     }
 
-    private func launch(extra: [String: String] = [:], scheme: String = "light") -> XCUIApplication {
+    private func launch(extra: [String: String] = [:], scheme: String = "light",
+        animations: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["UITEST_PROFILE_EXPERIENCE", "UITEST_DISABLE_ANIMATIONS", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
-        app.launchEnvironment = ["UITEST_USE_FULL_APP": "1", "UITEST_COLOR_SCHEME": scheme, "UITEST_DISABLE_ANIMATIONS": "1"]
+        app.launchArguments = ["UITEST_PROFILE_EXPERIENCE", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchEnvironment = ["UITEST_USE_FULL_APP": "1", "UITEST_COLOR_SCHEME": scheme]
+        if !animations {
+            app.launchArguments.append("UITEST_DISABLE_ANIMATIONS")
+            app.launchEnvironment["UITEST_DISABLE_ANIMATIONS"] = "1"
+        }
         app.launchEnvironment.merge(extra) { _, new in new }
         app.launch()
         XCTAssertTrue(app.buttons["profile.moreButton"].waitForExistence(timeout: 10))

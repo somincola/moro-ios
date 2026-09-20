@@ -163,9 +163,13 @@ struct ComposeView: View {
     @State private var emojiViewModel: CustomEmojiViewModel?
     @State private var pendingScheduledDate = ComposeViewModel.defaultScheduledDate()
     @State private var hasProcessedSharedImport = false
+    @State private var isCompletingPublish = false
+    @State private var publishFailureMessage: String?
+    @State private var publishDraftSaved: Bool?
     
     private let draftStore: ComposeDraftStore
     private let sharedImport: SharedComposeAttachmentImportPayload?
+    private let onDismiss: (() -> Void)?
     let onPublish: ((Status) -> Void)?
     
     init(
@@ -176,6 +180,7 @@ struct ComposeView: View {
         initialDraft: ComposeDraft? = nil,
         accountCache: AccountCache? = nil,
         sharedImport: SharedComposeAttachmentImportPayload? = nil,
+        onDismiss: (() -> Void)? = nil,
         onPublish: ((Status) -> Void)? = nil
     ) {
         let resolvedDraftStore = draftStore ?? ComposeDraftStore.shared
@@ -188,6 +193,7 @@ struct ComposeView: View {
         )
         self.draftStore = resolvedDraftStore
         self.sharedImport = sharedImport
+        self.onDismiss = onDismiss
         _viewModel = StateObject(wrappedValue: resolvedViewModel)
         _autocomplete = StateObject(wrappedValue: ComposeAutocompleteModel(apiClient: apiClient))
         _textSelection = State(
@@ -227,6 +233,10 @@ struct ComposeView: View {
             }
         )
     }
+
+    private var isPublishingOrClosing: Bool {
+        viewModel.isPublishing || viewModel.hasPublished
+    }
     
     var body: some View {
         NavigationStack {
@@ -262,6 +272,8 @@ struct ComposeView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 
+                publishFailureNotice
+
                 if let token = autocompleteToken {
                     ComposeSuggestionsView(token: token, model: autocomplete) { suggestion in
                         insertSuggestion(suggestion, for: token)
@@ -271,6 +283,7 @@ struct ComposeView: View {
                 bottomSection
                     .disabled(!viewModel.isEditingSourceReady)
             }
+            .disabled(isPublishingOrClosing)
             .background(theme.colors.background)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle(navigationTitle)
@@ -285,9 +298,10 @@ struct ComposeView: View {
                         if viewModel.hasDraftableContent {
                             destination = .discardConfirmation
                         } else {
-                            dismiss()
+                            dismissComposer()
                         }
                     }
+                    .disabled(isPublishingOrClosing)
                 }
 
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
@@ -321,7 +335,7 @@ struct ComposeView: View {
                     } label: {
                         Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44)
                     }
-                    .disabled(!viewModel.isEditingSourceReady || viewModel.isPublishing)
+                    .disabled(!viewModel.isEditingSourceReady || isPublishingOrClosing)
                     .accessibilityLabel(MoroL10n.ComposeReading.options)
                     .accessibilityIdentifier("compose.editorOptions")
 
@@ -332,8 +346,8 @@ struct ComposeView: View {
                     } label: {
                         ZStack {
                             Text(primaryActionTitle)
-                                .opacity(viewModel.isPublishing ? 0 : 1)
-                            if viewModel.isPublishing {
+                                .opacity(isPublishingOrClosing ? 0 : 1)
+                            if isPublishingOrClosing {
                                 ProgressView()
                                     .controlSize(.small)
                             }
@@ -343,9 +357,8 @@ struct ComposeView: View {
                     .accessibilityIdentifier("compose.postButton")
                     .fontWeight(.semibold)
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(
-                        Text(viewModel.isPublishing ? publishingButtonText : primaryActionTitle)
-                    )
+                    .accessibilityLabel(Text(primaryActionTitle))
+                    .accessibilityValue(Text(isPublishingOrClosing ? publishingButtonText : ""))
                 }
             }
             .alert(
@@ -423,6 +436,11 @@ struct ComposeView: View {
                     Task {
                         await importSharedAttachments(from: sharedImport)
                     }
+                }
+            }
+            .onDisappear {
+                if isCompletingPublish {
+                    AppLogger.debug("[Compose] Published composer disappeared")
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { notification in
@@ -1702,7 +1720,7 @@ struct ComposeView: View {
         }
 
         AppFeedbackCenter.shared.showSuccess(MoroL10n.ComposeDrafts.saved)
-        dismiss()
+        dismissComposer()
     }
 
     private func discardDraftAndDismiss() {
@@ -1710,7 +1728,7 @@ struct ComposeView: View {
             _ = draftStore.removeDraft(id: draftID)
         }
         viewModel.clearActiveDraftReference()
-        dismiss()
+        dismissComposer()
     }
     
     // MARK: - Actions
@@ -1851,8 +1869,17 @@ struct ComposeView: View {
     }
     
     private func performPublish() async {
+        guard !viewModel.isPublishing, !isCompletingPublish else { return }
+        publishFailureMessage = nil
+        publishDraftSaved = nil
+        AppLogger.debug("[Compose] Publish started")
         do {
             let result = try await viewModel.publish()
+            isCompletingPublish = true
+            // The presentation owner clears its binding before any refresh callback.
+            // Keep the progress indicator active until the composer has disappeared.
+            AppLogger.debug("[Compose] Publish succeeded; requesting dismissal")
+            dismissComposer()
             switch result {
             case .posted(let status):
                 AppFeedbackCenter.shared.showSuccess(MoroL10n.Compose.successPosted)
@@ -1868,20 +1895,47 @@ struct ComposeView: View {
                 _ = draftStore.removeDraft(id: draftID)
                 viewModel.clearActiveDraftReference()
             }
-            dismiss()
         } catch {
+            publishFailureMessage = ComposePublishFailure.message(for: error)
             if viewModel.hasDraftableContent {
                 let draft = viewModel.makeDraft(category: .auto)
-                if draftStore.save(draft) {
-                    AppFeedbackCenter.shared.showError(
-                        MoroL10n.ComposeDrafts.savedAfterFailure)
-                } else {
-                    AppFeedbackCenter.shared.showError(MoroL10n.ComposeDrafts.saveFailed)
-                }
-            } else {
-                AppFeedbackCenter.shared.showError(error.localizedDescription)
+                publishDraftSaved = draftStore.save(draft)
             }
             AppLogger.error("Failed to publish: \(error)")
+        }
+    }
+
+    private func dismissComposer() {
+        inputMode = .idle
+        if let onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
+    @ViewBuilder private var publishFailureNotice: some View {
+        if let publishFailureMessage {
+            HStack(alignment: .top, spacing: theme.spacing.s) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(theme.colors.error)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(publishFailureMessage)
+                        .foregroundStyle(theme.colors.textPrimary)
+                    if let publishDraftSaved {
+                        Text(publishDraftSaved ? MoroL10n.ComposeDrafts.saved : MoroL10n.ComposeDrafts.saveFailed)
+                            .foregroundStyle(theme.colors.textSecondary)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .font(theme.typography.caption)
+            .padding(theme.spacing.m)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(theme.colors.surfaceSubtle)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("compose.publishError")
         }
     }
     
