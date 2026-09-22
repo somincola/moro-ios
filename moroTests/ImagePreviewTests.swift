@@ -72,6 +72,59 @@ struct ImagePreviewTests {
         #expect(start.x == 0 && end.x == 0)
     }
 
+    @Test func shortDismissDragsKeepTheImageViewportAndZoomStable() {
+        let page = ImagePreviewPageView(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
+        page.layoutIfNeeded()
+        let view = page.scrollView
+        view.display(makeImage())
+        view.layoutIfNeeded()
+        let viewport = view.bounds.size
+        let zoom = view.zoomScale
+        let offset = view.contentOffset
+        let originalFrame = view.imageView.convert(view.imageView.bounds, to: page)
+
+        for distance: CGFloat in [0, 2, 5, 10, 20, 50, 100, 20, 0] {
+            page.updateDismissDrag(distance, ended: false)
+            page.setNeedsLayout()
+            page.layoutIfNeeded()
+            view.layoutIfNeeded()
+            #expect(view.bounds.size == viewport)
+            #expect(view.zoomScale == zoom)
+            #expect(view.contentOffset == offset)
+            let frame = view.imageView.convert(view.imageView.bounds, to: page)
+            #expect(abs(frame.midY - originalFrame.midY - distance) < 0.01)
+        }
+        page.reduceMotion = true
+        page.updateDismissDrag(0, ended: true)
+        #expect(view.transform == .identity)
+        #expect(view.imageView.convert(view.imageView.bounds, to: page) == originalFrame)
+    }
+
+    @Test func reduceMotionDismissalOnlyTranslatesAndCanBeReset() {
+        let page = ImagePreviewPageView(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
+        page.reduceMotion = true
+        page.layoutIfNeeded()
+        page.updateDismissDrag(20, ended: false)
+        #expect(page.scrollView.transform == CGAffineTransform(translationX: 0, y: 20))
+        page.resetDismissDrag()
+        page.updateDismissDrag(5, ended: false)
+        #expect(page.scrollView.transform == CGAffineTransform(translationX: 0, y: 5))
+        page.updateDismissDrag(0, ended: true)
+        #expect(page.scrollView.transform == .identity)
+    }
+
+    @Test func zoomedImageRejectsDismissalAtTouchDown() throws {
+        let view = makeView()
+        let dismissPan = try #require(view.gestureRecognizers?.compactMap { $0 as? UIPanGestureRecognizer }
+            .first { $0 !== view.panGestureRecognizer })
+        #expect(view.gestureRecognizer(dismissPan, shouldReceive: UITouch()))
+        view.toggleZoom(at: CGPoint(x: 300, y: 2400), animated: false)
+        #expect(!view.gestureRecognizer(dismissPan, shouldReceive: UITouch()))
+        #expect(view.gestureRecognizerShouldBegin(view.panGestureRecognizer))
+        view.toggleZoom(at: .zero, animated: false)
+        #expect(view.gestureRecognizer(dismissPan, shouldReceive: UITouch()))
+    }
+
     @Test func decodingPreservesLongTextResolutionAndBoundsLargeImages() throws {
         let longData = try #require(makeImage().pngData())
         let longImage = try #require(ImagePreviewImageCoder.shared.decodedImage(with: longData))

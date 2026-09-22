@@ -10,10 +10,8 @@ struct ImagePreviewView: View {
     @State private var currentIndex: Int
     @State private var altPresentation: AltPresentation?
     @State private var showsControls = true
-    @State private var dismissDragOffset: CGFloat = 0
     @State private var viewportHeight: CGFloat = 0
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private struct AltPresentation: Identifiable {
@@ -56,7 +54,6 @@ struct ImagePreviewView: View {
                                 altText: Self.descriptionText(attachment.description),
                                 onSingleTap: toggleControls,
                                 onInteractionBegan: hideControls,
-                                onDismissDrag: updateDismissDrag,
                                 onDismiss: closePreview
                             )
                             .tag(index)
@@ -66,8 +63,6 @@ struct ImagePreviewView: View {
                     .ignoresSafeArea()
                 }
             }
-            .offset(y: dismissDragOffset)
-            .scaleEffect(reduceMotion ? 1 : 1 - min(dismissDragOffset / 220, 1) * 0.06)
 
             if showsControls {
                 VStack {
@@ -115,7 +110,6 @@ struct ImagePreviewView: View {
         }
         .accessibilityAction(.escape, closePreview)
         .onChange(of: currentIndex) { _, _ in
-            dismissDragOffset = 0
             showsControls = true
         }
         .sheet(item: $altPresentation) { presentation in
@@ -135,16 +129,6 @@ struct ImagePreviewView: View {
     private func hideControls() {
         guard !UIAccessibility.isVoiceOverRunning, !UIAccessibility.isSwitchControlRunning else { return }
         showsControls = false
-    }
-
-    private func updateDismissDrag(_ distance: CGFloat, _ ended: Bool) {
-        if ended {
-            withAnimation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86)) {
-                dismissDragOffset = 0
-            }
-        } else {
-            dismissDragOffset = max(distance, 0)
-        }
     }
 
     private func closePreview() {

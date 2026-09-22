@@ -124,6 +124,53 @@ final class ImagePreviewUITests: XCTestCase {
         attach(app, "long-image-width-reading")
     }
 
+    func testSlowShortDragsReturnToTheSameOverviewAndStillAllowPaging() {
+        let app = launch()
+        defer { app.terminate() }
+        let image = app.images["imagePreview.image"].firstMatch
+        let originalFrame = image.frame
+        for distance: CGFloat in [12, 24, 50] {
+            center(app).press(forDuration: 0.1,
+                thenDragTo: center(app).withOffset(CGVector(dx: 0, dy: distance)),
+                withVelocity: XCUIGestureVelocity(rawValue: 40), thenHoldForDuration: 0.2)
+            expectation(for: NSPredicate { _, _ in
+                abs(image.frame.minY - originalFrame.minY) < 1
+                    && abs(image.frame.height - originalFrame.height) < 1
+            }, evaluatedWith: image)
+            waitForExpectations(timeout: 4)
+            XCTAssertEqual(image.value as? String, "100%")
+        }
+        center(app).tap()
+        XCTAssertEqual(app.staticTexts["imagePreview.page"].label, "1 / 3")
+        app.swipeLeft()
+        XCTAssertTrue(app.buttons["imagePreview.alt"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["imagePreview.page"].label, "2 / 3")
+        attach(app, "short-drags-preserve-viewport-and-paging")
+    }
+
+    func testShortPanAtReadingScaleDoesNotJumpOrDismiss() {
+        let app = launch()
+        defer { app.terminate() }
+        center(app).doubleTap()
+        let image = app.images["imagePreview.image"].firstMatch
+        waitForZoom(image)
+        let zoom = image.value as? String
+        let originalFrame = image.frame
+        center(app).press(forDuration: 0.1,
+            thenDragTo: center(app).withOffset(CGVector(dx: 0, dy: -24)),
+            withVelocity: XCUIGestureVelocity(rawValue: 40), thenHoldForDuration: 0.3)
+        XCTAssertTrue(image.exists)
+        XCTAssertEqual(image.value as? String, zoom)
+        XCTAssertEqual(image.frame.width, originalFrame.width, accuracy: 1)
+        // Native pan recognition has a small touch slop; reject a viewport-size
+        // jump while allowing that system threshold and subpixel rounding.
+        let displacement = originalFrame.minY - image.frame.minY
+        XCTAssertGreaterThan(displacement, 5)
+        XCTAssertLessThanOrEqual(displacement, 26)
+        center(app).tap()
+        XCTAssertEqual(app.staticTexts["imagePreview.page"].label, "1 / 3")
+    }
+
     func testPagingUpdatesAltAndOverviewCanDismiss() {
         let app = launch()
         defer { app.terminate() }

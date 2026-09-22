@@ -7,7 +7,7 @@ struct SettingsAvatarButton: View {
 
     var body: some View {
         Button(action: action) {
-            ZStack(alignment: .bottomTrailing) {
+            ZStack {
                 Circle().fill(theme.colors.surfaceSubtle).frame(width: 38, height: 38)
                 MoroAvatar(
                     imageURL: account.avatarAnimatedURL,
@@ -16,9 +16,10 @@ struct SettingsAvatarButton: View {
                     size: 32
                 )
             }
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .frame(width: 44, height: 44)
         .accessibilityLabel(MoroL10n.Navigation.settings)
     }
 }

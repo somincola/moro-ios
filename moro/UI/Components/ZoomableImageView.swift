@@ -6,22 +6,86 @@ import SwiftUI
 struct ZoomableImageView: UIViewRepresentable {
     let url: URL
     let altText: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var onSingleTap: () -> Void
     var onInteractionBegan: () -> Void
-    var onDismissDrag: (CGFloat, Bool) -> Void
     var onDismiss: () -> Void
 
-    func makeUIView(context: Context) -> ImagePreviewScrollView { ImagePreviewScrollView() }
+    func makeUIView(context: Context) -> ImagePreviewPageView { ImagePreviewPageView() }
 
-    func updateUIView(_ view: ImagePreviewScrollView, context: Context) {
-        view.onSingleTap = onSingleTap
-        view.onInteractionBegan = onInteractionBegan
-        view.onDismissDrag = onDismissDrag
-        view.onDismiss = onDismiss
-        view.configure(url: url, altText: altText)
+    func updateUIView(_ view: ImagePreviewPageView, context: Context) {
+        view.reduceMotion = reduceMotion
+        view.scrollView.onSingleTap = onSingleTap
+        view.scrollView.onInteractionBegan = onInteractionBegan
+        view.scrollView.onDismiss = onDismiss
+        view.scrollView.configure(url: url, altText: altText)
     }
 
-    static func dismantleUIView(_ view: ImagePreviewScrollView, coordinator: ()) { view.cancelLoading() }
+    static func dismantleUIView(_ view: ImagePreviewPageView, coordinator: ()) {
+        view.resetDismissDrag()
+        view.scrollView.cancelLoading()
+    }
+}
+
+/// Keep the pager and its safe area stationary. Transforming the SwiftUI TabView
+/// during dismissal changes its page bounds and repeatedly refits the image.
+final class ImagePreviewPageView: UIView {
+    let scrollView = ImagePreviewScrollView()
+    var reduceMotion = false
+    private var dragStartOffset: CGFloat?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        addSubview(scrollView)
+        scrollView.onDismissDrag = { [weak self] distance, ended in
+            self?.updateDismissDrag(distance, ended: ended)
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // Do not set frame while transformed: it is the transformed bounding box.
+        scrollView.bounds.size = bounds.size
+        scrollView.center = CGPoint(x: bounds.midX, y: bounds.midY)
+    }
+
+    func updateDismissDrag(_ distance: CGFloat, ended: Bool) {
+        if ended {
+            dragStartOffset = nil
+            if reduceMotion {
+                resetDismissDrag()
+            } else {
+                UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.86,
+                    initialSpringVelocity: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+                    self.scrollView.transform = .identity
+                }
+            }
+            return
+        }
+        if dragStartOffset == nil {
+            // A new drag can interrupt the return animation. Start at the visible
+            // position instead of snapping to the animation's model-layer target.
+            let visible = scrollView.layer.presentation()?.affineTransform() ?? scrollView.transform
+            dragStartOffset = max(visible.ty, 0)
+            scrollView.layer.removeAllAnimations()
+        }
+        let offset = max(distance + (dragStartOffset ?? 0), 0)
+        let scale = reduceMotion ? 1 : 1 - min(offset / 220, 1) * 0.06
+        scrollView.transform = CGAffineTransform(translationX: 0, y: offset).scaledBy(x: scale, y: scale)
+    }
+
+    func resetDismissDrag() {
+        dragStartOffset = nil
+        scrollView.layer.removeAllAnimations()
+        scrollView.transform = .identity
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { resetDismissDrag() }
+    }
 }
 
 struct ImageZoomGeometry {
@@ -107,7 +171,6 @@ final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestur
         dismissPan.maximumNumberOfTouches = 1
         dismissPan.delegate = self
         addGestureRecognizer(dismissPan)
-        panGestureRecognizer.require(toFail: dismissPan)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -303,7 +366,23 @@ final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestur
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        !(touch.view is UIControl)
+        guard !(touch.view is UIControl) else { return false }
+        if gestureRecognizer === dismissPan {
+            // Reject at touch-down while reading, rather than making native image
+            // scrolling wait for a second pan recognizer to resolve its direction.
+            return imageView.image != nil && isAtMinimumZoom && !isZooming
+        }
+        return true
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+        shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureRecognizer === dismissPan,
+            let pager = otherGestureRecognizer.view as? UIScrollView,
+            pager !== self, isDescendant(of: pager),
+            otherGestureRecognizer === pager.panGestureRecognizer else { return false }
+        // At overview scale decide down-to-dismiss vs horizontal paging once.
+        return true
     }
 
     @objc private func dragToDismiss(_ gesture: UIPanGestureRecognizer) {
