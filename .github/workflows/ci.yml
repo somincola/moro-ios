@@ -2,13 +2,30 @@ name: CI
 
 on:
   push:
-    branches: [dev, main]
+    branches: [dev]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'metadata/**'
+      - 'output/**'
+      - 'screenshots/**'
   pull_request:
+    branches: [dev, main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'metadata/**'
+      - 'output/**'
+      - 'screenshots/**'
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # Keep only the newest run for a pull request or branch.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -124,10 +141,10 @@ jobs:
             PROVISIONING_PROFILE_SPECIFIER=""
 
       - name: Upload test result bundle
-        if: ${{ !cancelled() }}
+        if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
           name: TestResults
           path: TestResults.xcresult
-          retention-days: 7
+          retention-days: 3
           if-no-files-found: ignore
