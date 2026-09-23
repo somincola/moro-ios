@@ -39,7 +39,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Keep this pin aligned with Xcode Cloud's "Moro Stable Xcode" alias.
       # Validate GitHub CI and Cloud Release before upgrading both environments.
