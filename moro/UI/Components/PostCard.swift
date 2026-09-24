@@ -43,7 +43,7 @@ struct PostCard: View {
         static let avatarSize: CGFloat = 44
         static let avatarContentSpacing: CGFloat = 12
         static let contextBottomSpacing: CGFloat = 5
-        static let actionTopSpacing: CGFloat = 4
+        static let actionTopSpacing: CGFloat = 2
 
         static var contentLeadingInset: CGFloat {
             avatarSize + avatarContentSpacing
@@ -150,7 +150,7 @@ struct PostCard: View {
         .padding(.top, density.rowTopPadding)
         .padding(
             .bottom,
-            showToolbar ? density.rowBottomPadding - theme.spacing.xs : density.rowBottomPadding
+            showToolbar ? 0 : density.rowBottomPadding
         )
         .frame(maxWidth: .infinity)
     }
@@ -193,7 +193,7 @@ struct PostCard: View {
                     isQuoted: isQuoted
                 )
 
-                VStack(alignment: .leading, spacing: theme.spacing.xs) {
+                VStack(alignment: .leading, spacing: 0) {
                     PostContent(
                         status: status,
                         translationAPIClient: translationAPIClient,
