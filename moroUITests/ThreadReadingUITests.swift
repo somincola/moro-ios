@@ -35,8 +35,7 @@ final class ThreadReadingUITests: XCTestCase {
         branch.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5)).tap()
         XCTAssertTrue(branch.label.contains("收起 3"))
         XCTAssertEqual(branch.frame.minY, controlY, accuracy: 1)
-        // Compact rows can leave the first expanded reply below the viewport.
-        reveal(app.otherElements["thread.row.a1"], app: app)
+        XCTAssertTrue(app.otherElements["thread.row.a1"].waitForExistence(timeout: 5))
         // Reply metadata stays out of the reading column, including after expanding.
         XCTAssertFalse(app.buttons["thread.parent.a1"].exists)
         XCTAssertFalse(app.buttons["thread.branch.a1"].exists)
@@ -154,7 +153,12 @@ final class ThreadReadingUITests: XCTestCase {
 
     @MainActor private func reveal(_ element: XCUIElement, app: XCUIApplication) {
         let scroll = app.scrollViews.firstMatch
-        for _ in 0..<24 where !element.isHittable {
+        for _ in 0..<24 {
+            // A partially visible control can be "hittable" while its tap point
+            // still falls inside the home indicator's gesture region.
+            if element.isHittable && element.frame.midY < scroll.frame.maxY - 44 {
+                break
+            }
             scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
                 .press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)))
         }
