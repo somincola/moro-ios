@@ -18,6 +18,7 @@ struct AnimatedActionButton: View {
     let isDisabled: Bool
     let action: () -> Void
     var accessibilityLabel: String = ""
+    var iconSize: CGFloat = 21
     /// Minimum hit-target height. The toolbar passes its bar height so the tappable
     /// area fills the row without enlarging the visible icon or changing layout.
     var minHitHeight: CGFloat = 0
@@ -102,7 +103,7 @@ struct AnimatedActionButton: View {
     @ViewBuilder
     private var actionIcon: some View {
         let icon = Image(systemName: isActive ? activeIcon : inactiveIcon)
-            .moroScaledFont(size: 21, weight: .regular)
+            .moroScaledFont(size: iconSize, weight: .regular)
             .foregroundStyle(isActive ? activeColor : inactiveColor)
             .contentTransition(.symbolEffect(.replace))
 

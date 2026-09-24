@@ -9,6 +9,7 @@ import SwiftUI
 
 private enum PostToolbarMetrics {
     static let minBarHeight: CGFloat = 44
+    static let iconSize: CGFloat = 18
 }
 
 /// Post toolbar component with action buttons
@@ -72,6 +73,7 @@ struct PostToolbar: View {
             isDisabled: false,
             action: { onReply?() },
             accessibilityLabel: MoroL10n.StatusAction.reply,
+            iconSize: PostToolbarMetrics.iconSize,
             minHitHeight: PostToolbarMetrics.minBarHeight
         )
     }
@@ -89,6 +91,7 @@ struct PostToolbar: View {
             isDisabled: !canBoost,
             action: { onBoost?() },
             accessibilityLabel: status.reblogged ? MoroL10n.StatusAction.unboost : MoroL10n.StatusAction.boost,
+            iconSize: PostToolbarMetrics.iconSize,
             minHitHeight: PostToolbarMetrics.minBarHeight
         )
     }
@@ -105,6 +108,7 @@ struct PostToolbar: View {
             isDisabled: false,
             action: { onLike?() },
             accessibilityLabel: status.favourited ? MoroL10n.StatusAction.unfavourite : MoroL10n.StatusAction.favourite,
+            iconSize: PostToolbarMetrics.iconSize,
             minHitHeight: PostToolbarMetrics.minBarHeight
         )
     }
@@ -121,6 +125,7 @@ struct PostToolbar: View {
             isDisabled: false,
             action: { onBookmark?() },
             accessibilityLabel: status.bookmarked ? MoroL10n.StatusAction.unbookmark : MoroL10n.StatusAction.bookmark,
+            iconSize: PostToolbarMetrics.iconSize,
             minHitHeight: PostToolbarMetrics.minBarHeight
         )
     }
@@ -141,7 +146,8 @@ struct PostToolbar: View {
             onBlockAndReport: onBlockAndReport,
             onReport: onReport,
             onPin: onPin,
-            onDelete: onDelete
+            onDelete: onDelete,
+            iconSize: PostToolbarMetrics.iconSize
         )
         .accessibilityLabel(Text(MoroL10n.StatusAction.more))
     }

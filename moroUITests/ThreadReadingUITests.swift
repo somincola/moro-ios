@@ -153,7 +153,12 @@ final class ThreadReadingUITests: XCTestCase {
 
     @MainActor private func reveal(_ element: XCUIElement, app: XCUIApplication) {
         let scroll = app.scrollViews.firstMatch
-        for _ in 0..<24 where !element.isHittable {
+        for _ in 0..<24 {
+            // A partially visible control can be "hittable" while its tap point
+            // still falls inside the home indicator's gesture region.
+            if element.isHittable && element.frame.midY < scroll.frame.maxY - 44 {
+                break
+            }
             scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
                 .press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)))
         }

@@ -73,8 +73,6 @@ struct DetailPostCard: View {
                 showEngagementStats: false
             )
 
-            MoroDivider(leadingInset: theme.spacing.detailDividerInset)
-
             PostToolbar(
                 status: status,
                 isOwnPost: actions.isOwnPost,
@@ -97,10 +95,9 @@ struct DetailPostCard: View {
                 onDelete: actions.onDelete,
                 showCounts: true
             )
-            .padding(.top, 2)
         }
         .padding(.horizontal, theme.spacing.l)
-        .padding(.vertical, theme.spacing.m)
+        .padding(.top, theme.spacing.m)
     }
 }
 
