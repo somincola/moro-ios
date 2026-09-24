@@ -73,34 +73,36 @@ struct DetailPostCard: View {
                 showEngagementStats: false
             )
 
-            MoroDivider(leadingInset: theme.spacing.detailDividerInset)
+            VStack(spacing: theme.spacing.micro) {
+                MoroDivider(leadingInset: theme.spacing.detailDividerInset)
 
-            PostToolbar(
-                status: status,
-                isOwnPost: actions.isOwnPost,
-                isMutingUser: actions.menu?.isMutingUser,
-                isBlockingUser: actions.menu?.isBlockingUser,
-                onReply: actions.onReply,
-                onBoost: actions.onBoost,
-                onLike: actions.onLike,
-                onBookmark: actions.onBookmark,
-                onShare: actions.menu?.onShare,
-                onCopyLink: actions.menu?.onCopyLink,
-                onCopyText: actions.menu?.onCopyText,
-                onOpenInBrowser: actions.menu?.onOpenInBrowser,
-                onEdit: actions.onEdit,
-                onMuteUser: actions.menu?.onMuteUser,
-                onBlockUser: actions.menu?.onBlockUser,
-                onBlockAndReport: actions.menu?.onBlockAndReport,
-                onReport: actions.menu?.onReport,
-                onPin: actions.onPin,
-                onDelete: actions.onDelete,
-                showCounts: true
-            )
-            .padding(.top, 2)
+                PostToolbar(
+                    status: status,
+                    isOwnPost: actions.isOwnPost,
+                    isMutingUser: actions.menu?.isMutingUser,
+                    isBlockingUser: actions.menu?.isBlockingUser,
+                    onReply: actions.onReply,
+                    onBoost: actions.onBoost,
+                    onLike: actions.onLike,
+                    onBookmark: actions.onBookmark,
+                    onShare: actions.menu?.onShare,
+                    onCopyLink: actions.menu?.onCopyLink,
+                    onCopyText: actions.menu?.onCopyText,
+                    onOpenInBrowser: actions.menu?.onOpenInBrowser,
+                    onEdit: actions.onEdit,
+                    onMuteUser: actions.menu?.onMuteUser,
+                    onBlockUser: actions.menu?.onBlockUser,
+                    onBlockAndReport: actions.menu?.onBlockAndReport,
+                    onReport: actions.menu?.onReport,
+                    onPin: actions.onPin,
+                    onDelete: actions.onDelete,
+                    showCounts: true
+                )
+            }
         }
         .padding(.horizontal, theme.spacing.l)
-        .padding(.vertical, theme.spacing.m)
+        .padding(.top, theme.spacing.m)
+        .padding(.bottom, theme.spacing.xs)
     }
 }
 

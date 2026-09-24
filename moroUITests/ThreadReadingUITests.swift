@@ -35,7 +35,8 @@ final class ThreadReadingUITests: XCTestCase {
         branch.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5)).tap()
         XCTAssertTrue(branch.label.contains("收起 3"))
         XCTAssertEqual(branch.frame.minY, controlY, accuracy: 1)
-        XCTAssertTrue(app.otherElements["thread.row.a1"].waitForExistence(timeout: 5))
+        // Compact rows can leave the first expanded reply below the viewport.
+        reveal(app.otherElements["thread.row.a1"], app: app)
         // Reply metadata stays out of the reading column, including after expanding.
         XCTAssertFalse(app.buttons["thread.parent.a1"].exists)
         XCTAssertFalse(app.buttons["thread.branch.a1"].exists)

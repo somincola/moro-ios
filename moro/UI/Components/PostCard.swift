@@ -43,7 +43,7 @@ struct PostCard: View {
         static let avatarSize: CGFloat = 44
         static let avatarContentSpacing: CGFloat = 12
         static let contextBottomSpacing: CGFloat = 5
-        static let actionTopSpacing: CGFloat = 14
+        static let actionTopSpacing: CGFloat = 4
 
         static var contentLeadingInset: CGFloat {
             avatarSize + avatarContentSpacing
@@ -148,7 +148,10 @@ struct PostCard: View {
         }
         .padding(.horizontal, Metrics.horizontalPadding)
         .padding(.top, density.rowTopPadding)
-        .padding(.bottom, density.rowBottomPadding)
+        .padding(
+            .bottom,
+            showToolbar ? density.rowBottomPadding - theme.spacing.xs : density.rowBottomPadding
+        )
         .frame(maxWidth: .infinity)
     }
     

@@ -68,11 +68,12 @@ private struct MoroMenuGlyph: View {
 }
 
 private struct MoroMoreMenuTriggerLabel: View {
+    var iconSize: CGFloat = 21
     @Environment(\.moroTheme) private var theme
 
     var body: some View {
         Image(systemName: "ellipsis")
-            .moroScaledFont(size: 21, weight: .regular)
+            .moroScaledFont(size: iconSize, weight: .regular)
             .foregroundStyle(theme.colors.textSecondary)
             .frame(width: 22, height: 22)
             .padding(.horizontal, 3)
@@ -223,6 +224,7 @@ struct StatusMoreButton: View {
     // Own post actions
     let onPin: (() -> Void)?
     let onDelete: (() -> Void)?
+    let iconSize: CGFloat
 
     init(
         status: Status,
@@ -239,7 +241,8 @@ struct StatusMoreButton: View {
         onBlockAndReport: (() -> Void)? = nil,
         onReport: (() -> Void)? = nil,
         onPin: (() -> Void)? = nil,
-        onDelete: (() -> Void)? = nil
+        onDelete: (() -> Void)? = nil,
+        iconSize: CGFloat = 21
     ) {
         self.status = status
         self.isOwnPost = isOwnPost
@@ -256,6 +259,7 @@ struct StatusMoreButton: View {
         self.onReport = onReport
         self.onPin = onPin
         self.onDelete = onDelete
+        self.iconSize = iconSize
     }
 
     var body: some View {
@@ -393,7 +397,7 @@ struct StatusMoreButton: View {
             }
 
         } label: {
-            MoroMoreMenuTriggerLabel()
+            MoroMoreMenuTriggerLabel(iconSize: iconSize)
         }
         .buttonStyle(.plain)
         .transaction { transaction in
