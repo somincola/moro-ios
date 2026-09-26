@@ -212,6 +212,7 @@ protocol MastodonAPI {
     func fetchUnreadNotificationCount() async throws -> Int
     func fetchConversations(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Conversation]
+    func fetchConversationsPage(maxID: String?, limit: Int) async throws -> ConversationsPage
     func fetchBookmarkedPage(maxID: String?, limit: Int) async throws -> BookmarkedStatusesPage
     func fetchBookmarkedStatuses(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Status]
@@ -346,6 +347,11 @@ protocol MastodonAPI {
 }
 
 extension MastodonAPI {
+    func fetchConversationsPage(maxID: String?, limit: Int) async throws -> ConversationsPage {
+        let conversations = try await fetchConversations(maxID: maxID, sinceID: nil, limit: limit)
+        return ConversationsPage(conversations: conversations, nextMaxID: nil)
+    }
+
     func fetchTimelinePage(
         timeline: TimelineType, maxID: String?, sinceID: String?, limit: Int
     ) async throws -> TimelinePage {

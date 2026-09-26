@@ -736,19 +736,18 @@ final class ProfileViewModel: ObservableObject {
             let wasInPinned = pinnedStatuses.contains(where: {
                 $0.id == updatedStatus.id || $0.displayStatus.id == updatedStatus.id
             })
-            let isNowPinned = updatedStatus.pinned == true
             
-            if wasInPinned && !isNowPinned {
-                // Status was unpinned - remove from pinnedStatuses
+            if wasInPinned && updatedStatus.pinned == false {
+                // Only an explicit false is an unpin. Interaction responses commonly omit this
+                // optional field, which must not make an existing profile pin disappear.
                 pinnedStatuses.removeAll { $0.id == updatedStatus.id || $0.displayStatus.id == updatedStatus.id }
-            } else if wasInPinned && isNowPinned {
-                // Status is still pinned - update it
+            } else if wasInPinned {
                 if let index = pinnedStatuses.firstIndex(where: {
                     $0.id == updatedStatus.id || $0.displayStatus.id == updatedStatus.id
                 }) {
                     pinnedStatuses[index] = pinnedStatuses[index].incorporatingDisplayStatusUpdate(updatedStatus)
                 }
-            } else if !wasInPinned, isNowPinned, updatedStatus.account.id == resolvedAccountID {
+            } else if updatedStatus.pinned == true, updatedStatus.account.id == resolvedAccountID {
                 // Newly pinned AND authored by THIS profile's account. The feed coordinator is
                 // global, so without the ownership check a pin of ANY account's post was
                 // inserted into every live profile's carousel (including hidden/covered ones) —

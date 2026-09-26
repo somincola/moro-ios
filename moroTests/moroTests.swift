@@ -2008,6 +2008,41 @@ struct moroTests {
         withExtendedLifetime((vmA, vmB)) {}
     }
 
+    @Test @MainActor func profilePinnedPostSurvivesInteractionResponseWithoutPinnedField() async {
+        let api = MockMastodonAPI()
+        let coordinator = FeedCoordinator()
+        let account = makeAccount(id: "profile-owner")
+        let viewModel = ProfileViewModel(
+            apiClient: api,
+            accountID: account.id,
+            feedCoordinator: coordinator
+        )
+        viewModel.pinnedStatuses = [
+            makeStatus(id: "pinned-status", account: account, pinned: true)
+        ]
+
+        coordinator.publishUpdate(
+            .post(
+                makeStatus(
+                    id: "pinned-status",
+                    account: account,
+                    favouritesCount: 1,
+                    favourited: true,
+                    pinned: nil
+                )
+            )
+        )
+
+        #expect(viewModel.pinnedStatuses.count == 1)
+        #expect(viewModel.pinnedStatuses.first?.favourited == true)
+        #expect(viewModel.pinnedStatuses.first?.pinned == true)
+
+        coordinator.publishUpdate(
+            .post(makeStatus(id: "pinned-status", account: account, pinned: false))
+        )
+        #expect(viewModel.pinnedStatuses.isEmpty)
+    }
+
     @Test @MainActor func accountDisplayNameParserKeepsPlainTextVisibleWhileResolvingEmoji()
         async throws
     {
@@ -4048,6 +4083,43 @@ struct moroTests {
         #expect(missing == nil)
     }
 
+    @Test @MainActor func directMessagesPaginationUsesOpaqueCursorAndDeduplicatesPages() async {
+        let api = MockMastodonAPI()
+        var requestedCursors: [String?] = []
+        api.fetchConversationsPageHandler = { maxID, limit in
+            requestedCursors.append(maxID)
+            #expect(limit == 20)
+            if maxID == nil {
+                let first = self.makeConversation(
+                    id: "conversation-1",
+                    unread: false,
+                    lastStatus: nil
+                )
+                return ConversationsPage(
+                    conversations: [first, first],
+                    nextMaxID: "opaque:next-page"
+                )
+            }
+            #expect(maxID == "opaque:next-page")
+            return ConversationsPage(
+                conversations: [
+                    self.makeConversation(id: "conversation-1", unread: false, lastStatus: nil),
+                    self.makeConversation(id: "conversation-2", unread: true, lastStatus: nil),
+                ],
+                nextMaxID: nil
+            )
+        }
+        let viewModel = DirectMessagesViewModel(apiClient: api)
+
+        await viewModel.loadInitial()
+        await viewModel.loadMore()
+
+        #expect(requestedCursors.count == 2)
+        #expect(requestedCursors[0] == nil)
+        #expect(requestedCursors[1] == "opaque:next-page")
+        #expect(viewModel.conversations.map(\.id) == ["conversation-1", "conversation-2"])
+    }
+
     @Test @MainActor func draftConversationUsesDraftPrefixAndParticipants() async throws {
         let alice = makeAccount(id: "alice")
         let bob = makeAccount(id: "bob")
@@ -4996,6 +5068,58 @@ struct moroTests {
 
         #expect(inboxStore.messageUnreadCount == 1)
         #expect(inboxStore.totalUnreadCount == 2)
+    }
+
+    @Test @MainActor func inboxUnreadReconciliationTraversesOpaqueConversationCursors() async throws {
+        let suiteName = "InboxUnreadStorePaginationTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(
+            ["session-a": ["stale-conversation"]],
+            forKey: InboxUnreadPersistenceKeys.directMessageUnreadConversationIDsBySession
+        )
+        let api = MockMastodonAPI()
+        var requestedCursors: [String?] = []
+        api.fetchConversationsPageHandler = { maxID, limit in
+            requestedCursors.append(maxID)
+            #expect(limit == 40)
+            if maxID == nil {
+                return ConversationsPage(
+                    conversations: [
+                        self.makeConversation(id: "visible-read", unread: false, lastStatus: nil)
+                    ],
+                    nextMaxID: "opaque:older"
+                )
+            }
+            #expect(maxID == "opaque:older")
+            return ConversationsPage(
+                conversations: [
+                    self.makeConversation(id: "older-unread", unread: true, lastStatus: nil)
+                ],
+                nextMaxID: nil
+            )
+        }
+        let notificationStore = NotificationUnreadStore(
+            userDefaults: defaults,
+            streamEvents: Empty<StreamEvent, Never>().eraseToAnyPublisher(),
+            badgeSetter: { _ in }
+        )
+        let inboxStore = InboxUnreadStore(
+            notificationUnreadStore: notificationStore,
+            userDefaults: defaults,
+            streamEvents: Empty<StreamEvent, Never>().eraseToAnyPublisher()
+        )
+
+        await inboxStore.activate(
+            sessionID: "session-a",
+            availableSessionIDs: ["session-a"],
+            apiClient: api
+        )
+
+        #expect(requestedCursors.count == 2)
+        #expect(requestedCursors[0] == nil)
+        #expect(requestedCursors[1] == "opaque:older")
+        #expect(inboxStore.messageUnreadCount == 1)
     }
 
     @Test @MainActor func notificationOpenResolvesDirectMentionToConversation() async throws {
@@ -7572,6 +7696,7 @@ final class MockMastodonAPI: MastodonAPI {
     var fetchRelationshipsHandler: (([String]) async throws -> [Relationship])?
     var fetchRelationshipsCallIDs: [String] = []
     var fetchConversationsHandler: ((String?, String?, Int) async throws -> [Conversation])?
+    var fetchConversationsPageHandler: ((String?, Int) async throws -> ConversationsPage)?
     var fetchHomeTimelineHandler: ((String?, String?, Int) async throws -> [Status])?
     var fetchBookmarkedStatusesHandler: ((String?, String?, Int) async throws -> [Status])?
     var fetchPublicTimelineHandler: ((Bool, String?, String?, String?, Int) async throws -> [Status])?
@@ -7992,6 +8117,15 @@ final class MockMastodonAPI: MastodonAPI {
             return try await fetchConversationsHandler(maxID, sinceID, limit)
         }
         return []
+    }
+    func fetchConversationsPage(maxID: String?, limit: Int) async throws -> ConversationsPage {
+        if let fetchConversationsPageHandler {
+            return try await fetchConversationsPageHandler(maxID, limit)
+        }
+        return ConversationsPage(
+            conversations: try await fetchConversations(maxID: maxID, sinceID: nil, limit: limit),
+            nextMaxID: nil
+        )
     }
     func fetchBookmarkedPage(maxID: String?, limit: Int) async throws -> BookmarkedStatusesPage {
         BookmarkedStatusesPage(statuses: try await fetchBookmarkedStatuses(maxID: maxID, sinceID: nil, limit: limit), nextMaxID: nil)

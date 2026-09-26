@@ -53,14 +53,19 @@ final class DirectMessagesViewModel: ObservableObject {
         loadMoreFailed = false
 
         do {
-            let items = try await apiClient.fetchConversations(
+            let requestedMaxID = currentMaxID
+            let page = try await apiClient.fetchConversationsPage(
                 maxID: currentMaxID,
-                sinceID: nil,
                 limit: pageSize
             )
-            conversations.append(contentsOf: items)
-            currentMaxID = items.last?.id
-            hasMore = items.count >= pageSize
+            let existingIDs = Set(conversations.map(\.id))
+            let newItems = page.conversations.filter { !existingIDs.contains($0.id) }
+            conversations.append(contentsOf: newItems)
+            updatePagination(
+                nextMaxID: page.nextMaxID,
+                requestedMaxID: requestedMaxID,
+                receivedNewItems: !newItems.isEmpty
+            )
             loadingState = .loaded
             transientErrorMessage = nil
         } catch {
@@ -129,18 +134,22 @@ final class DirectMessagesViewModel: ObservableObject {
 
     private func load(reset: Bool) async {
         do {
-            let items = try await apiClient.fetchConversations(
+            let page = try await apiClient.fetchConversationsPage(
                 maxID: nil,
-                sinceID: nil,
                 limit: pageSize
             )
+            let items = uniqueConversations(page.conversations)
             if reset {
                 conversations = items
             } else {
-                conversations.append(contentsOf: items)
+                let existingIDs = Set(conversations.map(\.id))
+                conversations.append(contentsOf: items.filter { !existingIDs.contains($0.id) })
             }
-            currentMaxID = items.last?.id
-            hasMore = items.count >= pageSize
+            updatePagination(
+                nextMaxID: page.nextMaxID,
+                requestedMaxID: nil,
+                receivedNewItems: !items.isEmpty
+            )
             loadingState = .loaded
             transientErrorMessage = nil
         } catch {
@@ -152,6 +161,28 @@ final class DirectMessagesViewModel: ObservableObject {
     private func replaceConversation(_ conversation: Conversation) {
         guard let index = conversations.firstIndex(where: { $0.id == conversation.id }) else { return }
         conversations[index] = conversation
+    }
+
+    private func uniqueConversations(_ items: [Conversation]) -> [Conversation] {
+        var seen: Set<String> = []
+        return items.filter { seen.insert($0.id).inserted }
+    }
+
+    private func updatePagination(
+        nextMaxID: String?,
+        requestedMaxID: String?,
+        receivedNewItems: Bool
+    ) {
+        guard receivedNewItems,
+            let nextMaxID,
+            nextMaxID != requestedMaxID
+        else {
+            currentMaxID = nil
+            hasMore = false
+            return
+        }
+        currentMaxID = nextMaxID
+        hasMore = true
     }
 
     private func upsertConversationFromStream(

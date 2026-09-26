@@ -870,6 +870,17 @@ struct MastodonClient: MastodonAPI {
         return try await perform(request)
     }
 
+    func fetchConversationsPage(maxID: String?, limit: Int = 20) async throws -> ConversationsPage {
+        let endpoint = MastodonEndpoint.conversations(maxID: maxID, sinceID: nil, limit: limit)
+        let request = try authorizedRequest(for: endpoint)
+        let (conversations, response): ([Conversation], HTTPURLResponse) =
+            try await performWithResponse(request)
+        return ConversationsPage(
+            conversations: conversations,
+            nextMaxID: MastodonLinkPagination.nextMaxID(in: response)
+        )
+    }
+
     func fetchBookmarkedPage(maxID: String?, limit: Int = 20) async throws -> BookmarkedStatusesPage {
         let request = try authorizedRequest(for: .bookmarks(maxID: maxID, sinceID: nil, limit: limit))
         let (statuses, response): ([Status], HTTPURLResponse) = try await performWithResponse(request)

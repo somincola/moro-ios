@@ -52,6 +52,12 @@ struct Conversation: Identifiable, Codable, Hashable {
     }
 }
 
+struct ConversationsPage {
+    let conversations: [Conversation]
+    /// Opaque cursor from the response Link header. Conversation entity IDs are not pagination cursors.
+    let nextMaxID: String?
+}
+
 extension Conversation {
     var isDraft: Bool {
         id.hasPrefix("draft:")

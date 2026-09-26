@@ -241,24 +241,25 @@ final class InboxUnreadStore: ObservableObject {
     private func fetchConversationSnapshot(apiClient: MastodonAPI) async throws
         -> ConversationSnapshot
     {
-        let pageSize = 80
+        let pageSize = 40
         let maximumCount = 1_000
+        let maximumPageCount = 100
         var maxID: String?
         var conversationsByID: [String: Conversation] = [:]
+        var visitedCursors: Set<String> = []
+        var fetchedPageCount = 0
 
-        while conversationsByID.count < maximumCount {
-            let page = try await apiClient.fetchConversations(
+        while conversationsByID.count < maximumCount, fetchedPageCount < maximumPageCount {
+            let page = try await apiClient.fetchConversationsPage(
                 maxID: maxID,
-                sinceID: nil,
                 limit: pageSize
             )
-            let previousCount = conversationsByID.count
-            page.forEach { conversationsByID[$0.id] = $0 }
+            fetchedPageCount += 1
+            page.conversations.forEach { conversationsByID[$0.id] = $0 }
 
-            guard page.count == pageSize,
-                conversationsByID.count > previousCount,
-                let nextMaxID = page.last?.id,
-                nextMaxID != maxID
+            guard let nextMaxID = page.nextMaxID,
+                nextMaxID != maxID,
+                visitedCursors.insert(nextMaxID).inserted
             else {
                 break
             }

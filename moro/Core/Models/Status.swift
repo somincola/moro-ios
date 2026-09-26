@@ -868,8 +868,15 @@ extension Status {
             return self
         }
 
+        // Interaction responses may omit `pinned`. In that case the server did not report a
+        // pin-state transition, so preserve the profile-context value instead of treating nil
+        // as an unpin.
+        let resolvedUpdate = updatedStatus.pinned == nil
+            ? updatedStatus.withPinnedState(displayStatus.pinned)
+            : updatedStatus
+
         guard id != updatedStatus.id else {
-            return updatedStatus
+            return resolvedUpdate
         }
 
         return Status(
@@ -878,13 +885,13 @@ extension Status {
             createdAt: createdAt,
             account: account,
             mediaAttachments: mediaAttachments,
-            favouritesCount: updatedStatus.favouritesCount,
-            reblogsCount: updatedStatus.reblogsCount,
-            repliesCount: updatedStatus.repliesCount,
-            bookmarked: updatedStatus.bookmarked,
-            favourited: updatedStatus.favourited,
-            reblogged: updatedStatus.reblogged,
-            reblog: reblog.map { _ in Indirect(updatedStatus) },
+            favouritesCount: resolvedUpdate.favouritesCount,
+            reblogsCount: resolvedUpdate.reblogsCount,
+            repliesCount: resolvedUpdate.repliesCount,
+            bookmarked: resolvedUpdate.bookmarked,
+            favourited: resolvedUpdate.favourited,
+            reblogged: resolvedUpdate.reblogged,
+            reblog: reblog.map { _ in Indirect(resolvedUpdate) },
             quote: quote,
             inReplyToID: inReplyToID,
             inReplyToAccountID: inReplyToAccountID,
@@ -901,6 +908,40 @@ extension Status {
             poll: poll,
             filtered: filtered,
             pinned: pinned
+        )
+    }
+
+    private func withPinnedState(_ pinned: Bool?) -> Status {
+        Status(
+            id: id,
+            content: content,
+            createdAt: createdAt,
+            account: account,
+            mediaAttachments: mediaAttachments,
+            favouritesCount: favouritesCount,
+            reblogsCount: reblogsCount,
+            repliesCount: repliesCount,
+            bookmarked: bookmarked,
+            favourited: favourited,
+            reblogged: reblogged,
+            reblog: reblog,
+            quote: quote,
+            inReplyToID: inReplyToID,
+            inReplyToAccountID: inReplyToAccountID,
+            spoilerText: spoilerText,
+            sensitive: sensitive,
+            visibility: visibility,
+            language: language,
+            uri: uri,
+            url: url,
+            mentions: mentions,
+            tags: tags,
+            emojis: emojis,
+            card: card,
+            poll: poll,
+            filtered: filtered,
+            pinned: pinned,
+            editedAt: editedAt
         )
     }
 
