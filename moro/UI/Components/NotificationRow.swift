@@ -79,7 +79,7 @@ struct NotificationRow: View {
                 systemEventRow
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.vertical, 12)
     }
 

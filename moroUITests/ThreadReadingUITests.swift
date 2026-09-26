@@ -20,8 +20,16 @@ final class ThreadReadingUITests: XCTestCase {
         defer { app.terminate() }
         let menu = app.buttons["thread.readingOptions"]
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
+        let focusedBody = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "当前帖子：")
+        ).firstMatch
+        XCTAssertTrue(focusedBody.waitForExistence(timeout: 5))
+        XCTAssertEqual(focusedBody.frame.minX, 16, accuracy: 1)
         let branch = app.buttons["thread.branch.a"]
         reveal(branch, app: app)
+        let replyBody = app.staticTexts["回复 a"]
+        XCTAssertTrue(replyBody.waitForExistence(timeout: 5))
+        XCTAssertEqual(replyBody.frame.minX, 72, accuracy: 1)
         assertFullWidthControl(branch, app: app)
         attach(app, "thread-control-expanded-\(scheme)")
         let controlY = branch.frame.minY

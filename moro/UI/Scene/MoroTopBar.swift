@@ -64,7 +64,7 @@ struct MoroTopBar<Leading: View, Trailing: View>: View {
 
             trailing
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.bottom, 10)
         .frame(height: height, alignment: .bottom)
         .background(role.backgroundColor(in: theme))

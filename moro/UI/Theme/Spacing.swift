@@ -7,6 +7,16 @@
 
 import CoreGraphics
 
+/// Layout values shared by SwiftUI and UIKit page chrome.
+enum MoroLayoutMetrics {
+    static let contentHorizontalInset: CGFloat = 16
+    static let timelineAvatarSize: CGFloat = 44
+    static let timelineAvatarContentSpacing: CGFloat = 12
+
+    static let timelineDividerInset =
+        contentHorizontalInset + timelineAvatarSize + timelineAvatarContentSpacing
+}
+
 struct MoroSpacing {
     let micro: CGFloat = 2
     let xs: CGFloat = 4
@@ -19,13 +29,16 @@ struct MoroSpacing {
     let xxl: CGFloat = 24
     let xxxl: CGFloat = 32
 
+    /// Canonical horizontal edge for page headers and primary page content.
+    let contentHorizontalInset: CGFloat = MoroLayoutMetrics.contentHorizontalInset
+
     // Timeline specific
     let timelineVertical: CGFloat = 14
     let timelineAvatarBody: CGFloat = 10
     let timelineBodyActions: CGFloat = 12
-    let timelinePadding: CGFloat = 16
-    /// 20 (row horizontal padding) + 44 (avatar) + 12 (avatar/content gap)
-    let timelineDividerInset: CGFloat = 76
+    var timelinePadding: CGFloat { contentHorizontalInset }
+    /// Page inset + timeline avatar + avatar/content gap.
+    var timelineDividerInset: CGFloat { MoroLayoutMetrics.timelineDividerInset }
     /// 48 (detail avatar) + 12 (avatar/content gap)
     let detailDividerInset: CGFloat = 60
 }

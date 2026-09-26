@@ -70,11 +70,57 @@ final class TimelineScrollBridge: ObservableObject {
     private var suppressChrome: Set<TimelineType> = []
     private var active = false
 
+    /// Owned by the bridge, not SwiftUI's onChange cycle. The pager reports the
+    /// displayed controller before its parent's selection onChange can run.
+    struct Presentation: Equatable {
+        let timeline: TimelineType
+        fileprivate let id = UUID()
+    }
+    private var presentation: Presentation?
+    private var pendingPullRefreshFinishes: [TimelineType: (anchor: TimelineReadingAnchor?, revision: UInt64)] = [:]
+
+    func beginPresentation(for timeline: TimelineType) -> Presentation {
+        let transaction = Presentation(timeline: timeline)
+        presentation = transaction
+        selectPresentedTimeline(timeline)
+        setFrozen(true, for: timeline)
+        return transaction
+    }
+
+    func isCurrentPresentation(_ transaction: Presentation) -> Bool {
+        presentation == transaction && isPresented(transaction.timeline)
+    }
+
+    @discardableResult
+    func finishPresentation(_ transaction: Presentation) -> Bool {
+        guard isCurrentPresentation(transaction) else { return false }
+        presentation = nil
+        // A retained page can disappear while SwiftUI still reports deceleration.
+        // Trust its settled native scroll view when it is presented again.
+        if let scroll = nativeScrollViews[transaction.timeline]?.value,
+            !scroll.isTracking && !scroll.isDragging && !scroll.isDecelerating {
+            phases[transaction.timeline] = .idle
+        }
+        setFrozen(false, for: transaction.timeline)
+        return true
+    }
+
+    /// Reactivation keeps the existing position. Do not supersede an in-flight
+    /// pager restoration for this same page (onAppear can run after the pager).
+    func resumePresentation(for timeline: TimelineType) {
+        if let presentation, presentation.timeline == timeline { return }
+        let transaction = beginPresentation(for: timeline)
+        setPresentedTimeline(timeline)
+        finishPresentation(transaction)
+    }
+
     private struct PendingLayout {
         let revision: UInt64
         let anchors: [TimelineReadingAnchor]
         let followsLatest: Bool
         var requestedAnchorLayout = false
+        var includesRefreshCollapse = false
+        var waitsForRefreshCollapse = false
     }
     private final class WeakRow {
         weak var value: TimelineRowAnchorView?
@@ -84,7 +130,7 @@ final class TimelineScrollBridge: ObservableObject {
     func setActive(_ value: Bool) {
         active = value
         if !value {
-            pendingLayouts.removeAll()
+            pendingLayouts = pendingLayouts.filter { $0.value.includesRefreshCollapse }
             waitingForTop.removeAll()
         } else { scheduleLayoutEvent(for: presentedTimeline) }
     }
@@ -92,7 +138,9 @@ final class TimelineScrollBridge: ObservableObject {
     func setFrozen(_ frozen: Bool, for timeline: TimelineType) {
         if frozen {
             frozenTimelines.insert(timeline)
-            pendingLayouts[timeline] = nil
+            if pendingLayouts[timeline]?.includesRefreshCollapse != true {
+                pendingLayouts[timeline] = nil
+            }
             waitingForTop.remove(timeline)
         } else {
             frozenTimelines.remove(timeline)
@@ -209,6 +257,11 @@ final class TimelineScrollBridge: ObservableObject {
             // the latest batch; reading the position must not enqueue another event.
             if let scrollView = self.nativeScrollViews[timeline]?.value {
                 self.updateTopPosition(for: timeline, scrollView: scrollView)
+                if let finish = self.pendingPullRefreshFinishes[timeline],
+                    self.phases[timeline, default: .idle] == .idle,
+                    !scrollView.isTracking && !scrollView.isDragging && !scrollView.isDecelerating {
+                    self.finishPullRefresh(for: timeline, preserving: finish.anchor, revision: finish.revision)
+                }
             }
             self.layoutEvents.send(timeline)
         }
@@ -217,6 +270,7 @@ final class TimelineScrollBridge: ObservableObject {
     private func completeLayout(for timeline: TimelineType) {
         guard active, isPresented(timeline), !frozenTimelines.contains(timeline),
             let pending = pendingLayouts[timeline] else { return }
+        guard !pending.waitsForRefreshCollapse else { return }
         if pending.anchors.isEmpty, !pending.followsLatest {
             pendingLayouts[timeline] = nil
             return
@@ -361,11 +415,7 @@ final class TimelineScrollBridge: ObservableObject {
 
     @discardableResult
     func setPresentedTimeline(_ timeline: TimelineType) -> CGFloat {
-        if presentedTimeline != timeline {
-            pendingLayouts.removeAll()
-            waitingForTop.removeAll()
-        }
-        presentedTimeline = timeline
+        selectPresentedTimeline(timeline)
         let restoredFraction = chromeFractions[timeline] ?? 0
         let shouldBroadcast = abs(restoredFraction - chromeFraction) > chromeEpsilon
         chromeFraction = restoredFraction
@@ -374,6 +424,15 @@ final class TimelineScrollBridge: ObservableObject {
             chromeFractionSubject.send(restoredFraction)
         }
         return restoredFraction
+    }
+
+    private func selectPresentedTimeline(_ timeline: TimelineType) {
+        if presentedTimeline != timeline {
+            pendingLayouts = pendingLayouts.filter { $0.value.includesRefreshCollapse }
+            waitingForTop.removeAll()
+            chromeNeedsSync = true
+        }
+        presentedTimeline = timeline
     }
 
     func isPresented(_ timeline: TimelineType) -> Bool {
@@ -472,9 +531,42 @@ final class TimelineScrollBridge: ObservableObject {
         finishPullRefresh(for: timeline)
     }
 
-    func finishPullRefresh(for timeline: TimelineType) {
+    func finishPullRefresh(
+        for timeline: TimelineType,
+        preserving fallbackAnchor: TimelineReadingAnchor? = nil,
+        revision: UInt64 = 0
+    ) {
+        if pullRefreshSubject(for: timeline).value.isPinned,
+            phases[timeline, default: .idle] != .idle {
+            // Keep the off-screen slot until the reader's gesture settles. Its
+            // collapse must not fight a drag or deceleration already in progress.
+            pendingPullRefreshFinishes[timeline] = (fallbackAnchor, revision)
+            return
+        }
+        pendingPullRefreshFinishes[timeline] = nil
+        if pullRefreshSubject(for: timeline).value.isPinned, !isAtTop(timeline) {
+            // Removing the 40pt refresh slot is a content-layout change too. Keep
+            // the pre-update anchor if a head insertion is already being laid out.
+            // Otherwise capture the current reader, or the saved off-screen reader.
+            if pendingLayouts[timeline] == nil {
+                let visible = readingAnchors(for: timeline)
+                let anchors = visible.isEmpty ? fallbackAnchor.map { [$0] } ?? [] : visible
+                if !anchors.isEmpty {
+                    pendingLayouts[timeline] = PendingLayout(revision: revision,
+                        anchors: anchors, followsLatest: false)
+                }
+            }
+            pendingLayouts[timeline]?.includesRefreshCollapse = true
+            pendingLayouts[timeline]?.waitsForRefreshCollapse = true
+        }
         pullRefreshStates[timeline] = TimelinePullRefreshState()
         pullRefreshSubject(for: timeline).send(.idle)
+    }
+
+    func pullRefreshSlotDidCollapse(for timeline: TimelineType) {
+        guard pendingLayouts[timeline]?.waitsForRefreshCollapse == true else { return }
+        pendingLayouts[timeline]?.waitsForRefreshCollapse = false
+        scheduleLayoutEvent(for: timeline)
     }
 }
 
@@ -567,4 +659,3 @@ struct TimelineScrollViewResolver: UIViewRepresentable {
         uiView.bridge = bridge
     }
 }
-

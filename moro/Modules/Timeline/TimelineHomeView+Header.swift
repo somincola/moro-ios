@@ -93,7 +93,7 @@ extension TimelineHomeView {
                     ? MoroL10n.Timeline.announcements(appState.unreadAnnouncementsCount)
                     : MoroL10n.Timeline.announcementsTitle)
         }
-        .padding(.horizontal, theme.spacing.l)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .frame(height: headerHeight)
         .background(sceneCanvasColor)
         .dynamicTypeSize(.xSmall ... .xxxLarge)

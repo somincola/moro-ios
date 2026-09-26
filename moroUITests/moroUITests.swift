@@ -37,6 +37,13 @@ final class moroUITests: XCTestCase {
 
         let mainTap = app.buttons["notification.mainStatusTap"]
         XCTAssertTrue(mainTap.waitForExistence(timeout: 12))
+        let replyBody = app.buttons["This is a reply shown as a single-person event."]
+        XCTAssertTrue(replyBody.waitForExistence(timeout: 12))
+        XCTAssertEqual(replyBody.frame.minX, 72, accuracy: 1)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Notification rows margin light"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
         waitForElementToBeHittable(mainTap)
         mainTap.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         waitForResultLabel(result, equals: "tap:action-status")

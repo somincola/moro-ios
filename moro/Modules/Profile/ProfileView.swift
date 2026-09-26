@@ -679,7 +679,7 @@ struct ProfileView: View {
                 actionButtons
             }
         }
-        .padding(.horizontal, theme.spacing.l)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.top, -(avatarSize / 2))  // Overlap banner by half avatar
         .padding(.bottom, theme.spacing.xs)
     }
@@ -708,7 +708,7 @@ struct ProfileView: View {
                 profileHandleRow(account: acc)
             }
         }
-        .padding(.horizontal, theme.spacing.l)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.top, theme.spacing.xs)
     }
 
@@ -819,7 +819,7 @@ struct ProfileView: View {
                 }
             }
         }
-        .padding(.horizontal, theme.spacing.l)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.top, theme.spacing.m)
         .padding(.bottom, theme.spacing.s)
     }
@@ -936,7 +936,7 @@ struct ProfileView: View {
             .layoutPriority(1)
             .padding(theme.spacing.m)
             .moroCardSurface(cornerRadius: 8, tone: .base, bordered: true)
-            .padding(.horizontal, theme.spacing.l)
+            .padding(.horizontal, theme.spacing.contentHorizontalInset)
             .padding(.top, theme.spacing.s)
         }
     }
@@ -961,7 +961,7 @@ struct ProfileView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .moroCardSurface(cornerRadius: 8, tone: .base, bordered: true)
-            .padding(.horizontal, theme.spacing.l)
+            .padding(.horizontal, theme.spacing.contentHorizontalInset)
             .padding(.top, theme.spacing.s)
             .padding(.bottom, theme.spacing.m)
         }
@@ -1062,7 +1062,7 @@ struct ProfileView: View {
                 .accessibilityIdentifier("profile.tab.\(tab.rawValue.lowercased())")
             }
         }
-        .padding(.horizontal, theme.spacing.l)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.top, theme.spacing.m)
         .background(theme.colors.surfaceBase)
     }

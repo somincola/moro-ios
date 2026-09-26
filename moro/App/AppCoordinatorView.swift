@@ -92,7 +92,7 @@ struct AppCoordinatorView: View {
                     text: message.text
                 )
                 .frame(maxWidth: 420)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, MoroLayoutMetrics.contentHorizontalInset)
                 .padding(.top, 8)
                 .onTapGesture {
                     feedbackCenter.dismiss()

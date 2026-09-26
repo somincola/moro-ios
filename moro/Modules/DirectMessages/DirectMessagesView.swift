@@ -408,7 +408,7 @@ private struct DirectMessageConversationRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, theme.spacing.contentHorizontalInset)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(unreadBackground)

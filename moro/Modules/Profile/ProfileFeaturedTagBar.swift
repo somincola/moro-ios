@@ -29,7 +29,7 @@ struct ProfileFeaturedTagBar: View {
                     .accessibilityIdentifier("profile.featuredTag.\(tag.name)")
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, theme.spacing.contentHorizontalInset)
             .padding(.vertical, 2)
         }
         .scrollIndicators(.hidden)

@@ -52,7 +52,12 @@ struct SettingsView: View {
     var body: some View {
         List {
             menuRows
-                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                .listRowInsets(EdgeInsets(
+                    top: 0,
+                    leading: MoroLayoutMetrics.contentHorizontalInset,
+                    bottom: 0,
+                    trailing: MoroLayoutMetrics.contentHorizontalInset
+                ))
                 .listRowSeparator(.visible, edges: .bottom)
         }
         .moroSettingsListChrome()

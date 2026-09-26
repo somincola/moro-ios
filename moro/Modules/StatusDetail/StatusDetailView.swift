@@ -308,7 +308,7 @@ struct StatusDetailView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(theme.colors.primary500)
             }
-            .padding(.horizontal, theme.spacing.l)
+            .padding(.horizontal, theme.spacing.contentHorizontalInset)
             .padding(.vertical, theme.spacing.m)
         case .loaded:
             EmptyView()

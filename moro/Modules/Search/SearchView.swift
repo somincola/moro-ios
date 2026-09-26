@@ -11,7 +11,7 @@ import UIKit
 #endif
 
 enum SearchLayoutMetrics {
-    static let contentHorizontalInset: CGFloat = 16
+    static let contentHorizontalInset: CGFloat = MoroLayoutMetrics.contentHorizontalInset
     /// UISearchBar(.minimal) keeps an internal side inset around searchTextField.
     /// Widen the hosting search bar so the visible field aligns with content.
     static let searchBarInternalFieldInset: CGFloat = 8

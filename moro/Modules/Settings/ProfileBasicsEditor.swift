@@ -22,7 +22,7 @@ struct ProfileBasicsEditor: View {
     @FocusState private var focusedInput: FocusedInput?
 
     private enum Metrics {
-        static let pagePadding: CGFloat = 16
+        static let pagePadding: CGFloat = MoroLayoutMetrics.contentHorizontalInset
         static let sectionSpacing: CGFloat = 24
         static let mediaCornerRadius: CGFloat = 8
         static let avatarSize: CGFloat = 78

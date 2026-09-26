@@ -106,7 +106,7 @@ struct ThreadLineOverlay: View {
     
     init(
         config: ThreadLineConfig,
-        horizontalPadding: CGFloat = 16,
+        horizontalPadding: CGFloat = MoroLayoutMetrics.contentHorizontalInset,
         avatarSize: CGFloat = 36,
         topPadding: CGFloat = 12,
         animate: Bool = true,
@@ -196,4 +196,3 @@ struct ThreadLineOverlay: View {
     }
     .moroTheme(MoroTheme())
 }
-

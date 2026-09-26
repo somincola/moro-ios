@@ -24,7 +24,10 @@ struct ThreadDiscussionRow: View {
             )
 
             if showsBranchControl {
-                MoroDivider(leadingInset: theme.spacing.l, trailingInset: theme.spacing.l)
+                MoroDivider(
+                    leadingInset: theme.spacing.contentHorizontalInset,
+                    trailingInset: theme.spacing.contentHorizontalInset
+                )
 
                 Button {
                     // Content below this control changes; keep its current reading position.
@@ -42,7 +45,7 @@ struct ThreadDiscussionRow: View {
                     }
                     .font(theme.typography.caption)
                     .foregroundStyle(theme.colors.textSecondary)
-                    .padding(.horizontal, theme.spacing.l)
+                    .padding(.horizontal, theme.spacing.contentHorizontalInset)
                     .padding(.vertical, theme.spacing.s)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentShape(Rectangle())
@@ -56,8 +59,10 @@ struct ThreadDiscussionRow: View {
                     .padding(.vertical, theme.spacing.s)
             } else {
                 MoroDivider(
-                    leadingInset: showsBranchControl ? theme.spacing.l : theme.spacing.timelineDividerInset,
-                    trailingInset: theme.spacing.l
+                    leadingInset: showsBranchControl
+                        ? theme.spacing.contentHorizontalInset
+                        : theme.spacing.timelineDividerInset,
+                    trailingInset: theme.spacing.contentHorizontalInset
                 )
             }
         }
