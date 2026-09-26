@@ -1875,6 +1875,7 @@ struct ComposeView: View {
         AppLogger.debug("[Compose] Publish started")
         do {
             let result = try await viewModel.publish()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             isCompletingPublish = true
             // The presentation owner clears its binding before any refresh callback.
             // Keep the progress indicator active until the composer has disappeared.
