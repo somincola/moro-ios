@@ -221,6 +221,12 @@ struct AppRouteViewFactory {
                     .toolbar(.hidden, for: .tabBar)
             )
 
+        case .notificationSettings:
+            return AnyView(
+                NotificationSettingsView(apiClient: apiClient)
+                    .toolbar(.hidden, for: .tabBar)
+            )
+
         case .editProfile:
             return AnyView(
                 EditProfileView(apiClient: apiClient, currentAccount: appState.currentAccount)

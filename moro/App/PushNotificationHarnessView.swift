@@ -7,6 +7,7 @@ struct PushNotificationHarnessView: View {
     @StateObject private var appState = Self.makeAppState()
     @State private var activeSessionID = "push-a"
     @State private var notificationScheduled = false
+    @State private var cacheCleared = false
     private let clientA = PushNotificationFixtureProtocol.makeClient(session: "push-a")
     private let clientB = PushNotificationFixtureProtocol.makeClient(session: "push-b")
     private let scenario = ProcessInfo.processInfo.environment["UITEST_PUSH_SCENARIO"] ?? "post"
@@ -15,9 +16,19 @@ struct PushNotificationHarnessView: View {
     // can run repeatedly and must not enqueue the same notification again.
     private static func makeAppState() -> AppState {
         let state = AppState()
+        if ProcessInfo.processInfo.environment["UITEST_PRESERVE_NOTIFICATION_SNAPSHOT"] != "1" {
+            NotificationSnapshotStore.shared.removeSession("push-a")
+            NotificationSnapshotStore.shared.removeSession("push-b")
+        }
         state.currentAccount = PushNotificationFixtureProtocol.viewer
         let scenario = ProcessInfo.processInfo.environment["UITEST_PUSH_SCENARIO"] ?? "post"
-        if scenario != "system" {
+        if scenario == "inbox" {
+            AppSettings.shared.notificationPolicy = .anyone
+            AppSettings.shared.receiveMentionsAndReplies = true
+            AppSettings.shared.receiveFavourites = true
+            AppSettings.shared.receiveBoosts = true
+        }
+        if scenario != "system", scenario != "inbox" {
             let payload: [AnyHashable: Any]
             switch scenario {
             case "malformed": payload = ["x": "push-a", "notification_id": NSNull(), "p": "ciphertext"]
@@ -42,6 +53,19 @@ struct PushNotificationHarnessView: View {
         )
         .id(activeSessionID)
         .environmentObject(appState)
+        .overlay(alignment: .topTrailing) {
+            if ProcessInfo.processInfo.environment["UITEST_SNAPSHOT_CONTROLS"] == "1" {
+                Button(cacheCleared ? "Cache cleared" : "Clear media cache") {
+                    Task {
+                        await NotificationSnapshotStore.shared.flushPendingWrites()
+                        await StorageManagementStore.shared.clear()
+                        cacheCleared = true
+                    }
+                }
+                .accessibilityIdentifier("inbox.testClearCache")
+                .padding(.top, 56)
+            }
+        }
         .overlay(alignment: .top) {
             if scenario == "system" {
                 Button(notificationScheduled ? "Notification scheduled" : "Schedule test notification") {
@@ -99,6 +123,11 @@ private final class PushNotificationFixtureProtocol: URLProtocol, @unchecked Sen
 
     override func startLoading() {
         let url = request.url!
+        if url.path == "/api/v1/notifications",
+            ProcessInfo.processInfo.environment["UITEST_NOTIFICATIONS_OFFLINE"] == "1" {
+            client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+            return
+        }
         let account = DirectMessagesFixtureProtocol.account("push-author")
         let isMessageScenario = ProcessInfo.processInfo.environment["UITEST_PUSH_SCENARIO"] == "messages"
         var status = DirectMessagesFixtureProtocol.status("push-post", author: "push-author", content: "<p>Push target post on \(url.host ?? "")</p>")
@@ -110,6 +139,15 @@ private final class PushNotificationFixtureProtocol: URLProtocol, @unchecked Sen
                 "accounts": [account], "last_status": status]]
         } else if url.path == "/api/v1/notifications/unread_count" {
             payload = ["count": 0]
+        } else if url.path == "/api/v1/notifications" {
+            if isMessageScenario {
+                payload = [["id": "200", "type": "mention", "created_at": "2026-09-10T01:00:00Z",
+                    "account": account, "status": status]]
+            } else if ProcessInfo.processInfo.environment["UITEST_PUSH_SCENARIO"] == "inbox" {
+                payload = Self.inboxNotifications(for: url)
+            } else {
+                payload = []
+            }
         } else if url.path.hasPrefix("/api/v1/notifications/") {
             if url.lastPathComponent == "missing" {
                 code = 404; payload = ["error": "Not found"]
@@ -137,6 +175,69 @@ private final class PushNotificationFixtureProtocol: URLProtocol, @unchecked Sen
             client?.urlProtocol(self, didLoad: data)
             client?.urlProtocolDidFinishLoading(self)
         } catch { client?.urlProtocol(self, didFailWithError: error) }
+    }
+
+    private static func inboxNotifications(for url: URL) -> [[String: Any]] {
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let types = query.filter { $0.name == "types[]" }.compactMap(\.value)
+        let maxID = query.first { $0.name == "max_id" }?.value.flatMap(Int.init)
+        let sinceID = query.first { $0.name == "since_id" }?.value.flatMap(Int.init)
+        let limit = query.first { $0.name == "limit" }?.value.flatMap(Int.init) ?? 30
+
+        func notification(_ id: Int, type: String, text: String, isDirect: Bool = false,
+            replyTo: String? = nil) -> [String: Any] {
+            var status = DirectMessagesFixtureProtocol.status("inbox-post-\(id)", author: "push-author",
+                content: "<p>\(text)</p>", replyTo: replyTo)
+            status["visibility"] = isDirect ? "direct" : "public"
+            return ["id": String(id), "type": type, "created_at": "2026-09-10T01:00:00Z",
+                "account": DirectMessagesFixtureProtocol.account("push-author"), "status": status]
+        }
+
+        let groupFirstPage = ProcessInfo.processInfo.environment[
+            "UITEST_NOTIFICATIONS_GROUPED"] == "1"
+        var items = (301...330).reversed().map {
+            notification(
+                $0,
+                type: groupFirstPage ? "favourite" : "update",
+                text: "Recent activity \($0)"
+            )
+        }
+        if ProcessInfo.processInfo.environment["UITEST_NOTIFICATIONS_UPDATED"] == "1" {
+            items.insert(notification(331, type: "update", text: "New activity after restart"), at: 0)
+        }
+        items += [
+            notification(200, type: "mention", text: "Private reply", isDirect: true, replyTo: "inbox-post-199"),
+            notification(199, type: "mention", text: "Private initial mention", isDirect: true),
+            notification(190, type: "reblog", text: "Boosted post"),
+        ]
+        if let sinceID {
+            let id = sinceID + 1
+            if types == ["mention"] {
+                items.append(notification(id, type: "mention", text: "New mention \(id)"))
+            } else if types.isEmpty {
+                items.append(notification(id, type: "update", text: "New activity \(id)"))
+            }
+        }
+        items += (149...180).reversed().map {
+            notification($0, type: "favourite", text: "Favourite page item \($0)")
+        }
+        if ProcessInfo.processInfo.environment["UITEST_NOTIFICATIONS_GROUPED"] == "1" {
+            items = items.map { item in
+                var item = item
+                let type = item["type"] as? String
+                let id = Int(item["id"] as? String ?? "") ?? 0
+                if type == "favourite", id >= 151 {
+                    item["group_key"] = "grouped-favourites"
+                }
+                return item
+            }
+        }
+        return Array(items.filter { item in
+            let id = Int(item["id"] as? String ?? "") ?? 0
+            return (types.isEmpty || types.contains(item["type"] as? String ?? ""))
+                && (maxID.map { id < $0 } ?? true)
+                && (sinceID.map { id > $0 } ?? true)
+        }.prefix(limit))
     }
 }
 #endif

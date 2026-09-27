@@ -71,20 +71,6 @@ enum MainTab: String, Hashable, CaseIterable {
     }
 }
 
-enum InboxSection: String, CaseIterable, Hashable, Identifiable {
-    case notifications
-    case messages
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .notifications: return MoroL10n.Navigation.notifications
-        case .messages: return MoroL10n.Navigation.messages
-        }
-    }
-}
-
 enum RootSheetDestination: String, Identifiable {
     case settings
 
@@ -94,7 +80,7 @@ enum RootSheetDestination: String, Identifiable {
 @MainActor
 final class RootTabCoordinator: ObservableObject {
     @Published private(set) var selectedTab: MainTab
-    @Published var inboxSection: InboxSection
+    @Published var inboxFilter: NotificationFilter
     @Published var composeContext: ComposeContextWrapper?
     @Published var presentedSheet: RootSheetDestination?
     @Published var showAddAccountLogin = false
@@ -111,11 +97,11 @@ final class RootTabCoordinator: ObservableObject {
 
     init(
         selectedTab: MainTab = .home,
-        inboxSection: InboxSection = .notifications,
+        inboxFilter: NotificationFilter = .all,
         presentedSheet: RootSheetDestination? = nil
     ) {
         self.selectedTab = selectedTab
-        self.inboxSection = inboxSection
+        self.inboxFilter = inboxFilter
         self.presentedSheet = presentedSheet
         self.rootStateByTab = Dictionary(
             uniqueKeysWithValues: MainTab.allCases.map { ($0, true) }
@@ -157,31 +143,31 @@ final class RootTabCoordinator: ObservableObject {
         triggerScrollToTopEvent(for: tab)
     }
 
-    func openInbox(_ section: InboxSection) {
-        inboxSection = section
+    func openInbox(_ filter: NotificationFilter) {
+        inboxFilter = filter
         if selectedTab != .inbox {
             selectedTab = .inbox
         }
     }
 
     func openConversation(_ conversation: Conversation) {
-        openInbox(.messages)
+        openInbox(.mentions)
         inboxRouter.replace(with: .conversationDetail(conversation))
     }
 
     func openPushNotification(_ destination: PushNotificationDestination) {
         switch destination {
         case .notifications:
-            openInbox(.notifications)
+            openInbox(.all)
             inboxRouter.popToRoot()
         case .messages:
-            openInbox(.messages)
+            openInbox(.mentions)
             inboxRouter.popToRoot()
         case .status(let status):
-            openInbox(.notifications)
+            openInbox(.all)
             inboxRouter.replace(with: .statusDetail(status))
         case .profile(let account):
-            openInbox(.notifications)
+            openInbox(.all)
             inboxRouter.replace(with: .userProfile(account))
         case .conversation(let conversation):
             openConversation(conversation)

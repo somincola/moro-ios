@@ -39,40 +39,127 @@ final class PushNotificationUITests: XCTestCase {
         assertPost(in: app, session: "push-a")
     }
 
-    func testEmptyMessagesStayVisibleAfterSwitchingSectionsAndForegrounding() {
-        let app = launch("missing")
+    func testInboxTabsAndNotificationSettingsStayUsableAfterSwitchingAndForegrounding() {
+        let app = launch("inbox")
         defer { app.terminate() }
+        app.buttons["mainTab.inbox"].tap()
         assertInbox(in: app)
-        let messages = app.buttons["Messages"]
-        messages.tap()
-        let empty = app.staticTexts["No conversations yet"]
-        assertRemainsVisible(empty, seconds: 16)
-        app.buttons["Notifications"].tap()
-        messages.tap()
-        assertRemainsVisible(empty, seconds: 5)
+        XCTAssertFalse(app.buttons["Messages"].exists)
+        let all = app.buttons["inbox.filter.all"]
+        let mentions = app.buttons["inbox.filter.mentions"]
+        let settings = app.buttons["inbox.notificationSettings"]
+        XCTAssertTrue(settings.exists)
+        XCTAssertFalse(app.buttons["inbox.filter.menu"].exists)
+        XCTAssertTrue(all.isSelected)
+
+        mentions.tap()
+        XCTAssertTrue(text("Private initial mention", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(text("Private reply", in: app).exists)
+        XCTAssertTrue(mentions.isSelected)
+        all.tap()
+        mentions.tap()
+        XCTAssertTrue(text("Private initial mention", in: app).waitForExistence(timeout: 5))
 
         XCUIDevice.shared.press(.home)
         app.activate()
-        assertRemainsVisible(empty, seconds: 10)
-        XCTAssertTrue(messages.isSelected)
-        attach(app, "push-empty-messages-stable")
+        XCTAssertTrue(mentions.isSelected)
+        XCTAssertTrue(text("Private initial mention", in: app).waitForExistence(timeout: 5))
+        attach(app, "inbox-mentions-with-private-posts")
+        all.tap()
+        assertInbox(in: app)
+        XCTAssertTrue(text("Recent activity 330", in: app).waitForExistence(timeout: 5))
+
+        settings.tap()
+        XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 5))
+        attach(app, "inbox-notification-settings")
     }
 
-    func testDirectMessagePushAndManualReentryStayVisibleWithoutReloadLoop() {
+    func testInboxPaginatesAndRefreshesAfterChangingTabs() {
+        let app = launch("inbox")
+        defer { app.terminate() }
+        app.buttons["mainTab.inbox"].tap()
+        assertInbox(in: app)
+        let scrollView = app.scrollViews.firstMatch
+        let oldest = text("Favourite page item 180", in: app)
+        for _ in 0..<18 {
+            if oldest.exists && oldest.isHittable { break }
+            scrollView.swipeUp()
+        }
+        XCTAssertTrue(oldest.isHittable, "The second page of All should load")
+        attach(app, "inbox-all-second-page")
+
+        app.buttons["inbox.filter.mentions"].tap()
+        XCTAssertTrue(text("Private initial mention", in: app).waitForExistence(timeout: 5))
+        app.buttons["inbox.filter.all"].tap()
+        XCTAssertTrue(text("Recent activity 330", in: app).waitForExistence(timeout: 5))
+        let dragStart = scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
+        let dragEnd = scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
+        dragStart.press(forDuration: 0.1, thenDragTo: dragEnd)
+        XCTAssertTrue(text("New activity 331", in: app).waitForExistence(timeout: 5))
+        dragStart.press(forDuration: 0.1, thenDragTo: dragEnd)
+        XCTAssertTrue(text("New activity 332", in: app).waitForExistence(timeout: 5),
+            "Pull to refresh must request and insert another notification after switching tabs")
+        XCTAssertTrue(app.buttons["inbox.filter.all"].isSelected)
+        attach(app, "inbox-all-refreshed")
+    }
+
+    func testInboxSurvivesCacheClearAndOfflineRestartThenAutomaticallyRefreshes() {
+        let app = launch("inbox", environment: ["UITEST_SNAPSHOT_CONTROLS": "1"])
+        defer { app.terminate() }
+        app.buttons["mainTab.inbox"].tap()
+        XCTAssertTrue(text("Recent activity 330", in: app).waitForExistence(timeout: 5))
+        app.buttons["inbox.filter.mentions"].tap()
+        XCTAssertTrue(text("Private initial mention", in: app).waitForExistence(timeout: 5))
+        app.buttons["inbox.testClearCache"].tap()
+        XCTAssertTrue(app.buttons["Cache cleared"].waitForExistence(timeout: 5))
+        app.terminate()
+
+        app.launchEnvironment["UITEST_PRESERVE_NOTIFICATION_SNAPSHOT"] = "1"
+        app.launchEnvironment["UITEST_NOTIFICATIONS_OFFLINE"] = "1"
+        app.launch()
+        app.buttons["mainTab.inbox"].tap()
+        XCTAssertTrue(text("Recent activity 330", in: app).waitForExistence(timeout: 5),
+            "A cold offline launch must restore notification content after clearing disposable caches")
+        XCTAssertTrue(app.descendants(matching: .any)["notifications.refreshRetry"].firstMatch.waitForExistence(timeout: 5))
+        app.buttons["inbox.filter.mentions"].tap()
+        XCTAssertTrue(text("Private initial mention", in: app).waitForExistence(timeout: 5))
+        attach(app, "inbox-offline-reading-snapshot")
+        app.terminate()
+
+        app.launchEnvironment.removeValue(forKey: "UITEST_NOTIFICATIONS_OFFLINE")
+        app.launchEnvironment["UITEST_NOTIFICATIONS_UPDATED"] = "1"
+        app.launch()
+        app.buttons["mainTab.inbox"].tap()
+        XCTAssertTrue(text("New activity after restart", in: app).waitForExistence(timeout: 5),
+            "Restoring a snapshot must also trigger one automatic network refresh")
+        XCTAssertTrue(text("Recent activity 330", in: app).exists)
+        attach(app, "inbox-restored-and-refreshed")
+    }
+
+    func testGroupedNotificationsContinuePagingWithoutAnotherScrollAppearance() {
+        let app = launch("inbox", environment: ["UITEST_NOTIFICATIONS_GROUPED": "1"])
+        defer { app.terminate() }
+        app.buttons["mainTab.inbox"].tap()
+        XCTAssertTrue(text("Recent activity 330", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(text("Private initial mention", in: app).waitForExistence(timeout: 5),
+            "A first page consolidated to one row must automatically load the still-visible next page")
+        attach(app, "inbox-grouped-page-continues")
+    }
+
+    func testDirectMessagePushReturnsToMentionsWithoutMessagesEntry() {
         let app = launch("messages")
         defer { app.terminate() }
         let body = app.descendants(matching: .any)["conversation.body.push-post"].firstMatch
-        assertRemainsVisible(body, seconds: 10)
+        assertRemainsVisible(body, seconds: 3)
         attach(app, "push-message-detail-stable")
         app.navigationBars.buttons["BackButton"].firstMatch.tap()
-        let conversation = app.buttons["directMessages.conversation.push-conversation"]
-        assertRemainsVisible(conversation, seconds: 10)
-        app.buttons["Notifications"].tap()
-        app.buttons["Messages"].tap()
-        assertRemainsVisible(conversation, seconds: 5)
-        conversation.tap()
-        assertRemainsVisible(body, seconds: 10)
-        attach(app, "push-message-manual-reentry-stable")
+        let mentions = app.buttons["inbox.filter.mentions"]
+        XCTAssertTrue(mentions.waitForExistence(timeout: 5))
+        XCTAssertTrue(mentions.isSelected)
+        XCTAssertFalse(app.buttons["Messages"].exists)
+        XCTAssertTrue(text("Push target post on push-a.push-fixture.invalid", in: app)
+            .waitForExistence(timeout: 5))
+        attach(app, "push-message-returned-to-mentions")
     }
 
     func testSystemNotificationTapFromBackgroundOpensPostWithoutCrashing() {
@@ -97,12 +184,13 @@ final class PushNotificationUITests: XCTestCase {
         attach(app, "push-system-tap")
     }
 
-    private func launch(_ scenario: String) -> XCUIApplication {
+    private func launch(_ scenario: String, environment: [String: String] = [:]) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_PUSH_OPEN", "UITEST_DISABLE_ANIMATIONS",
             "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_PUSH_SCENARIO"] = scenario
+        app.launchEnvironment.merge(environment) { _, new in new }
         app.launch()
         return app
     }
@@ -118,10 +206,14 @@ final class PushNotificationUITests: XCTestCase {
     }
 
     private func assertInbox(in app: XCUIApplication) {
-        let notifications = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Notifications")).firstMatch
+        let notifications = app.buttons["inbox.filter.all"]
         XCTAssertTrue(notifications.waitForExistence(timeout: 12))
         XCTAssertTrue(notifications.isSelected)
         XCTAssertTrue(app.buttons["mainTab.inbox"].isSelected)
+    }
+
+    private func text(_ value: String, in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", value)).firstMatch
     }
 
     private func attach(_ app: XCUIApplication, _ name: String) {

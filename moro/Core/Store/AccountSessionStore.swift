@@ -105,6 +105,7 @@ final class AccountSessionStore {
     private let userDefaults: UserDefaults
     private let legacyUserDefaults: UserDefaults?
     private let bootstrapStore: SharedActiveAccountSessionBootstrapStore
+    private let notificationSnapshots: NotificationSnapshotStore
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -121,12 +122,14 @@ final class AccountSessionStore {
         keychain: KeychainService,
         userDefaults: UserDefaults,
         legacyUserDefaults: UserDefaults? = nil,
-        bootstrapStore: SharedActiveAccountSessionBootstrapStore = .shared
+        bootstrapStore: SharedActiveAccountSessionBootstrapStore = .shared,
+        notificationSnapshots: NotificationSnapshotStore? = nil
     ) {
         self.keychain = keychain
         self.userDefaults = userDefaults
         self.legacyUserDefaults = legacyUserDefaults
         self.bootstrapStore = bootstrapStore
+        self.notificationSnapshots = notificationSnapshots ?? .shared
         migrateLegacyDefaultsIfNeeded()
         syncSharedBootstrapSnapshot()
     }
@@ -216,6 +219,9 @@ final class AccountSessionStore {
         }
         guard let instanceURL = session.instanceURL else { return }
 
+        if let previous = activeSessionID, previous != id {
+            notificationSnapshots.invalidateSession(previous)
+        }
         userDefaults.set(id, forKey: Keys.activeSessionID)
 
         var sessions = loadSessions()
@@ -248,6 +254,7 @@ final class AccountSessionStore {
     }
 
     func removeSession(id: String) throws {
+        notificationSnapshots.removeSession(id)
         var sessions = loadSessions()
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
 
@@ -271,6 +278,7 @@ final class AccountSessionStore {
     func clearAllSessions() {
         let sessions = loadSessions()
         for session in sessions {
+            notificationSnapshots.removeSession(session.id)
             try? keychain.delete(forKey: session.tokenStorageKey)
         }
         userDefaults.removeObject(forKey: Keys.sessions)

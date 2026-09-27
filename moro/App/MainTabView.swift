@@ -194,7 +194,7 @@ struct MainTabView: View {
         .onChange(of: coordinator.selectedTab) { _, _ in
             updateNotificationListVisibility()
         }
-        .onChange(of: coordinator.inboxSection) { _, _ in
+        .onChange(of: coordinator.inboxFilter) { _, _ in
             updateNotificationListVisibility()
         }
         .onChange(of: coordinator.isAtRoot(.inbox)) { _, _ in
@@ -259,7 +259,7 @@ struct MainTabView: View {
 
     private var inboxRootView: AnyView {
         routedView(
-            AnyView(InboxView(coordinator: coordinator, apiClient: apiClient)),
+            AnyView(InboxView(coordinator: coordinator, apiClient: apiClient, sessionID: activeSessionID)),
             router: coordinator.inboxRouter
         )
     }
@@ -353,7 +353,7 @@ struct MainTabView: View {
         case .search:
             coordinator.selectTab(.explore)
         case .inbox:
-            coordinator.openInbox(.notifications)
+            coordinator.openInbox(.all)
             updateNotificationListVisibility()
         case .profile:
             coordinator.selectTab(.me)
@@ -363,7 +363,6 @@ struct MainTabView: View {
     private func updateNotificationListVisibility() {
         notificationUnreadStore.setNotificationListVisible(
             coordinator.selectedTab == .inbox
-                && coordinator.inboxSection == .notifications
                 && coordinator.isAtRoot(.inbox)
         )
     }
@@ -398,7 +397,7 @@ struct MainTabView: View {
         notificationUnreadStore.consumePendingNotificationOpen(id: request.id)
         // Do not pull the user away if they started navigating while resolution ran.
         guard notificationOpenTaskID.isUnobstructed, coordinator.selectedTab == .inbox,
-            coordinator.inboxSection == .notifications, coordinator.inboxRouter.path.isEmpty
+            coordinator.inboxFilter == .all, coordinator.inboxRouter.path.isEmpty
         else { return }
         coordinator.openPushNotification(destination)
         updateNotificationListVisibility()

@@ -30,7 +30,7 @@ final class NotificationUnreadStore: ObservableObject {
     private let badgeSetter: BadgeSetter
     private var streamCancellable: AnyCancellable?
     private var countsBySession: [String: Int]
-    private var activeSessionID: String?
+    private(set) var activeSessionID: String?
     private var activeAPIClient: MastodonAPI?
     private var eventGenerationBySession: [String: Int] = [:]
     private var stateRevisionBySession: [String: Int] = [:]
@@ -284,15 +284,7 @@ final class NotificationUnreadStore: ObservableObject {
 
     func refreshAppIconBadge() async {
         let notificationTotal = countsBySession.values.reduce(0, +)
-        let messageTotal = userDefaults.dictionary(
-            forKey: InboxUnreadPersistenceKeys.directMessageUnreadConversationIDsBySession
-        )?.values.reduce(into: 0) { result, value in
-            if let ids = value as? [String] {
-                result += ids.count
-            }
-        } ?? 0
-        let total = notificationTotal + messageTotal
-        await badgeSetter(total)
+        await badgeSetter(notificationTotal)
     }
 
     private func persistCounts() {

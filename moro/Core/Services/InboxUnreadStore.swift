@@ -2,7 +2,7 @@
 //  InboxUnreadStore.swift
 //  moro
 //
-//  Aggregates notification and direct-message unread state for the Inbox entry.
+//  Keeps notification and direct-message unread state independently.
 //
 
 import Combine
@@ -22,7 +22,8 @@ final class InboxUnreadStore: ObservableObject {
     @Published private(set) var messageUnreadCount = 0
 
     var totalUnreadCount: Int {
-        notificationUnreadCount + messageUnreadCount
+        // The Inbox exposes notification feeds; conversation state is retained separately.
+        notificationUnreadCount
     }
 
     private struct StreamOverride {
