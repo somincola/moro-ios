@@ -750,6 +750,21 @@ struct moroTests {
         #expect(alpha == 1)
     }
 
+    @Test @MainActor func postActionActiveColorsAreDistinctGreenAndBlue() {
+        for scheme in [ColorScheme.light, .dark] {
+            let colors = MoroColors(colorScheme: scheme, accent: .monochrome)
+            let boost = rgbaComponents(of: UIColor(colors.boostActive))
+            let bookmark = rgbaComponents(of: UIColor(colors.bookmarkActive))
+
+            #expect(boost.green > boost.red)
+            #expect(boost.green > boost.blue)
+            #expect(bookmark.blue > bookmark.red)
+            #expect(bookmark.blue > bookmark.green)
+            #expect(UIColor(colors.boostActive).isEqual(UIColor(colors.textSecondary)) == false)
+            #expect(UIColor(colors.bookmarkActive).isEqual(UIColor(colors.textSecondary)) == false)
+        }
+    }
+
     @Test @MainActor func statusAllowsReblogActionOnlyForPublicOrUnlisted() async throws {
         let publicStatus = makeStatus(id: "public", visibility: "public")
         let unlistedStatus = makeStatus(id: "unlisted", visibility: "unlisted")
@@ -7889,6 +7904,18 @@ private extension moroTests {
             focus: nil,
             uploadState: state
         )
+    }
+
+    func rgbaComponents(of color: UIColor) -> (red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat) {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            Issue.record("Expected an RGB-compatible color")
+            return (-1, -1, -1, -1)
+        }
+        return (red, green, blue, alpha)
     }
 
     @MainActor
