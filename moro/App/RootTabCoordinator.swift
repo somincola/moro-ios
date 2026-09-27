@@ -108,6 +108,9 @@ final class RootTabCoordinator: ObservableObject {
         )
     }
 
+    // Avoid the isolated-deinit back-deployment crash on iOS 26.2 and earlier.
+    nonisolated deinit {}
+
     func openCompose(
         draft: ComposeDraft? = nil,
         sharedImport: SharedComposeAttachmentImportPayload? = nil
