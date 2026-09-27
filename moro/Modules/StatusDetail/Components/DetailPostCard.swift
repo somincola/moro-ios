@@ -92,6 +92,7 @@ struct DetailPostCard: View {
                 onBlockAndReport: actions.menu?.onBlockAndReport,
                 onReport: actions.menu?.onReport,
                 onPin: actions.onPin,
+                onDeleteAndRedraft: actions.onDeleteAndRedraft,
                 onDelete: actions.onDelete,
                 showCounts: true
             )

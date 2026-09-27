@@ -9,30 +9,40 @@ import SwiftUI
 import UIKit
 
 struct NotificationSettingsView: View {
-    private enum PolicyLoadState {
-        case idle
-        case loading
-        case loaded
-        case unsupported
-        case failed(String)
-    }
-
-    @Environment(\.moroTheme) private var theme
-    @StateObject private var settings = AppSettings.shared
-    @StateObject private var pushRegistration = PushRegistrationCenter.shared
+    @Environment(\.activeAccountKey) private var activeAccountKey
 
     let apiClient: MastodonAPI?
 
-    @State private var policyLoadState: PolicyLoadState = .idle
-    @State private var serverPolicy: ServerNotificationPolicy?
-    @State private var isPolicySaving = false
-    @State private var policySaveError: String?
+    init(apiClient: MastodonAPI? = nil) {
+        self.apiClient = apiClient
+    }
+
+    var body: some View {
+        NotificationSettingsContentView(
+            apiClient: apiClient,
+            accountKey: activeAccountKey
+        )
+        .id(activeAccountKey)
+    }
+}
+
+private struct NotificationSettingsContentView: View {
+    @Environment(\.moroTheme) private var theme
+    @StateObject private var settings = AppSettings.shared
+    @StateObject private var pushRegistration = PushRegistrationCenter.shared
+    @StateObject private var policyController: NotificationPolicyController
+
+    let apiClient: MastodonAPI?
+
     @State private var isPushSaving = false
     @State private var pushSubscription: PushSubscription?
     @State private var pushSyncDebounce: Task<Void, Never>?
 
-    init(apiClient: MastodonAPI? = nil) {
+    init(apiClient: MastodonAPI?, accountKey: String) {
         self.apiClient = apiClient
+        _policyController = StateObject(
+            wrappedValue: NotificationPolicyController(accountKey: accountKey)
+        )
     }
 
     var body: some View {
@@ -46,10 +56,10 @@ struct NotificationSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard let apiClient else {
-                policyLoadState = .unsupported
+                policyController.markUnsupported()
                 return
             }
-            async let policyLoad: Void = loadNotificationPolicy(apiClient: apiClient)
+            async let policyLoad: Void = policyController.refresh(using: apiClient)
             if PushRegistrationCenter.isPushCapabilityEnabled {
                 await pushRegistration.refreshAuthorizationStatus()
                 await loadPushSubscription(apiClient: apiClient)
@@ -71,7 +81,7 @@ struct NotificationSettingsView: View {
     @ViewBuilder
     private var notificationIntakeSection: some View {
         Section {
-            switch policyLoadState {
+            switch policyController.loadState {
             case .idle, .loading:
                 HStack {
                     Spacer()
@@ -93,12 +103,12 @@ struct NotificationSettingsView: View {
                         .foregroundStyle(theme.colors.textSecondary)
                     Button(MoroL10n.Notifications.retryAction) {
                         guard let apiClient else { return }
-                        Task { await loadNotificationPolicy(apiClient: apiClient) }
+                        Task { await policyController.refresh(using: apiClient) }
                     }
                 }
 
             case .loaded:
-                if let serverPolicy {
+                if let serverPolicy = policyController.policy {
                     policyRuleRow(
                         title: MoroL10n.NotificationSettings.notFollowing,
                         detail: MoroL10n.NotificationSettings.notFollowingDetail,
@@ -135,7 +145,7 @@ struct NotificationSettingsView: View {
                     if let apiClient {
                         NavigationLink {
                             NotificationRequestsView(apiClient: apiClient) { request in
-                                resolvePendingRequest(request)
+                                policyController.resolvePendingRequest(request)
                             }
                         } label: {
                             HStack {
@@ -153,21 +163,41 @@ struct NotificationSettingsView: View {
                         }
                     }
 
-                    if isPolicySaving {
+                    if let refreshError = policyController.refreshError {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Label(refreshError, systemImage: "exclamationmark.triangle")
+                                .font(theme.typography.caption)
+                                .foregroundStyle(theme.colors.textSecondary)
+                            Button(MoroL10n.Notifications.retryAction) {
+                                guard let apiClient else { return }
+                                Task { await policyController.refresh(using: apiClient) }
+                            }
+                        }
+                    }
+
+                    if policyController.isSaving {
                         HStack(spacing: 8) {
                             ProgressView()
                             Text(MoroL10n.EditProfile.saving)
                                 .foregroundStyle(theme.colors.textSecondary)
                         }
-                    } else if let policySaveError {
-                        Label(policySaveError, systemImage: "exclamationmark.circle")
+                    } else if let saveError = policyController.saveError {
+                        Label(saveError, systemImage: "exclamationmark.circle")
                             .font(theme.typography.caption)
                             .foregroundStyle(theme.colors.error)
                     }
                 }
             }
         } header: {
-            Text(MoroL10n.NotificationSettings.sectionIntake)
+            HStack {
+                Text(MoroL10n.NotificationSettings.sectionIntake)
+                Spacer()
+                if policyController.isRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel(MoroL10n.Timeline.refreshing)
+                }
+            }
         } footer: {
             Text(MoroL10n.NotificationSettings.intakeFooter)
         }
@@ -254,7 +284,7 @@ struct NotificationSettingsView: View {
             }
             .labelsHidden()
             .pickerStyle(.menu)
-            .disabled(isPolicySaving)
+            .disabled(policyController.isSaving)
         }
     }
 
@@ -262,86 +292,22 @@ struct NotificationSettingsView: View {
         _ keyPath: WritableKeyPath<ServerNotificationPolicy, ServerNotificationPolicy.Disposition>
     ) -> Binding<ServerNotificationPolicy.Disposition> {
         Binding(
-            get: { serverPolicy?[keyPath: keyPath] ?? .accept },
+            get: { policyController.policy?[keyPath: keyPath] ?? .accept },
             set: { value in
-                Task { await savePolicy(value, at: keyPath) }
+                guard let apiClient else { return }
+                Task { await policyController.save(value, at: keyPath, using: apiClient) }
             }
         )
     }
 
     private var botsPolicyBinding: Binding<ServerNotificationPolicy.Disposition> {
         Binding(
-            get: { serverPolicy?.forBots ?? .accept },
+            get: { policyController.policy?.forBots ?? .accept },
             set: { value in
-                Task { await saveBotsPolicy(value) }
+                guard let apiClient else { return }
+                Task { await policyController.saveBots(value, using: apiClient) }
             }
         )
-    }
-
-    @MainActor
-    private func loadNotificationPolicy(apiClient: MastodonAPI) async {
-        policyLoadState = .loading
-        do {
-            serverPolicy = try await apiClient.fetchNotificationPolicy()
-            policyLoadState = .loaded
-        } catch is CancellationError {
-            return
-        } catch {
-            if let status = (error as? APIError)?.httpStatusCode,
-                [404, 405, 501].contains(status)
-            {
-                policyLoadState = .unsupported
-            } else {
-                policyLoadState = .failed(error.localizedDescription)
-            }
-        }
-    }
-
-    @MainActor
-    private func savePolicy(
-        _ value: ServerNotificationPolicy.Disposition,
-        at keyPath: WritableKeyPath<ServerNotificationPolicy, ServerNotificationPolicy.Disposition>
-    ) async {
-        guard let apiClient, let previous = serverPolicy, !isPolicySaving else { return }
-        var updated = previous
-        updated[keyPath: keyPath] = value
-        await persistPolicy(updated, previous: previous, apiClient: apiClient)
-    }
-
-    @MainActor
-    private func saveBotsPolicy(_ value: ServerNotificationPolicy.Disposition) async {
-        guard let apiClient, let previous = serverPolicy, !isPolicySaving else { return }
-        var updated = previous
-        updated.forBots = value
-        await persistPolicy(updated, previous: previous, apiClient: apiClient)
-    }
-
-    @MainActor
-    private func persistPolicy(
-        _ updated: ServerNotificationPolicy,
-        previous: ServerNotificationPolicy,
-        apiClient: MastodonAPI
-    ) async {
-        serverPolicy = updated
-        policySaveError = nil
-        isPolicySaving = true
-        defer { isPolicySaving = false }
-        do {
-            serverPolicy = try await apiClient.updateNotificationPolicy(updated)
-        } catch {
-            serverPolicy = previous
-            policySaveError = error.localizedDescription
-        }
-    }
-
-    private func resolvePendingRequest(_ request: ServerNotificationRequest) {
-        guard var policy = serverPolicy else { return }
-        policy.summary = .init(
-            pendingRequestsCount: max(0, policy.summary.pendingRequestsCount - 1),
-            pendingNotificationsCount: max(
-                0, policy.summary.pendingNotificationsCount - request.notificationsCount)
-        )
-        serverPolicy = policy
     }
 
     // MARK: - Push server sync

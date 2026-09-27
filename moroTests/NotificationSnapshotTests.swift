@@ -250,26 +250,43 @@ struct NotificationSnapshotTests {
             try? keychain.deleteAll()
         }
         let snapshots = NotificationSnapshotStore(directory: directory)
+        let policySnapshots = NotificationPolicySnapshotStore(userDefaults: defaults)
         let accounts = AccountSessionStore(keychain: keychain, userDefaults: defaults,
             bootstrapStore: SharedActiveAccountSessionBootstrapStore(userDefaults: defaults),
-            notificationSnapshots: snapshots)
+            notificationSnapshots: snapshots,
+            notificationPolicySnapshots: policySnapshots)
+        let policy = ServerNotificationPolicy(
+            forNotFollowing: .filter, forNotFollowers: .accept, forNewAccounts: .drop,
+            forPrivateMentions: .filter, forLimitedAccounts: .drop, forBots: .accept,
+            summary: .init(pendingRequestsCount: 1, pendingNotificationsCount: 2))
         let account = ThreadReadingFixtures.status("1").account
         let a = try accounts.saveSession(token: "a", account: account, instanceURL: URL(string: "https://a.example")!, activate: true)
         let aLease = snapshots.session(for: a.id)
+        let aPolicyLease = policySnapshots.session(for: a.id)
         await snapshots.save(snapshot([1]), for: aLease, scope: .everything)?.value
+        #expect(policySnapshots.save(policy, for: aPolicyLease))
         let b = try accounts.saveSession(token: "b", account: account, instanceURL: URL(string: "https://b.example")!, activate: true)
         #expect(!snapshots.isCurrent(aLease))
+        #expect(!policySnapshots.isCurrent(aPolicyLease))
         let bLease = snapshots.session(for: b.id)
+        let bPolicyLease = policySnapshots.session(for: b.id)
         await snapshots.save(snapshot([2]), for: bLease, scope: .everything)?.value
+        #expect(policySnapshots.save(policy, for: bPolicyLease))
         #expect(await snapshots.load(for: snapshots.session(for: a.id), scope: .everything)?.notifications.first?.id == "1")
+        let coldPolicies = NotificationPolicySnapshotStore(userDefaults: defaults)
+        #expect(coldPolicies.load(for: coldPolicies.session(for: a.id))?.policy == policy)
         try accounts.removeSession(id: a.id) // Removing an inactive account must also clean up.
         await snapshots.flushPendingWrites()
         let cold = NotificationSnapshotStore(directory: directory)
         #expect(await cold.load(for: cold.session(for: a.id), scope: .everything) == nil)
+        #expect(coldPolicies.load(for: coldPolicies.session(for: a.id)) == nil)
         #expect(await cold.load(for: cold.session(for: b.id), scope: .everything)?.notifications.first?.id == "2")
+        #expect(coldPolicies.load(for: coldPolicies.session(for: b.id))?.policy == policy)
         accounts.clearAllSessions()
         await snapshots.flushPendingWrites()
         #expect(!snapshots.isCurrent(bLease))
+        #expect(!policySnapshots.isCurrent(bPolicyLease))
         #expect(await cold.load(for: cold.session(for: b.id), scope: .everything) == nil)
+        #expect(coldPolicies.load(for: coldPolicies.session(for: b.id)) == nil)
     }
 }

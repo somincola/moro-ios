@@ -2546,6 +2546,7 @@ struct moroTests {
             hasBlockAndReport: true,
             hasReport: true,
             hasPin: true,
+            hasDeleteAndRedraft: true,
             hasDelete: true
         )
 
@@ -2555,6 +2556,7 @@ struct moroTests {
         #expect(visibility.showOpenInBrowser)
         #expect(visibility.showEdit)
         #expect(visibility.showPin)
+        #expect(visibility.showDeleteAndRedraft)
         #expect(visibility.showDelete)
         #expect(visibility.showMuteUser == false)
         #expect(visibility.showBlockUser == false)
@@ -2576,6 +2578,7 @@ struct moroTests {
             hasBlockAndReport: true,
             hasReport: true,
             hasPin: true,
+            hasDeleteAndRedraft: true,
             hasDelete: true
         )
 
@@ -2589,6 +2592,7 @@ struct moroTests {
         #expect(visibility.showReport)
         #expect(visibility.showEdit == false)
         #expect(visibility.showPin == false)
+        #expect(visibility.showDeleteAndRedraft == false)
         #expect(visibility.showDelete == false)
     }
 
@@ -2606,6 +2610,7 @@ struct moroTests {
             hasBlockAndReport: true,
             hasReport: true,
             hasPin: false,
+            hasDeleteAndRedraft: false,
             hasDelete: false
         )
 
@@ -2628,6 +2633,7 @@ struct moroTests {
             hasBlockAndReport: false,
             hasReport: false,
             hasPin: true,
+            hasDeleteAndRedraft: true,
             hasDelete: true
         )
 
@@ -2641,6 +2647,7 @@ struct moroTests {
         #expect(visibility.showReport == false)
         #expect(visibility.showEdit == false)
         #expect(visibility.showPin == false)
+        #expect(visibility.showDeleteAndRedraft == false)
         #expect(visibility.showDelete == false)
     }
 
@@ -2682,6 +2689,32 @@ struct moroTests {
                 currentUserID: me.id
             ) == false
         )
+    }
+
+    @Test @MainActor func deleteAndRedraftMenuActionRequestsConfirmationBeforeDeleting() throws {
+        let api = MockMastodonAPI()
+        let actionSurface = PostActionSurfaceCenter()
+        let status = makeStatus(id: "delete-and-redraft", account: makeAccount(id: "me"))
+        let handlers = PostInteractionHandlers(
+            interactionService: PostInteractionService(apiClient: api),
+            actionSurface: actionSurface,
+            postMenuActionCenter: PostMenuActionCenter(apiClient: api),
+            apiClient: api,
+            currentUserID: "me",
+            router: AppRouter(),
+            onRemoveStatus: nil
+        )
+
+        let action = try #require(handlers.buildPostActions(for: status).onDeleteAndRedraft)
+        action()
+
+        let request = try #require(actionSurface.deleteRequest)
+        #expect(request.status.id == status.id)
+        #expect(request.mode == .redraft)
+        #expect(request.shouldRedraft)
+
+        actionSurface.clearDeleteRequest()
+        #expect(actionSurface.deleteRequest == nil)
     }
 
     @Test @MainActor func statusFilterWarningUsesFilteredResults() async throws {
@@ -7955,6 +7988,9 @@ final class MockMastodonAPI: MastodonAPI {
         ((String?, String?, Int, MastodonNotificationScope) async throws -> [NotificationItem])?
     var fetchNotificationHandler: ((String) async throws -> NotificationItem)?
     var fetchUnreadNotificationCountHandler: (() async throws -> Int)?
+    var fetchNotificationPolicyHandler: (() async throws -> ServerNotificationPolicy)?
+    var updateNotificationPolicyHandler:
+        ((ServerNotificationPolicy) async throws -> ServerNotificationPolicy)?
     var fetchMarkersHandler: (([MarkerTimeline]) async throws -> Marker)?
     var saveMarkerHandler: ((String?, String?) async throws -> Marker)?
     var fetchRelationshipsHandler: (([String]) async throws -> [Relationship])?
@@ -8379,6 +8415,20 @@ final class MockMastodonAPI: MastodonAPI {
     func fetchNotification(id: String) async throws -> NotificationItem {
         guard let fetchNotificationHandler else { throw MockError.unimplemented }
         return try await fetchNotificationHandler(id)
+    }
+    func fetchNotificationPolicy() async throws -> ServerNotificationPolicy {
+        guard let fetchNotificationPolicyHandler else {
+            throw APIError.http(statusCode: 404, data: nil)
+        }
+        return try await fetchNotificationPolicyHandler()
+    }
+    func updateNotificationPolicy(_ policy: ServerNotificationPolicy) async throws
+        -> ServerNotificationPolicy
+    {
+        guard let updateNotificationPolicyHandler else {
+            throw APIError.http(statusCode: 404, data: nil)
+        }
+        return try await updateNotificationPolicyHandler(policy)
     }
     func fetchScheduledStatuses(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [ScheduledStatus]

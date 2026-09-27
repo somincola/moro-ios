@@ -106,6 +106,7 @@ final class AccountSessionStore {
     private let legacyUserDefaults: UserDefaults?
     private let bootstrapStore: SharedActiveAccountSessionBootstrapStore
     private let notificationSnapshots: NotificationSnapshotStore
+    private let notificationPolicySnapshots: NotificationPolicySnapshotStore
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -123,13 +124,15 @@ final class AccountSessionStore {
         userDefaults: UserDefaults,
         legacyUserDefaults: UserDefaults? = nil,
         bootstrapStore: SharedActiveAccountSessionBootstrapStore = .shared,
-        notificationSnapshots: NotificationSnapshotStore? = nil
+        notificationSnapshots: NotificationSnapshotStore? = nil,
+        notificationPolicySnapshots: NotificationPolicySnapshotStore? = nil
     ) {
         self.keychain = keychain
         self.userDefaults = userDefaults
         self.legacyUserDefaults = legacyUserDefaults
         self.bootstrapStore = bootstrapStore
         self.notificationSnapshots = notificationSnapshots ?? .shared
+        self.notificationPolicySnapshots = notificationPolicySnapshots ?? .shared
         migrateLegacyDefaultsIfNeeded()
         syncSharedBootstrapSnapshot()
     }
@@ -221,6 +224,7 @@ final class AccountSessionStore {
 
         if let previous = activeSessionID, previous != id {
             notificationSnapshots.invalidateSession(previous)
+            notificationPolicySnapshots.invalidateSession(previous)
         }
         userDefaults.set(id, forKey: Keys.activeSessionID)
 
@@ -255,6 +259,7 @@ final class AccountSessionStore {
 
     func removeSession(id: String) throws {
         notificationSnapshots.removeSession(id)
+        notificationPolicySnapshots.removeSession(id)
         var sessions = loadSessions()
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
 
@@ -279,6 +284,7 @@ final class AccountSessionStore {
         let sessions = loadSessions()
         for session in sessions {
             notificationSnapshots.removeSession(session.id)
+            notificationPolicySnapshots.removeSession(session.id)
             try? keychain.delete(forKey: session.tokenStorageKey)
         }
         userDefaults.removeObject(forKey: Keys.sessions)

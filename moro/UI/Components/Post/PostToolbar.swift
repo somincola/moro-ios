@@ -32,6 +32,7 @@ struct PostToolbar: View {
     var onBlockAndReport: (() -> Void)? = nil
     var onReport: (() -> Void)? = nil
     var onPin: (() -> Void)? = nil
+    var onDeleteAndRedraft: (() -> Void)? = nil
     var onDelete: (() -> Void)? = nil
     var showCounts: Bool = true
 
@@ -146,6 +147,7 @@ struct PostToolbar: View {
             onBlockAndReport: onBlockAndReport,
             onReport: onReport,
             onPin: onPin,
+            onDeleteAndRedraft: onDeleteAndRedraft,
             onDelete: onDelete,
             iconSize: PostToolbarMetrics.iconSize
         )

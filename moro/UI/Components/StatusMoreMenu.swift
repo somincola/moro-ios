@@ -223,6 +223,7 @@ struct StatusMoreButton: View {
     
     // Own post actions
     let onPin: (() -> Void)?
+    let onDeleteAndRedraft: (() -> Void)?
     let onDelete: (() -> Void)?
     let iconSize: CGFloat
 
@@ -241,6 +242,7 @@ struct StatusMoreButton: View {
         onBlockAndReport: (() -> Void)? = nil,
         onReport: (() -> Void)? = nil,
         onPin: (() -> Void)? = nil,
+        onDeleteAndRedraft: (() -> Void)? = nil,
         onDelete: (() -> Void)? = nil,
         iconSize: CGFloat = 21
     ) {
@@ -258,6 +260,7 @@ struct StatusMoreButton: View {
         self.onBlockAndReport = onBlockAndReport
         self.onReport = onReport
         self.onPin = onPin
+        self.onDeleteAndRedraft = onDeleteAndRedraft
         self.onDelete = onDelete
         self.iconSize = iconSize
     }
@@ -324,16 +327,28 @@ struct StatusMoreButton: View {
                     }
                 }
 
-                if visibility.showDelete, let onDelete = onDelete {
+                if visibility.showDeleteAndRedraft || visibility.showDelete {
                     if visibility.showEdit || visibility.showPin {
                         Divider()
                     }
-                    MoroMenuActionButton(
-                        title: "Delete",
-                        systemImage: "trash",
-                        tone: .destructive,
-                        action: { performAction(onDelete) }
-                    )
+
+                    if visibility.showDeleteAndRedraft, let onDeleteAndRedraft {
+                        MoroMenuActionButton(
+                            title: MoroL10n.ComposeDrafts.deleteAndRedraftAction,
+                            systemImage: "arrow.uturn.backward",
+                            tone: .destructive,
+                            action: { performAction(onDeleteAndRedraft) }
+                        )
+                    }
+
+                    if visibility.showDelete, let onDelete {
+                        MoroMenuActionButton(
+                            title: "Delete",
+                            systemImage: "trash",
+                            tone: .destructive,
+                            action: { performAction(onDelete) }
+                        )
+                    }
                 }
             } else {
                 if visibility.hasCommonActions && visibility.hasOtherActions {
@@ -423,6 +438,7 @@ struct StatusMoreButton: View {
             hasBlockAndReport: onBlockAndReport != nil,
             hasReport: onReport != nil,
             hasPin: onPin != nil,
+            hasDeleteAndRedraft: onDeleteAndRedraft != nil,
             hasDelete: onDelete != nil
         )
     }
@@ -440,6 +456,7 @@ struct StatusMoreButton: View {
         hasBlockAndReport: Bool,
         hasReport: Bool,
         hasPin: Bool,
+        hasDeleteAndRedraft: Bool,
         hasDelete: Bool
     ) -> StatusMoreMenuVisibility {
         PostMoreMenuPolicy.visibility(
@@ -455,6 +472,7 @@ struct StatusMoreButton: View {
             hasBlockAndReport: hasBlockAndReport,
             hasReport: hasReport,
             hasPin: hasPin,
+            hasDeleteAndRedraft: hasDeleteAndRedraft,
             hasDelete: hasDelete
         )
     }

@@ -125,6 +125,7 @@ struct PostInteractionHandlers {
                 status, currentUserID: currentUserID
             ) ? { handleEdit(status) } : nil,
             onPin: { handlePin(status) },
+            onDeleteAndRedraft: { actionSurface.requestDeleteAndRedraft(status) },
             onDelete: { handleDelete(status) },
             onTap: navHandlers.onTapDetail,
             isOwnPost: PostMoreMenuPolicy.isOwnPost(
