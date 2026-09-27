@@ -19,6 +19,9 @@ struct SharedComposeImportResolution: Equatable {
 }
 
 final class SharedComposeImportCoordinator {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private let draftStore: ComposeDraftStore
 
     init(draftStore: ComposeDraftStore = .shared) {

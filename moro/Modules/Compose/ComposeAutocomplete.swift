@@ -102,6 +102,9 @@ enum ComposeSuggestion: Identifiable {
 
 @MainActor
 final class ComposeAutocompleteModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     @Published private(set) var token: ComposeAutocompleteToken?
     @Published private(set) var suggestions: [ComposeSuggestion] = []
     @Published private(set) var isSearching = false

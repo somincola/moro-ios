@@ -12,6 +12,9 @@ import Combine
 
 @MainActor
 final class PushRegistrationCenter: NSObject, ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = PushRegistrationCenter()
 
     /// Whether the app currently ships a usable APNs push capability.

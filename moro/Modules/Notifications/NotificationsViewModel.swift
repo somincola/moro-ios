@@ -10,6 +10,9 @@ import Combine
 
 @MainActor
 final class NotificationFeedStore: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private let apiClient: MastodonAPI
     private let snapshotStore: NotificationSnapshotStore
     private let snapshotSession: NotificationSnapshotStore.Session?
@@ -70,6 +73,9 @@ struct NotificationFilterInsight: Equatable {
 
 @MainActor
 final class NotificationsViewModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
 
     enum LoadingState {
         case idle

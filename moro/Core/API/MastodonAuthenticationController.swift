@@ -9,6 +9,9 @@ import Foundation
 import AuthenticationServices
 
 final class MastodonAuthenticationController: NSObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private var authenticationSession: ASWebAuthenticationSession?
     private let authenticateURL: URL
     private let callbackURLScheme: String

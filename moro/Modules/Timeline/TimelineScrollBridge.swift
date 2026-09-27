@@ -45,7 +45,13 @@ private struct TimelinePullRefreshState {
 
 @MainActor
 final class TimelineScrollBridge: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private final class WeakScrollView {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         weak var value: UIScrollView?
 
         init(_ value: UIScrollView) {
@@ -123,6 +129,9 @@ final class TimelineScrollBridge: ObservableObject {
         var waitsForRefreshCollapse = false
     }
     private final class WeakRow {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         weak var value: TimelineRowAnchorView?
         init(_ value: TimelineRowAnchorView) { self.value = value }
     }
@@ -571,6 +580,9 @@ final class TimelineScrollBridge: ObservableObject {
 }
 
 final class TimelineScrollResolverView: UIView {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     weak var bridge: TimelineScrollBridge?
     var timeline: TimelineType = .home
 
@@ -603,6 +615,9 @@ final class TimelineScrollResolverView: UIView {
 }
 
 final class TimelineRowAnchorView: UIView {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     weak var bridge: TimelineScrollBridge?
     var timeline: TimelineType = .home
     var statusID = ""

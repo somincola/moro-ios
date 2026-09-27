@@ -12,6 +12,9 @@ import CryptoKit
 
 @MainActor
 final class AuthService: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     struct CachedActiveSession {
         let sessionID: String
         let token: String

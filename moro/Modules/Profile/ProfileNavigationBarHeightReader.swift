@@ -17,6 +17,9 @@ struct ProfileNavigationBarHeightReader: UIViewControllerRepresentable {
     }
 
     final class ReaderViewController: UIViewController {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         var onChange: ((CGFloat) -> Void)?
         private var reportedHeight: CGFloat?
 

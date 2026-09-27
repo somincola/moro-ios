@@ -417,6 +417,9 @@ struct EmojiGroup: Identifiable {
 /// Simple Trie structure for emoji autocomplete
 struct EmojiTrie {
     private class Node {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         var children: [Character: Node] = [:]
         var value: CustomEmoji?
     }

@@ -53,6 +53,9 @@ struct ScrollElevatingHeader<Content: View>: View {
 /// during view updates.
 @MainActor
 final class PinnedTimelineViewModelStore: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private var viewModels: [String: TimelineViewModel] = [:]
 
     func viewModel(
@@ -85,6 +88,9 @@ final class PinnedTimelineViewModelStore: ObservableObject {
 
 @MainActor
 final class TimelinePageSession: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     var hasRestoredReadingAnchor = false
     private(set) var contentOffsetY: CGFloat = 0
     private(set) var nativeContentOffset: CGPoint?
@@ -134,6 +140,9 @@ final class TimelinePageSession: ObservableObject {
 
 @MainActor
 final class TimelinePageSessionStore: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private var sessions: [String: TimelinePageSession] = [:]
 
     func session(for timeline: TimelineType) -> TimelinePageSession {

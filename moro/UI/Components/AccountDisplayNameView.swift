@@ -167,6 +167,9 @@ struct AccountDisplayNameContent: Equatable {
 
 enum AccountDisplayNameParser {
     private final class CachedContentBox {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         let content: AccountDisplayNameContent
 
         init(_ content: AccountDisplayNameContent) {
@@ -314,6 +317,9 @@ enum AccountDisplayNameParser {
 }
 
 private final class AccountDisplayNameLabel: UILabel {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     override var intrinsicContentSize: CGSize {
         let width = preferredMaxLayoutWidth > 0 ? preferredMaxLayoutWidth : bounds.width
         guard width > 0 else { return super.intrinsicContentSize }

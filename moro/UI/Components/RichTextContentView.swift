@@ -444,6 +444,9 @@ struct RichTextContentView: View {
 
 /// Custom UITextView that properly calculates intrinsic content size
 private class AutoHeightTextView: UITextView {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     // Named to avoid colliding with UITextView's own `layoutManager` property.
     private let textKitLayoutManager = NSLayoutManager()
 

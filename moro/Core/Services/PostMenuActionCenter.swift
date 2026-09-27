@@ -10,6 +10,9 @@ import UIKit
 
 @MainActor
 final class PostMenuActionCenter: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     struct Handlers {
         let onShare: () -> Void
         let onCopyLink: () -> Void

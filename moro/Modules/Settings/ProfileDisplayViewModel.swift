@@ -3,6 +3,9 @@ import Combine
 
 @MainActor
 final class ProfileDisplayViewModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     @Published var showTags: Bool
     @Published var showMedia = true
     @Published var showMediaReplies = false

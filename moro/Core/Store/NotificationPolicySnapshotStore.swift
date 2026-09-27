@@ -12,6 +12,9 @@ import Foundation
 /// bring back a blank notification-settings screen.
 @MainActor
 final class NotificationPolicySnapshotStore {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = NotificationPolicySnapshotStore()
 
     struct Session: Equatable {

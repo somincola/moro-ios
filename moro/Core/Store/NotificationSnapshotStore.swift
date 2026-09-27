@@ -6,6 +6,9 @@ import os
 /// neither count nor delete these bounded, account-scoped snapshots.
 @MainActor
 final class NotificationSnapshotStore {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = NotificationSnapshotStore()
 
     nonisolated struct Session: Equatable {

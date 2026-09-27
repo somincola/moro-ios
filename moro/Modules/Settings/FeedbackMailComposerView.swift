@@ -93,6 +93,9 @@ struct FeedbackMailComposerView: UIViewControllerRepresentable {
     }
 
     final class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         let onComplete: (MFMailComposeResult, Error?) -> Void
 
         init(onComplete: @escaping (MFMailComposeResult, Error?) -> Void) {

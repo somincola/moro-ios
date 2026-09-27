@@ -13,6 +13,9 @@ import SwiftUI
 /// Service for handling post interactions
 @MainActor
 final class PostInteractionService: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     /// Current action being performed (for preventing duplicate actions)
     @Published var isPerformingAction: (action: PostAction, statusID: String)?
     

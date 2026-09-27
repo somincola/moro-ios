@@ -21,6 +21,9 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
 
 @MainActor
 final class ScrollStateManager: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     /// Current header visibility (0 = hidden, 1 = visible)
     @Published var headerVisibility: CGFloat = 1
     

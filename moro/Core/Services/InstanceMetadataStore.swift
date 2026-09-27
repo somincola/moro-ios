@@ -10,6 +10,9 @@ import Foundation
 
 @MainActor
 final class InstanceMetadataStore {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     enum RefreshPolicy {
         case refreshIfStale
         case forceRefresh

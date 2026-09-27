@@ -35,6 +35,9 @@ enum AppIconManagerError: LocalizedError {
 
 @MainActor
 final class AppIconManager {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = AppIconManager(application: UIApplication.shared)
 
     private let application: AppIconApplication

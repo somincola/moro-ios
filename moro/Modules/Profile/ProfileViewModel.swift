@@ -10,6 +10,9 @@ import Combine
 
 @MainActor
 final class ProfileViewModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     
     enum Tab: String, CaseIterable, Hashable {
         case posts = "Posts"

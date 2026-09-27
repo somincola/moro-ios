@@ -10,6 +10,9 @@ import Combine
 
 @MainActor
 final class AccountReportViewModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private let apiClient: MastodonAPI
     private let account: Account
 

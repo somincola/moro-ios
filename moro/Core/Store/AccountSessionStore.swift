@@ -43,6 +43,9 @@ struct SharedActiveAccountSessionSnapshot: Codable, Equatable {
 }
 
 final class SharedActiveAccountSessionBootstrapStore {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = SharedActiveAccountSessionBootstrapStore(
         userDefaults: MoroSharedContainer.sharedUserDefaults()
     )
@@ -94,6 +97,9 @@ final class SharedActiveAccountSessionBootstrapStore {
 }
 
 final class AccountSessionStore {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private enum Keys {
         static let sessions = "stored_account_sessions"
         static let activeSessionID = "active_account_session_id"

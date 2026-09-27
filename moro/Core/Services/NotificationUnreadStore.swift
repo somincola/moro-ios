@@ -12,6 +12,9 @@ import WidgetKit
 
 @MainActor
 final class NotificationUnreadStore: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     typealias BadgeSetter = @MainActor (Int) async -> Void
 
     static let shared = NotificationUnreadStore()

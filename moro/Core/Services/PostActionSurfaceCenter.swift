@@ -23,6 +23,9 @@ struct PostDeleteRequest {
 
 @MainActor
 final class PostActionSurfaceCenter: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     @Published var boostDialogStatus: Status?
     @Published var composeContext: ComposeContextWrapper?
     @Published var reportStatus: Status?

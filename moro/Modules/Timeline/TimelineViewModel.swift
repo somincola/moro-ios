@@ -11,6 +11,9 @@ import SwiftUI
 
 @MainActor
 final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     struct BootstrapConfig: Sendable, Equatable {
         enum DeviceTier: String, Sendable {
             case constrained

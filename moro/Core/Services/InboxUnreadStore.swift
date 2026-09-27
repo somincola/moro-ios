@@ -16,6 +16,9 @@ enum InboxUnreadPersistenceKeys {
 
 @MainActor
 final class InboxUnreadStore: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = InboxUnreadStore()
 
     @Published private(set) var notificationUnreadCount: Int

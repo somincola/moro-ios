@@ -19,6 +19,9 @@ fileprivate enum ContentConcealMetrics {
 }
 
 final class ContentConcealViewModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     @Published private(set) var statusID: String
     @Published private(set) var hasContentWarning: Bool
     @Published private(set) var hasFilterWarning: Bool

@@ -14,6 +14,9 @@ import SwiftUI
 @MainActor
 @Observable
 final class StatusDataController: Identifiable {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
 
     // MARK: - Identity
 

@@ -4,6 +4,9 @@ import Combine
 /// A viewer preference, scoped to the signed-in session rather than the viewed profile.
 @MainActor
 final class ProfilePresentationPreferences: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = ProfilePresentationPreferences()
     @Published private(set) var revision = 0
     private let defaults: UserDefaults

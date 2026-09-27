@@ -3,6 +3,9 @@ import Combine
 
 @MainActor
 final class FeaturedTagsViewModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     @Published private(set) var tags: [FeaturedTag] = []
     @Published private(set) var suggestions: [SearchTag] = []
     @Published private(set) var limits = ProfileLimits()
