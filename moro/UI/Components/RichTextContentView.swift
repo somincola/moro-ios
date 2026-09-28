@@ -39,6 +39,8 @@ struct RichTextContentView: View {
     var linkColorOverride: Color? = nil
     var underlinesLinks: Bool = false
     var lineSpacing: CGFloat = 4
+    /// Opt-in native spacing for the parser's double-break paragraph boundaries.
+    var paragraphSpacing: CGFloat? = nil
     var lineLimit: Int? = nil
     var truncationMode: Text.TruncationMode = .tail
     var trailingSystemImage: String? = nil
@@ -64,6 +66,7 @@ struct RichTextContentView: View {
         linkColorOverride: Color? = nil,
         underlinesLinks: Bool = false,
         lineSpacing: CGFloat = 4,
+        paragraphSpacing: CGFloat? = nil,
         lineLimit: Int? = nil,
         truncationMode: Text.TruncationMode = .tail,
         trailingSystemImage: String? = nil,
@@ -86,6 +89,7 @@ struct RichTextContentView: View {
         self.linkColorOverride = linkColorOverride
         self.underlinesLinks = underlinesLinks
         self.lineSpacing = lineSpacing
+        self.paragraphSpacing = paragraphSpacing
         self.lineLimit = lineLimit
         self.truncationMode = truncationMode
         self.trailingSystemImage = trailingSystemImage
@@ -103,6 +107,7 @@ struct RichTextContentView: View {
         linkColorOverride: Color? = nil,
         underlinesLinks: Bool = false,
         lineSpacing: CGFloat = 4,
+        paragraphSpacing: CGFloat? = nil,
         lineLimit: Int? = nil,
         truncationMode: Text.TruncationMode = .tail,
         trailingSystemImage: String? = nil,
@@ -119,6 +124,7 @@ struct RichTextContentView: View {
         self.linkColorOverride = linkColorOverride
         self.underlinesLinks = underlinesLinks
         self.lineSpacing = lineSpacing
+        self.paragraphSpacing = paragraphSpacing
         self.lineLimit = lineLimit
         self.truncationMode = truncationMode
         self.trailingSystemImage = trailingSystemImage
@@ -253,7 +259,7 @@ struct RichTextContentView: View {
         }
 
         Group {
-            if hasEmojis {
+            if hasEmojis || paragraphSpacing != nil {
                 MixedTextEmojiView(
                     elements: elements,
                     emojiSize: emojiSize,
@@ -263,6 +269,7 @@ struct RichTextContentView: View {
                     underlinesLinks: underlinesLinks,
                     font: resolvedUIFont,
                     lineSpacing: lineSpacing,
+                    paragraphSpacing: paragraphSpacing,
                     lineLimit: lineLimit,
                     lineBreakMode: resolvedLineBreakMode,
                     isSelectable: isSelectable,
@@ -527,6 +534,7 @@ struct MixedTextEmojiView: UIViewRepresentable {
     var underlinesLinks: Bool = false
     var font: UIFont = .systemFont(ofSize: 16)
     var lineSpacing: CGFloat = 4
+    var paragraphSpacing: CGFloat? = nil
     var lineLimit: Int? = nil
     var lineBreakMode: NSLineBreakMode = .byCharWrapping
     var isSelectable: Bool = true
@@ -703,6 +711,8 @@ struct MixedTextEmojiView: UIViewRepresentable {
         let codeBackgroundColorRGBA: [CGFloat]
         let underlinesLinks: Bool
         let lineLimit: Int
+        let lineSpacing: CGFloat
+        let paragraphSpacing: CGFloat?
         let font: UIFont
         let trailingSystemImage: String?
         let trailingSystemImageColorRGBA: [CGFloat]
@@ -716,7 +726,8 @@ struct MixedTextEmojiView: UIViewRepresentable {
             linkColorRGBA: linkColor.moroRGBAComponents,
             codeBackgroundColorRGBA: codeBackgroundColor.moroRGBAComponents,
             underlinesLinks: underlinesLinks,
-            lineLimit: max(0, lineLimit ?? 0), font: font,
+            lineLimit: max(0, lineLimit ?? 0), lineSpacing: lineSpacing,
+            paragraphSpacing: paragraphSpacing, font: font,
             trailingSystemImage: trailingSystemImage,
             trailingSystemImageColorRGBA: trailingSystemImageColor.moroRGBAComponents,
             trailingSystemImageSize: trailingSystemImageSize)
@@ -918,6 +929,7 @@ struct MixedTextEmojiView: UIViewRepresentable {
         )
         codeAttributes[.backgroundColor] = codeBackgroundColor
 
+        var paragraphStart = 0
         for (index, element) in elements.enumerated() {
             switch element {
             case .text(let text):
@@ -934,7 +946,7 @@ struct MixedTextEmojiView: UIViewRepresentable {
                     attributes: linkAttributes
                 )
                 linkAttr.addAttribute(
-                    .link, value: url, range: NSRange(location: 0, length: text.count))
+                    .link, value: url, range: NSRange(location: 0, length: linkAttr.length))
                 result.append(linkAttr)
 
             case .mention(let username, let url):
@@ -943,7 +955,7 @@ struct MixedTextEmojiView: UIViewRepresentable {
                     attributes: linkAttributes
                 )
                 mentionAttr.addAttribute(
-                    .link, value: url, range: NSRange(location: 0, length: username.count))
+                    .link, value: url, range: NSRange(location: 0, length: mentionAttr.length))
                 result.append(mentionAttr)
 
             case .hashtag(let tag, let url):
@@ -952,7 +964,7 @@ struct MixedTextEmojiView: UIViewRepresentable {
                     attributes: linkAttributes
                 )
                 tagAttr.addAttribute(
-                    .link, value: url, range: NSRange(location: 0, length: tag.count))
+                    .link, value: url, range: NSRange(location: 0, length: tagAttr.length))
                 result.append(tagAttr)
 
             case .emoji(let shortcode, _, let staticURL):
@@ -1020,12 +1032,22 @@ struct MixedTextEmojiView: UIViewRepresentable {
                 )
 
             case .lineBreak:
+                if paragraphSpacing != nil, index > 0, elements[index - 1] == .lineBreak {
+                    continue
+                }
                 result.append(
                     NSAttributedString(
                         string: "\n",
                         attributes: baseAttributes
                     )
                 )
+                if let paragraphSpacing, index + 1 < elements.count, elements[index + 1] == .lineBreak {
+                    let style = paragraphStyle.mutableCopy() as! NSMutableParagraphStyle
+                    style.paragraphSpacing = paragraphSpacing
+                    result.addAttribute(.paragraphStyle, value: style,
+                        range: NSRange(location: paragraphStart, length: result.length - paragraphStart))
+                }
+                paragraphStart = result.length
             }
         }
 

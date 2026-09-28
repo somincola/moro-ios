@@ -5,6 +5,55 @@ import XCTest
 final class ProfileExperienceUITests: XCTestCase {
     private let rawLink = "https://example.com/a/long/path?first=1&second=2"
 
+    func testCompactProfileInfoInLightAndDarkAtDefaultAndAccessibilitySizes() {
+        for scheme in ["light", "dark"] {
+            for large in [false, true] {
+                var environment = ["UITEST_PROFILE_COMPACT_INFO": "1"]
+                if large { environment["UITEST_DYNAMIC_TYPE_SIZE"] = "accessibilityXXXL" }
+                let app = launch(extra: environment, scheme: scheme)
+                let bio = app.descendants(matching: .any).matching(identifier: "profile.bio").firstMatch
+                XCTAssertTrue(bio.waitForExistence(timeout: 8))
+                XCTAssertTrue((bio.value as? String ?? "").contains("Happy to be here—nice to meet you all! 👋"))
+                XCTAssertEqual(bio.frame.minX, 16, accuracy: 1)
+                XCTAssertEqual(bio.frame.maxX, app.frame.width - 16, accuracy: 1)
+                if large {
+                    XCTAssertGreaterThan(bio.frame.height, 200)
+                    for _ in 0..<6 {
+                        if bio.frame.minY < 180 { break }
+                        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+                            .press(forDuration: 0.1,
+                                thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)),
+                                withVelocity: .slow, thenHoldForDuration: 0.2)
+                    }
+                    XCTAssertLessThan(bio.frame.minY, 180, "Long bio must scroll with the profile")
+                } else {
+                    XCTAssertLessThan(bio.frame.height, 135, "Bio must not use full blank lines between paragraphs")
+                }
+                let suffix = "\(scheme)-\(large ? "accessibilityXXXL" : "default")"
+                attach(app, "profile-compact-info-\(suffix)")
+                let posts = app.buttons["profile.tab.posts"].firstMatch
+                if large {
+                    let blog = app.staticTexts["somlar.com"].firstMatch
+                    for _ in 0..<10 {
+                        if blog.frame.maxY < posts.frame.minY - 24 { break }
+                        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+                            .press(forDuration: 0.1,
+                                thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)),
+                                withVelocity: .slow, thenHoldForDuration: 0.2)
+                    }
+                    XCTAssertTrue(blog.isHittable, "Fields below a long bio must remain reachable")
+                    XCTAssertGreaterThan(blog.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+                    XCTAssertLessThan(blog.frame.maxY, posts.frame.minY - 24,
+                        "The last field must not be hidden behind docked tabs")
+                    attach(app, "profile-compact-fields-\(suffix)")
+                }
+                reveal(posts, in: app)
+                XCTAssertTrue(posts.isHittable)
+                app.terminate()
+            }
+        }
+    }
+
     func testProfileChromeMatchesNativeNavigationBarAfterScrollingAndReturning() {
         let app = launch(animations: true)
         defer { app.terminate() }

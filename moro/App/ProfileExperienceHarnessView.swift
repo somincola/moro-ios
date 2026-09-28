@@ -85,6 +85,7 @@ private final class ProfileFixtureToken: AuthTokenProvider {
 private final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
     private static let legacy = ProcessInfo.processInfo.environment["UITEST_PROFILE_LEGACY"] == "1"
+    private static let compactInfo = ProcessInfo.processInfo.environment["UITEST_PROFILE_COMPACT_INFO"] == "1"
     // Keep persisted instance limits isolated between test app launches.
     private static let instanceURL = URL(string: "https://\(UUID().uuidString.lowercased()).profile-fixture.invalid")!
     private static var profile: [String: Any] = [
@@ -127,6 +128,16 @@ private final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             "statuses_count": 3, "url": "https://profile-fixture.invalid/@moro",
             "source": ["note": profile["note"]!, "fields": profile["fields"]!, "privacy": "public"],
         ]) { _, new in new }
+        if compactInfo {
+            payload["note"] = "<p>Indie developer and creator of Moro for Mastodon.</p><p>Building thoughtful products for the open web.</p><p>Happy to be here—nice to meet you all! 👋</p>"
+            payload["fields"] = [
+                ["name": "X", "value": "<a href=\"https://x.com/hey_akie\">x.com/hey_akie</a>"],
+                ["name": "blog", "value": "<a href=\"https://somlar.com\">somlar.com</a>", "verified_at": "2026-09-27T00:00:00.000Z"],
+            ]
+            payload["statuses_count"] = 598
+            payload["following_count"] = 86
+            payload["followers_count"] = 70
+        }
         if legacy { for key in ["show_media", "show_media_replies", "show_featured"] { payload.removeValue(forKey: key) } }
         return payload
     }
