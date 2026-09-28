@@ -4,5 +4,5 @@
   "marketingUrl": "https://moro.somincola.com/",
   "promotionalText": "Conheça o Moro — um cliente Mastodon calmo e refinado, leve, simples e simpático. Use a sua conta e aproveite o fediverso sem ruído.",
   "supportUrl": "https://moro.somincola.com/support",
-  "whatsNew": "Corrigimos alguns problemas de apresentação e melhorámos a visualização de imagens."
+  "whatsNew": "- A caixa de entrada de notificações foi totalmente renovada, com categorias mais claras para Todas e Menções e novas definições de notificações.\n- Melhorámos a alternância entre cronologias, o espaçamento das páginas, a apresentação dos perfis e o feedback das ações nas publicações.\n- Corrigimos os estados de não lido e fixado, a confirmação da eliminação de publicações e alguns problemas de estabilidade no iOS 26.2."
 }

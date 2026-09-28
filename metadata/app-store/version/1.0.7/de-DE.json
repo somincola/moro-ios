@@ -4,5 +4,5 @@
   "marketingUrl": "https://moro.somincola.com/",
   "promotionalText": "Lernen Sie Moro kennen – ein ruhiger Mastodon-Client. Leicht, einfach und freundlich. Ihr Account, Ihr Fediverse, ganz ohne Rauschen.",
   "supportUrl": "https://moro.somincola.com/support",
-  "whatsNew": "Kleinere Darstellungsprobleme wurden behoben und die Bildansicht verbessert."
+  "whatsNew": "- Der Benachrichtigungseingang wurde umfassend überarbeitet: Alle Benachrichtigungen und Erwähnungen sind klarer getrennt, außerdem gibt es neue Benachrichtigungseinstellungen.\n- Wechsel zwischen Timelines, Seitenabstände, Profildarstellung und Rückmeldungen bei Beitragsaktionen wurden verbessert.\n- Probleme mit Ungelesen- und Angeheftet-Status, der Löschbestätigung für Beiträge sowie der Stabilität unter iOS 26.2 wurden behoben."
 }
