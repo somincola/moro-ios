@@ -11,6 +11,9 @@ import UIKit
 
 @MainActor
 final class AppState: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     @Published var isAuthenticated: Bool = false
     @Published var currentAccount: Account? {
         didSet {
@@ -74,6 +77,9 @@ struct AppFeedbackMessage: Identifiable, Equatable {
 
 @MainActor
 final class AppFeedbackCenter: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = AppFeedbackCenter()
 
     @Published var currentMessage: AppFeedbackMessage?

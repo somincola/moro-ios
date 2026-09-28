@@ -343,6 +343,9 @@ struct SharedComposeDraftStagingItem: Codable, Equatable, Identifiable {
 }
 
 final class SharedComposeDraftStagingStore {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = SharedComposeDraftStagingStore(
         userDefaults: MoroSharedContainer.sharedUserDefaults(),
         baseDirectoryURL: MoroSharedContainer.composeDraftStagingDirectoryURL()
@@ -627,6 +630,9 @@ final class SharedComposeDraftStagingStore {
 }
 
 final class ComposeDraftStore {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = ComposeDraftStore.makeSharedStore()
 
     private enum Keys {

@@ -11,6 +11,9 @@ import Combine
 /// In-memory cache for Account objects
 @MainActor
 final class AccountCache: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     /// Cached accounts by ID
     private var cache: [String: Account] = [:]
 

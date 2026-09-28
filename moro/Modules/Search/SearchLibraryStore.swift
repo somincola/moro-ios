@@ -14,6 +14,9 @@ struct SearchLibraryItem: Identifiable, Codable, Equatable {
 /// environment, so identical account IDs on different instances cannot share data.
 @MainActor
 final class SearchLibraryStore: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     @Published private(set) var recent: [SearchLibraryItem] = []
     @Published private(set) var saved: [SearchLibraryItem] = []
     private let defaults: UserDefaults

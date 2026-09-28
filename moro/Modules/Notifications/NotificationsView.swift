@@ -15,9 +15,6 @@ enum NotificationsPresentation {
 enum NotificationFilter: String, CaseIterable, Identifiable {
     case all
     case mentions
-    case interactions
-    case follows
-    case updates
 
     var id: String { rawValue }
 
@@ -25,53 +22,38 @@ enum NotificationFilter: String, CaseIterable, Identifiable {
         switch self {
         case .all:
             return MoroL10n.Notifications.filterAll
-        case .interactions:
-            return MoroL10n.Notifications.filterInteractions
         case .mentions:
             return MoroL10n.Notifications.filterMentions
-        case .follows:
-            return MoroL10n.Notifications.filterFollows
-        case .updates:
-            return MoroL10n.Notifications.filterUpdates
         }
     }
 
     func matches(_ item: NotificationDisplayItem) -> Bool {
-        let category = item.kind.descriptor.filterCategory
         switch self {
         case .all:
             return true
-        case .interactions:
-            return category == .interactions
         case .mentions:
-            return category == .mentions
-        case .follows:
-            return category == .follows
-        case .updates:
-            return category == .updates
+            return item.kind.descriptor.filterCategory == .mentions
+        }
+    }
+
+    var serverScope: MastodonNotificationScope {
+        switch self {
+        case .all: return .everything
+        case .mentions: return .mentions
         }
     }
 }
 
-enum NotificationFilterMenuStyle {
-    case labeled
-    case icon
-}
-
 struct NotificationsView: View {
-    @StateObject private var viewModel: NotificationsViewModel
-    @Environment(\.moroTheme) private var theme
-    @Environment(\.appRouter) private var router
-    @ObservedObject private var notificationUnreadStore = NotificationUnreadStore.shared
-    @State private var actorsSheet: NotificationActorsSheetState?
+    @StateObject private var models: NotificationFeedStore
     @State private var localSelectedFilter: NotificationFilter = .all
-    @State private var scrollPositionID: String?
     private let presentation: NotificationsPresentation
     private let isActive: Bool
     private let selectedFilterOverride: Binding<NotificationFilter>?
 
     init(
         apiClient: MastodonAPI,
+        sessionID: String? = nil,
         presentation: NotificationsPresentation = .standalone,
         isActive: Bool = true,
         selectedFilter: Binding<NotificationFilter>? = nil
@@ -79,8 +61,36 @@ struct NotificationsView: View {
         self.presentation = presentation
         self.isActive = isActive
         self.selectedFilterOverride = selectedFilter
-        _viewModel = StateObject(wrappedValue: NotificationsViewModel(apiClient: apiClient))
+        _models = StateObject(wrappedValue: NotificationFeedStore(apiClient: apiClient, sessionID: sessionID))
     }
+
+    var body: some View {
+        NotificationFeedView(
+            viewModel: models.model(for: selectedFilterBinding.wrappedValue.serverScope),
+            selectedFilter: selectedFilterBinding,
+            presentation: presentation,
+            isActive: isActive
+        )
+        .id(selectedFilterBinding.wrappedValue.serverScope)
+    }
+
+    private var selectedFilterBinding: Binding<NotificationFilter> {
+        selectedFilterOverride ?? $localSelectedFilter
+    }
+}
+
+private struct NotificationFeedView: View {
+    @ObservedObject var viewModel: NotificationsViewModel
+    @Binding var selectedFilter: NotificationFilter
+    let presentation: NotificationsPresentation
+    let isActive: Bool
+
+    @Environment(\.moroTheme) private var theme
+    @Environment(\.appRouter) private var router
+    @ObservedObject private var notificationUnreadStore = NotificationUnreadStore.shared
+    @State private var actorsSheet: NotificationActorsSheetState?
+    @State private var scrollPositionID: String?
+    @State private var paginationFooterVisible = false
 
     var body: some View {
         Group {
@@ -90,7 +100,7 @@ struct NotificationsView: View {
                 PageScaffold(
                     title: MoroL10n.Notifications.title,
                     titleSize: 24,
-                    trailing: { notificationFilterMenu }
+                    trailing: { notificationSettingsButton }
                 ) {
                     notificationsContent
                 }
@@ -98,11 +108,14 @@ struct NotificationsView: View {
         }
         .task(id: isActive) {
             guard isActive else { return }
-            await loadInitialAndMarkRead()
+            await activateAndMarkRead()
         }
         .onChange(of: notificationUnreadStore.refreshVersion) { _, _ in
             guard isActive, notificationUnreadStore.isNotificationListVisible else { return }
             Task { await refreshAndMarkRead() }
+        }
+        .onChange(of: canResumePagination) { _, ready in
+            if ready { loadMoreFromVisibleFooter() }
         }
         .sheet(item: $actorsSheet) { item in
             NotificationActorsSheet(
@@ -127,8 +140,11 @@ struct NotificationsView: View {
     }
 
     private var contentState: ContentState {
-        if viewModel.notifications.isEmpty, case .loading = viewModel.loadingState {
-            return .loading(.list)
+        if viewModel.notifications.isEmpty {
+            switch viewModel.loadingState {
+            case .idle, .loading, .refreshing: return .loading(.list)
+            default: break
+            }
         }
         if viewModel.notifications.isEmpty, case .error(let error) = viewModel.loadingState {
             return .error(
@@ -146,18 +162,6 @@ struct NotificationsView: View {
             return .loaded
         }
         if viewModel.notifications.isEmpty {
-            if viewModel.filterInsight.hidesEverything {
-                return .empty(
-                    EmptyStateSpec(
-                        icon: "line.3.horizontal.decrease.circle",
-                        title: MoroL10n.Notifications.hiddenByPolicy,
-                        message: hiddenByAppPolicyMessage,
-                        actionTitle: MoroL10n.Notifications.refreshAction,
-                        action: {
-                            Task { await refreshAndMarkRead() }
-                        }
-                    ))
-            }
             return .empty(
                 EmptyStateSpec(
                     icon: "bell.badge",
@@ -182,7 +186,7 @@ struct NotificationsView: View {
                         if selectedFilter == .all {
                             Task { await refreshAndMarkRead() }
                         } else {
-                            selectedFilterBinding.wrappedValue = .all
+                            selectedFilter = .all
                         }
                     }
                 ))
@@ -194,10 +198,36 @@ struct NotificationsView: View {
         viewModel.notifications.filter { selectedFilter.matches($0) }
     }
 
+    private var canResumePagination: Bool {
+        guard case .loaded = viewModel.loadingState else { return false }
+        return viewModel.hasMore && !viewModel.loadMoreFailed && !viewModel.refreshFailed
+            && !filteredNotifications.isEmpty
+    }
+
+    private func loadMoreFromVisibleFooter() {
+        guard isActive, paginationFooterVisible, canResumePagination else { return }
+        Task { await viewModel.loadMore() }
+    }
+
     @ViewBuilder
     private var notificationsList: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
+                if viewModel.refreshFailed {
+                    HStack {
+                        Label(MoroL10n.Notifications.loadFailed, systemImage: "wifi.exclamationmark")
+                            .font(theme.typography.caption)
+                            .foregroundStyle(theme.colors.textSecondary)
+                        Spacer()
+                        Button(MoroL10n.Notifications.retryAction) {
+                            Task { await refreshAndMarkRead() }
+                        }
+                        .frame(minHeight: 44)
+                    }
+                    .padding(.horizontal, theme.spacing.m)
+                    .accessibilityIdentifier("notifications.refreshRetry")
+                }
+
                 if filteredNotifications.isEmpty, viewModel.hasMore {
                     EmptyStateView(spec: EmptyStateSpec(
                         icon: "line.3.horizontal.decrease.circle",
@@ -289,6 +319,15 @@ struct NotificationsView: View {
                     didFail: viewModel.loadMoreFailed,
                     onRetry: { Task { await viewModel.loadMore() } }
                 )
+                // Restored/grouped rows can already fill less than one screen
+                // while refresh is running. Resume when ready even if the tail
+                // never disappeared and therefore will not get another onAppear.
+                Color.clear.frame(height: 1)
+                    .onAppear {
+                        paginationFooterVisible = true
+                        loadMoreFromVisibleFooter()
+                    }
+                    .onDisappear { paginationFooterVisible = false }
             }
             .scrollTargetLayout()
         }
@@ -299,17 +338,33 @@ struct NotificationsView: View {
     }
 
     private func loadInitialAndMarkRead() async {
+        let sessionID = notificationUnreadStore.activeSessionID
         let newestNotificationID = await viewModel.loadInitial()
-        await markReadIfVisible(through: newestNotificationID)
+        await markReadIfVisible(through: newestNotificationID, sessionID: sessionID)
+    }
+
+    private func activateAndMarkRead() async {
+        let sessionID = notificationUnreadStore.activeSessionID
+        let newestNotificationID = await viewModel.activate(
+            forceRefresh: notificationUnreadStore.activeUnreadCount > 0)
+        await markReadIfVisible(through: newestNotificationID, sessionID: sessionID)
     }
 
     private func refreshAndMarkRead() async {
+        let sessionID = notificationUnreadStore.activeSessionID
         let newestNotificationID = await viewModel.refresh()
-        await markReadIfVisible(through: newestNotificationID)
+        // A refresh action can be cancelled during SwiftUI updates even while
+        // its feed stays visible. Recheck visibility and account before marking it.
+        await Task { @MainActor in
+            await markReadIfVisible(through: newestNotificationID, sessionID: sessionID)
+        }.value
     }
 
-    private func markReadIfVisible(through notificationID: String?) async {
-        guard notificationUnreadStore.isNotificationListVisible,
+    private func markReadIfVisible(through notificationID: String?, sessionID: String?) async {
+        // A filtered page must not mark unrelated, unseen notifications as read.
+        guard !Task.isCancelled, isActive, selectedFilter == .all,
+            sessionID == notificationUnreadStore.activeSessionID,
+            viewModel.scope == .everything, notificationUnreadStore.isNotificationListVisible,
             let notificationID
         else {
             return
@@ -317,19 +372,19 @@ struct NotificationsView: View {
         await notificationUnreadStore.markActiveNotificationsRead(through: notificationID)
     }
 
-    private var notificationFilterMenu: some View {
-        NotificationFilterMenu(
-            selectedFilter: selectedFilterBinding,
-            style: .labeled
-        )
-    }
-
-    private var selectedFilterBinding: Binding<NotificationFilter> {
-        selectedFilterOverride ?? $localSelectedFilter
-    }
-
-    private var selectedFilter: NotificationFilter {
-        selectedFilterBinding.wrappedValue
+    private var notificationSettingsButton: some View {
+        Button {
+            router.navigate(to: .notificationSettings)
+        } label: {
+            Image(systemName: "gearshape")
+                .moroScaledFont(size: 18, weight: .semibold)
+                .foregroundStyle(theme.colors.textPrimary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(MoroL10n.NotificationSettings.title)
+        .accessibilityIdentifier("notifications.settings")
     }
 
     private func actorsSheetTitle(for notification: NotificationDisplayItem) -> String {
@@ -347,89 +402,6 @@ struct NotificationsView: View {
         }
     }
 
-    private var hiddenByAppPolicyMessage: String {
-        let insight = viewModel.filterInsight
-        var reasons: [String] = []
-        if insight.hiddenByTypeCount > 0 {
-            reasons.append(MoroL10n.Notifications.policyHiddenByType(insight.hiddenByTypeCount))
-        }
-        if insight.hiddenByPolicyCount > 0 {
-            reasons.append(MoroL10n.Notifications.policyHiddenBySource(insight.hiddenByPolicyCount))
-        }
-
-        let reasonText = reasons.isEmpty ? MoroL10n.Notifications.policyDefaultMessage : reasons.joined(separator: "，")
-        return MoroL10n.Notifications.policySettingsHint(reasonText)
-    }
-}
-
-struct NotificationFilterMenu: View {
-    @Binding var selectedFilter: NotificationFilter
-    let style: NotificationFilterMenuStyle
-
-    @Environment(\.moroTheme) private var theme
-
-    var body: some View {
-        Menu {
-            Picker(MoroL10n.Notifications.accessibilityFilter, selection: $selectedFilter) {
-                ForEach(NotificationFilter.allCases) { filter in
-                    Text(filter.title)
-                        .tag(filter)
-                }
-            }
-        } label: {
-            switch style {
-            case .labeled:
-                HStack(spacing: 5) {
-                    Text(selectedFilter.title)
-                        .foregroundStyle(theme.colors.textPrimary)
-                        .contentTransition(.opacity)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
-                        .allowsTightening(true)
-
-                    Image(systemName: "chevron.down")
-                        .moroScaledFont(size: 10, weight: .semibold)
-                        .foregroundStyle(theme.colors.textTertiary)
-                }
-                .padding(.horizontal, 12)
-                .frame(height: 32)
-                .background(theme.colors.surfaceSubtle)
-                .clipShape(Capsule())
-                .overlay {
-                    Capsule()
-                        .stroke(theme.colors.borderSubtle, lineWidth: 1)
-                }
-                .font(theme.typography.caption)
-                .fontWeight(.semibold)
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-
-            case .icon:
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: "line.3.horizontal.decrease")
-                        .moroScaledFont(size: 18, weight: .semibold)
-                        .foregroundStyle(
-                            selectedFilter == .all
-                                ? theme.colors.textPrimary
-                                : theme.colors.primary500
-                        )
-                        .frame(width: 44, height: 44)
-
-                    if selectedFilter != .all {
-                        Circle()
-                            .fill(theme.colors.primary500)
-                            .frame(width: 7, height: 7)
-                            .offset(x: -7, y: 7)
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-        }
-        .buttonStyle(.plain)
-        .animation(.easeOut(duration: 0.15), value: selectedFilter)
-        .accessibilityLabel(MoroL10n.Notifications.accessibilityFilter)
-        .accessibilityValue(selectedFilter.title)
-    }
 }
 
 private struct NotificationActorsSheetState: Identifiable {

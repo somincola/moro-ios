@@ -25,7 +25,7 @@ final class MoroWidgetSharedStoreTests: XCTestCase {
         super.tearDown()
     }
 
-    func testLoadSnapshotCombinesActiveAccountUnreadCountAndProfileCounts() throws {
+    func testLoadSnapshotUsesNotificationUnreadCountWithoutAddingConversationUnread() throws {
         let account = MoroWidgetAccount(
             id: "account-1",
             username: "moro",
@@ -58,7 +58,7 @@ final class MoroWidgetSharedStoreTests: XCTestCase {
 
         XCTAssertEqual(snapshot.sessionID, "session-1")
         XCTAssertEqual(snapshot.account, account)
-        XCTAssertEqual(snapshot.unreadCount, 9)
+        XCTAssertEqual(snapshot.unreadCount, 7)
         XCTAssertEqual(snapshot.account.followersCount, 1_234)
         XCTAssertEqual(snapshot.account.followingCount, 321)
         XCTAssertEqual(snapshot.updatedAt, updatedAt)

@@ -66,8 +66,6 @@ final class NotificationService: UNNotificationServiceExtension {
         static let appGroup = "group.com.somincola.moro.app"
         static let countsBySession = "notification_unread_counts_by_session_v1"
         static let recentIDsBySession = "notification_unread_recent_ids_by_session_v1"
-        static let directMessageUnreadIDsBySession =
-            "direct_message_unread_conversation_ids_by_session_v1"
     }
 
     private func applyUnreadBadge(to content: UNMutableNotificationContent) {
@@ -111,16 +109,7 @@ final class NotificationService: UNNotificationServiceExtension {
             WidgetCenter.shared.reloadTimelines(ofKind: "com.somincola.moro.widget.quick-actions")
         }
 
-        let directMessageUnreadCount = defaults.dictionary(
-            forKey: BadgeKeys.directMessageUnreadIDsBySession
-        )?.values.reduce(into: 0) { result, value in
-            if let ids = value as? [String] {
-                result += Set(ids).count
-            }
-        } ?? 0
-        content.badge = NSNumber(
-            value: counts.values.reduce(0, +) + directMessageUnreadCount
-        )
+        content.badge = NSNumber(value: counts.values.reduce(0, +))
     }
 
     // MARK: - Mastodon payload

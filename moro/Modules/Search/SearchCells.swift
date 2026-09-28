@@ -10,6 +10,9 @@ import SwiftUI
 import UIKit
 
 final class SearchLandingPlaceholderView: UIView {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private let iconBubble = UIView()
     private let iconView = UIImageView()
     private let titleLabel = UILabel()
@@ -95,6 +98,9 @@ final class SearchLandingPlaceholderView: UIView {
 }
 
 final class SearchCenterStateView: UIView {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     enum AnimationStyle {
         case none
         case typingCursor
@@ -331,6 +337,9 @@ final class SearchCenterStateView: UIView {
 }
 
 final class SearchLoadingMoreCell: UITableViewCell {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let reuseIdentifier = "LoadingMoreCell"
 
     private let indicator = UIActivityIndicatorView(style: .medium)
@@ -417,6 +426,9 @@ final class SearchLoadingMoreCell: UITableViewCell {
 
 /// Suspend search-field focus restoration for the full native menu presentation.
 final class SearchScopeMenuButton: UIButton {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     var onMenuWillDisplay: (() -> Void)?
     var onMenuDidEnd: (() -> Void)?
 
@@ -444,6 +456,9 @@ final class SearchScopeMenuButton: UIButton {
 }
 
 final class SearchResultLineCell: UITableViewCell {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let reuseIdentifier = "SearchResultLineCell"
     static let accountReuseIdentifier = "SearchAccountResultLineCell"
 

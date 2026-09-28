@@ -53,6 +53,9 @@ struct AccountRelationship: Codable, Equatable {
 /// Central coordinator for feed updates
 @MainActor
 final class FeedCoordinator: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     /// Published property that ViewModels can observe
     @Published var mostRecentUpdate: UpdatedElement?
     let updates = PassthroughSubject<UpdatedElement, Never>()

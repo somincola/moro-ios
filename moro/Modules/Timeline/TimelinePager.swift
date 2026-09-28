@@ -36,6 +36,9 @@ import UIKit
     }
 
     final class TimelinePageHostingController: UIHostingController<AnyView> {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         let timelineType: TimelineType
 
         init(timelineType: TimelineType, rootView: AnyView) {
@@ -51,6 +54,9 @@ import UIKit
     }
 
     final class TimelineSelectionViewController: UIViewController {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         private(set) var currentHost: TimelinePageHostingController?
 
         override func viewDidLoad() {
@@ -113,6 +119,9 @@ import UIKit
         }
 
         final class Coordinator: NSObject {
+            // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+            nonisolated deinit {}
+
             private var selection: Binding<TimelineType>
             private var pages: [TimelinePagerPage]
             private var hosts: [TimelineType: TimelinePageHostingController] = [:]

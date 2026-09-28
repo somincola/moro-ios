@@ -4,6 +4,9 @@ import Combine
 
 @MainActor
 final class EditProfileViewModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     enum Scope { case basic, fields, all }
     let scope: Scope
     static let maxFieldCount = 4

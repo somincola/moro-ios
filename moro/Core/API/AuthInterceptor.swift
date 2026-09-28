@@ -12,6 +12,9 @@ protocol AuthTokenProvider: AnyObject {
 }
 
 final class AuthInterceptor {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     // Held strongly: one-shot authenticated clients (login / session restore / account
     // switch) pass a short-lived AppState as the provider. A weak ref let ARC release it
     // right after its last syntactic use — before the request ran — so the Bearer token

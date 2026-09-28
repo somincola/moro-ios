@@ -462,6 +462,9 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
     }
 
     private final class MainShellHostingController: UIHostingController<AnyView> {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         let sceneDescriptor: MoroSceneDescriptor
 
         private let contentRootView: AnyView
@@ -526,6 +529,9 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
     private final class MainShellNavigationController: UINavigationController, UINavigationControllerDelegate,
         AppRouterNavigator
     {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         private let router: AppRouter
         private var routeView: (Route, AppRouter) -> AnyView
         private let onRootStateChanged: (Bool) -> Void

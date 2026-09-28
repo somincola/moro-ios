@@ -32,6 +32,7 @@ struct PostToolbar: View {
     var onBlockAndReport: (() -> Void)? = nil
     var onReport: (() -> Void)? = nil
     var onPin: (() -> Void)? = nil
+    var onDeleteAndRedraft: (() -> Void)? = nil
     var onDelete: (() -> Void)? = nil
     var showCounts: Bool = true
 
@@ -85,7 +86,7 @@ struct PostToolbar: View {
             activeIcon: "arrow.2.squarepath",
             inactiveIcon: "arrow.2.squarepath",
             isActive: status.reblogged,
-            activeColor: theme.colors.primary500,
+            activeColor: theme.colors.boostActive,
             inactiveColor: canBoost ? theme.colors.textSecondary : theme.colors.textTertiary,
             count: showCounts ? status.reblogsCount : 0,
             isDisabled: !canBoost,
@@ -119,7 +120,7 @@ struct PostToolbar: View {
             activeIcon: "bookmark.fill",
             inactiveIcon: "bookmark",
             isActive: status.bookmarked,
-            activeColor: theme.colors.primary500,
+            activeColor: theme.colors.bookmarkActive,
             inactiveColor: theme.colors.textSecondary,
             count: 0,
             isDisabled: false,
@@ -146,6 +147,7 @@ struct PostToolbar: View {
             onBlockAndReport: onBlockAndReport,
             onReport: onReport,
             onPin: onPin,
+            onDeleteAndRedraft: onDeleteAndRedraft,
             onDelete: onDelete,
             iconSize: PostToolbarMetrics.iconSize
         )

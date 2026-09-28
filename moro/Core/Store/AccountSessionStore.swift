@@ -43,6 +43,9 @@ struct SharedActiveAccountSessionSnapshot: Codable, Equatable {
 }
 
 final class SharedActiveAccountSessionBootstrapStore {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = SharedActiveAccountSessionBootstrapStore(
         userDefaults: MoroSharedContainer.sharedUserDefaults()
     )
@@ -94,6 +97,9 @@ final class SharedActiveAccountSessionBootstrapStore {
 }
 
 final class AccountSessionStore {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private enum Keys {
         static let sessions = "stored_account_sessions"
         static let activeSessionID = "active_account_session_id"
@@ -105,6 +111,8 @@ final class AccountSessionStore {
     private let userDefaults: UserDefaults
     private let legacyUserDefaults: UserDefaults?
     private let bootstrapStore: SharedActiveAccountSessionBootstrapStore
+    private let notificationSnapshots: NotificationSnapshotStore
+    private let notificationPolicySnapshots: NotificationPolicySnapshotStore
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -121,12 +129,16 @@ final class AccountSessionStore {
         keychain: KeychainService,
         userDefaults: UserDefaults,
         legacyUserDefaults: UserDefaults? = nil,
-        bootstrapStore: SharedActiveAccountSessionBootstrapStore = .shared
+        bootstrapStore: SharedActiveAccountSessionBootstrapStore = .shared,
+        notificationSnapshots: NotificationSnapshotStore? = nil,
+        notificationPolicySnapshots: NotificationPolicySnapshotStore? = nil
     ) {
         self.keychain = keychain
         self.userDefaults = userDefaults
         self.legacyUserDefaults = legacyUserDefaults
         self.bootstrapStore = bootstrapStore
+        self.notificationSnapshots = notificationSnapshots ?? .shared
+        self.notificationPolicySnapshots = notificationPolicySnapshots ?? .shared
         migrateLegacyDefaultsIfNeeded()
         syncSharedBootstrapSnapshot()
     }
@@ -216,6 +228,10 @@ final class AccountSessionStore {
         }
         guard let instanceURL = session.instanceURL else { return }
 
+        if let previous = activeSessionID, previous != id {
+            notificationSnapshots.invalidateSession(previous)
+            notificationPolicySnapshots.invalidateSession(previous)
+        }
         userDefaults.set(id, forKey: Keys.activeSessionID)
 
         var sessions = loadSessions()
@@ -248,6 +264,8 @@ final class AccountSessionStore {
     }
 
     func removeSession(id: String) throws {
+        notificationSnapshots.removeSession(id)
+        notificationPolicySnapshots.removeSession(id)
         var sessions = loadSessions()
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
 
@@ -271,6 +289,8 @@ final class AccountSessionStore {
     func clearAllSessions() {
         let sessions = loadSessions()
         for session in sessions {
+            notificationSnapshots.removeSession(session.id)
+            notificationPolicySnapshots.removeSession(session.id)
             try? keychain.delete(forKey: session.tokenStorageKey)
         }
         userDefaults.removeObject(forKey: Keys.sessions)

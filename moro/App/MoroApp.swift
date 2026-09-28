@@ -211,7 +211,11 @@ struct MoroApp: App {
 
     @ViewBuilder private var timelineLiveHarness: some View {
         #if DEBUG
-        TimelineLiveHarnessView()
+        if launchArguments.contains("UITEST_TIMELINE_SWITCHING") {
+            TimelineSwitchingHarnessView()
+        } else {
+            TimelineLiveHarnessView()
+        }
         #endif
     }
 

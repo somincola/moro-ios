@@ -92,11 +92,12 @@ struct DetailPostCard: View {
                 onBlockAndReport: actions.menu?.onBlockAndReport,
                 onReport: actions.menu?.onReport,
                 onPin: actions.onPin,
+                onDeleteAndRedraft: actions.onDeleteAndRedraft,
                 onDelete: actions.onDelete,
                 showCounts: true
             )
         }
-        .padding(.horizontal, theme.spacing.l)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.top, theme.spacing.m)
     }
 }

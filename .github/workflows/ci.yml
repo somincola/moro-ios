@@ -148,3 +148,84 @@ jobs:
           path: TestResults.xcresult
           retention-days: 3
           if-no-files-found: ignore
+
+  ios26-compatibility:
+    name: iOS 26.2 compatibility
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Select Xcode 26.6
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.6"
+
+      - name: Require the iOS 26.2 runtime
+        id: sim
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          swift --version
+          runtime_id() {
+            xcrun simctl list runtimes --json | ruby -rjson -e '
+              runtime = JSON.parse(STDIN.read).fetch("runtimes").find do |item|
+                item["identifier"].start_with?("com.apple.CoreSimulator.SimRuntime.iOS-") &&
+                  item["version"] == "26.2" && item["isAvailable"]
+              end
+              puts runtime["identifier"] if runtime
+            '
+          }
+          RUNTIME_ID="$(runtime_id)"
+          if [[ -z "$RUNTIME_ID" ]]; then
+            xcodebuild -downloadPlatform iOS -buildVersion 26.2
+            RUNTIME_ID="$(runtime_id)"
+          fi
+          if [[ -z "$RUNTIME_ID" ]]; then
+            echo "::error::iOS 26.2 is required; a newer runtime would mask the regression."
+            exit 1
+          fi
+          xcrun simctl list runtimes
+          UDID="$(xcrun simctl create 'Moro iOS 26.2 Compatibility' com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro "$RUNTIME_ID")"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: Run synchronous teardown and feature regressions on iOS 26.2
+        run: |
+          set -euo pipefail
+          xcodebuild -project moro.xcodeproj -scheme moro \
+            -configuration Debug -derivedDataPath CompatibilityDerivedData \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -testPlan Moro-UnitTests -parallel-testing-enabled NO \
+            -only-testing:moroTests/IOS26DeinitCompatibilityTests \
+            -only-testing:moroTests/RootTabCoordinatorTests \
+            -only-testing:moroTests/TimelinePresentationTests \
+            -only-testing:moroTests/TimelineLiveUpdatesTests \
+            -only-testing:moroTests/NotificationSnapshotTests \
+            -only-testing:moroTests/NotificationPolicySnapshotTests \
+            -only-testing:moroTests/ComposePublishingTests \
+            -only-testing:moroTests/ProfilePresentationTests \
+            -resultBundlePath CompatibilityResults.xcresult \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="-" \
+            DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" test
+          bash scripts/check-ios26-compatibility-results.sh CompatibilityResults.xcresult
+
+      - name: Check Release teardown symbols including private child types
+        run: |
+          set -euo pipefail
+          xcodebuild -project moro.xcodeproj -scheme moro \
+            -configuration Release -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath CompatibilityDerivedData \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="-" \
+            DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" build
+          bash scripts/check-isolated-deinits.sh \
+            CompatibilityDerivedData/Build/Products/Release-iphonesimulator/moro.app/moro
+
+      - name: Upload compatibility test evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-26.2-CompatibilityResults
+          path: CompatibilityResults.xcresult
+          retention-days: 7
+          if-no-files-found: ignore

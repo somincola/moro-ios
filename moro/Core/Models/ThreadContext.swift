@@ -125,6 +125,9 @@ struct ThreadItem: Identifiable {
 
 /// Manages a complete thread conversation with proper ordering and context
 final class ThreadedConversationModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     /// The ID of the focused post
     let focusedID: String
     

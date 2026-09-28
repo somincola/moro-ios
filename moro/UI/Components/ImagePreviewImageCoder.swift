@@ -5,6 +5,9 @@ import SDWebImage
 /// Calculate a thumbnail size before decoding instead of allocating a full bitmap
 /// and shrinking it afterwards. This coder is local to the fullscreen viewer.
 final class ImagePreviewImageCoder: NSObject, SDImageCoder, @unchecked Sendable {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     nonisolated static let shared = ImagePreviewImageCoder()
     nonisolated static let maximumPixelCount: Double = 8 * 1024 * 1024
 

@@ -259,7 +259,7 @@ struct AnnouncementDetailView: View {
                         .foregroundStyle(theme.colors.error)
                 }
             }
-            .padding(.horizontal, theme.spacing.l)
+            .padding(.horizontal, theme.spacing.contentHorizontalInset)
             .padding(.vertical, theme.spacing.l)
         }
         .navigationTitle(MoroL10n.Announcements.title)

@@ -10,6 +10,9 @@ import SwiftUI
 
 @MainActor
 final class ProfileConnectionsViewModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     enum LoadingState: Equatable {
         case idle
         case loading

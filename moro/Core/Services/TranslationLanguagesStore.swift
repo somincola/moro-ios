@@ -13,6 +13,9 @@ import Foundation
 
 @MainActor
 final class TranslationLanguagesStore: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = TranslationLanguagesStore()
 
     /// Source code (lowercased) → supported target codes, as returned by the

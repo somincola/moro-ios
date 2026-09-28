@@ -39,9 +39,8 @@ struct PostCard: View {
     var accountCache: AccountCache? = nil
 
     private enum Metrics {
-        static let horizontalPadding: CGFloat = 20
-        static let avatarSize: CGFloat = 44
-        static let avatarContentSpacing: CGFloat = 12
+        static let avatarSize: CGFloat = MoroLayoutMetrics.timelineAvatarSize
+        static let avatarContentSpacing: CGFloat = MoroLayoutMetrics.timelineAvatarContentSpacing
         static let contextBottomSpacing: CGFloat = 5
         static let actionTopSpacing: CGFloat = 2
 
@@ -146,7 +145,7 @@ struct PostCard: View {
                 }
             }
         }
-        .padding(.horizontal, Metrics.horizontalPadding)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.top, density.rowTopPadding)
         .padding(
             .bottom,
@@ -228,6 +227,7 @@ struct PostCard: View {
                             onBlockAndReport: actions.menu?.onBlockAndReport,
                             onReport: actions.menu?.onReport,
                             onPin: actions.onPin,
+                            onDeleteAndRedraft: actions.onDeleteAndRedraft,
                             onDelete: actions.onDelete,
                             showCounts: true
                         )

@@ -162,20 +162,19 @@ struct StatusDetailView: View {
             }
         }
         .alert(MoroL10n.ComposeDrafts.deleteConfirmTitle, isPresented: Binding(
-            get: { actionSurface.statusToDelete != nil },
+            get: { actionSurface.deleteRequest != nil },
             set: {
                 if !$0 { actionSurface.clearDeleteRequest() }
             }
         )) {
-            Button(MoroL10n.ComposeDrafts.deleteAndRedraftAction, role: .destructive) {
-                if let status = actionSurface.statusToDelete {
-                    handlers.performDelete(status, redraft: true)
-                }
-                actionSurface.clearDeleteRequest()
-            }
-            Button(MoroL10n.ComposeDrafts.deleteAction, role: .destructive) {
-                if let status = actionSurface.statusToDelete {
-                    handlers.performDelete(status)
+            Button(
+                actionSurface.deleteRequest?.shouldRedraft == true
+                    ? MoroL10n.ComposeDrafts.deleteAndRedraftAction
+                    : MoroL10n.ComposeDrafts.deleteAction,
+                role: .destructive
+            ) {
+                if let request = actionSurface.deleteRequest {
+                    handlers.performDelete(request.status, redraft: request.shouldRedraft)
                 }
                 actionSurface.clearDeleteRequest()
             }
@@ -308,7 +307,7 @@ struct StatusDetailView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(theme.colors.primary500)
             }
-            .padding(.horizontal, theme.spacing.l)
+            .padding(.horizontal, theme.spacing.contentHorizontalInset)
             .padding(.vertical, theme.spacing.m)
         case .loaded:
             EmptyView()
@@ -333,6 +332,7 @@ struct StatusDetailView: View {
             onBlockAndReport: actions.menu?.onBlockAndReport,
             onReport: actions.menu?.onReport,
             onPin: actions.onPin,
+            onDeleteAndRedraft: actions.onDeleteAndRedraft,
             onDelete: actions.onDelete
         )
         .frame(width: 36, height: 44)

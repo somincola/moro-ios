@@ -30,6 +30,9 @@ struct AVPlayerLayerView: UIViewRepresentable {
 }
 
 class PlayerLayerView: UIView {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     var playerLayer: AVPlayerLayer {
         return layer as! AVPlayerLayer
     }

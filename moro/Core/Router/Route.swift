@@ -90,6 +90,9 @@ enum Route: Hashable {
     /// Navigate to current instance details
     case instanceDetails
 
+    /// Manage server notification intake and device push preferences.
+    case notificationSettings
+
     /// Navigate to current account edit profile page.
     case editProfile
 
@@ -155,6 +158,8 @@ enum Route: Hashable {
             hasher.combine("scheduledStatuses")
         case .instanceDetails:
             hasher.combine("instanceDetails")
+        case .notificationSettings:
+            hasher.combine("notificationSettings")
         case .editProfile:
             hasher.combine("editProfile")
         }
@@ -203,6 +208,8 @@ enum Route: Hashable {
         case (.scheduledStatuses, .scheduledStatuses):
             return true
         case (.instanceDetails, .instanceDetails):
+            return true
+        case (.notificationSettings, .notificationSettings):
             return true
         case (.editProfile, .editProfile):
             return true

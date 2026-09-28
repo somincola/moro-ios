@@ -219,6 +219,7 @@ final class TimelineLiveUITests: XCTestCase {
         let start = Date()
         pill.tap()
         XCTAssertTrue(wait { self.post(in: app, id: 120).isHittable })
+        XCTAssertEqual(post(in: app, id: 120).frame.minX, 72, accuracy: 1)
         XCTAssertLessThan(Date().timeIntervalSince(start), 3)
         XCTAssertTrue(wait { app.staticTexts["timeline.fixture.count"].label == "80/0" })
         XCTAssertFalse(pill.exists)

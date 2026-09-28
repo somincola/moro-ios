@@ -106,15 +106,15 @@ final class RootTabCoordinatorTests: XCTestCase {
     func testInboxSelectionPersistsAcrossTabSwitches() async {
         let coordinator = RootTabCoordinator()
 
-        coordinator.openInbox(.messages)
+        coordinator.openInbox(.mentions)
         coordinator.selectTab(.me)
         coordinator.selectTab(.inbox)
 
-        XCTAssertEqual(coordinator.inboxSection, .messages)
+        XCTAssertEqual(coordinator.inboxFilter, .mentions)
         XCTAssertEqual(coordinator.selectedTab, .inbox)
     }
 
-    func testExternalConversationOpenSelectsMessagesAndReplacesInboxPath() async {
+    func testExternalConversationOpenReturnsToMentionsAndReplacesInboxPath() async {
         let coordinator = RootTabCoordinator(selectedTab: .home)
         let conversation = Conversation(
             id: "conversation-1",
@@ -128,8 +128,19 @@ final class RootTabCoordinatorTests: XCTestCase {
         coordinator.openConversation(conversation)
 
         XCTAssertEqual(coordinator.selectedTab, .inbox)
-        XCTAssertEqual(coordinator.inboxSection, .messages)
+        XCTAssertEqual(coordinator.inboxFilter, .mentions)
         XCTAssertEqual(coordinator.inboxRouter.path.count, 1)
         XCTAssertTrue(coordinator.homeRouter.path.isEmpty)
+    }
+
+    func testMessagePushFallbackOpensMentionsWithoutTheRemovedMessagesSection() {
+        let coordinator = RootTabCoordinator()
+        coordinator.inboxRouter.navigate(to: .bookmarks)
+
+        coordinator.openPushNotification(.messages)
+
+        XCTAssertEqual(coordinator.selectedTab, .inbox)
+        XCTAssertEqual(coordinator.inboxFilter, .mentions)
+        XCTAssertTrue(coordinator.inboxRouter.path.isEmpty)
     }
 }

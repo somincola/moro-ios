@@ -1356,6 +1356,36 @@ public enum MoroL10n {
     public enum NotificationSettings {
         public static var title: String { text("notifSettings.title") }
         public static var receiveFrom: String { text("notifSettings.inApp.receiveFrom") }
+        public static var sectionIntake: String { text("notifSettings.section.intake") }
+        public static var intakeFooter: String { text("notifSettings.intake.footer") }
+        public static var notFollowing: String { text("notifSettings.intake.notFollowing") }
+        public static var notFollowingDetail: String {
+            text("notifSettings.intake.notFollowing.detail")
+        }
+        public static var notFollowers: String { text("notifSettings.intake.notFollowers") }
+        public static var notFollowersDetail: String {
+            text("notifSettings.intake.notFollowers.detail")
+        }
+        public static var newAccounts: String { text("notifSettings.intake.newAccounts") }
+        public static var newAccountsDetail: String {
+            text("notifSettings.intake.newAccounts.detail")
+        }
+        public static var privateMentions: String { text("notifSettings.intake.privateMentions") }
+        public static var privateMentionsDetail: String {
+            text("notifSettings.intake.privateMentions.detail")
+        }
+        public static var limitedAccounts: String { text("notifSettings.intake.limitedAccounts") }
+        public static var limitedAccountsDetail: String {
+            text("notifSettings.intake.limitedAccounts.detail")
+        }
+        public static var bots: String { text("notifSettings.intake.bots") }
+        public static var botsDetail: String { text("notifSettings.intake.bots.detail") }
+        public static var policyAccept: String { text("notifSettings.policy.accept") }
+        public static var policyFilter: String { text("notifSettings.policy.filter") }
+        public static var policyDrop: String { text("notifSettings.policy.drop") }
+        public static var policyUnsupported: String { text("notifSettings.policy.unsupported") }
+        public static var requestsTitle: String { text("notifSettings.requests.title") }
+        public static var requestsEmptyMessage: String { text("notifSettings.requests.empty.message") }
         public static var sectionDisplay: String { text("notifSettings.section.display") }
         public static var sectionType: String { text("notifSettings.section.type") }
         public static var typeMentions: String { text("notifSettings.type.mentions") }
@@ -1363,6 +1393,8 @@ public enum MoroL10n {
         public static var typeFavourites: String { text("notifSettings.type.favourites") }
         public static var typeNewFollowers: String { text("notifSettings.type.newFollowers") }
         public static var sectionPush: String { text("notifSettings.section.push") }
+        public static var pushFooter: String { text("notifSettings.push.footer") }
+        public static var pushUnavailable: String { text("notifSettings.push.unavailable") }
         public static var openSystemSettings: String { text("notifSettings.push.openSystemSettings") }
     }
 

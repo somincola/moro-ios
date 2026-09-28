@@ -16,7 +16,12 @@ struct MoroSettingsSwitchStyle: ToggleStyle {
         static let thumbSize: CGFloat = 24
         static let horizontalInset: CGFloat = 3
         static let minimumTapHeight: CGFloat = 44
-        static let rowInsets = EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16)
+        static let rowInsets = EdgeInsets(
+            top: 4,
+            leading: MoroLayoutMetrics.contentHorizontalInset,
+            bottom: 4,
+            trailing: MoroLayoutMetrics.contentHorizontalInset
+        )
     }
 
     func makeBody(configuration: Configuration) -> some View {

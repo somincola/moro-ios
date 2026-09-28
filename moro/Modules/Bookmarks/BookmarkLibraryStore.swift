@@ -4,6 +4,9 @@ import Foundation
 /// Account-scoped reading state and a bounded, disposable copy of bookmark bodies.
 @MainActor
 final class BookmarkLibraryStore {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private struct Snapshot: Codable {
         let statuses: [Status]
         let updatedAt: Date

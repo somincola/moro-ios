@@ -7,12 +7,29 @@
 
 import Combine
 
+struct PostDeleteRequest {
+    enum Mode: Equatable {
+        case delete
+        case redraft
+    }
+
+    let status: Status
+    let mode: Mode
+
+    var shouldRedraft: Bool {
+        mode == .redraft
+    }
+}
+
 @MainActor
 final class PostActionSurfaceCenter: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     @Published var boostDialogStatus: Status?
     @Published var composeContext: ComposeContextWrapper?
     @Published var reportStatus: Status?
-    @Published var statusToDelete: Status?
+    @Published private(set) var deleteRequest: PostDeleteRequest?
 
     func presentBoostOrToggle(
         for status: Status,
@@ -68,10 +85,14 @@ final class PostActionSurfaceCenter: ObservableObject {
     }
 
     func requestDelete(_ status: Status) {
-        statusToDelete = status
+        deleteRequest = PostDeleteRequest(status: status, mode: .delete)
+    }
+
+    func requestDeleteAndRedraft(_ status: Status) {
+        deleteRequest = PostDeleteRequest(status: status, mode: .redraft)
     }
 
     func clearDeleteRequest() {
-        statusToDelete = nil
+        deleteRequest = nil
     }
 }

@@ -99,6 +99,9 @@ extension Array where Element == ContentElement {
 /// Parser for Mastodon HTML content
 struct ContentParser {
     private final class CachedElementsBox {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         let elements: [ContentElement]
 
         init(_ elements: [ContentElement]) {

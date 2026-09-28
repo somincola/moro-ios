@@ -52,6 +52,9 @@ enum ReportReason: String, CaseIterable, Identifiable {
 
 @MainActor
 class ReportViewModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     enum StepErrorContext {
         case loadStatuses
         case loadMore

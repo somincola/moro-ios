@@ -13,11 +13,16 @@ struct NotificationRowTapHarnessView: View {
     private let notifications = Self.makeNotifications()
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 0) {
             Text("tap:\(lastTap)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, MoroLayoutMetrics.contentHorizontalInset)
+                .padding(.vertical, 8)
                 .accessibilityIdentifier("notification.tapResult")
+
+            Divider()
 
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -43,7 +48,6 @@ struct NotificationRowTapHarnessView: View {
                 }
             }
         }
-        .padding(16)
         .background(Color(.systemBackground))
     }
 

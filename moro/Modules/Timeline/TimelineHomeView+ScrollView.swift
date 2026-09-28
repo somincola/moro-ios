@@ -36,7 +36,9 @@ extension TimelineHomeView {
 
                     TimelinePullRefreshSlot(
                         maxHeight: pullRefreshReservedHeight,
-                        subject: scrollBridge.pullRefreshSubject(for: timelineType)
+                        subject: scrollBridge.pullRefreshSubject(for: timelineType),
+                        bridge: scrollBridge,
+                        timeline: timelineType
                     )
 
                     timelinePrimaryContent(for: viewModel, timelineType: timelineType)
@@ -152,12 +154,24 @@ extension TimelineHomeView {
         if remaining > 0 {
             try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
         }
-        scrollBridge.finishPullRefresh(for: timelineType)
+        let savedAnchor = viewModel.savedReadingAnchor.flatMap { anchor in
+            viewModel.statuses.contains { $0.id == anchor.statusID } ? anchor : nil
+        }
+        scrollBridge.finishPullRefresh(
+            for: timelineType,
+            preserving: savedAnchor,
+            revision: viewModel.presentationRevision
+        )
+        if selectedTimeline == timelineType {
+            processLiveUpdates(for: timelineType, viewModel: viewModel)
+        }
     }
 
     private struct TimelinePullRefreshSlot: View {
         let maxHeight: CGFloat
         let subject: CurrentValueSubject<TimelinePullRefreshVisualState, Never>
+        let bridge: TimelineScrollBridge
+        let timeline: TimelineType
 
         @Environment(\.moroTheme) private var theme
         @State private var state = TimelinePullRefreshVisualState.idle
@@ -194,11 +208,21 @@ extension TimelineHomeView {
             }
             .frame(height: slotHeight)
             .clipped()
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                if height <= 0.5 { bridge.pullRefreshSlotDidCollapse(for: timeline) }
+            }
+            .onAppear {
+                if slotHeight <= 0.5 { bridge.pullRefreshSlotDidCollapse(for: timeline) }
+            }
             .onReceive(subject) { nextState in
                 if isCollapsing(to: nextState) {
-                    withAnimation(.easeOut(duration: 0.24)) {
-                        state = nextState
-                    }
+                    // The slot is off screen while reading. An immediate layout
+                    // lets the bridge restore the anchor once, without animating
+                    // the entire timeline upward under the reader.
+                    let atTop = bridge.isAtTop(timeline)
+                    var transaction = Transaction(animation: atTop ? .easeOut(duration: 0.24) : nil)
+                    transaction.disablesAnimations = !atTop
+                    withTransaction(transaction) { state = nextState }
                 } else {
                     state = nextState
                 }
@@ -410,6 +434,7 @@ extension TimelineHomeView {
                 didFail: true,
                 onRetry: { Task { await viewModel.loadMore() } }
             )
+            .accessibilityIdentifier("timeline.pagination.retry")
         } else if !viewModel.hasMore && !viewModel.statuses.isEmpty {
             HStack {
                 Spacer()

@@ -30,6 +30,9 @@ struct ZoomableImageView: UIViewRepresentable {
 /// Keep the pager and its safe area stationary. Transforming the SwiftUI TabView
 /// during dismissal changes its page bounds and repeatedly refits the image.
 final class ImagePreviewPageView: UIView {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     let scrollView = ImagePreviewScrollView()
     var reduceMotion = false
     private var dragStartOffset: CGFloat?
@@ -106,6 +109,9 @@ struct ImageZoomGeometry {
 }
 
 final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     let imageView = UIImageView()
     var onSingleTap: (() -> Void)?
     var onInteractionBegan: (() -> Void)?

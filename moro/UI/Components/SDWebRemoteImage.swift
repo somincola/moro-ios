@@ -143,6 +143,9 @@ struct SDWebRemoteImage: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     final class Coordinator {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         var lastURL: URL?
         var lastAllowsAnimation = false
         var lastAnimationLoadingMode: SDWebRemoteImageAnimationLoadingMode = .standard

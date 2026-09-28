@@ -24,6 +24,9 @@ enum ComposeMediaSelectionPolicy {
 
 @MainActor
 final class ComposeViewModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     // MARK: - Compose Context
     
     enum ComposeContext: Hashable {

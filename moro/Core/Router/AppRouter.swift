@@ -25,6 +25,9 @@ final class AppRouter: ObservableObject {
     @Published var path = NavigationPath()
     weak var navigator: AppRouterNavigator?
 
+    // Avoid the isolated-deinit back-deployment crash on iOS 26.2 and earlier.
+    nonisolated deinit {}
+
     /// Navigate to a specific route by pushing it onto the navigation stack
     /// - Parameter route: The route to navigate to
     func navigate(to route: Route) {
@@ -218,6 +221,12 @@ struct AppRouteViewFactory {
         case .instanceDetails:
             return AnyView(
                 InstanceDetailsView(apiClient: apiClient)
+                    .toolbar(.hidden, for: .tabBar)
+            )
+
+        case .notificationSettings:
+            return AnyView(
+                NotificationSettingsView(apiClient: apiClient)
                     .toolbar(.hidden, for: .tabBar)
             )
 

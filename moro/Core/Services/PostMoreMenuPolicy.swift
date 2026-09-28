@@ -18,6 +18,7 @@ struct PostMoreMenuVisibility: Equatable {
     let showBlockAndReport: Bool
     let showReport: Bool
     let showPin: Bool
+    let showDeleteAndRedraft: Bool
     let showDelete: Bool
 
     var hasCommonActions: Bool {
@@ -25,7 +26,7 @@ struct PostMoreMenuVisibility: Equatable {
     }
 
     var hasOwnActions: Bool {
-        showEdit || showPin || showDelete
+        showEdit || showPin || showDeleteAndRedraft || showDelete
     }
 
     var hasOtherActions: Bool {
@@ -57,6 +58,7 @@ enum PostMoreMenuPolicy {
         hasBlockAndReport: Bool,
         hasReport: Bool,
         hasPin: Bool,
+        hasDeleteAndRedraft: Bool,
         hasDelete: Bool
     ) -> PostMoreMenuVisibility {
         let showOwnActions = isOwnPost
@@ -73,6 +75,7 @@ enum PostMoreMenuPolicy {
             showBlockAndReport: showOtherActions && hasBlockAndReport && isBlockingUser != true,
             showReport: showOtherActions && hasReport,
             showPin: showOwnActions && hasPin,
+            showDeleteAndRedraft: showOwnActions && hasDeleteAndRedraft,
             showDelete: showOwnActions && hasDelete
         )
     }

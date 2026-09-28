@@ -13,6 +13,196 @@ import UIKit
 import Combine
 
 struct moroTests {
+    @Test @MainActor func notificationRefreshFinishesWhenItsViewTaskIsCancelled() async {
+        let api = MockMastodonAPI()
+        let (started, signal) = AsyncStream<Void>.makeStream()
+        let (release, resume) = AsyncStream<Void>.makeStream()
+        var requestCount = 0
+        api.fetchNotificationsHandler = { _, sinceID, _, _ in
+            requestCount += 1
+            guard sinceID != nil else { return [self.makeNotification(id: "1", type: "update")] }
+            signal.yield(())
+            for await _ in release { break }
+            try Task.checkCancellation()
+            return [self.makeNotification(id: "2", type: "update")]
+        }
+        let model = NotificationsViewModel(apiClient: api)
+        await model.loadInitial()
+        let firstRefresh = Task { await model.refresh() }
+        for await _ in started { break }
+        firstRefresh.cancel()
+        let (joined, joinSignal) = AsyncStream<Void>.makeStream()
+        let secondRefresh = Task {
+            joinSignal.yield(())
+            return await model.refresh()
+        }
+        for await _ in joined { break }
+        resume.yield(())
+        resume.finish()
+        #expect(await firstRefresh.value == "2")
+        #expect(await secondRefresh.value == "2")
+        #expect(requestCount == 2)
+        #expect(model.notifications.map(\.id) == ["2", "1"])
+        if case .loaded = model.loadingState {} else { Issue.record("Refresh must leave the feed usable") }
+    }
+
+    @Test @MainActor func resolvedFollowRequestsDisappearFromEveryCachedNotificationFilter() async throws {
+        let settings = AppSettings.shared
+        let oldPolicy = settings.notificationPolicy
+        let oldFollowers = settings.receiveNewFollowers
+        settings.notificationPolicy = .anyone
+        settings.receiveNewFollowers = true
+        defer {
+            settings.notificationPolicy = oldPolicy
+            settings.receiveNewFollowers = oldFollowers
+        }
+        for shouldAccept in [true, false] {
+            let api = MockMastodonAPI()
+            api.authorizeFollowRequestHandler = { self.makeRelationship(id: $0, followedBy: true) }
+            api.rejectFollowRequestHandler = { self.makeRelationship(id: $0) }
+            api.fetchNotificationsHandler = { _, sinceID, _, _ in
+                sinceID == nil ? [self.makeNotification(id: "100", type: "follow_request")] : []
+            }
+            let feeds = NotificationFeedStore(apiClient: api)
+            let all = feeds.model(for: .everything)
+            let mentions = feeds.model(for: .mentions)
+            await all.activate()
+            await mentions.activate()
+            let request = try #require(mentions.notifications.first)
+            if shouldAccept {
+                await mentions.acceptFollowRequest(request)
+            } else {
+                await mentions.rejectFollowRequest(request)
+            }
+            #expect(mentions.notifications.isEmpty)
+            #expect(all.notifications.isEmpty)
+            await all.refresh()
+            #expect(all.notifications.isEmpty)
+        }
+    }
+
+    @Test @MainActor func notificationFiltersRequestMatchingTypesAndKeepAllOpenToFallbacks() {
+        for filter in NotificationFilter.allCases {
+            let scope = filter.serverScope
+            if filter == .all {
+                #expect(scope.types.isEmpty)
+                continue
+            }
+            for rawType in NotificationKind.supportedRawValues {
+                let item = NotificationDisplayItem.consolidate([
+                    makeNotification(id: "1", type: rawType)
+                ])[0]
+                #expect(filter.matches(item) == scope.types.contains(rawType))
+            }
+        }
+        #expect(MastodonNotificationScope.mentions.types == ["mention"])
+        let all = MastodonEndpoint.notifications(maxID: nil, sinceID: nil, limit: 30,
+            types: MastodonNotificationScope.everything.types,
+            supportedTypes: NotificationKind.supportedRawValues)
+        #expect(all.queryItems?.contains { $0.name == "types[]" } == false)
+        #expect(all.queryItems?.contains { $0.name == "supported_types[]" } == true)
+    }
+
+    @Test @MainActor func notificationFeedSwitchingKeepsIndependentHistoryAndRefreshCursors() async {
+        let settings = AppSettings.shared
+        let oldPolicy = settings.notificationPolicy
+        let oldFavourites = settings.receiveFavourites
+        settings.notificationPolicy = .anyone
+        settings.receiveFavourites = true
+        defer {
+            settings.notificationPolicy = oldPolicy
+            settings.receiveFavourites = oldFavourites
+        }
+        let api = MockMastodonAPI()
+        var calls: [(String?, String?, MastodonNotificationScope)] = []
+        api.fetchNotificationsHandler = { maxID, sinceID, _, scope in
+            calls.append((maxID, sinceID, scope))
+            if scope == .everything { return [self.makeNotification(id: "300", type: "update")] }
+            if sinceID != nil { return [self.makeNotification(id: "61", type: "mention")] }
+            let range = maxID == nil ? 31...60 : 1...30
+            return range.reversed().map { self.makeNotification(id: String($0), type: "mention") }
+        }
+        let feeds = NotificationFeedStore(apiClient: api, minimumRefreshInterval: 0)
+        let all = feeds.model(for: .everything)
+        let mentions = feeds.model(for: .mentions)
+        await all.activate()
+        await mentions.activate()
+        await mentions.loadMore()
+        #expect(feeds.model(for: .everything) === all)
+        #expect(feeds.model(for: .mentions) === mentions)
+        await feeds.model(for: .mentions).activate()
+        #expect(calls.last?.1 == "60" && calls.last?.2 == .mentions)
+        await mentions.loadMore()
+        #expect(calls.last?.0 == "1" && calls.last?.1 == nil)
+        #expect(all.notifications.map(\.id) == ["300"])
+    }
+
+    @Test @MainActor func notificationActivationSurvivesRapidSwitchAwayAndBack() async {
+        let api = MockMastodonAPI()
+        let (started, signal) = AsyncStream<Void>.makeStream()
+        let (release, resume) = AsyncStream<Void>.makeStream()
+        var requestCount = 0
+        api.fetchNotificationsHandler = { _, _, _, _ in
+            requestCount += 1
+            signal.yield(())
+            for await _ in release { break }
+            try Task.checkCancellation()
+            return [self.makeNotification(id: "1", type: "update")]
+        }
+        let model = NotificationsViewModel(apiClient: api)
+        let firstVisit = Task { await model.activate() }
+        for await _ in started { break }
+        firstVisit.cancel()
+        let (joined, joinSignal) = AsyncStream<Void>.makeStream()
+        let secondVisit = Task {
+            joinSignal.yield(())
+            return await model.activate()
+        }
+        for await _ in joined { break }
+        resume.yield(())
+        resume.finish()
+        #expect(await secondVisit.value == "1")
+        _ = await firstVisit.value
+        #expect(requestCount == 1)
+        #expect(model.notifications.map(\.id) == ["1"])
+        if case .loaded = model.loadingState {} else { Issue.record("Returned feed must be usable") }
+    }
+
+    @Test @MainActor func notificationMentionsUseTheirOwnServerScopeAndPagination() async {
+        let settings = AppSettings.shared
+        let oldPolicy = settings.notificationPolicy
+        let oldMentions = settings.receiveMentionsAndReplies
+        settings.notificationPolicy = .anyone
+        settings.receiveMentionsAndReplies = true
+        defer {
+            settings.notificationPolicy = oldPolicy
+            settings.receiveMentionsAndReplies = oldMentions
+        }
+
+        let api = MockMastodonAPI()
+        var calls: [(maxID: String?, scope: MastodonNotificationScope)] = []
+        api.fetchNotificationsHandler = { maxID, _, _, scope in
+            calls.append((maxID, scope))
+            if maxID == nil {
+                return (31...60).reversed().map {
+                    self.makeNotification(id: String($0), type: "mention")
+                }
+            }
+            return [self.makeNotification(id: "30", type: "mention")]
+        }
+
+        let model = NotificationsViewModel(apiClient: api, scope: .mentions)
+        await model.loadInitial()
+        await model.loadMore()
+
+        #expect(calls.count == 2)
+        #expect(calls[0].maxID == nil && calls[0].scope == .mentions)
+        #expect(calls[1].maxID == "31" && calls[1].scope == .mentions)
+        #expect(model.notifications.count == 31)
+        #expect(NotificationFilter.mentions.serverScope == .mentions)
+        #expect(NotificationFilter.all.serverScope == .everything)
+    }
+
     @Test @MainActor func notificationEmptyFilterCanLoadOlderMatchesAndRetryTheSameCursor() async {
         let settings = AppSettings.shared
         let oldPolicy = settings.notificationPolicy
@@ -26,7 +216,7 @@ struct moroTests {
         let api = MockMastodonAPI()
         var failPagination = true
         var cursors: [String?] = []
-        api.fetchNotificationsHandler = { maxID, _, _ in
+        api.fetchNotificationsHandler = { maxID, _, _, _ in
             cursors.append(maxID)
             if maxID == nil {
                 return (31...60).reversed().map {
@@ -61,7 +251,7 @@ struct moroTests {
                 self.makeNotification(id: String($0), type: "update", createdAt: Date(timeIntervalSince1970: Double($0)))
             }
         }
-        api.fetchNotificationsHandler = { maxID, sinceID, _ in
+        api.fetchNotificationsHandler = { maxID, sinceID, _, _ in
             calls.append((maxID, sinceID))
             if sinceID == "300" {
                 if maxID == nil { return page(331...360) }
@@ -98,22 +288,22 @@ struct moroTests {
         let page = (1...30).reversed().map {
             makeNotification(id: String($0), type: "update", createdAt: Date(timeIntervalSince1970: Double($0)))
         }
-        api.fetchNotificationsHandler = { _, _, _ in page }
+        api.fetchNotificationsHandler = { _, _, _, _ in page }
         let model = NotificationsViewModel(apiClient: api)
         await model.loadInitial()
-        api.fetchNotificationsHandler = { _, _, _ in throw URLError(.notConnectedToInternet) }
+        api.fetchNotificationsHandler = { _, _, _, _ in throw URLError(.notConnectedToInternet) }
         #expect(await model.refresh() == nil)
         #expect(model.notifications.count == 30 && model.hasMore)
         if case .loaded = model.loadingState {} else { Issue.record("Keep loaded content after refresh failure") }
 
-        api.fetchNotificationsHandler = { _, _, _ in page }
+        api.fetchNotificationsHandler = { _, _, _, _ in page }
         await model.loadMore()
         #expect(model.notifications.count == 30 && !model.hasMore)
         await model.refresh()
         #expect(model.notifications.count == 30 && !model.hasMore)
     }
 
-    @Test @MainActor func notificationRefreshReappliesSettingsToRetainedHistory() async {
+    @Test @MainActor func localPushPreferencesDoNotHideServerNotifications() async {
         let settings = AppSettings.shared
         let oldPolicy = settings.notificationPolicy
         let oldMentions = settings.receiveMentionsAndReplies
@@ -125,14 +315,14 @@ struct moroTests {
         }
         let api = MockMastodonAPI()
         let mention = makeNotification(id: "100", type: "mention")
-        api.fetchNotificationsHandler = { _, sinceID, _ in sinceID == nil ? [mention] : [] }
+        api.fetchNotificationsHandler = { _, sinceID, _, _ in sinceID == nil ? [mention] : [] }
         let model = NotificationsViewModel(apiClient: api)
         await model.loadInitial()
         #expect(model.notifications.map(\.id) == ["100"])
         settings.receiveMentionsAndReplies = false
         await model.refresh()
-        #expect(model.notifications.isEmpty)
-        #expect(model.filterInsight.hidesEverything)
+        #expect(model.notifications.map(\.id) == ["100"])
+        #expect(!model.filterInsight.hidesAnything)
         settings.receiveMentionsAndReplies = true
         await model.refresh()
         #expect(model.notifications.map(\.id) == ["100"])
@@ -558,6 +748,21 @@ struct moroTests {
 
         #expect(white < 0.1)
         #expect(alpha == 1)
+    }
+
+    @Test @MainActor func postActionActiveColorsAreDistinctGreenAndBlue() {
+        for scheme in [ColorScheme.light, .dark] {
+            let colors = MoroColors(colorScheme: scheme, accent: .monochrome)
+            let boost = rgbaComponents(of: UIColor(colors.boostActive))
+            let bookmark = rgbaComponents(of: UIColor(colors.bookmarkActive))
+
+            #expect(boost.green > boost.red)
+            #expect(boost.green > boost.blue)
+            #expect(bookmark.blue > bookmark.red)
+            #expect(bookmark.blue > bookmark.green)
+            #expect(UIColor(colors.boostActive).isEqual(UIColor(colors.textSecondary)) == false)
+            #expect(UIColor(colors.bookmarkActive).isEqual(UIColor(colors.textSecondary)) == false)
+        }
     }
 
     @Test @MainActor func statusAllowsReblogActionOnlyForPublicOrUnlisted() async throws {
@@ -1635,11 +1840,15 @@ struct moroTests {
         #expect(Route.lists == .lists)
         #expect(Route.scheduledStatuses == .scheduledStatuses)
         #expect(Route.announcements == .announcements)
+        #expect(Route.notificationSettings == .notificationSettings)
     }
 
     @Test @MainActor func routeStaticContentCasesRemainDistinctInSet() async throws {
-        let routes: Set<Route> = [.bookmarks, .favourites, .lists, .scheduledStatuses, .announcements]
-        #expect(routes.count == 5)
+        let routes: Set<Route> = [
+            .bookmarks, .favourites, .lists, .scheduledStatuses, .announcements,
+            .notificationSettings,
+        ]
+        #expect(routes.count == 6)
     }
 
     @Test @MainActor func urlHandlerParsesHashtagRoute() async throws {
@@ -2008,6 +2217,41 @@ struct moroTests {
         withExtendedLifetime((vmA, vmB)) {}
     }
 
+    @Test @MainActor func profilePinnedPostSurvivesInteractionResponseWithoutPinnedField() async {
+        let api = MockMastodonAPI()
+        let coordinator = FeedCoordinator()
+        let account = makeAccount(id: "profile-owner")
+        let viewModel = ProfileViewModel(
+            apiClient: api,
+            accountID: account.id,
+            feedCoordinator: coordinator
+        )
+        viewModel.pinnedStatuses = [
+            makeStatus(id: "pinned-status", account: account, pinned: true)
+        ]
+
+        coordinator.publishUpdate(
+            .post(
+                makeStatus(
+                    id: "pinned-status",
+                    account: account,
+                    favouritesCount: 1,
+                    favourited: true,
+                    pinned: nil
+                )
+            )
+        )
+
+        #expect(viewModel.pinnedStatuses.count == 1)
+        #expect(viewModel.pinnedStatuses.first?.favourited == true)
+        #expect(viewModel.pinnedStatuses.first?.pinned == true)
+
+        coordinator.publishUpdate(
+            .post(makeStatus(id: "pinned-status", account: account, pinned: false))
+        )
+        #expect(viewModel.pinnedStatuses.isEmpty)
+    }
+
     @Test @MainActor func accountDisplayNameParserKeepsPlainTextVisibleWhileResolvingEmoji()
         async throws
     {
@@ -2317,6 +2561,7 @@ struct moroTests {
             hasBlockAndReport: true,
             hasReport: true,
             hasPin: true,
+            hasDeleteAndRedraft: true,
             hasDelete: true
         )
 
@@ -2326,6 +2571,7 @@ struct moroTests {
         #expect(visibility.showOpenInBrowser)
         #expect(visibility.showEdit)
         #expect(visibility.showPin)
+        #expect(visibility.showDeleteAndRedraft)
         #expect(visibility.showDelete)
         #expect(visibility.showMuteUser == false)
         #expect(visibility.showBlockUser == false)
@@ -2347,6 +2593,7 @@ struct moroTests {
             hasBlockAndReport: true,
             hasReport: true,
             hasPin: true,
+            hasDeleteAndRedraft: true,
             hasDelete: true
         )
 
@@ -2360,6 +2607,7 @@ struct moroTests {
         #expect(visibility.showReport)
         #expect(visibility.showEdit == false)
         #expect(visibility.showPin == false)
+        #expect(visibility.showDeleteAndRedraft == false)
         #expect(visibility.showDelete == false)
     }
 
@@ -2377,6 +2625,7 @@ struct moroTests {
             hasBlockAndReport: true,
             hasReport: true,
             hasPin: false,
+            hasDeleteAndRedraft: false,
             hasDelete: false
         )
 
@@ -2399,6 +2648,7 @@ struct moroTests {
             hasBlockAndReport: false,
             hasReport: false,
             hasPin: true,
+            hasDeleteAndRedraft: true,
             hasDelete: true
         )
 
@@ -2412,6 +2662,7 @@ struct moroTests {
         #expect(visibility.showReport == false)
         #expect(visibility.showEdit == false)
         #expect(visibility.showPin == false)
+        #expect(visibility.showDeleteAndRedraft == false)
         #expect(visibility.showDelete == false)
     }
 
@@ -2453,6 +2704,32 @@ struct moroTests {
                 currentUserID: me.id
             ) == false
         )
+    }
+
+    @Test @MainActor func deleteAndRedraftMenuActionRequestsConfirmationBeforeDeleting() throws {
+        let api = MockMastodonAPI()
+        let actionSurface = PostActionSurfaceCenter()
+        let status = makeStatus(id: "delete-and-redraft", account: makeAccount(id: "me"))
+        let handlers = PostInteractionHandlers(
+            interactionService: PostInteractionService(apiClient: api),
+            actionSurface: actionSurface,
+            postMenuActionCenter: PostMenuActionCenter(apiClient: api),
+            apiClient: api,
+            currentUserID: "me",
+            router: AppRouter(),
+            onRemoveStatus: nil
+        )
+
+        let action = try #require(handlers.buildPostActions(for: status).onDeleteAndRedraft)
+        action()
+
+        let request = try #require(actionSurface.deleteRequest)
+        #expect(request.status.id == status.id)
+        #expect(request.mode == .redraft)
+        #expect(request.shouldRedraft)
+
+        actionSurface.clearDeleteRequest()
+        #expect(actionSurface.deleteRequest == nil)
     }
 
     @Test @MainActor func statusFilterWarningUsesFilteredResults() async throws {
@@ -3708,16 +3985,87 @@ struct moroTests {
         #expect(endpoint.queryItems == nil)
     }
 
+    @Test @MainActor func notificationPolicyAndRequestEndpointsUseMastodon43Paths() async throws {
+        let policy = MastodonEndpoint.notificationPolicy
+        let updatePolicy = MastodonEndpoint.updateNotificationPolicy
+        let requests = MastodonEndpoint.notificationRequests(maxID: "42", limit: 40)
+        let accept = MastodonEndpoint.acceptNotificationRequest(id: "request-7")
+        let dismiss = MastodonEndpoint.dismissNotificationRequest(id: "request-7")
+
+        #expect(policy.method == "GET")
+        #expect(policy.path == "/api/v2/notifications/policy")
+        #expect(updatePolicy.method == "PATCH")
+        #expect(updatePolicy.path == "/api/v2/notifications/policy")
+        #expect(requests.method == "GET")
+        #expect(requests.path == "/api/v1/notifications/requests")
+        #expect(requests.queryItems?.contains(URLQueryItem(name: "max_id", value: "42")) == true)
+        #expect(requests.queryItems?.contains(URLQueryItem(name: "limit", value: "40")) == true)
+        #expect(accept.method == "POST")
+        #expect(accept.path == "/api/v1/notifications/requests/request-7/accept")
+        #expect(dismiss.method == "POST")
+        #expect(dismiss.path == "/api/v1/notifications/requests/request-7/dismiss")
+    }
+
+    @Test func notificationPolicyDecodesCurrentAndOlderServerResponses() throws {
+        let currentJSON = Data(
+            """
+            {
+              "for_not_following": "filter",
+              "for_not_followers": "accept",
+              "for_new_accounts": "drop",
+              "for_private_mentions": "filter",
+              "for_limited_accounts": "drop",
+              "for_bots": "accept",
+              "summary": {
+                "pending_requests_count": 3,
+                "pending_notifications_count": 8
+              }
+            }
+            """.utf8)
+        let olderJSON = Data(
+            """
+            {
+              "for_not_following": "accept",
+              "for_not_followers": "accept",
+              "for_new_accounts": "accept",
+              "for_private_mentions": "filter",
+              "for_limited_accounts": "drop",
+              "summary": {
+                "pending_requests_count": 0,
+                "pending_notifications_count": 0
+              }
+            }
+            """.utf8)
+
+        let decoder = JSONDecoder()
+        let current = try decoder.decode(ServerNotificationPolicy.self, from: currentJSON)
+        let older = try decoder.decode(ServerNotificationPolicy.self, from: olderJSON)
+
+        #expect(current.forNotFollowing == .filter)
+        #expect(current.forNewAccounts == .drop)
+        #expect(current.forBots == .accept)
+        #expect(current.summary.pendingRequestsCount == 3)
+        #expect(current.summary.pendingNotificationsCount == 8)
+        #expect(older.forBots == nil)
+        #expect(older.forPrivateMentions == .filter)
+    }
+
     @Test @MainActor func notificationsEndpointSendsSupportedTypesForFallbackPayloads() async throws {
         let endpoint = MastodonEndpoint.notifications(
             maxID: "40",
             sinceID: nil,
             limit: 30,
+            types: ["mention"],
             supportedTypes: ["mention", "quote"]
         )
 
         #expect(endpoint.path == "/api/v1/notifications")
         #expect(endpoint.queryItems?.contains(URLQueryItem(name: "max_id", value: "40")) == true)
+        #expect(
+            endpoint.queryItems?
+                .filter { $0.name == "types[]" }
+                .compactMap(\.value) == ["mention"]
+        )
         #expect(
             endpoint.queryItems?
                 .filter { $0.name == "supported_types[]" }
@@ -4046,6 +4394,43 @@ struct moroTests {
 
         #expect(found?.id == "c2")
         #expect(missing == nil)
+    }
+
+    @Test @MainActor func directMessagesPaginationUsesOpaqueCursorAndDeduplicatesPages() async {
+        let api = MockMastodonAPI()
+        var requestedCursors: [String?] = []
+        api.fetchConversationsPageHandler = { maxID, limit in
+            requestedCursors.append(maxID)
+            #expect(limit == 20)
+            if maxID == nil {
+                let first = self.makeConversation(
+                    id: "conversation-1",
+                    unread: false,
+                    lastStatus: nil
+                )
+                return ConversationsPage(
+                    conversations: [first, first],
+                    nextMaxID: "opaque:next-page"
+                )
+            }
+            #expect(maxID == "opaque:next-page")
+            return ConversationsPage(
+                conversations: [
+                    self.makeConversation(id: "conversation-1", unread: false, lastStatus: nil),
+                    self.makeConversation(id: "conversation-2", unread: true, lastStatus: nil),
+                ],
+                nextMaxID: nil
+            )
+        }
+        let viewModel = DirectMessagesViewModel(apiClient: api)
+
+        await viewModel.loadInitial()
+        await viewModel.loadMore()
+
+        #expect(requestedCursors.count == 2)
+        #expect(requestedCursors[0] == nil)
+        #expect(requestedCursors[1] == "opaque:next-page")
+        #expect(viewModel.conversations.map(\.id) == ["conversation-1", "conversation-2"])
     }
 
     @Test @MainActor func draftConversationUsesDraftPrefixAndParticipants() async throws {
@@ -4908,7 +5293,7 @@ struct moroTests {
                 )
             )
         }
-        api.fetchNotificationsHandler = { maxID, sinceID, limit in
+        api.fetchNotificationsHandler = { maxID, sinceID, limit, _ in
             #expect(maxID == nil)
             #expect(sinceID == "100")
             #expect(limit == 80)
@@ -4932,7 +5317,7 @@ struct moroTests {
         #expect(store.activeUnreadCount == 2)
     }
 
-    @Test @MainActor func inboxUnreadStoreAggregatesAndDeduplicatesMessageEvents() async throws {
+    @Test @MainActor func inboxBadgeExcludesRetainedConversationUnreadAndDeduplicatesMessageEvents() async throws {
         let suiteName = "InboxUnreadStoreTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -4973,11 +5358,12 @@ struct moroTests {
             notificationID: "notification-1"
         )
         await waitUntil(timeout: 1) {
-            inboxStore.notificationUnreadCount == 1 && badgeRecorder.values.last == 3
+            inboxStore.notificationUnreadCount == 1 && badgeRecorder.values.last == 1
         }
 
         #expect(inboxStore.messageUnreadCount == 2)
-        #expect(inboxStore.totalUnreadCount == 3)
+        #expect(inboxStore.totalUnreadCount == 1)
+        #expect(badgeRecorder.values.last == 1)
 
         streamEvents.send(
             .conversation(conversationId: "message-4", unread: true, lastStatus: nil)
@@ -4986,7 +5372,7 @@ struct moroTests {
             .conversation(conversationId: "message-4", unread: true, lastStatus: nil)
         )
         await waitUntil(timeout: 1) { inboxStore.messageUnreadCount == 3 }
-        #expect(inboxStore.totalUnreadCount == 4)
+        #expect(inboxStore.totalUnreadCount == 1)
 
         streamEvents.send(
             .conversation(conversationId: "message-4", unread: false, lastStatus: nil)
@@ -4995,7 +5381,59 @@ struct moroTests {
         inboxStore.markConversationRead(id: "message-1")
 
         #expect(inboxStore.messageUnreadCount == 1)
-        #expect(inboxStore.totalUnreadCount == 2)
+        #expect(inboxStore.totalUnreadCount == 1)
+    }
+
+    @Test @MainActor func inboxUnreadReconciliationTraversesOpaqueConversationCursors() async throws {
+        let suiteName = "InboxUnreadStorePaginationTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(
+            ["session-a": ["stale-conversation"]],
+            forKey: InboxUnreadPersistenceKeys.directMessageUnreadConversationIDsBySession
+        )
+        let api = MockMastodonAPI()
+        var requestedCursors: [String?] = []
+        api.fetchConversationsPageHandler = { maxID, limit in
+            requestedCursors.append(maxID)
+            #expect(limit == 40)
+            if maxID == nil {
+                return ConversationsPage(
+                    conversations: [
+                        self.makeConversation(id: "visible-read", unread: false, lastStatus: nil)
+                    ],
+                    nextMaxID: "opaque:older"
+                )
+            }
+            #expect(maxID == "opaque:older")
+            return ConversationsPage(
+                conversations: [
+                    self.makeConversation(id: "older-unread", unread: true, lastStatus: nil)
+                ],
+                nextMaxID: nil
+            )
+        }
+        let notificationStore = NotificationUnreadStore(
+            userDefaults: defaults,
+            streamEvents: Empty<StreamEvent, Never>().eraseToAnyPublisher(),
+            badgeSetter: { _ in }
+        )
+        let inboxStore = InboxUnreadStore(
+            notificationUnreadStore: notificationStore,
+            userDefaults: defaults,
+            streamEvents: Empty<StreamEvent, Never>().eraseToAnyPublisher()
+        )
+
+        await inboxStore.activate(
+            sessionID: "session-a",
+            availableSessionIDs: ["session-a"],
+            apiClient: api
+        )
+
+        #expect(requestedCursors.count == 2)
+        #expect(requestedCursors[0] == nil)
+        #expect(requestedCursors[1] == "opaque:older")
+        #expect(inboxStore.messageUnreadCount == 1)
     }
 
     @Test @MainActor func notificationOpenResolvesDirectMentionToConversation() async throws {
@@ -6374,7 +6812,7 @@ struct moroTests {
         #expect(viewModel.transientErrorMessage == MoroL10n.Governance.blockReleaseFailedDetail)
     }
 
-    @Test @MainActor func notificationsViewModelTracksTypeFilteredNotifications() async throws {
+    @Test @MainActor func notificationsViewModelKeepsTypesDisabledForPush() async throws {
         let api = MockMastodonAPI()
         let settings = AppSettings.shared
         let originalPolicy = settings.notificationPolicy
@@ -6397,7 +6835,7 @@ struct moroTests {
         settings.receiveFavourites = false
         settings.receiveNewFollowers = true
 
-        api.fetchNotificationsHandler = { _, _, limit in
+        api.fetchNotificationsHandler = { _, _, limit, _ in
             #expect(limit == 30)
             return [
                 self.makeNotification(id: "n-1", type: "mention", account: self.makeAccount(id: "alice")),
@@ -6408,17 +6846,17 @@ struct moroTests {
         let viewModel = NotificationsViewModel(apiClient: api)
         await viewModel.loadInitial()
 
-        #expect(viewModel.notifications.count == 1)
+        #expect(viewModel.notifications.count == 2)
         #expect(viewModel.filterInsight == NotificationFilterInsight(
             fetchedCount: 2,
-            visibleCount: 1,
-            hiddenByTypeCount: 1,
+            visibleCount: 2,
+            hiddenByTypeCount: 0,
             hiddenByPolicyCount: 0,
             policy: .anyone
         ))
     }
 
-    @Test @MainActor func notificationsViewModelTracksSourcePolicyFilteredNotifications() async throws {
+    @Test @MainActor func pushSourcePolicyDoesNotFilterTheInbox() async throws {
         let api = MockMastodonAPI()
         let settings = AppSettings.shared
         let originalPolicy = settings.notificationPolicy
@@ -6441,30 +6879,27 @@ struct moroTests {
         settings.receiveFavourites = true
         settings.receiveNewFollowers = true
 
-        api.fetchNotificationsHandler = { _, _, _ in
+        api.fetchNotificationsHandler = { _, _, _, _ in
             [
                 self.makeNotification(id: "n-1", type: "mention", account: self.makeAccount(id: "alice")),
                 self.makeNotification(id: "n-2", type: "reblog", account: self.makeAccount(id: "bob"))
             ]
         }
-        api.fetchRelationshipsHandler = { accountIDs in
-            #expect(Set(accountIDs) == Set(["alice", "bob"]))
-            return [
-                self.makeRelationship(id: "alice", followedBy: true),
-                self.makeRelationship(id: "bob", followedBy: false)
-            ]
+        api.fetchRelationshipsHandler = { _ in
+            Issue.record("Inbox loading must not fetch relationships for a local push policy")
+            return []
         }
 
         let viewModel = NotificationsViewModel(apiClient: api)
         await viewModel.loadInitial()
 
-        #expect(viewModel.notifications.count == 1)
+        #expect(viewModel.notifications.count == 2)
         #expect(viewModel.filterInsight == NotificationFilterInsight(
             fetchedCount: 2,
-            visibleCount: 1,
+            visibleCount: 2,
             hiddenByTypeCount: 0,
-            hiddenByPolicyCount: 1,
-            policy: .followers
+            hiddenByPolicyCount: 0,
+            policy: .anyone
         ))
     }
 
@@ -6621,7 +7056,7 @@ private extension moroTests {
         settings.receiveMentionsAndReplies = true
 
         var shouldFail = true
-        api.fetchNotificationsHandler = { _, _, _ in
+        api.fetchNotificationsHandler = { _, _, _, _ in
             if shouldFail { throw MockMastodonAPI.MockError.forcedFailure }
             return [self.makeNotification(id: "n-1", type: "mention", account: self.makeAccount(id: "alice"))]
         }
@@ -6652,7 +7087,7 @@ private extension moroTests {
         settings.receiveMentionsAndReplies = true
 
         var shouldFail = false
-        api.fetchNotificationsHandler = { _, _, _ in
+        api.fetchNotificationsHandler = { _, _, _, _ in
             if shouldFail { throw MockMastodonAPI.MockError.forcedFailure }
             return [self.makeNotification(id: "n-1", type: "mention", account: self.makeAccount(id: "alice"))]
         }
@@ -7471,6 +7906,18 @@ private extension moroTests {
         )
     }
 
+    func rgbaComponents(of color: UIColor) -> (red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat) {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            Issue.record("Expected an RGB-compatible color")
+            return (-1, -1, -1, -1)
+        }
+        return (red, green, blue, alpha)
+    }
+
     @MainActor
     func waitUntil(timeout: TimeInterval, condition: @escaping () -> Bool) async {
         let deadline = Date().addingTimeInterval(timeout)
@@ -7564,14 +8011,21 @@ final class MockMastodonAPI: MastodonAPI {
     var uploadMediaHandler: ((Data, String, String?) async throws -> Status.Attachment)?
     var fetchStatusDetailCallIDs: [String] = []
     var fetchStatusContextCallIDs: [String] = []
-    var fetchNotificationsHandler: ((String?, String?, Int) async throws -> [NotificationItem])?
+    var fetchNotificationsHandler:
+        ((String?, String?, Int, MastodonNotificationScope) async throws -> [NotificationItem])?
     var fetchNotificationHandler: ((String) async throws -> NotificationItem)?
     var fetchUnreadNotificationCountHandler: (() async throws -> Int)?
+    var fetchNotificationPolicyHandler: (() async throws -> ServerNotificationPolicy)?
+    var updateNotificationPolicyHandler:
+        ((ServerNotificationPolicy) async throws -> ServerNotificationPolicy)?
     var fetchMarkersHandler: (([MarkerTimeline]) async throws -> Marker)?
     var saveMarkerHandler: ((String?, String?) async throws -> Marker)?
     var fetchRelationshipsHandler: (([String]) async throws -> [Relationship])?
+    var authorizeFollowRequestHandler: ((String) async throws -> Relationship)?
+    var rejectFollowRequestHandler: ((String) async throws -> Relationship)?
     var fetchRelationshipsCallIDs: [String] = []
     var fetchConversationsHandler: ((String?, String?, Int) async throws -> [Conversation])?
+    var fetchConversationsPageHandler: ((String?, Int) async throws -> ConversationsPage)?
     var fetchHomeTimelineHandler: ((String?, String?, Int) async throws -> [Status])?
     var fetchBookmarkedStatusesHandler: ((String?, String?, Int) async throws -> [Status])?
     var fetchPublicTimelineHandler: ((Bool, String?, String?, String?, Int) async throws -> [Status])?
@@ -7751,9 +8205,15 @@ final class MockMastodonAPI: MastodonAPI {
         throw MockError.unimplemented
     }
     func authorizeFollowRequest(accountID: String) async throws -> Relationship {
+        if let authorizeFollowRequestHandler {
+            return try await authorizeFollowRequestHandler(accountID)
+        }
         throw MockError.unimplemented
     }
     func rejectFollowRequest(accountID: String) async throws -> Relationship {
+        if let rejectFollowRequestHandler {
+            return try await rejectFollowRequestHandler(accountID)
+        }
         throw MockError.unimplemented
     }
     func muteAccount(id: String) async throws -> Relationship { throw MockError.unimplemented }
@@ -7959,11 +8419,16 @@ final class MockMastodonAPI: MastodonAPI {
             poll: nil
         )
     }
-    func fetchNotifications(maxID: String?, sinceID: String?, limit: Int) async throws
+    func fetchNotifications(
+        maxID: String?,
+        sinceID: String?,
+        limit: Int,
+        scope: MastodonNotificationScope
+    ) async throws
         -> [NotificationItem]
     {
         if let fetchNotificationsHandler {
-            return try await fetchNotificationsHandler(maxID, sinceID, limit)
+            return try await fetchNotificationsHandler(maxID, sinceID, limit, scope)
         }
         throw MockError.unimplemented
     }
@@ -7977,6 +8442,20 @@ final class MockMastodonAPI: MastodonAPI {
     func fetchNotification(id: String) async throws -> NotificationItem {
         guard let fetchNotificationHandler else { throw MockError.unimplemented }
         return try await fetchNotificationHandler(id)
+    }
+    func fetchNotificationPolicy() async throws -> ServerNotificationPolicy {
+        guard let fetchNotificationPolicyHandler else {
+            throw APIError.http(statusCode: 404, data: nil)
+        }
+        return try await fetchNotificationPolicyHandler()
+    }
+    func updateNotificationPolicy(_ policy: ServerNotificationPolicy) async throws
+        -> ServerNotificationPolicy
+    {
+        guard let updateNotificationPolicyHandler else {
+            throw APIError.http(statusCode: 404, data: nil)
+        }
+        return try await updateNotificationPolicyHandler(policy)
     }
     func fetchScheduledStatuses(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [ScheduledStatus]
@@ -7992,6 +8471,15 @@ final class MockMastodonAPI: MastodonAPI {
             return try await fetchConversationsHandler(maxID, sinceID, limit)
         }
         return []
+    }
+    func fetchConversationsPage(maxID: String?, limit: Int) async throws -> ConversationsPage {
+        if let fetchConversationsPageHandler {
+            return try await fetchConversationsPageHandler(maxID, limit)
+        }
+        return ConversationsPage(
+            conversations: try await fetchConversations(maxID: maxID, sinceID: nil, limit: limit),
+            nextMaxID: nil
+        )
     }
     func fetchBookmarkedPage(maxID: String?, limit: Int) async throws -> BookmarkedStatusesPage {
         BookmarkedStatusesPage(statuses: try await fetchBookmarkedStatuses(maxID: maxID, sinceID: nil, limit: limit), nextMaxID: nil)

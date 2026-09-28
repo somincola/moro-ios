@@ -4,6 +4,9 @@ import SDWebImage
 
 @MainActor
 final class StorageManagementStore: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = StorageManagementStore()
     struct Usage {
         let images: Int64
@@ -31,6 +34,8 @@ final class StorageManagementStore: ObservableObject {
     }
 
     func clear() async {
+        // NotificationReadingState is account reading data in Application Support,
+        // like drafts and read markers. It is intentionally not included here or in usage.
         guard !isClearing else { return }
         isClearing = true
         failed = false

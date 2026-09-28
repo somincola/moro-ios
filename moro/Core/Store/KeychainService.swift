@@ -37,6 +37,9 @@ enum MoroSharedContainer {
 }
 
 final class KeychainService {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private let service: String
     private let accessGroup: String?
 

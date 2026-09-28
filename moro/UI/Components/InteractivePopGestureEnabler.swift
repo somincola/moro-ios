@@ -19,6 +19,9 @@ private struct InteractivePopGestureEnabler: UIViewControllerRepresentable {
     }
 
     final class Controller: UIViewController {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         override func didMove(toParent parent: UIViewController?) {
             super.didMove(toParent: parent)
             enableInteractivePopIfNeeded()

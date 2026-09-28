@@ -815,13 +815,19 @@ struct MastodonClient: MastodonAPI {
         return try await perform(request)
     }
 
-    func fetchNotifications(maxID: String? = nil, sinceID: String? = nil, limit: Int = 30)
+    func fetchNotifications(
+        maxID: String? = nil,
+        sinceID: String? = nil,
+        limit: Int = 30,
+        scope: MastodonNotificationScope = .everything
+    )
         async throws -> [NotificationItem]
     {
         let endpoint = MastodonEndpoint.notifications(
             maxID: maxID,
             sinceID: sinceID,
             limit: limit,
+            types: scope.types,
             supportedTypes: NotificationKind.supportedRawValues
         )
         let request = try authorizedRequest(for: endpoint)
@@ -868,6 +874,17 @@ struct MastodonClient: MastodonAPI {
         let endpoint = MastodonEndpoint.conversations(maxID: maxID, sinceID: sinceID, limit: limit)
         let request = try authorizedRequest(for: endpoint)
         return try await perform(request)
+    }
+
+    func fetchConversationsPage(maxID: String?, limit: Int = 20) async throws -> ConversationsPage {
+        let endpoint = MastodonEndpoint.conversations(maxID: maxID, sinceID: nil, limit: limit)
+        let request = try authorizedRequest(for: endpoint)
+        let (conversations, response): ([Conversation], HTTPURLResponse) =
+            try await performWithResponse(request)
+        return ConversationsPage(
+            conversations: conversations,
+            nextMaxID: MastodonLinkPagination.nextMaxID(in: response)
+        )
     }
 
     func fetchBookmarkedPage(maxID: String?, limit: Int = 20) async throws -> BookmarkedStatusesPage {
@@ -1006,6 +1023,59 @@ struct MastodonClient: MastodonAPI {
         let endpoint = MastodonEndpoint.pushSubscription
         let request = try authorizedRequest(for: endpoint)
         return try await perform(request)
+    }
+
+    func fetchNotificationPolicy() async throws -> ServerNotificationPolicy {
+        try await perform(authorizedRequest(for: .notificationPolicy))
+    }
+
+    func updateNotificationPolicy(_ policy: ServerNotificationPolicy) async throws
+        -> ServerNotificationPolicy
+    {
+        struct Payload: Encodable {
+            let forNotFollowing: ServerNotificationPolicy.Disposition
+            let forNotFollowers: ServerNotificationPolicy.Disposition
+            let forNewAccounts: ServerNotificationPolicy.Disposition
+            let forPrivateMentions: ServerNotificationPolicy.Disposition
+            let forLimitedAccounts: ServerNotificationPolicy.Disposition
+            let forBots: ServerNotificationPolicy.Disposition?
+
+            enum CodingKeys: String, CodingKey {
+                case forNotFollowing = "for_not_following"
+                case forNotFollowers = "for_not_followers"
+                case forNewAccounts = "for_new_accounts"
+                case forPrivateMentions = "for_private_mentions"
+                case forLimitedAccounts = "for_limited_accounts"
+                case forBots = "for_bots"
+            }
+        }
+
+        let payload = Payload(
+            forNotFollowing: policy.forNotFollowing,
+            forNotFollowers: policy.forNotFollowers,
+            forNewAccounts: policy.forNewAccounts,
+            forPrivateMentions: policy.forPrivateMentions,
+            forLimitedAccounts: policy.forLimitedAccounts,
+            forBots: policy.forBots
+        )
+        return try await perform(authorizedRequest(for: .updateNotificationPolicy, body: payload))
+    }
+
+    func fetchNotificationRequests(maxID: String?, limit: Int = 40) async throws
+        -> [ServerNotificationRequest]
+    {
+        try await perform(
+            authorizedRequest(for: .notificationRequests(maxID: maxID, limit: limit)))
+    }
+
+    func acceptNotificationRequest(id: String) async throws {
+        try await performIgnoringResponse(
+            authorizedRequest(for: .acceptNotificationRequest(id: id)))
+    }
+
+    func dismissNotificationRequest(id: String) async throws {
+        try await performIgnoringResponse(
+            authorizedRequest(for: .dismissNotificationRequest(id: id)))
     }
 
     func createPushSubscription(

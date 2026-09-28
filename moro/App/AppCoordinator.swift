@@ -11,6 +11,9 @@ import SwiftUI
 /// Coordinates the root navigation flows for the Moro app.
 @MainActor
 final class AppCoordinator: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     enum Destination {
         case launch
         case onboarding

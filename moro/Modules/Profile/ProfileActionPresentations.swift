@@ -72,11 +72,13 @@ private struct ProfileActionPresentationsModifier: ViewModifier {
                 MoroL10n.ComposeDrafts.deleteConfirmTitle,
                 isPresented: deleteConfirmationBinding
             ) {
-                Button(MoroL10n.ComposeDrafts.deleteAndRedraftAction, role: .destructive) {
-                    performRequestedDelete(redraft: true)
-                }
-                Button(MoroL10n.ComposeDrafts.deleteAction, role: .destructive) {
-                    performRequestedDelete(redraft: false)
+                Button(
+                    actionSurface.deleteRequest?.shouldRedraft == true
+                        ? MoroL10n.ComposeDrafts.deleteAndRedraftAction
+                        : MoroL10n.ComposeDrafts.deleteAction,
+                    role: .destructive
+                ) {
+                    performRequestedDelete()
                 }
                 Button(MoroL10n.Common.cancel, role: .cancel) {
                     actionSurface.clearDeleteRequest()
@@ -118,7 +120,7 @@ private struct ProfileActionPresentationsModifier: ViewModifier {
 
     private var deleteConfirmationBinding: Binding<Bool> {
         Binding(
-            get: { actionSurface.statusToDelete != nil },
+            get: { actionSurface.deleteRequest != nil },
             set: {
                 if !$0 {
                     actionSurface.clearDeleteRequest()
@@ -178,9 +180,9 @@ private struct ProfileActionPresentationsModifier: ViewModifier {
         }
     }
 
-    private func performRequestedDelete(redraft: Bool) {
-        if let status = actionSurface.statusToDelete {
-            performDelete(status, redraft)
+    private func performRequestedDelete() {
+        if let request = actionSurface.deleteRequest {
+            performDelete(request.status, request.shouldRedraft)
         }
         actionSurface.clearDeleteRequest()
     }

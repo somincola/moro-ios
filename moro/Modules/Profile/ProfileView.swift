@@ -60,6 +60,8 @@ struct ProfileView: View {
     @Environment(\.moroSceneDescriptor) private var sceneDescriptor
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .subheadline) private var bioLineSpacing: CGFloat = 2
+    @ScaledMetric(relativeTo: .subheadline) private var bioParagraphSpacing: CGFloat = 6
     @Environment(\.cacheManager) private var cacheManager
     @Environment(\.appRouter) private var router
     @Environment(\.activeAccountKey) private var activeAccountKey
@@ -582,7 +584,7 @@ struct ProfileView: View {
 
                     profileInfoSection(account: acc)
                 }
-                .background(theme.colors.groupedBackground)
+                .background(theme.colors.surfaceBase)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
                     avatarAndActionsRow
@@ -679,7 +681,7 @@ struct ProfileView: View {
                 actionButtons
             }
         }
-        .padding(.horizontal, theme.spacing.l)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.top, -(avatarSize / 2))  // Overlap banner by half avatar
         .padding(.bottom, theme.spacing.xs)
     }
@@ -708,7 +710,7 @@ struct ProfileView: View {
                 profileHandleRow(account: acc)
             }
         }
-        .padding(.horizontal, theme.spacing.l)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.top, theme.spacing.xs)
     }
 
@@ -819,7 +821,7 @@ struct ProfileView: View {
                 }
             }
         }
-        .padding(.horizontal, theme.spacing.l)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.top, theme.spacing.m)
         .padding(.bottom, theme.spacing.s)
     }
@@ -919,25 +921,21 @@ struct ProfileView: View {
                 elements: account.noteContentElements,
                 emojiSize: 16,
                 isSelectable: true,
-                fontOverride: .system(.subheadline, weight: .regular),
-                uiFontOverride: .moroScaled(
-                    ofSize: 15,
-                    weight: .regular,
-                    relativeTo: .subheadline
-                ),
+                fontOverride: theme.typography.body,
                 textColorOverride: theme.colors.textPrimary,
                 linkColorOverride: theme.colors.contentLink,
                 underlinesLinks: true,
-                lineSpacing: 3
+                lineSpacing: bioLineSpacing,
+                paragraphSpacing: bioParagraphSpacing
             )
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .layoutPriority(1)
-            .padding(theme.spacing.m)
-            .moroCardSurface(cornerRadius: 8, tone: .base, bordered: true)
-            .padding(.horizontal, theme.spacing.l)
-            .padding(.top, theme.spacing.s)
+            .accessibilityIdentifier("profile.bio")
+            .padding(.horizontal, theme.spacing.contentHorizontalInset)
+            .padding(.top, theme.spacing.xs)
+            .padding(.bottom, account.fields.isEmpty ? theme.spacing.s : 0)
         }
     }
 
@@ -955,15 +953,13 @@ struct ProfileView: View {
                     if index < account.fields.count - 1 {
                         Rectangle()
                             .fill(theme.colors.borderSubtle)
-                            .frame(height: 1)
+                            .frame(height: 0.5)
                     }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .moroCardSurface(cornerRadius: 8, tone: .base, bordered: true)
-            .padding(.horizontal, theme.spacing.l)
+            .padding(.horizontal, theme.spacing.contentHorizontalInset)
             .padding(.top, theme.spacing.s)
-            .padding(.bottom, theme.spacing.m)
         }
     }
 
@@ -980,13 +976,13 @@ struct ProfileView: View {
         // push the row past the screen edge and eat the horizontal margin — which a
         // side-by-side [fixed-name | value] layout does (the value's min width =
         // the unbreakable URL width, overflowing the row).
-        VStack(alignment: .leading, spacing: theme.spacing.xs) {
+        VStack(alignment: .leading, spacing: 3) {
             RichTextContentView(
                 elements: nameElements,
                 emojiSize: 13,
                 isSelectable: false,
-                fontOverride: .system(.caption, weight: .semibold),
-                uiFontOverride: .moroScaled(ofSize: 12, weight: .semibold, relativeTo: .caption1),
+                fontOverride: .system(.caption, weight: .medium),
+                uiFontOverride: .moroScaled(ofSize: 12, weight: .medium, relativeTo: .caption1),
                 textColorOverride: theme.colors.textSecondary,
                 linkColorOverride: theme.colors.contentLink,
                 lineSpacing: 2,
@@ -1015,7 +1011,7 @@ struct ProfileView: View {
                     lineSpacing: 3,
                     trailingSystemImage: field.isVerified ? "checkmark.seal.fill" : nil,
                     trailingSystemImageColor: theme.colors.success,
-                    trailingSystemImageSize: 13
+                    trailingSystemImageSize: 11
                 )
                 .multilineTextAlignment(.leading)
 
@@ -1023,8 +1019,7 @@ struct ProfileView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, theme.spacing.m)
-        .padding(.vertical, theme.spacing.sm)
+        .padding(.vertical, theme.spacing.s)
     }
 
     // MARK: - Tab Bar
@@ -1062,7 +1057,7 @@ struct ProfileView: View {
                 .accessibilityIdentifier("profile.tab.\(tab.rawValue.lowercased())")
             }
         }
-        .padding(.horizontal, theme.spacing.l)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.top, theme.spacing.m)
         .background(theme.colors.surfaceBase)
     }

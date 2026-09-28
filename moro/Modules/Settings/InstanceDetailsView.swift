@@ -24,6 +24,9 @@ private enum InstanceDetailsSection: String, CaseIterable, Identifiable {
 
 @MainActor
 private final class InstanceDetailsViewModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     @Published var section: InstanceDetailsSection = .about
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?

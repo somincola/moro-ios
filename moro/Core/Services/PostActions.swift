@@ -18,6 +18,7 @@ struct PostActions {
     var onLinkTap: ((URL) -> Void)?
     var onEdit: (() -> Void)?
     var onPin: (() -> Void)?
+    var onDeleteAndRedraft: (() -> Void)?
     var onDelete: (() -> Void)?
     var onTap: (() -> Void)?
     var isOwnPost: Bool = false

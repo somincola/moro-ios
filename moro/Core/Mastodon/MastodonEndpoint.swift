@@ -72,9 +72,20 @@ enum MastodonEndpoint {
     case editStatus(id: String)
     case scheduledStatuses(maxID: String?, sinceID: String?, limit: Int)
     case cancelScheduledStatus(id: String)
-    case notifications(maxID: String?, sinceID: String?, limit: Int, supportedTypes: [String])
+    case notifications(
+        maxID: String?,
+        sinceID: String?,
+        limit: Int,
+        types: [String],
+        supportedTypes: [String]
+    )
     case notificationUnreadCount
     case notification(id: String)
+    case notificationPolicy
+    case updateNotificationPolicy
+    case notificationRequests(maxID: String?, limit: Int)
+    case acceptNotificationRequest(id: String)
+    case dismissNotificationRequest(id: String)
     case conversations(maxID: String?, sinceID: String?, limit: Int)
     case bookmarks(maxID: String?, sinceID: String?, limit: Int)
     case favourites(maxID: String?, sinceID: String?, limit: Int)
@@ -142,9 +153,11 @@ enum MastodonEndpoint {
             .readConversation, .createFilter, .createFilterKeyword, .blockDomain,
             .oauthTokenClientCredentials, .registerAccount, .createList, .addAccountsToList,
             .authorizeFollowRequest, .rejectFollowRequest, .dismissAnnouncement, .statusTranslate,
-            .createPushSubscription, .followTag, .unfollowTag, .featureTag:
+            .createPushSubscription, .followTag, .unfollowTag, .featureTag,
+            .acceptNotificationRequest, .dismissNotificationRequest:
             return "POST"
-        case .updateMedia, .updateAccountCredentials, .updateProfileDisplay:
+        case .updateMedia, .updateAccountCredentials, .updateProfileDisplay,
+            .updateNotificationPolicy:
             return "PATCH"
         case .updateFilter, .updatePushSubscription, .updateFilterKeyword, .updateList,
             .addAnnouncementReaction, .editStatus:
@@ -279,6 +292,14 @@ enum MastodonEndpoint {
             return "/api/v1/notifications/\(id)"
         case .notificationUnreadCount:
             return "/api/v1/notifications/unread_count"
+        case .notificationPolicy, .updateNotificationPolicy:
+            return "/api/v2/notifications/policy"
+        case .notificationRequests:
+            return "/api/v1/notifications/requests"
+        case .acceptNotificationRequest(let id):
+            return "/api/v1/notifications/requests/\(id)/accept"
+        case .dismissNotificationRequest(let id):
+            return "/api/v1/notifications/requests/\(id)/dismiss"
         case .conversations:
             return "/api/v1/conversations"
         case .bookmarks:
@@ -427,15 +448,21 @@ enum MastodonEndpoint {
         case .followAccount, .unfollowAccount:
             // Query items will be handled in MastodonClient for followAccount (reblogs, notify)
             return nil
-        case .notifications(let maxID, let sinceID, let limit, let supportedTypes):
+        case .notifications(let maxID, let sinceID, let limit, let types, let supportedTypes):
             return [
                 maxID.map { URLQueryItem(name: "max_id", value: $0) },
                 sinceID.map { URLQueryItem(name: "since_id", value: $0) },
                 URLQueryItem(name: "limit", value: "\(limit)"),
             ].compactMap { $0 }
+                + types.map { URLQueryItem(name: "types[]", value: $0) }
                 + supportedTypes.map { URLQueryItem(name: "supported_types[]", value: $0) }
         case .notificationUnreadCount:
             return nil
+        case .notificationRequests(let maxID, let limit):
+            return [
+                maxID.map { URLQueryItem(name: "max_id", value: $0) },
+                URLQueryItem(name: "limit", value: "\(limit)"),
+            ].compactMap { $0 }
         case .scheduledStatuses(let maxID, let sinceID, let limit):
             return [
                 maxID.map { URLQueryItem(name: "max_id", value: $0) },

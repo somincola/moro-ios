@@ -79,7 +79,6 @@ struct TimelineHomeView: View {
     @State var startupDeferredTask: Task<Void, Never>?
     @State var lastAnnouncementRefreshAt: Date = .distantPast
     @State var lastInactiveAt: Date?
-    @State var presentationToken = UUID()
     /// The root header grows for larger content sizes while keeping its normal compact height.
     @ScaledMetric(relativeTo: .body) var scaledHeaderHeight: CGFloat = 48
     var headerHeight: CGFloat { min(max(scaledHeaderHeight, 48), 72) }
@@ -243,7 +242,7 @@ struct TimelineHomeView: View {
         // Extend content + background under the bottom safe area.
         .ignoresSafeArea(.container, edges: .bottom)
         .onAppear {
-            scrollBridge.setPresentedTimeline(selectedTimeline)
+            scrollBridge.resumePresentation(for: selectedTimeline)
             scrollBridge.setActive(isActive && scenePhase == .active && !hasLocalModal)
             onTimelineSelectionChange?(selectedTimeline)
         }
@@ -300,6 +299,9 @@ struct TimelineHomeView: View {
         }
         .onChange(of: isActive) { _, active in
             scrollBridge.setActive(active && scenePhase == .active && !hasLocalModal)
+            if active {
+                scrollBridge.resumePresentation(for: selectedTimeline)
+            }
             detectionManager.setActiveDimension(active ? detectionDimension(for: selectedTimeline) : nil)
             if active, viewModel.statuses.isEmpty {
                 let target = viewModel
@@ -357,7 +359,6 @@ struct TimelineHomeView: View {
             let wasAlreadyLoaded = hasFinishedInitialLoad(for: newValue)
             let targetViewModel = viewModel
             targetViewModel.currentAccountID = appState.currentAccount?.id
-            presentationToken = UUID()
 
             // Load the new timeline if not already loaded
             Task {
@@ -534,21 +535,20 @@ struct TimelineHomeView: View {
         .alert(
             MoroL10n.ComposeDrafts.deleteConfirmTitle,
             isPresented: Binding(
-                get: { actionSurface.statusToDelete != nil },
+                get: { actionSurface.deleteRequest != nil },
                 set: {
                     if !$0 { actionSurface.clearDeleteRequest() }
                 }
             )
         ) {
-            Button(MoroL10n.ComposeDrafts.deleteAndRedraftAction, role: .destructive) {
-                if let status = actionSurface.statusToDelete {
-                    handlers.performDelete(status, redraft: true)
-                }
-                actionSurface.clearDeleteRequest()
-            }
-            Button(MoroL10n.ComposeDrafts.deleteAction, role: .destructive) {
-                if let status = actionSurface.statusToDelete {
-                    handlers.performDelete(status)
+            Button(
+                actionSurface.deleteRequest?.shouldRedraft == true
+                    ? MoroL10n.ComposeDrafts.deleteAndRedraftAction
+                    : MoroL10n.ComposeDrafts.deleteAction,
+                role: .destructive
+            ) {
+                if let request = actionSurface.deleteRequest {
+                    handlers.performDelete(request.status, redraft: request.shouldRedraft)
                 }
                 actionSurface.clearDeleteRequest()
             }
@@ -580,7 +580,7 @@ struct TimelineHomeView: View {
 
     private var hasLocalModal: Bool {
         actionSurface.composeContext != nil || actionSurface.boostDialogStatus != nil
-            || actionSurface.reportStatus != nil || actionSurface.statusToDelete != nil
+            || actionSurface.reportStatus != nil || actionSurface.deleteRequest != nil
             || interactionService.activeAlert != nil
     }
 
@@ -633,10 +633,20 @@ struct TimelineHomeView: View {
         let statusID = session.topVisibleStatusID
         let shouldRestore = savedOffset > 1 && statusID != nil
 
-        let token = presentationToken
+        // Register the actual displayed page synchronously. Only layout/offset
+        // restoration is deferred; selection onChange must not invalidate it.
+        let presentation = scrollBridge.beginPresentation(for: timeline)
+        session.freezeVisibility()
         Task { @MainActor in
+            defer {
+                if scrollBridge.isCurrentPresentation(presentation) {
+                    session.resumeVisibilityTracking()
+                    scrollBridge.finishPresentation(presentation)
+                }
+            }
             await Task.yield()
-            guard selectedTimeline == timeline, token == presentationToken else { return }
+            guard selectedTimeline == timeline,
+                scrollBridge.isCurrentPresentation(presentation) else { return }
             let chromeFraction = scrollBridge.setPresentedTimeline(timeline)
             onChromeFraction?(chromeFraction)
             if let nativeContentOffset,
@@ -650,9 +660,9 @@ struct TimelineHomeView: View {
                 scrollBridge.restoreScrollPosition(timeline, targetID: targetID)
                 await Task.yield()
             }
-            guard selectedTimeline == timeline, token == presentationToken else { return }
-            session.resumeVisibilityTracking()
-            scrollBridge.setFrozen(false, for: timeline)
+            // The matching transaction's defer releases the page even when there
+            // is no saved anchor or native scroll view yet. A superseded task
+            // cannot unfreeze a newer presentation of the same timeline.
         }
     }
 

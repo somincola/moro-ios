@@ -1875,6 +1875,7 @@ struct ComposeView: View {
         AppLogger.debug("[Compose] Publish started")
         do {
             let result = try await viewModel.publish()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             isCompletingPublish = true
             // The presentation owner clears its binding before any refresh callback.
             // Keep the progress indicator active until the composer has disappeared.
@@ -1963,6 +1964,9 @@ struct CameraView: UIViewControllerRepresentable {
     }
     
     class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         let onImageCaptured: (UIImage) -> Void
         
         init(onImageCaptured: @escaping (UIImage) -> Void) {
@@ -2104,6 +2108,9 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
+        // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+        nonisolated deinit {}
+
         var parent: ComposeTextViewRepresentable
         var isUpdatingFromSwiftUI = false
         var lastAppliedSelectionCommandID: UUID?
@@ -2182,6 +2189,9 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
 }
 
 private final class ComposeUIKitTextView: UITextView {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private var requestsFocus = false
     private var needsSelectionReveal = false
     private var emojiInputView: ComposeEmojiInputView?
@@ -2355,6 +2365,9 @@ private final class ComposeUIKitTextView: UITextView {
 }
 
 private final class ComposeEmojiInputView: UIInputView {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private let hostingController: UIHostingController<AnyView>
     private var preferredHeight: CGFloat
 

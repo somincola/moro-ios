@@ -10,6 +10,9 @@ import SwiftUI
 
 @MainActor
 final class StatusTranslationViewModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     @Published private(set) var translatedResult: TranslationResult?
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?

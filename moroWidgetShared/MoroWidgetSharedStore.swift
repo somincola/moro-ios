@@ -110,7 +110,6 @@ nonisolated enum MoroWidgetSharedStore {
     private enum Keys {
         static let activeSession = "shared_active_account_session_snapshot_v1"
         static let unreadCounts = "notification_unread_counts_by_session_v1"
-        static let unreadDirectMessageIDs = "direct_message_unread_conversation_ids_by_session_v1"
         static let avatarCachePrefix = "moro_widget_avatar_cache_v1_"
         static let avatarSourcePrefix = "moro_widget_avatar_source_v1_"
     }
@@ -141,19 +140,11 @@ nonisolated enum MoroWidgetSharedStore {
             }
             return max(0, number.intValue)
         }()
-        let directMessageUnreadCount: Int = {
-            guard let idsBySession = userDefaults.dictionary(forKey: Keys.unreadDirectMessageIDs),
-                let ids = idsBySession[activeSession.sessionID] as? [String]
-            else {
-                return 0
-            }
-            return Set(ids).count
-        }()
 
         return MoroWidgetDataSnapshot(
             sessionID: activeSession.sessionID,
             account: activeSession.account,
-            unreadCount: notificationUnreadCount + directMessageUnreadCount,
+            unreadCount: notificationUnreadCount,
             updatedAt: activeSession.updatedAt
         )
     }

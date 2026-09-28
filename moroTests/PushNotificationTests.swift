@@ -90,7 +90,7 @@ struct PushNotificationTests {
             #expect(id == "old-notification")
             return notification(id: id, status: post())
         }
-        api.fetchNotificationsHandler = { _, _, _ in
+        api.fetchNotificationsHandler = { _, _, _, _ in
             Issue.record("Push opening must not scan only the latest notifications")
             return []
         }

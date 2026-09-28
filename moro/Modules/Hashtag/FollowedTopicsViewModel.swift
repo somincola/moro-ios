@@ -3,6 +3,9 @@ import Foundation
 
 @MainActor
 final class FollowedTopicsViewModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     @Published private(set) var tags: [SearchTag] = []
     @Published private(set) var isLoading = false
     @Published private(set) var error: Error?

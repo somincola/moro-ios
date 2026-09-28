@@ -190,20 +190,19 @@ struct HashtagView: View {
             }
         }
         .alert(MoroL10n.ComposeDrafts.deleteConfirmTitle, isPresented: Binding(
-            get: { actionSurface.statusToDelete != nil },
+            get: { actionSurface.deleteRequest != nil },
             set: {
                 if !$0 { actionSurface.clearDeleteRequest() }
             }
         )) {
-            Button(MoroL10n.ComposeDrafts.deleteAndRedraftAction, role: .destructive) {
-                if let status = actionSurface.statusToDelete {
-                    handlers.performDelete(status, redraft: true)
-                }
-                actionSurface.clearDeleteRequest()
-            }
-            Button(MoroL10n.ComposeDrafts.deleteAction, role: .destructive) {
-                if let status = actionSurface.statusToDelete {
-                    handlers.performDelete(status)
+            Button(
+                actionSurface.deleteRequest?.shouldRedraft == true
+                    ? MoroL10n.ComposeDrafts.deleteAndRedraftAction
+                    : MoroL10n.ComposeDrafts.deleteAction,
+                role: .destructive
+            ) {
+                if let request = actionSurface.deleteRequest {
+                    handlers.performDelete(request.status, redraft: request.shouldRedraft)
                 }
                 actionSurface.clearDeleteRequest()
             }

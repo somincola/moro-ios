@@ -77,7 +77,7 @@ private struct TimelineRowSkeleton: View {
                     .frame(width: Metrics.trailingLineWidth, height: Metrics.titleLineHeight)
             }
         }
-        .padding(.horizontal, theme.spacing.l)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.vertical, theme.spacing.timelineVertical)
         .redacted(reason: .placeholder)
     }
@@ -113,7 +113,7 @@ private struct ListRowSkeleton: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, theme.spacing.l)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.vertical, theme.spacing.m)
         .redacted(reason: .placeholder)
     }
@@ -158,7 +158,7 @@ private struct ProfileSkeleton: View {
                     .fill(theme.colors.surfaceSubtle)
                     .frame(width: Metrics.shortLineWidth, height: Metrics.lineHeight)
             }
-            .padding(.horizontal, theme.spacing.l)
+            .padding(.horizontal, theme.spacing.contentHorizontalInset)
 
             ForEach(0..<Metrics.postSkeletonCount, id: \.self) { _ in
                 ListRowSkeleton()

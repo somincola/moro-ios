@@ -56,6 +56,20 @@ enum MastodonDirectoryOrder: String, Codable {
     case new
 }
 
+enum MastodonNotificationScope: String, CaseIterable, Hashable {
+    case everything
+    case mentions
+
+    var types: [String] {
+        switch self {
+        case .everything:
+            // Omitting types also allows the server's fallback for future notification kinds.
+            return []
+        case .mentions: return ["mention"]
+        }
+    }
+}
+
 struct StatusPollPayload: Codable, Equatable {
     let options: [String]
     let expiresIn: Int
@@ -206,12 +220,25 @@ protocol MastodonAPI {
     func fetchScheduledStatuses(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [ScheduledStatus]
     func cancelScheduledStatus(id: String) async throws
-    func fetchNotifications(maxID: String?, sinceID: String?, limit: Int) async throws
+    func fetchNotifications(
+        maxID: String?,
+        sinceID: String?,
+        limit: Int,
+        scope: MastodonNotificationScope
+    ) async throws
         -> [NotificationItem]
     func fetchNotification(id: String) async throws -> NotificationItem
     func fetchUnreadNotificationCount() async throws -> Int
+    func fetchNotificationPolicy() async throws -> ServerNotificationPolicy
+    func updateNotificationPolicy(_ policy: ServerNotificationPolicy) async throws
+        -> ServerNotificationPolicy
+    func fetchNotificationRequests(maxID: String?, limit: Int) async throws
+        -> [ServerNotificationRequest]
+    func acceptNotificationRequest(id: String) async throws
+    func dismissNotificationRequest(id: String) async throws
     func fetchConversations(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Conversation]
+    func fetchConversationsPage(maxID: String?, limit: Int) async throws -> ConversationsPage
     func fetchBookmarkedPage(maxID: String?, limit: Int) async throws -> BookmarkedStatusesPage
     func fetchBookmarkedStatuses(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Status]
@@ -346,6 +373,22 @@ protocol MastodonAPI {
 }
 
 extension MastodonAPI {
+    func fetchNotifications(maxID: String?, sinceID: String?, limit: Int) async throws
+        -> [NotificationItem]
+    {
+        try await fetchNotifications(
+            maxID: maxID,
+            sinceID: sinceID,
+            limit: limit,
+            scope: .everything
+        )
+    }
+
+    func fetchConversationsPage(maxID: String?, limit: Int) async throws -> ConversationsPage {
+        let conversations = try await fetchConversations(maxID: maxID, sinceID: nil, limit: limit)
+        return ConversationsPage(conversations: conversations, nextMaxID: nil)
+    }
+
     func fetchTimelinePage(
         timeline: TimelineType, maxID: String?, sinceID: String?, limit: Int
     ) async throws -> TimelinePage {
@@ -363,6 +406,25 @@ extension MastodonAPI {
     }
     func fetchNotification(id: String) async throws -> NotificationItem {
         throw APIError.http(statusCode: 501, data: nil)
+    }
+    func fetchNotificationPolicy() async throws -> ServerNotificationPolicy {
+        throw APIError.http(statusCode: 404, data: nil)
+    }
+    func updateNotificationPolicy(_ policy: ServerNotificationPolicy) async throws
+        -> ServerNotificationPolicy
+    {
+        throw APIError.http(statusCode: 404, data: nil)
+    }
+    func fetchNotificationRequests(maxID: String?, limit: Int) async throws
+        -> [ServerNotificationRequest]
+    {
+        throw APIError.http(statusCode: 404, data: nil)
+    }
+    func acceptNotificationRequest(id: String) async throws {
+        throw APIError.http(statusCode: 404, data: nil)
+    }
+    func dismissNotificationRequest(id: String) async throws {
+        throw APIError.http(statusCode: 404, data: nil)
     }
     var instanceMetadataCacheKey: String? { nil }
     func fetchEditableProfile() async throws -> EditableProfile {

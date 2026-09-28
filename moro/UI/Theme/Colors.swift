@@ -218,6 +218,30 @@ struct MoroColors {
         // Semantic colors remain the same in both modes
         return Color(hex: 0x4CAF50)
     }
+
+    /// Boost Active - Selected boost/reblog action in post chrome.
+    var boostActive: Color {
+        switch colorScheme {
+        case .light:
+            return Color(hex: 0x34C759)
+        case .dark:
+            return Color(hex: 0x30D158)
+        @unknown default:
+            return Color(hex: 0x34C759)
+        }
+    }
+
+    /// Bookmark Active - Selected bookmark action in post chrome.
+    var bookmarkActive: Color {
+        switch colorScheme {
+        case .light:
+            return Color(hex: 0x4A90E2)
+        case .dark:
+            return Color(hex: 0x6AAEFF)
+        @unknown default:
+            return Color(hex: 0x4A90E2)
+        }
+    }
     
     /// Error - Error state
     var error: Color {

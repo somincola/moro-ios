@@ -3,6 +3,9 @@ import Foundation
 
 @MainActor
 final class TopicFollowModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     @Published private(set) var following: Bool?
     @Published private(set) var isBusy = false
     @Published private(set) var error: Error?

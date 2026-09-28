@@ -3,6 +3,9 @@ import Foundation
 
 @MainActor
 final class BookmarksViewModel: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     enum LoadingState { case idle, loading, loadingMore, loaded, error(Error) }
     enum ReadingFilter: String, CaseIterable {
         case all, unread, read

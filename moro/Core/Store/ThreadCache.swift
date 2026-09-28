@@ -11,6 +11,9 @@ import Combine
 /// In-memory cache for thread conversations
 @MainActor
 final class ThreadCache: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     private static let maximumLifetime: TimeInterval = 300
 
     /// Cached thread models by focused status ID
