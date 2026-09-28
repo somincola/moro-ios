@@ -4,5 +4,5 @@
   "marketingUrl": "https://moro.somincola.com/",
   "promotionalText": "Scopri Moro — client Mastodon raffinato e sereno. Acceda con il Suo account e goda del fediverse senza distrazioni.",
   "supportUrl": "https://moro.somincola.com/support",
-  "whatsNew": "Risolti alcuni problemi di visualizzazione e migliorata l’esperienza di consultazione delle immagini."
+  "whatsNew": "- La casella delle notifiche è stata completamente rinnovata, con categorie Tutte e Menzioni più chiare e nuove impostazioni per le notifiche.\n- Migliorati il passaggio tra le timeline, la spaziatura delle pagine, la visualizzazione dei profili e il feedback delle azioni sui post.\n- Risolti i problemi relativi agli stati non letti e fissati, alla conferma di eliminazione dei post e alla stabilità su iOS 26.2."
 }

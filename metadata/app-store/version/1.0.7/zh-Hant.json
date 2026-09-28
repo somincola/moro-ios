@@ -4,5 +4,5 @@
   "marketingUrl": "https://moro.somincola.com/",
   "promotionalText": "認識 Moro — 一款平靜、精緻的 Mastodon 客戶端，帶來輕盈、簡單、友善的體驗。帶上你的帳號，享受純粹的聯邦宇宙。",
   "supportUrl": "https://moro.somincola.com/support",
-  "whatsNew": "修正部分介面樣式問題，改善圖片瀏覽體驗。"
+  "whatsNew": "- 通知收件匣全面升級，所有通知與提及分類更清晰，新增通知設定。\n- 最佳化時間軸切換、頁面間距、個人資料顯示和貼文操作回饋。\n- 修正未讀與置頂狀態、貼文刪除確認，以及部分 iOS 26.2 穩定性問題。"
 }
