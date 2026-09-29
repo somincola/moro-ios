@@ -7816,6 +7816,9 @@ private extension moroTests {
         #expect(settings.serverDefaultPostLanguage == "fr")
     }
 
+}
+
+extension moroTests {
     func makeAccount(
         id: String = "account",
         username: String? = nil,
@@ -7887,7 +7890,7 @@ private extension moroTests {
         )
     }
 
-    func makeConversation(
+    private func makeConversation(
         id: String,
         unread: Bool,
         accounts: [Account] = [],
@@ -7955,6 +7958,9 @@ private extension moroTests {
         )
     }
 
+}
+
+private extension moroTests {
     func makeNotification(
         id: String,
         type: String,
