@@ -4,5 +4,5 @@
   "marketingUrl": "https://moro.somincola.com/",
   "promotionalText": "认识 Moro —— 一款平静、精致的 Mastodon 客户端，带来轻盈、简单、友善的体验。带上你的账号，享受纯粹的联邦宇宙。",
   "supportUrl": "https://moro.somincola.com/support",
-  "whatsNew": "- 通知收件箱全面升级，全部通知与提及分类更清晰，新增通知设置。\n- 优化时间线切换、页面间距、个人资料展示和帖子操作反馈。\n- 修复未读与置顶状态、帖子删除确认，以及部分 iOS 26.2 稳定性问题。"
+  "whatsNew": "1. 重新设计举报流程，步骤更清晰，提升用户体验。\n2. 优化通知收件箱与设置，改善个人资料、时间线切换和图片浏览体验。\n3. 修复链接与 @提及无法点击、未读和置顶状态异常等问题。\n4. 增加 Swift 兼容代码，提升 iOS 26.2 稳定性。"
 }

@@ -4,5 +4,5 @@
   "marketingUrl": "https://moro.somincola.com/",
   "promotionalText": "Meet Moro — a calm, refined Mastodon client built to feel light, simple, and friendly. Bring your own account and enjoy the fediverse without the noise.",
   "supportUrl": "https://moro.somincola.com/support",
-  "whatsNew": "- The notification inbox has been fully upgraded, with clearer All and Mentions categories and new notification settings.\n- Improved timeline switching, page spacing, profile presentation, and feedback for post actions.\n- Fixed unread and pinned states, post deletion confirmation, and several stability issues on iOS 26.2."
+  "whatsNew": "1. Redesigned the reporting flow with clearer steps and an improved user experience.\n2. Improved the notification inbox and settings, profile pages, timeline switching, and image viewing.\n3. Fixed unresponsive links and @mentions, incorrect unread and pinned states, and other issues.\n4. Added Swift compatibility code to improve stability on iOS 26.2."
 }

@@ -4,5 +4,5 @@
   "marketingUrl": "https://moro.somincola.com/",
   "promotionalText": "Conozca Moro — un cliente Mastodon tranquilo y refinado. Traiga su cuenta y disfrute del fediverso sin ruido, sin publicidad y sin complicaciones.",
   "supportUrl": "https://moro.somincola.com/support",
-  "whatsNew": "- La bandeja de notificaciones se ha renovado por completo, con categorías más claras para Todo y Menciones, además de nuevos ajustes de notificaciones.\n- Se han mejorado el cambio entre cronologías, el espaciado de las páginas, la presentación de los perfiles y la respuesta de las acciones en las publicaciones.\n- Se han corregido los estados de no leído y fijado, la confirmación al eliminar publicaciones y varios problemas de estabilidad en iOS 26.2."
+  "whatsNew": "1. Rediseñado el proceso de denuncia con pasos más claros para mejorar la experiencia de uso.\n2. Mejoradas la bandeja de notificaciones y sus ajustes, la visualización de perfiles, el cambio entre cronologías y la visualización de imágenes.\n3. Corregidos los enlaces y las @menciones que no respondían al pulsarlos, los estados de no leído y fijado incorrectos, y otros problemas.\n4. Añadido código de compatibilidad con Swift para mejorar la estabilidad en iOS 26.2."
 }
