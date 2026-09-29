@@ -13,7 +13,8 @@ enum PostNavigationActionCenter {
         let onAvatarTap: () -> Void
         let onUsernameTap: () -> Void
         let onImageTap: (URL) -> Void
-        let onMentionTap: (String, URL) -> Void
+        /// Returns false when the renderer should open the original URL.
+        let onMentionTap: (String, URL) -> Bool
         let onHashtagTap: (String, URL) -> Void
         let onQuotedStatusTap: (Status) -> Void
         let onBoostUserTap: () -> Void
@@ -52,12 +53,12 @@ enum PostNavigationActionCenter {
             onImageTap: { url in
                 navigate(mediaRoute(for: url, in: targetStatus))
             },
-            onMentionTap: { username, url in
-                if let mention = status.mentions?.first(where: { $0.url == url }) {
-                    navigate(.mentionUser(mention))
-                } else if let mention = status.mentions?.first(where: { $0.username == username }) {
-                    navigate(.mentionUser(mention))
+            onMentionTap: { _, url in
+                guard let mention = status.displayStatus.mentions?.first(where: { $0.url == url }) else {
+                    return false
                 }
+                navigate(.mentionUser(mention))
+                return true
             },
             onHashtagTap: { tag, _ in
                 navigate(.hashtag(tag))

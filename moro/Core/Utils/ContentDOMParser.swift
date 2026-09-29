@@ -83,7 +83,8 @@ enum ContentDOMParser {
                 let parsed: ContentElement
                 if let mention = mentions?.first(where: { $0.url == url }) {
                     parsed = .mention(username: "@\(mention.username)", url: url)
-                } else if label.hasPrefix("#"), knownTag || isTagPath(url) {
+                } else if label.hasPrefix("#"), knownTag || element.hasClass("hashtag")
+                    || ((try? element.attr("rel")) ?? "").split(whereSeparator: \.isWhitespace).contains("tag") {
                     parsed = .hashtag(tag: label, url: url)
                 } else if element.hasClass("mention"), label.hasPrefix("@") {
                     parsed = .mention(username: label, url: url)
@@ -211,7 +212,7 @@ enum ContentDOMParser {
 
     private static func isTagPath(_ url: URL) -> Bool {
         let path = url.pathComponents.filter { $0 != "/" }
-        return path.count >= 2 && ["tag", "tags"].contains(path[path.count - 2].lowercased())
+        return path.count == 2 && ["tag", "tags"].contains(path[0].lowercased())
     }
 
     private static func normalizedURL(_ url: URL) -> String {

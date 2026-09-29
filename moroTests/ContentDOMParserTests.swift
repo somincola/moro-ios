@@ -76,6 +76,22 @@ struct ContentDOMParserTests {
         #expect(tagged("<p><a href='/tags/Swift'>阅读教程</a></p>").plainTextValue == "阅读教程")
     }
 
+    @Test func linkSemanticsComeFromEntitiesAndMarkupInsteadOfPathSubstrings() {
+        let url = URL(string: "https://social.example/tags/Swift")!
+        #expect(parse("<a href='/tags/Swift'>#Swift</a>") == [.link(text: "#Swift", url: url)])
+        for attributes in ["class='mention hashtag'", "rel='nofollow tag'"] {
+            #expect(parse("<a \(attributes) href='/tags/Swift'>#<span>Swift</span></a>")
+                == [.hashtag(tag: "#Swift", url: url)])
+        }
+        let mention = Status.Mention(id: "local-id", username: "alice",
+            url: URL(string: "https://a.example/@alice")!, acct: "alice@a.example")
+        let elements = ContentParser.parseToElements(
+            html: "<a href='https://a.example/@alice'>Alice</a> <a href='https://b.example/@alice'>@alice</a>",
+            mentions: [mention])
+        #expect(elements == [.mention(username: "@alice", url: mention.url), .text(" "),
+            .link(text: "@alice", url: URL(string: "https://b.example/@alice")!)])
+    }
+
     @Test func parsingCacheKeepsAccountBaseURLAndOptionsSeparate() {
         let html = "<p><a href='/target'>link</a> <code>code</code></p>"
         let first = parse(html)

@@ -574,7 +574,6 @@ struct TimelineHomeView: View {
                 apiClient: apiClient,
                 onDismiss: { actionSurface.dismissReport() }
             )
-            .moroSheetSurface(detents: [.large])
         }
     }
 

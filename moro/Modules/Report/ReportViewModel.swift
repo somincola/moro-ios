@@ -1,64 +1,55 @@
-//
-//  ReportViewModel.swift
-//  moro
-//
-//  ViewModel for multi-step report flow.
-//
-
-import Foundation
 import Combine
+import Foundation
 
-// MARK: - Report Step
-
-enum ReportStep: Int, CaseIterable {
-    case reason = 0
-    case selectPosts = 1
-    case submitting = 2
+enum ReportStep: Hashable {
+    case reason, rules, selectPosts, comment, result
 }
 
-// MARK: - Report Reason
-
 enum ReportReason: String, CaseIterable, Identifiable {
-    case offensive
-    case spam
-    case illegal
-    case violation
-    case other
-    
+    case dislike, spam, violation, other
+
     var id: String { rawValue }
-    
+
     var title: String {
         switch self {
-        case .offensive: return MoroL10n.Report.reasonOffensive
-        case .spam: return MoroL10n.Report.reasonSpam
-        case .illegal: return MoroL10n.Report.reasonIllegal
-        case .violation: return MoroL10n.Report.reasonViolation
-        case .other: return MoroL10n.Report.reasonOther
+        case .dislike: MoroL10n.Report.reasonOffensive
+        case .spam: MoroL10n.Report.reasonSpam
+        case .violation: MoroL10n.Report.reasonViolation
+        case .other: MoroL10n.Report.reasonOther
         }
     }
 
     var description: String {
         switch self {
-        case .offensive: return MoroL10n.Report.reasonOffensiveDesc
-        case .spam: return MoroL10n.Report.reasonSpamDesc
-        case .illegal: return MoroL10n.Report.reasonIllegalDesc
-        case .violation: return MoroL10n.Report.reasonViolationDesc
-        case .other: return MoroL10n.Report.reasonOtherDesc
+        case .dislike: MoroL10n.Report.reasonOffensiveDesc
+        case .spam: MoroL10n.Report.reasonSpamDesc
+        case .violation: MoroL10n.Report.reasonViolationDesc
+        case .other: MoroL10n.Report.reasonOtherDesc
+        }
+    }
+
+    var category: ReportRequest.Category? {
+        switch self {
+        case .dislike: nil
+        case .spam: .spam
+        case .violation: .violation
+        case .other: .other
         }
     }
 }
 
-// MARK: - ReportViewModel
-
 @MainActor
-class ReportViewModel: ObservableObject {
+final class ReportViewModel: ObservableObject {
     // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
     nonisolated deinit {}
 
-    enum StepErrorContext {
-        case loadStatuses
-        case loadMore
-        case submit
+    enum AccountAction: String, Identifiable {
+        case unfollow, mute, block
+        var id: String { rawValue }
+    }
+
+    enum StepErrorContext: Equatable {
+        case loadRules, loadStatuses, loadMore, submit, loadRelationship, accountAction
     }
 
     struct StepErrorState {
@@ -66,257 +57,251 @@ class ReportViewModel: ObservableObject {
         let context: StepErrorContext
     }
 
+    static let commentLimit = 1_000
+    let account: Account
     private let apiClient: MastodonAPI
-    private let initialStatus: Status
-    private let accountID: String
-    
-    // MARK: - Step Management
-    
-    @Published var currentStep: ReportStep = .reason
-    
-    // MARK: - Step 1: Reason Selection
-    
-    @Published var selectedReason: ReportReason?
-    @Published var customComment: String = ""
-    
-    // MARK: - Step 2: Post Selection
-    
-    @Published var selectedStatusIDs: Set<String> = []
-    @Published var userStatuses: [Status] = []
-    @Published var isLoadingStatuses: Bool = false
-    @Published var hasMoreStatuses: Bool = true
+    private let feedCoordinator: FeedCoordinator
+    private var didLoadRules = false
+    private var didLoadStatuses = false
     private var maxStatusID: String?
-    
-    // MARK: - Submission
-    
-    @Published var isSubmitting: Bool = false
-    @Published var error: Error?
-    @Published var isSubmitted: Bool = false
-    @Published var stepError: StepErrorState?
-    
-    // MARK: - Computed Properties
-    
+
+    @Published private(set) var currentStep: ReportStep = .reason
+    @Published var selectedReason: ReportReason?
+    @Published var customComment = ""
+    @Published private(set) var rules: [MastodonInstanceRule] = []
+    @Published private(set) var selectedRuleIDs: Set<String> = []
+    @Published private(set) var isLoadingRules = false
+    @Published private(set) var selectedStatusIDs: Set<String> = []
+    @Published private(set) var userStatuses: [Status] = []
+    @Published private(set) var isLoadingStatuses = false
+    @Published private(set) var hasMoreStatuses = false
+    @Published private(set) var isSubmitting = false
+    @Published private(set) var isSubmitted = false
+    @Published private(set) var stepError: StepErrorState?
+    @Published private(set) var relationship: Relationship?
+    @Published private(set) var isLoadingRelationship = false
+    @Published private(set) var activeAccountAction: AccountAction?
+    @Published private(set) var hasUnfollowed = false
+
+    var accountUsername: String { account.username }
+    var comment: String { customComment.trimmingCharacters(in: .whitespacesAndNewlines) }
+    var isBusy: Bool { isSubmitting || activeAccountAction != nil }
+    var hasValidRules: Bool {
+        !selectedRuleIDs.isEmpty && selectedRuleIDs.isSubset(of: Set(rules.map(\.id)))
+    }
     var canProceedToNextStep: Bool {
+        guard !isBusy else { return false }
         switch currentStep {
-        case .reason:
-            return selectedReason != nil
-        case .selectPosts:
-            return !selectedStatusIDs.isEmpty
-        case .submitting:
-            return false
+        case .reason: return selectedReason != nil
+        case .rules: return !isLoadingRules && hasValidRules
+        case .selectPosts: return true
+        case .comment:
+            return selectedReason?.category != nil && comment.count <= Self.commentLimit
+                && (selectedReason != .violation || hasValidRules)
+        case .result: return false
         }
     }
-    
-    var accountUsername: String {
-        initialStatus.account.username
-    }
-    
-    // MARK: - Initialization
-    
-    init(apiClient: MastodonAPI, status: Status) {
+
+    init(
+        apiClient: MastodonAPI, account: Account, status: Status? = nil,
+        feedCoordinator: FeedCoordinator = .shared
+    ) {
         self.apiClient = apiClient
-        self.initialStatus = status
-        self.accountID = status.account.id
-        // Auto-select the triggering status
-        self.selectedStatusIDs = [status.id]
+        self.account = account
+        self.feedCoordinator = feedCoordinator
+        if let status = status?.displayStatus, status.account.id == account.id {
+            userStatuses = [status]
+            selectedStatusIDs = [status.id]
+        }
     }
-    
-    // MARK: - Navigation
-    
+
+    convenience init(apiClient: MastodonAPI, status: Status, feedCoordinator: FeedCoordinator = .shared) {
+        let original = status.displayStatus
+        self.init(
+            apiClient: apiClient, account: original.account, status: original,
+            feedCoordinator: feedCoordinator)
+    }
+
     func goToNextStep() {
-        switch currentStep {
-        case .reason:
-            stepError = nil
-            currentStep = .selectPosts
-            // Load user statuses when entering step 2
-            if userStatuses.isEmpty {
-                Task {
-                    await loadUserStatuses()
-                }
-            }
-        case .selectPosts:
-            Task {
-                await submitReport()
-            }
-        case .submitting:
-            break
-        }
-    }
-    
-    func goToPreviousStep() {
-        switch currentStep {
-        case .reason:
-            break // Can't go back from first step
-        case .selectPosts:
-            stepError = nil
-            currentStep = .reason
-        case .submitting:
-            break // Can't go back while submitting
-        }
-    }
-    
-    // MARK: - Status Selection
-    
-    func toggleStatusSelection(_ statusID: String) {
-        if selectedStatusIDs.contains(statusID) {
-            selectedStatusIDs.remove(statusID)
-        } else {
-            selectedStatusIDs.insert(statusID)
-        }
-    }
-    
-    func isStatusSelected(_ statusID: String) -> Bool {
-        selectedStatusIDs.contains(statusID)
-    }
-    
-    // MARK: - Load User Statuses
-    
-    func loadUserStatuses() async {
-        guard !isLoadingStatuses else { return }
-        
-        isLoadingStatuses = true
-        defer { isLoadingStatuses = false }
-        
-        do {
-            let statuses = try await apiClient.fetchAccountStatuses(
-                id: accountID,
-                maxID: nil,
-                sinceID: nil,
-                limit: 20,
-                excludeReplies: false,
-                excludeReblogs: false,
-                onlyMedia: false,
-                pinned: false
-            )
-            
-            userStatuses = statuses
-            maxStatusID = statuses.last?.id
-            hasMoreStatuses = statuses.count >= 20
-            
-            // Ensure initial status is in the list (might be at top)
-            if !userStatuses.contains(where: { $0.id == initialStatus.id }) {
-                userStatuses.insert(initialStatus, at: 0)
-            }
-            stepError = nil
-        } catch {
-            AppFeedbackCenter.shared.showError(MoroL10n.Report.errorLoadPostsShort)
-            AppLogger.error("Failed to load user statuses: \(error)")
-            stepError = StepErrorState(
-                message: MoroL10n.Report.errorLoadPosts,
-                context: .loadStatuses
-            )
-            // Still show the initial status
-            if userStatuses.isEmpty {
-                userStatuses = [initialStatus]
-            }
-        }
-    }
-    
-    func loadMoreStatuses() async {
-        guard !isLoadingStatuses, hasMoreStatuses, let maxID = maxStatusID else { return }
-        
-        isLoadingStatuses = true
-        defer { isLoadingStatuses = false }
-        
-        do {
-            let statuses = try await apiClient.fetchAccountStatuses(
-                id: accountID,
-                maxID: maxID,
-                sinceID: nil,
-                limit: 20,
-                excludeReplies: false,
-                excludeReblogs: false,
-                onlyMedia: false,
-                pinned: false
-            )
-            
-            userStatuses.append(contentsOf: statuses)
-            maxStatusID = statuses.last?.id
-            hasMoreStatuses = statuses.count >= 20
-            stepError = nil
-        } catch {
-            AppFeedbackCenter.shared.showError(MoroL10n.Report.errorLoadMoreShort)
-            AppLogger.error("Failed to load more statuses: \(error)")
-            stepError = StepErrorState(
-                message: MoroL10n.Report.errorLoadMore,
-                context: .loadMore
-            )
-        }
-    }
-    
-    // MARK: - Submit Report
-    
-    func submitReport() async {
         guard canProceedToNextStep else { return }
-        
-        currentStep = .submitting
+        stepError = nil
+        switch currentStep {
+        case .reason:
+            switch selectedReason {
+            case .dislike: currentStep = .result
+            case .violation: currentStep = .rules
+            case .spam, .other: currentStep = .selectPosts
+            case nil: break
+            }
+        case .rules: currentStep = .selectPosts
+        case .selectPosts: currentStep = .comment
+        case .comment, .result: break
+        }
+    }
+
+    func goToPreviousStep() {
+        guard !isBusy else { return }
+        stepError = nil
+        switch currentStep {
+        case .rules: currentStep = .reason
+        case .selectPosts: currentStep = selectedReason == .violation ? .rules : .reason
+        case .comment: currentStep = .selectPosts
+        case .result where !isSubmitted: currentStep = .reason
+        case .reason, .result: break
+        }
+    }
+
+    func prepareCurrentStep() async {
+        switch currentStep {
+        case .rules where !didLoadRules: await loadRules()
+        case .selectPosts where !didLoadStatuses: await loadUserStatuses()
+        case .result where relationship == nil: await loadRelationship()
+        default: break
+        }
+    }
+
+    func toggleRuleSelection(_ id: String) {
+        guard !isBusy, rules.contains(where: { $0.id == id }) else { return }
+        if !selectedRuleIDs.insert(id).inserted { selectedRuleIDs.remove(id) }
+    }
+
+    func toggleStatusSelection(_ id: String) {
+        guard !isBusy, userStatuses.contains(where: { $0.id == id }) else { return }
+        if !selectedStatusIDs.insert(id).inserted { selectedStatusIDs.remove(id) }
+    }
+
+    func loadRules() async {
+        guard !isLoadingRules else { return }
+        let requestedStep = currentStep
+        isLoadingRules = true
+        stepError = nil
+        defer { isLoadingRules = false }
+        do {
+            // Report rule IDs belong to the signed-in instance, including reports of remote accounts.
+            let instance = try await apiClient.fetchInstance()
+            try Task.checkCancellation()
+            rules = instance.rules ?? []
+            selectedRuleIDs.formIntersection(rules.map(\.id))
+            didLoadRules = true
+        } catch {
+            guard !Task.isCancelled, currentStep == requestedStep else { return }
+            stepError = .init(message: MoroL10n.Report.errorLoadRules, context: .loadRules)
+        }
+    }
+
+    func loadUserStatuses(loadMore: Bool = false) async {
+        guard !isLoadingStatuses, !loadMore || (hasMoreStatuses && maxStatusID != nil) else { return }
+        let requestedStep = currentStep
+        isLoadingStatuses = true
+        stepError = nil
+        defer { isLoadingStatuses = false }
+        let cursor = loadMore ? maxStatusID : nil
+        do {
+            let statuses = try await apiClient.fetchAccountStatuses(
+                id: account.id, maxID: cursor, sinceID: nil, limit: 20,
+                excludeReplies: false, excludeReblogs: true, onlyMedia: false, pinned: false
+            )
+            try Task.checkCancellation()
+            var knownIDs = Set(userStatuses.map(\.id))
+            userStatuses += statuses.filter {
+                $0.reblog == nil && $0.account.id == account.id && knownIDs.insert($0.id).inserted
+            }
+            maxStatusID = statuses.last?.id
+            hasMoreStatuses = statuses.count >= 20 && maxStatusID != cursor
+            didLoadStatuses = true
+        } catch {
+            guard !Task.isCancelled, currentStep == requestedStep else { return }
+            stepError = .init(
+                message: loadMore ? MoroL10n.Report.errorLoadMore : MoroL10n.Report.errorLoadPosts,
+                context: loadMore ? .loadMore : .loadStatuses
+            )
+        }
+    }
+
+    func submitReport() async {
+        guard currentStep == .comment, canProceedToNextStep,
+            let category = selectedReason?.category
+        else { return }
         isSubmitting = true
         stepError = nil
         defer { isSubmitting = false }
-        
-        // Build comment from reason + custom comment
-        var fullComment = selectedReason?.title ?? ""
-        if !customComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            fullComment += ": " + customComment.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        
+        let request = ReportRequest(
+            accountID: account.id,
+            statusIDs: selectedStatusIDs.sorted(),
+            comment: comment,
+            category: category,
+            ruleIDs: category == .violation ? selectedRuleIDs.sorted() : nil
+        )
         do {
-            _ = try await apiClient.report(
-                accountID: accountID,
-                statusIDs: Array(selectedStatusIDs),
-                comment: fullComment
-            )
-            AppLogger.debug("Report submitted successfully")
-            AppFeedbackCenter.shared.showSuccess(MoroL10n.Report.successSubmitted)
+            _ = try await apiClient.report(request)
             isSubmitted = true
+            currentStep = .result
         } catch {
-            self.error = error
-            AppFeedbackCenter.shared.showError(MoroL10n.Report.errorSubmitShort)
-            AppLogger.error("Failed to submit report: \(error)")
-            stepError = StepErrorState(
-                message: MoroL10n.Report.errorSubmit,
-                context: .submit
-            )
-            currentStep = .selectPosts // Go back to allow retry
+            // Keep the draft and stay on the final step so retry cannot lose selections or text.
+            stepError = .init(message: MoroL10n.Report.errorSubmit, context: .submit)
         }
     }
 
-    var stepErrorActionTitle: String {
-        guard let stepError else { return MoroL10n.Report.retry }
-        switch stepError.context {
-        case .loadStatuses:
-            return MoroL10n.Report.retryLoadPosts
-        case .loadMore:
-            return MoroL10n.Report.retryLoadMore
-        case .submit:
-            return MoroL10n.Report.retrySubmit
+    func loadRelationship() async {
+        guard !isLoadingRelationship, activeAccountAction == nil else { return }
+        let requestedStep = currentStep
+        isLoadingRelationship = true
+        stepError = nil
+        defer { isLoadingRelationship = false }
+        do {
+            let relationships = try await apiClient.fetchRelationships(accountIDs: [account.id])
+            try Task.checkCancellation()
+            guard let relationship = relationships.first(where: { $0.id == account.id }) else {
+                stepError = .init(message: MoroL10n.Report.errorLoadRelationship, context: .loadRelationship)
+                return
+            }
+            self.relationship = relationship
+        } catch {
+            guard !Task.isCancelled, currentStep == requestedStep else { return }
+            stepError = .init(message: MoroL10n.Report.errorLoadRelationship, context: .loadRelationship)
         }
     }
 
-    func retryStepErrorAction() {
-        guard let stepError else { return }
-        self.stepError = nil
-
-        switch stepError.context {
-        case .loadStatuses:
-            Task {
-                await reloadUserStatuses()
-            }
-        case .loadMore:
-            Task {
-                await loadMoreStatuses()
-            }
-        case .submit:
-            Task {
-                await submitReport()
-            }
+    func isActionCompleted(_ action: AccountAction) -> Bool {
+        guard let relationship else { return false }
+        switch action {
+        case .unfollow: return !relationship.following && !relationship.requested
+        case .mute: return relationship.muting
+        case .block: return relationship.blocking
         }
     }
 
-    private func reloadUserStatuses() async {
-        maxStatusID = nil
-        hasMoreStatuses = true
-        userStatuses = []
-        await loadUserStatuses()
+    func performAccountAction(_ action: AccountAction) async {
+        guard currentStep == .result, relationship != nil, !isBusy,
+            !isLoadingRelationship, !isActionCompleted(action)
+        else { return }
+        activeAccountAction = action
+        stepError = nil
+        defer { activeAccountAction = nil }
+        do {
+            let updated: Relationship
+            switch action {
+            case .unfollow: updated = try await apiClient.unfollowAccount(id: account.id)
+            case .mute: updated = try await apiClient.muteAccount(id: account.id)
+            case .block: updated = try await apiClient.blockAccount(id: account.id)
+            }
+            relationship = updated
+            if action == .unfollow { hasUnfollowed = !updated.following && !updated.requested }
+            feedCoordinator.publishUpdate(.relationship(updated))
+        } catch {
+            stepError = .init(message: MoroL10n.Report.errorAccountAction, context: .accountAction)
+        }
+    }
+
+    func retryStepErrorAction() async {
+        guard let context = stepError?.context, !isBusy else { return }
+        switch context {
+        case .loadRules: await loadRules()
+        case .loadStatuses: await loadUserStatuses()
+        case .loadMore: await loadUserStatuses(loadMore: true)
+        case .submit: await submitReport()
+        case .loadRelationship: await loadRelationship()
+        case .accountAction: break  // Retry the chosen action explicitly from its row.
+        }
     }
 }

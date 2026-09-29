@@ -9,6 +9,20 @@
 import Foundation
 import SwiftUI
 
+/// Preserve the parser's link semantics through navigation.
+enum LinkAction: Equatable {
+    case mention(username: String, url: URL)
+    case hashtag(tag: String, url: URL)
+    case link(url: URL)
+
+    var url: URL {
+        switch self {
+        case .mention(_, let url), .hashtag(_, let url), .link(let url):
+            return url
+        }
+    }
+}
+
 /// Content element types for rendering
 enum ContentElement: Equatable {
     case text(String)

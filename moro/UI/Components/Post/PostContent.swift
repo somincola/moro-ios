@@ -27,7 +27,7 @@ struct PostContent: View {
     let status: Status
     var translationAPIClient: MastodonAPI? = nil
     let translationViewModel: StatusTranslationViewModel
-    var onMentionTap: ((String, URL) -> Void)? = nil
+    var onMentionTap: ((String, URL) -> Bool)? = nil
     var onHashtagTap: ((String, URL) -> Void)? = nil
     var onLinkTap: ((URL) -> Void)? = nil
     var onPollVote: ((String, [Int]) async -> Bool)? = nil
@@ -50,7 +50,7 @@ struct PostContent: View {
         status: Status,
         translationAPIClient: MastodonAPI? = nil,
         translationViewModel: StatusTranslationViewModel,
-        onMentionTap: ((String, URL) -> Void)? = nil,
+        onMentionTap: ((String, URL) -> Bool)? = nil,
         onHashtagTap: ((String, URL) -> Void)? = nil,
         onLinkTap: ((URL) -> Void)? = nil,
         onPollVote: ((String, [Int]) async -> Bool)? = nil,
@@ -104,28 +104,9 @@ struct PostContent: View {
                     fontOverride: textFont ?? .system(size: 16, weight: .regular),
                     uiFontOverride: uiTextFont ?? (textFont == nil ? timelineBodyUIFont : nil),
                     textColorOverride: textColor,
-                    onMentionTap: { username, url in
-                        if let handler = onMentionTap {
-                            handler(username, url)
-                        } else {
-                            openURL(url)
-                        }
-                    },
-                    onHashtagTap: { tag, url in
-                        if let handler = onHashtagTap {
-                            handler(tag, url)
-                        } else {
-                            openURL(url)
-                        }
-                    },
-                    onLinkTap: { url in
-                        if let handler = onLinkTap {
-                            handler(url)
-                        } else {
-                            // Use default openURL which will be handled by LinkedTextView's URLHandler
-                            openURL(url)
-                        }
-                    }
+                    onMentionTap: onMentionTap,
+                    onHashtagTap: onHashtagTap,
+                    onLinkTap: onLinkTap
                 )
                 .fixedSize(horizontal: false, vertical: true)
 

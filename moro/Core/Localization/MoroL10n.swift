@@ -1455,6 +1455,25 @@ public enum MoroL10n {
     }
 
     public enum Report {
+        public static var rulesTitle: String { text("report.rulesTitle") }
+        public static var rulesHint: String { text("report.rulesHint") }
+        public static var noRules: String { text("report.noRules") }
+        public static var chooseAnotherReason: String { text("report.chooseAnotherReason") }
+        public static var errorLoadRules: String { text("report.errorLoadRules") }
+        public static var commentTitle: String { text("report.commentTitle") }
+        public static var preferencesTitle: String { text("report.preferencesTitle") }
+        public static var skip: String { text("report.skip") }
+        public static var skipAndReport: String { text("report.skipAndReport") }
+        public static var noPosts: String { text("report.noPosts") }
+        public static var loadMore: String { text("report.loadMore") }
+        public static var resultHint: String { text("report.resultHint") }
+        public static var dislikeHint: String { text("report.dislikeHint") }
+        public static var unfollowHint: String { text("report.unfollowHint") }
+        public static var muteHint: String { text("report.muteHint") }
+        public static var blockHint: String { text("report.blockHint") }
+        public static var errorLoadRelationship: String { text("report.errorLoadRelationship") }
+        public static var errorAccountAction: String { text("report.errorAccountAction") }
+        public static func mediaCount(_ count: Int) -> String { format("report.mediaCount", Int64(count)) }
         public static var reasonOffensive: String { text("report.reason.offensive") }
         public static var reasonSpam: String { text("report.reason.spam") }
         public static var reasonIllegal: String { text("report.reason.illegal") }

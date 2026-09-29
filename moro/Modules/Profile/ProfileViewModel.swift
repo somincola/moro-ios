@@ -775,8 +775,15 @@ final class ProfileViewModel: ObservableObject {
                 pinnedStatuses.removeAll { $0.id == deletedID }
             }
             
-        case .hashtag, .relationship:
-            // Not applicable for profile
+        case .relationship(let updatedRelationship):
+            guard updatedRelationship.id == resolvedAccountID else { break }
+            if let previous = relationship, let current = account,
+               previous.following != updatedRelationship.following {
+                let delta = updatedRelationship.following ? 1 : -1
+                account = current.updating(followersCount: max(0, current.followersCount + delta))
+            }
+            relationship = updatedRelationship
+        case .hashtag:
             break
         }
     }

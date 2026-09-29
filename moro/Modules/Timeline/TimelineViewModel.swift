@@ -897,8 +897,13 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
             updateStatus(updatedStatus)
         case .deletedPost(let deletedID):
             removeStatus(id: deletedID)
-        case .hashtag, .relationship:
-            // Not applicable for timeline
+        case .relationship(let relationship):
+            guard relationship.blocking || relationship.muting else { break }
+            let hiddenIDs = statuses.filter {
+                $0.account.id == relationship.id || $0.displayStatus.account.id == relationship.id
+            }.map(\.id)
+            for id in hiddenIDs { removeStatus(id: id) }
+        case .hashtag:
             break
         }
     }

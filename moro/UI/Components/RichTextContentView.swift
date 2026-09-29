@@ -8,13 +8,6 @@
 
 import SwiftUI
 
-/// Action types for link taps
-enum LinkAction {
-    case mention(username: String, url: URL)
-    case hashtag(tag: String, url: URL)
-    case link(url: URL)
-}
-
 private enum RichTextRenderBlock: Identifiable {
     case inline(id: Int, elements: [ContentElement])
     case code(id: Int, value: String)
@@ -425,22 +418,29 @@ struct RichTextContentView: View {
     }
 
     private func handleURL(_ url: URL) {
-        if let action = inferredLinkAction(for: url), let onLinkTap {
+        let action = linkAction(for: url)
+        if let onLinkTap {
             onLinkTap(action)
         } else {
-            URLHandler.shared.handleURL(url, router: router, systemOpenURL: openURL)
+            URLHandler.shared.handleLinkAction(action, router: router, systemOpenURL: openURL)
         }
     }
 
-    private func inferredLinkAction(for url: URL) -> LinkAction? {
-        let urlString = url.absoluteString
-
-        if urlString.contains("/@") || urlString.contains("/users/") || urlString.contains("/accounts/") {
-            return .mention(username: url.lastPathComponent, url: url)
-        }
-
-        if url.pathComponents.contains("tags") || url.pathComponents.contains("tag") {
-            return .hashtag(tag: url.lastPathComponent, url: url)
+    func linkAction(for url: URL) -> LinkAction {
+        for element in elements {
+            switch element {
+            case .mention(let username, let target) where target == url:
+                return .mention(
+                    username: username.hasPrefix("@") ? String(username.dropFirst()) : username,
+                    url: url
+                )
+            case .hashtag(let tag, let target) where target == url:
+                return .hashtag(tag: tag.hasPrefix("#") ? String(tag.dropFirst()) : tag, url: url)
+            case .link(_, let target) where target == url:
+                return .link(url: url)
+            default:
+                continue
+            }
         }
 
         return .link(url: url)
@@ -543,6 +543,16 @@ struct MixedTextEmojiView: UIViewRepresentable {
     var trailingSystemImageSize: CGFloat = 11
     var onOpenURL: ((URL) -> Void)? = nil
 
+    private var allowsInteraction: Bool {
+        // UITextView requires selection to be enabled for native link interaction.
+        isSelectable || elements.contains {
+            switch $0 {
+            case .link, .mention, .hashtag: return true
+            default: return false
+            }
+        }
+    }
+
     private var resolvedLinkTextAttributes: [NSAttributedString.Key: Any] {
         var attributes: [NSAttributedString.Key: Any] = [
             .foregroundColor: linkColor
@@ -573,8 +583,8 @@ struct MixedTextEmojiView: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextView {
         let textView = AutoHeightTextView()
         textView.isEditable = false
-        textView.isSelectable = isSelectable
-        textView.isUserInteractionEnabled = isSelectable
+        textView.isSelectable = allowsInteraction
+        textView.isUserInteractionEnabled = allowsInteraction
         textView.isScrollEnabled = false  // Disable scrolling to enable dynamic height
         textView.backgroundColor = .clear
         textView.textContainer.lineFragmentPadding = 0
@@ -598,8 +608,8 @@ struct MixedTextEmojiView: UIViewRepresentable {
 
     func updateUIView(_ textView: UITextView, context: Context) {
         context.coordinator.onOpenURL = onOpenURL
-        textView.isSelectable = isSelectable
-        textView.isUserInteractionEnabled = isSelectable
+        textView.isSelectable = allowsInteraction
+        textView.isUserInteractionEnabled = allowsInteraction
         textView.textColor = textColor
         textView.font = font
         textView.linkTextAttributes = resolvedLinkTextAttributes
@@ -1136,7 +1146,7 @@ struct LinkedTextView: View {
     var uiFontOverride: UIFont? = nil
     var textColorOverride: Color? = nil
     var linkColorOverride: Color? = nil
-    var onMentionTap: ((String, URL) -> Void)? = nil
+    var onMentionTap: ((String, URL) -> Bool)? = nil
     var onHashtagTap: ((String, URL) -> Void)? = nil
     var onLinkTap: ((URL) -> Void)? = nil
 
@@ -1159,32 +1169,25 @@ struct LinkedTextView: View {
             lineSpacing: lineSpacing,
             lineLimit: lineLimit
         ) { action in
-            switch action {
-            case .mention(let username, let url):
-                if let handler = onMentionTap {
-                    handler(username, url)
-                } else {
-                    // Use URLHandler to respect settings
-                    URLHandler.shared.handleURL(url, router: router, systemOpenURL: systemOpenURL)
-                }
-
-            case .hashtag(let tag, let url):
-                if let handler = onHashtagTap {
-                    handler(tag, url)
-                } else {
-                    // Use URLHandler to respect settings
-                    URLHandler.shared.handleURL(url, router: router, systemOpenURL: systemOpenURL)
-                }
-
-            case .link(let url):
-                if let handler = onLinkTap {
-                    handler(url)
-                } else {
-                    // Use URLHandler to respect settings
-                    URLHandler.shared.handleURL(url, router: router, systemOpenURL: systemOpenURL)
-                }
+            if !handleCustomLinkAction(action) {
+                URLHandler.shared.handleLinkAction(action, router: router, systemOpenURL: systemOpenURL)
             }
         }
+    }
+
+    /// An unmatched mention must fall through to the user's URL opening preference.
+    func handleCustomLinkAction(_ action: LinkAction) -> Bool {
+        switch action {
+        case .mention(let username, let url):
+            return onMentionTap?(username, url) ?? false
+        case .hashtag(let tag, let url):
+            guard let onHashtagTap else { return false }
+            onHashtagTap(tag, url)
+        case .link(let url):
+            guard let onLinkTap else { return false }
+            onLinkTap(url)
+        }
+        return true
     }
 }
 
@@ -1203,7 +1206,7 @@ struct LinkedTextView: View {
             mentions: nil,
             tags: nil,
             emojis: nil,
-            onMentionTap: { _, _ in },
+            onMentionTap: { _, _ in false },
             onHashtagTap: { _, _ in },
             onLinkTap: { _ in }
         )

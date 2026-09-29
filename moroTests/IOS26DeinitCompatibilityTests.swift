@@ -167,7 +167,7 @@ final class IOS26DeinitCompatibilityTests: XCTestCase {
         assertReleased { StatusDataController(status: status, client: api) }
         assertReleased { StatusDetailViewModel(status: status, apiClient: api, threadCache: ThreadCache(), accountCache: AccountCache(), feedCoordinator: FeedCoordinator()) }
         assertReleased { ReportViewModel(apiClient: api, status: status) }
-        assertReleased { AccountReportViewModel(apiClient: api, account: status.account) }
+        assertReleased { ReportViewModel(apiClient: api, account: status.account) }
 
         weak var evicted: ThreadedConversationModel?
         weak var remaining: ThreadedConversationModel?

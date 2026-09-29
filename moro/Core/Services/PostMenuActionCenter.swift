@@ -27,14 +27,19 @@ final class PostMenuActionCenter: ObservableObject {
     }
 
     private let apiClient: MastodonAPI
+    private var relationshipSubscription: AnyCancellable?
     @Published private var relationshipCache: [String: Relationship] = [:]
     private let relationshipCacheLimit: Int
     private var relationshipAccessOrder: [String] = []
     private var loadingAccountIDs: Set<String> = []
 
-    init(apiClient: MastodonAPI, relationshipCacheLimit: Int = 200) {
+    init(apiClient: MastodonAPI, relationshipCacheLimit: Int = 200, feedCoordinator: FeedCoordinator = .shared) {
         self.apiClient = apiClient
         self.relationshipCacheLimit = max(1, relationshipCacheLimit)
+        relationshipSubscription = feedCoordinator.updates.sink { [weak self] update in
+            guard case .relationship(let relationship) = update else { return }
+            self?.storeRelationship(relationship)
+        }
     }
 
     func handlers(
