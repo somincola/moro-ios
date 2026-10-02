@@ -62,7 +62,7 @@ final class AuthService: ObservableObject {
         let normalizedDomain = domain.trimmingCharacters(in: .whitespaces)
         let baseURLString = normalizedDomain.hasPrefix("http") ? normalizedDomain : "https://\(normalizedDomain)"
         guard let url = URL(string: baseURLString) else {
-            let error = NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid domain format"])
+            let error = NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: MoroL10n.Login.errorInvalidFormat])
             state = .error(error)
             throw error
         }
@@ -106,13 +106,13 @@ final class AuthService: ObservableObject {
 
     func startOAuthFlow(redirectURI: String = "moro://oauth/callback", scopes: String = "read write follow push") async throws -> MastodonAuthenticationController {
         guard let baseURL = baseURL else {
-            throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Instance not validated"])
+            throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: MoroL10n.Login.errorValidation])
         }
 
         state = .creatingApp
 
         guard let client = apiClient else {
-            throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "API client not initialized"])
+            throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: MoroL10n.Login.errorAuth])
         }
 
         do {
@@ -147,7 +147,7 @@ final class AuthService: ObservableObject {
             ]
 
             guard let authURL = components?.url else {
-                throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to build authorization URL"])
+                throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: MoroL10n.Login.errorAuth])
             }
 
             state = .authorizing
@@ -166,7 +166,7 @@ final class AuthService: ObservableObject {
 
     func handleOAuthCode(_ code: String) async throws -> (token: String, account: Account, instanceURL: URL) {
         guard let app = currentOAuthApp, let baseURL = baseURL, let client = apiClient else {
-            throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "OAuth app not created"])
+            throw NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: MoroL10n.Login.errorAuth])
         }
 
         // Exchange code for token (with the PKCE verifier captured at authorize time)
@@ -275,7 +275,7 @@ final class AuthService: ObservableObject {
             throw NSError(
                 domain: "AuthService",
                 code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Instance not validated"]
+                userInfo: [NSLocalizedDescriptionKey: MoroL10n.Login.errorValidation]
             )
         }
 
@@ -498,7 +498,7 @@ final class AuthService: ObservableObject {
             return true
         }
         if case .serverError(let serverError) = error {
-            let message = (serverError.errorDescription ?? serverError.error).lowercased()
+            let message = (serverError.serverDescription ?? serverError.error).lowercased()
             if message.contains("confirm your email")
                 || message.contains("awaiting")
                 || message.contains("approved")
@@ -512,7 +512,7 @@ final class AuthService: ObservableObject {
 
     private func pendingHint(for error: APIError) -> String? {
         if case .serverError(let serverError) = error {
-            let raw = (serverError.errorDescription ?? serverError.error).lowercased()
+            let raw = (serverError.serverDescription ?? serverError.error).lowercased()
             if raw.contains("confirm your email") || raw.contains("confirmation") {
                 return MoroL10n.Auth.confirmEmail
             }

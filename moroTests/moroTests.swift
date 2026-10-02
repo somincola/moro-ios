@@ -2854,7 +2854,7 @@ struct moroTests {
 
         #expect(status.hasFilterWarning)
         #expect(status.primaryFilterWarningTitle == "Politics")
-        #expect(status.filterWarningBannerText == "Filtered by 2 rules")
+        #expect(status.filterWarningBannerText == MoroL10n.SensitiveMedia.filteredByRules(2))
     }
 
     @Test @MainActor func timelineLoadInitialMergesNetworkWithCachedStatuses() async throws {

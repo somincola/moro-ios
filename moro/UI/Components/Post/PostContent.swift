@@ -446,13 +446,13 @@ struct PostContent: View {
 
         if !quote.mediaAttachments.isEmpty {
             let mediaCount = quote.mediaAttachments.count
-            let mediaTitle = mediaCount == 1 ? "1 media item" : "\(mediaCount) media items"
+            let mediaTitle = MoroL10n.Post.quoteMediaCount(mediaCount)
             hints.append(QuoteHintItem(icon: "photo.on.rectangle", title: mediaTitle))
         }
 
         if let poll = quote.poll {
             let optionCount = poll.options.count
-            let pollTitle = optionCount > 0 ? "\(optionCount)-option poll" : "Poll attached"
+            let pollTitle = optionCount > 0 ? MoroL10n.Post.quotePollOptions(optionCount) : MoroL10n.ComposeOriginal.badgePoll
             hints.append(QuoteHintItem(icon: "chart.bar.xaxis", title: pollTitle))
         }
 

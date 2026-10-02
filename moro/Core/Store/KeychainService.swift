@@ -163,16 +163,16 @@ final class KeychainService {
     }
 }
 
-enum KeychainError: Error {
+enum KeychainError: LocalizedError {
     case invalidData
     case unhandledError(status: OSStatus)
 
-    var localizedDescription: String {
+    var errorDescription: String? {
         switch self {
         case .invalidData:
-            return "Invalid data format"
-        case .unhandledError(let status):
-            return "Keychain error: \(status)"
+            return MoroL10n.AppError.decoding
+        case .unhandledError:
+            return MoroL10n.AppError.unknown
         }
     }
 }

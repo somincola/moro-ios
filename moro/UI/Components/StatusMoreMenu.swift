@@ -150,32 +150,32 @@ struct StatusMoreMenu: View {
         Menu {
             // Share
             Button(action: onShare) {
-                MoroMenuItemLabel(title: "Share", systemImage: "square.and.arrow.up")
+                MoroMenuItemLabel(title: MoroL10n.Profile.share, systemImage: "square.and.arrow.up")
             }
 
             // Copy Link
             Button(action: onCopyLink) {
-                MoroMenuItemLabel(title: "Copy link", systemImage: "link")
+                MoroMenuItemLabel(title: MoroL10n.Profile.copyLink, systemImage: "link")
             }
 
             Button(action: onCopyText) {
-                MoroMenuItemLabel(title: "Copy text", systemImage: "doc.on.doc")
+                MoroMenuItemLabel(title: MoroL10n.PostMenu.copyText, systemImage: "doc.on.doc")
             }
 
             Button(action: onOpenInBrowser) {
-                MoroMenuItemLabel(title: "Open in browser", systemImage: "safari")
+                MoroMenuItemLabel(title: MoroL10n.Profile.openInBrowser, systemImage: "safari")
             }
 
             Divider()
 
             // Mute User
             Button(action: onMuteUser) {
-                MoroMenuItemLabel(title: "Mute @\(status.account.username)", systemImage: "bell.slash")
+                MoroMenuItemLabel(title: "\(MoroL10n.PostMenu.actionMute) @\(status.account.username)", systemImage: "bell.slash")
             }
 
             // Block User
             MoroMenuActionButton(
-                title: "Block @\(status.account.username)",
+                title: "\(MoroL10n.PostMenu.actionBlock) @\(status.account.username)",
                 systemImage: "hand.raised",
                 tone: .destructive,
                 action: onBlockUser
@@ -185,7 +185,7 @@ struct StatusMoreMenu: View {
 
             // Report
             MoroMenuActionButton(
-                title: "Report",
+                title: MoroL10n.Profile.report,
                 systemImage: "flag",
                 tone: .destructive,
                 action: onReport
@@ -272,7 +272,7 @@ struct StatusMoreButton: View {
                 Button(action: {
                     performAction(onShare)
                 }) {
-                    MoroMenuItemLabel(title: "Share", systemImage: "square.and.arrow.up")
+                    MoroMenuItemLabel(title: MoroL10n.Profile.share, systemImage: "square.and.arrow.up")
                 }
             }
 
@@ -280,7 +280,7 @@ struct StatusMoreButton: View {
                 Button(action: {
                     performAction(onCopyLink)
                 }) {
-                    MoroMenuItemLabel(title: "Copy link", systemImage: "link")
+                    MoroMenuItemLabel(title: MoroL10n.Profile.copyLink, systemImage: "link")
                 }
             }
 
@@ -288,7 +288,7 @@ struct StatusMoreButton: View {
                 Button(action: {
                     performAction(onCopyText)
                 }) {
-                    MoroMenuItemLabel(title: "Copy text", systemImage: "doc.on.doc")
+                    MoroMenuItemLabel(title: MoroL10n.PostMenu.copyText, systemImage: "doc.on.doc")
                 }
             }
 
@@ -296,7 +296,7 @@ struct StatusMoreButton: View {
                 Button(action: {
                     performAction(onOpenInBrowser)
                 }) {
-                    MoroMenuItemLabel(title: "Open in browser", systemImage: "safari")
+                    MoroMenuItemLabel(title: MoroL10n.Profile.openInBrowser, systemImage: "safari")
                 }
             }
             
@@ -309,7 +309,7 @@ struct StatusMoreButton: View {
                     Button {
                         performAction(onEdit)
                     } label: {
-                        MoroMenuItemLabel(title: "Edit post", systemImage: "square.and.pencil")
+                        MoroMenuItemLabel(title: MoroL10n.Compose.navigationEdit, systemImage: "square.and.pencil")
                     }
                 }
 
@@ -321,7 +321,7 @@ struct StatusMoreButton: View {
                         performAction(onPin)
                     } label: {
                         MoroMenuItemLabel(
-                            title: status.pinned == true ? "Unpin from profile" : "Pin to profile",
+                            title: status.pinned == true ? MoroL10n.PostMenu.unpin : MoroL10n.PostMenu.pin,
                             systemImage: status.pinned == true ? "pin.slash" : "pin"
                         )
                     }
@@ -343,7 +343,7 @@ struct StatusMoreButton: View {
 
                     if visibility.showDelete, let onDelete {
                         MoroMenuActionButton(
-                            title: "Delete",
+                            title: MoroL10n.ComposeDrafts.deleteAction,
                             systemImage: "trash",
                             tone: .destructive,
                             action: { performAction(onDelete) }
@@ -361,8 +361,8 @@ struct StatusMoreButton: View {
                     }) {
                         MoroMenuItemLabel(
                             title: isMutingUser == true
-                                ? "Unmute @\(actionAccount.username)"
-                                : "Mute @\(actionAccount.username)",
+                                ? "\(MoroL10n.PostMenu.actionUnmute) @\(actionAccount.username)"
+                                : "\(MoroL10n.PostMenu.actionMute) @\(actionAccount.username)",
                             systemImage: isMutingUser == true ? "bell" : "bell.slash"
                         )
                     }
@@ -374,13 +374,13 @@ struct StatusMoreButton: View {
                             performAction(onBlockUser)
                         }) {
                             MoroMenuItemLabel(
-                                title: "Unblock @\(actionAccount.username)",
+                                title: "\(MoroL10n.PostMenu.actionUnblock) @\(actionAccount.username)",
                                 systemImage: "hand.raised.slash"
                             )
                         }
                     } else {
                         MoroMenuActionButton(
-                            title: "Block @\(actionAccount.username)",
+                            title: "\(MoroL10n.PostMenu.actionBlock) @\(actionAccount.username)",
                             systemImage: "hand.raised",
                             tone: .destructive,
                             action: { performAction(onBlockUser) }
@@ -390,7 +390,7 @@ struct StatusMoreButton: View {
 
                 if visibility.showBlockAndReport, let onBlockAndReport {
                     MoroMenuActionButton(
-                        title: "Block and report",
+                        title: MoroL10n.PostMenu.blockAndReport,
                         systemImage: "hand.raised.circle",
                         tone: .destructive,
                         action: { performAction(onBlockAndReport) }
@@ -403,7 +403,7 @@ struct StatusMoreButton: View {
                         Divider()
                     }
                     MoroMenuActionButton(
-                        title: "Report",
+                        title: MoroL10n.Profile.report,
                         systemImage: "flag",
                         tone: .destructive,
                         action: { performAction(onReport) }

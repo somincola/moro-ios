@@ -627,12 +627,12 @@ struct RegistrationFlowView: View {
     }
 
     private var formattedBirthday: String {
-        guard let dateOfBirth else { return "MM/DD/YYYY" }
+        guard let dateOfBirth else { return MoroL10n.Registration.birthdayPlaceholder }
 
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MM/dd/yyyy"
+        formatter.locale = MoroL10n.preferredLocale
+        formatter.dateStyle = .medium
         return formatter.string(from: dateOfBirth)
     }
 
@@ -869,7 +869,7 @@ struct RegistrationFlowView: View {
     private func userFriendlyRegistrationError(_ error: Error) -> String {
         if let apiError = error as? APIError {
             if case .serverError(let serverError) = apiError {
-                let raw = (serverError.errorDescription ?? serverError.error).lowercased()
+                let raw = (serverError.serverDescription ?? serverError.error).lowercased()
                 if raw.contains("username") && raw.contains("taken") {
                     return MoroL10n.Registration.errorUsernameTaken
                 }
@@ -888,7 +888,7 @@ struct RegistrationFlowView: View {
             }
             return apiError.localizedDescription
         }
-        return error.localizedDescription
+        return MoroL10n.AppError.unknown
     }
 }
 

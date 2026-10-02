@@ -52,13 +52,7 @@ enum NavigationIconFactory {
         fill: UIColor,
         selected: Bool
     ) {
-        let text: String
-        switch tab {
-        case .home: text = "H"
-        case .explore: text = "E"
-        case .inbox: text = "I"
-        case .me: text = "ME"
-        }
+        let text = String(tab.title.prefix(1))
 
         if selected {
             let underline = UIBezierPath(

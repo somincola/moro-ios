@@ -8,22 +8,22 @@
 import AppIntents
 
 nonisolated extension MoroWidgetDestination: AppEnum {
-    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Moro Destination")
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: LocalizedStringResource("Moro Destination", table: "AppIntents"))
     static let caseDisplayRepresentations: [MoroWidgetDestination: DisplayRepresentation] = [
-        .home: "Home",
-        .compose: "Post",
-        .search: "Search",
-        .inbox: "Inbox",
-        .profile: "Profile",
+        .home: DisplayRepresentation(title: LocalizedStringResource("Home", table: "AppIntents")),
+        .compose: DisplayRepresentation(title: LocalizedStringResource("Post", table: "AppIntents")),
+        .search: DisplayRepresentation(title: LocalizedStringResource("Search", table: "AppIntents")),
+        .inbox: DisplayRepresentation(title: LocalizedStringResource("Inbox", table: "AppIntents")),
+        .profile: DisplayRepresentation(title: LocalizedStringResource("Profile", table: "AppIntents")),
     ]
 }
 
 struct OpenMoroDestinationIntent: AppIntent {
-    static let title: LocalizedStringResource = "Open Moro"
-    static let description = IntentDescription("Open Moro at the selected destination.")
+    static let title = LocalizedStringResource("Open Moro", table: "AppIntents")
+    static let description = IntentDescription(LocalizedStringResource("Open Moro at the selected destination.", table: "AppIntents"))
     static let openAppWhenRun = true
 
-    @Parameter(title: "Destination")
+    @Parameter(title: LocalizedStringResource("Destination", table: "AppIntents"))
     var destination: MoroWidgetDestination
 
     init() {

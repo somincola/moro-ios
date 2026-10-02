@@ -124,7 +124,7 @@ struct ContentConcealView<Content: View>: View {
         HStack {
             Image(systemName: "eye.slash")
                 .moroScaledFont(size: ContentConcealMetrics.filterIconSize, weight: .medium)
-            Text(viewModel.filterWarningText ?? "Filtered")
+            Text(viewModel.filterWarningText ?? MoroL10n.SensitiveMedia.filtered)
                 .font(theme.typography.caption)
                 .fontWeight(.medium)
             Spacer()
@@ -167,7 +167,7 @@ struct ContentConcealView<Content: View>: View {
                 }
             }) {
                 HStack(spacing: ContentConcealMetrics.toggleInlineSpacing) {
-                    Text(viewModel.isContentRevealed ? "Show less" : "Show more")
+                    Text(viewModel.isContentRevealed ? MoroL10n.SensitiveMedia.showLess : MoroL10n.SensitiveMedia.showMore)
                         .font(theme.typography.caption)
                         .fontWeight(.medium)
                     Image(systemName: viewModel.isContentRevealed ? "chevron.up" : "chevron.down")

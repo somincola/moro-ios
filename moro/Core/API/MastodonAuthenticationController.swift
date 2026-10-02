@@ -63,7 +63,7 @@ final class MastodonAuthenticationController: NSObject {
                             throwing: NSError(
                                 domain: "MastodonAuthenticationController",
                                 code: -2,
-                                userInfo: [NSLocalizedDescriptionKey: "OAuth state mismatch"]
+                                userInfo: [NSLocalizedDescriptionKey: MoroL10n.Login.errorAuth]
                             ))
                         return
                     }

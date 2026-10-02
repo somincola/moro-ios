@@ -391,7 +391,7 @@ final class ProfileViewModel: ObservableObject {
             throw NSError(
                 domain: "ProfileViewModel",
                 code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Missing profile account id"]
+                userInfo: [NSLocalizedDescriptionKey: MoroL10n.AppError.http(404)]
             )
         }
         return try await apiClient.fetchAccount(id: targetAccountID)

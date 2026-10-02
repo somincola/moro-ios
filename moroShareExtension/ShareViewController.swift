@@ -9,11 +9,11 @@ import UIKit
 
 /// Lookup helper for Localizable.xcstrings strings shipped with the extension.
 /// Bundle.main inside an app extension is the extension's own bundle.
-private func L(_ key: String) -> String {
+func L(_ key: String) -> String {
     NSLocalizedString(key, bundle: .main, comment: "")
 }
 
-private func L(_ key: String, _ args: CVarArg...) -> String {
+func L(_ key: String, _ args: CVarArg...) -> String {
     String(format: L(key), arguments: args)
 }
 
@@ -130,7 +130,7 @@ final class ShareViewController: UIViewController {
             withError: NSError(
                 domain: "com.somincola.moro.ShareExtension",
                 code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "User cancelled share import"]
+                userInfo: [NSLocalizedDescriptionKey: L("share.action.cancel")]
             )
         )
     }

@@ -1,6 +1,183 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "share.summary.text": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Texto"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Texte"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Testo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "テキスト"
+          }
+        },
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Texto"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文字"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文字"
+          }
+        }
+      }
+    },
+    "share.summary.images": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder: %lld"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Images: %lld"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imágenes: %lld"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Images : %lld"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Immagini: %lld"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画像：%lld 枚"
+          }
+        },
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imagens: %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "图片：%lld 张"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "圖片：%lld 張"
+          }
+        }
+      }
+    },
+    "share.summary.separator": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ", "
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ", "
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ", "
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ", "
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ", "
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "、"
+          }
+        },
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ", "
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "，"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "，"
+          }
+        }
+      }
+    },
     "share.action.cancel": {
       "extractionState": "manual",
       "localizations": {
@@ -361,55 +538,55 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Saved to Moro drafts.\nIt will be restored in Compose when you return."
+            "value": "Saved to Moro drafts.\nYour draft will be restored in the post editor when you return."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已保存到 Moro 草稿。\n回到 app 后会自动恢复到 Compose。"
+            "value": "已保存到 Moro 草稿。\n返回 Moro 后，草稿会恢复到发帖页面。"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enregistré dans les brouillons Moro.\nIl sera restauré dans Compose à votre retour."
+            "value": "Enregistré dans les brouillons Moro.\nVotre brouillon sera restauré dans l’éditeur de publication à votre retour."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Moro の下書きに保存しました。\nアプリに戻ると、投稿作成画面が自動的に復元されます。"
+            "value": "Moro の下書きに保存しました。\nアプリに戻ると、投稿作成画面に下書きが復元されます。"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "In Moro-Entwürfen gespeichert.\nWenn du zur App zurückkehrst, wird der Entwurf automatisch im Verfassen-Bereich wiederhergestellt."
+            "value": "In Moro-Entwürfen gespeichert.\nWenn du zu Moro zurückkehrst, wird der Entwurf im Beitragseditor wiederhergestellt."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Salvato nelle bozze di Moro.\nVerrà ripristinato in Componi quando torni all'app."
+            "value": "Salvato nelle bozze di Moro.\nLa bozza verrà ripristinata nell’editor dei post al tuo ritorno."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Guardado en los borradores de Moro.\nSe restaurará en Redactar cuando vuelvas a la app."
+            "value": "Guardado en los borradores de Moro.\nAl volver, se restaurará en el editor de publicaciones."
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "Guardado nos rascunhos do Moro.\nSerá restaurado no Compose quando regressar."
+            "value": "Guardado nos rascunhos do Moro.\nO rascunho será restaurado no editor de publicações quando regressares."
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "已儲存至 Moro 草稿。\n回到 app 後會自動還原至 Compose。"
+            "value": "已儲存至 Moro 草稿。\n返回 Moro 後，草稿會還原至發文頁面。"
           }
         }
       }

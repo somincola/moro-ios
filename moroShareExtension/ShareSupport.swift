@@ -87,14 +87,14 @@ struct MoroShareExtensionLoadedContent {
         var parts: [String] = []
 
         if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            parts.append("文字")
+            parts.append(L("share.summary.text"))
         }
 
         if !attachments.isEmpty {
-            parts.append("\(attachments.count) 张图片")
+            parts.append(L("share.summary.images", Int64(attachments.count)))
         }
 
-        return parts.isEmpty ? "未检测到可导入内容" : parts.joined(separator: "，")
+        return parts.isEmpty ? L("share.error.noContent") : parts.joined(separator: L("share.summary.separator"))
     }
 }
 

@@ -292,7 +292,7 @@ private struct ComposeMediaTileView: View {
                     HStack(spacing: 4) {
                         Image(systemName: attachment.description?.isEmpty == false ? "text.bubble.fill" : "text.bubble")
                             .moroScaledFont(size: 12)
-                        Text(attachment.description?.isEmpty == false ? "Alt" : MoroL10n.ComposeMedia.addAlt)
+                        Text(attachment.description?.isEmpty == false ? MoroL10n.ImagePreview.altBadge : MoroL10n.ComposeMedia.addAlt)
                             .font(theme.typography.caption)
                     }
                     .foregroundStyle(.white)
