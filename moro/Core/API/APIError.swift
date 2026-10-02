@@ -55,7 +55,12 @@ extension APIError: LocalizedError {
         case .rateLimited:
             return MoroL10n.AppError.rateLimited
         case .underlying(let error):
-            return error.localizedDescription
+            switch (error as? URLError)?.code {
+            case .notConnectedToInternet, .networkConnectionLost: return MoroL10n.AppError.networkUnavailable
+            case .timedOut: return MoroL10n.AppError.timeout
+            case .cancelled: return MoroL10n.AppError.cancelled
+            default: return MoroL10n.AppError.unknown
+            }
         }
     }
 

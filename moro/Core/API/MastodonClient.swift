@@ -706,7 +706,7 @@ struct MastodonClient: MastodonAPI {
                 NSError(
                     domain: "MastodonClient",
                     code: -1,
-                    userInfo: [NSLocalizedDescriptionKey: "Expected immediate status response"]
+                    userInfo: [NSLocalizedDescriptionKey: MoroL10n.AppError.decoding]
                 )
             )
         }
@@ -1634,7 +1634,7 @@ struct MastodonClient: MastodonAPI {
                 throw APIError.underlying(
                     NSError(
                         domain: "MastodonClient", code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))
+                        userInfo: [NSLocalizedDescriptionKey: MoroL10n.AppError.decoding]))
             }
 
             guard (200..<300).contains(httpResponse.statusCode) else {

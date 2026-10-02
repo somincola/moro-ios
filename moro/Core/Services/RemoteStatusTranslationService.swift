@@ -86,8 +86,7 @@ final class RemoteStatusTranslationService: TranslationService, @unchecked Senda
             throw error
         } catch {
             throw TranslationServiceError.unavailable(
-                (error as? LocalizedError)?.errorDescription
-                    ?? error.localizedDescription
+                MoroL10n.Translation.failed
             )
         }
     }

@@ -13,19 +13,19 @@ public struct MastodonServerError: Decodable, Error, Sendable {
     public let error: String
 
     /// Optional detailed description of the error
-    public let errorDescription: String?
+    public let serverDescription: String?
 
     /// HTTP status code (set after decoding)
     public var httpCode: Int?
 
     enum CodingKeys: String, CodingKey {
         case error
-        case errorDescription = "error_description"
+        case serverDescription = "error_description"
     }
 
     public init(error: String, errorDescription: String? = nil, httpCode: Int? = nil) {
         self.error = error
-        self.errorDescription = errorDescription
+        self.serverDescription = errorDescription
         self.httpCode = httpCode
     }
 }
@@ -33,11 +33,10 @@ public struct MastodonServerError: Decodable, Error, Sendable {
 // MARK: - LocalizedError Conformance
 
 extension MastodonServerError: LocalizedError {
+    public var errorDescription: String? { localizedDescription }
     public var localizedDescription: String {
-        if let description = errorDescription, !description.isEmpty {
-            return description
-        }
-        return error
+        // Raw server text remains available for diagnostics and registration validation.
+        MoroL10n.AppError.http(httpCode ?? 500)
     }
 
     public var failureReason: String? {

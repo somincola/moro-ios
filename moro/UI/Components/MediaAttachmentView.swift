@@ -42,7 +42,7 @@ struct MediaAttachmentView: View {
                     Button(action: onEditAlt) {
                         HStack(spacing: 4) {
                             Image(systemName: attachment.description?.isEmpty == false ? "text.bubble.fill" : "text.bubble")
-                            Text(attachment.description?.isEmpty == false ? "Alt" : MoroL10n.Media.addAlt)
+                            Text(attachment.description?.isEmpty == false ? MoroL10n.ImagePreview.altBadge : MoroL10n.Media.addAlt)
                                 .font(.caption2)
                         }
                         .foregroundStyle(.white)
