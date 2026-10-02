@@ -706,7 +706,7 @@ struct MastodonClient: MastodonAPI {
                 NSError(
                     domain: "MastodonClient",
                     code: -1,
-                    userInfo: [NSLocalizedDescriptionKey: "Expected immediate status response"]
+                    userInfo: [NSLocalizedDescriptionKey: MoroL10n.AppError.decoding]
                 )
             )
         }
@@ -1374,25 +1374,8 @@ struct MastodonClient: MastodonAPI {
 
     // MARK: - Reports
 
-    func report(accountID: String, statusIDs: [String], comment: String) async throws
-        -> ReportResponse
-    {
-        struct Payload: Encodable {
-            let accountID: String
-            let statusIDs: [String]
-            let comment: String
-
-            enum CodingKeys: String, CodingKey {
-                case accountID = "account_id"
-                case statusIDs = "status_ids"
-                case comment
-            }
-        }
-
-        let payload = Payload(accountID: accountID, statusIDs: statusIDs, comment: comment)
-        let endpoint = MastodonEndpoint.report(
-            accountID: accountID, statusIDs: statusIDs, comment: comment)
-        let request = try authorizedRequest(for: endpoint, body: payload)
+    func report(_ report: ReportRequest) async throws -> ReportResponse {
+        let request = try authorizedRequest(for: .report, body: report)
         return try await perform(request)
     }
 
@@ -1651,7 +1634,7 @@ struct MastodonClient: MastodonAPI {
                 throw APIError.underlying(
                     NSError(
                         domain: "MastodonClient", code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))
+                        userInfo: [NSLocalizedDescriptionKey: MoroL10n.AppError.decoding]))
             }
 
             guard (200..<300).contains(httpResponse.statusCode) else {

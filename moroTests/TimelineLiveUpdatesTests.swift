@@ -106,8 +106,11 @@ struct TimelineLiveUpdatesTests {
     }
 
     @Test func deferredPresentationRequiresApplyBeforeAcknowledging() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
         let model = TimelineViewModel(apiClient: ListCacheFixtureProtocol.makeClient(),
-            feedCoordinator: FeedCoordinator(), cacheClientID: UUID().uuidString, defersLivePresentation: true)
+            feedCoordinator: FeedCoordinator(), timelineCache: TimelineCache(directory: directory),
+            cacheClientID: UUID().uuidString, defersLivePresentation: true)
         model.statuses = [post("100")]
         model.receiveLiveStatus(post("101"))
         #expect(model.statuses.map(\.id) == ["100"])
@@ -126,8 +129,11 @@ struct TimelineLiveUpdatesTests {
     }
 
     @Test func boundedNoticeDoesNotAccumulatePreviouslyDroppedIDs() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
         let model = TimelineViewModel(apiClient: ListCacheFixtureProtocol.makeClient(),
-            feedCoordinator: FeedCoordinator(), cacheClientID: UUID().uuidString, defersLivePresentation: true)
+            feedCoordinator: FeedCoordinator(), timelineCache: TimelineCache(directory: directory),
+            cacheClientID: UUID().uuidString, defersLivePresentation: true)
         model.statuses = [post("100")]
         for id in 101...350 {
             model.receiveLiveStatus(post("\(id)"))
@@ -159,6 +165,8 @@ struct TimelineLiveUpdatesTests {
     }
 
     @Test func streamedPostsStillGetAQuietCompletenessProbe() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
         let api = MockMastodonAPI()
         var requests = 0
         api.fetchHomeTimelineHandler = { maxID, sinceID, _ in
@@ -166,7 +174,8 @@ struct TimelineLiveUpdatesTests {
             requests += 1
             return []
         }
-        let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(), cacheClientID: UUID().uuidString)
+        let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory), cacheClientID: UUID().uuidString)
         defer { model.clearStatuses() }
         model.statuses = [post("100")]
         model.receiveLiveStatus(post("101"))
@@ -181,6 +190,8 @@ struct TimelineLiveUpdatesTests {
     }
 
     @Test func approachingAGapContinuesBeyondTheBackgroundProbeBudget() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
         let api = MockMastodonAPI()
         var cursors: [String?] = []
         api.fetchHomeTimelineHandler = { maxID, sinceID, _ in
@@ -193,7 +204,8 @@ struct TimelineLiveUpdatesTests {
             default: return []
             }
         }
-        let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(), cacheClientID: UUID().uuidString)
+        let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory), cacheClientID: UUID().uuidString)
         defer { model.clearStatuses() }
         model.statuses = [post("100")]
         model.receiveDetectedPage(TimelinePage(statuses: [post("108"), post("107")]), sinceID: "100")
@@ -210,6 +222,8 @@ struct TimelineLiveUpdatesTests {
     }
 
     @Test func gapFailuresWaitForAnchoredPresentationAndAnExplicitRetry() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
         let api = MockMastodonAPI()
         var requests = 0
         api.fetchHomeTimelineHandler = { _, _, _ in
@@ -218,6 +232,7 @@ struct TimelineLiveUpdatesTests {
             return []
         }
         let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory),
             cacheClientID: UUID().uuidString, defersLivePresentation: true)
         defer { model.clearStatuses() }
         model.statuses = [post("100")]
@@ -242,13 +257,16 @@ struct TimelineLiveUpdatesTests {
     }
 
     @Test func gapAndOlderPageRequestsQueueInOrderAndCoalesceRepeatedTaps() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
         let api = MockMastodonAPI()
         typealias Request = (maxID: String?, sinceID: String?, reply: CheckedContinuation<[Status], Error>)
         let requests = AsyncStream<Request>.makeStream()
         api.fetchHomeTimelineHandler = { maxID, sinceID, _ in
             try await withCheckedThrowingContinuation { requests.continuation.yield((maxID, sinceID, $0)) }
         }
-        let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(), cacheClientID: UUID().uuidString)
+        let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory), cacheClientID: UUID().uuidString)
         defer { model.clearStatuses(); requests.continuation.finish() }
         model.statuses = [post("100")]
         model.receiveDetectedPage(TimelinePage(statuses: [post("102"), post("101")]), sinceID: "100")
@@ -258,6 +276,9 @@ struct TimelineLiveUpdatesTests {
         let first = Task { await model.loadGap(id: firstGap.id) }
         var iterator = requests.stream.makeAsyncIterator()
         let request1 = try #require(await iterator.next())
+        // A failed wait must also release the mock response held by the queued tasks.
+        var pendingReply: CheckedContinuation<[Status], Error>? = request1.reply
+        defer { pendingReply?.resume(throwing: CancellationError()) }
         #expect(request1.maxID == "101" && request1.sinceID == "100")
         let older = Task { await model.loadMore() }
         try await waitForGapWork { if case .loading = model.paginationState { return true }; return false }
@@ -267,6 +288,7 @@ struct TimelineLiveUpdatesTests {
         await Task.yield()
 
         request1.reply.resume(returning: [])
+        pendingReply = nil
         let request2 = try #require(await iterator.next())
         #expect(request2.maxID == "100" && request2.sinceID == nil)
         request2.reply.resume(returning: [post("99")])
@@ -282,6 +304,8 @@ struct TimelineLiveUpdatesTests {
     }
 
     @Test func resetCancelsQueuedGapAndPaginationRequestsBeforeTheyReachTheServer() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
         let api = MockMastodonAPI()
         let requests = AsyncStream<CheckedContinuation<[Status], Error>>.makeStream()
         var requestCount = 0
@@ -289,7 +313,8 @@ struct TimelineLiveUpdatesTests {
             requestCount += 1
             return try await withCheckedThrowingContinuation { requests.continuation.yield($0) }
         }
-        let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(), cacheClientID: UUID().uuidString)
+        let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory), cacheClientID: UUID().uuidString)
         defer { model.clearStatuses(); requests.continuation.finish() }
         model.statuses = [post("100")]
         model.receiveDetectedPage(TimelinePage(statuses: [post("102"), post("101")]), sinceID: "100")
@@ -299,12 +324,15 @@ struct TimelineLiveUpdatesTests {
         let first = Task { await model.loadGap(id: firstGap.id) }
         var iterator = requests.stream.makeAsyncIterator()
         let reply = try #require(await iterator.next())
+        var pendingReply: CheckedContinuation<[Status], Error>? = reply
+        defer { pendingReply?.resume(throwing: CancellationError()) }
         let older = Task { await model.loadMore() }
         try await waitForGapWork { if case .loading = model.paginationState { return true }; return false }
         let second = Task { await model.loadGap(id: secondGap.id) }
         try await waitForGapWork { model.loadingGapIDs.count == 2 }
         model.clearStatuses()
         reply.resume(returning: [post("101")])
+        pendingReply = nil
         #expect(await first.value == false)
         #expect(await second.value == false)
         await older.value
@@ -323,12 +351,15 @@ struct TimelineLiveUpdatesTests {
     }
 
     @Test func cancelledRefreshCannotReviveContentAfterHardReset() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
         let api = MockMastodonAPI()
         let requests = AsyncStream<CheckedContinuation<[Status], Error>>.makeStream()
         api.fetchHomeTimelineHandler = { _, _, _ in
             try await withCheckedThrowingContinuation { requests.continuation.yield($0) }
         }
         let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory),
             cacheClientID: UUID().uuidString, defersLivePresentation: true)
         model.statuses = [post("100")]
         let refresh = Task { await model.refresh() }
@@ -344,11 +375,14 @@ struct TimelineLiveUpdatesTests {
     }
 
     @Test func contentClearResetsOnlyModelsUsingThatCache() {
-        let cache = TimelineCache()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = TimelineCache(directory: directory.appendingPathComponent("current"))
         let model = TimelineViewModel(apiClient: ListCacheFixtureProtocol.makeClient(),
             feedCoordinator: FeedCoordinator(), timelineCache: cache, cacheClientID: UUID().uuidString)
         let other = TimelineViewModel(apiClient: ListCacheFixtureProtocol.makeClient(),
-            feedCoordinator: FeedCoordinator(), timelineCache: TimelineCache(), cacheClientID: UUID().uuidString)
+            feedCoordinator: FeedCoordinator(), timelineCache: TimelineCache(directory: directory.appendingPathComponent("other")),
+            cacheClientID: UUID().uuidString)
         model.statuses = [post("100")]
         other.statuses = [post("other")]
         NotificationCenter.default.post(name: .timelineContentWillClear, object: cache)

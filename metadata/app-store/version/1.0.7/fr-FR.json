@@ -4,5 +4,5 @@
   "marketingUrl": "https://moro.somincola.com/",
   "promotionalText": "Découvrez Moro — un client Mastodon calme et raffiné, conçu pour être léger, simple et convivial. Connectez votre compte et profitez du fédivers sans le bruit.",
   "supportUrl": "https://moro.somincola.com/support",
-  "whatsNew": "- La boîte de réception des notifications a été entièrement revue, avec des catégories Tout et Mentions plus claires et de nouveaux réglages de notification.\n- Amélioration du changement de fil, de l’espacement des pages, de l’affichage des profils et du retour visuel des actions sur les publications.\n- Correction des états non lus et épinglés, de la confirmation de suppression des publications et de plusieurs problèmes de stabilité sous iOS 26.2."
+  "whatsNew": "1. Refonte du processus de signalement avec des étapes plus claires pour une meilleure expérience d’utilisation.\n2. Amélioration de la boîte de réception des notifications et de ses réglages, de l’affichage des profils, du changement de fil et de la consultation des images.\n3. Correction des liens et @mentions ne réagissant pas au toucher, des états non lus et épinglés incorrects, ainsi que d’autres problèmes.\n4. Ajout de code de compatibilité Swift pour améliorer la stabilité sous iOS 26.2."
 }

@@ -12,7 +12,7 @@ struct OpenSourceLicensesView: View {
                     Text(verbatim: license.name)
                         .font(theme.typography.body)
                         .foregroundStyle(theme.colors.textPrimary)
-                    Text(verbatim: "MIT License")
+                    Text(MoroL10n.About.mitLicense)
                         .font(theme.typography.caption)
                         .foregroundStyle(theme.colors.textSecondary)
                 }

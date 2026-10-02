@@ -1055,9 +1055,9 @@ extension Status {
             return titles[0]
         }
         if titles.count > 1 {
-            return "Filtered by \(titles.count) rules"
+            return MoroL10n.SensitiveMedia.filteredByRules(titles.count)
         }
-        return hasFilterWarning ? "Filtered" : nil
+        return hasFilterWarning ? MoroL10n.SensitiveMedia.filtered : nil
     }
 
     private var normalizedFilterWarningTitles: [String] {

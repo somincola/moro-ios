@@ -54,7 +54,6 @@ private struct ProfileActionPresentationsModifier: ViewModifier {
                     apiClient: apiClient,
                     onDismiss: actionSurface.dismissReport
                 )
-                .moroSheetSurface(detents: [.large])
             }
             .sheet(item: $presentation.reportAccount) { account in
                 AccountReportView(
@@ -62,7 +61,6 @@ private struct ProfileActionPresentationsModifier: ViewModifier {
                     apiClient: apiClient,
                     onDismiss: { presentation.reportAccount = nil }
                 )
-                .moroSheetSurface(detents: [.large])
             }
             .sheet(item: $presentation.addToListAccount) { account in
                 AddToListSheet(account: account, apiClient: apiClient)

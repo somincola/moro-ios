@@ -359,8 +359,7 @@ protocol MastodonAPI {
     ) async throws -> StatusPublishResult
 
     // Reports
-    func report(accountID: String, statusIDs: [String], comment: String) async throws
-        -> ReportResponse
+    func report(_ report: ReportRequest) async throws -> ReportResponse
 
     // Own Status Actions
     func deleteStatus(id: String) async throws
@@ -630,6 +629,25 @@ struct Relationship: Identifiable, Codable {
         case endorsed
         case notifying
         case note
+    }
+}
+
+struct ReportRequest: Encodable {
+    enum Category: String, Encodable {
+        case spam, violation, other
+    }
+
+    let accountID: String
+    let statusIDs: [String]
+    let comment: String
+    let category: Category
+    let ruleIDs: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case accountID = "account_id"
+        case statusIDs = "status_ids"
+        case comment, category
+        case ruleIDs = "rule_ids"
     }
 }
 

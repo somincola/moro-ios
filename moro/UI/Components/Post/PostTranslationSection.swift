@@ -258,7 +258,7 @@ struct PostTranslationSection: View {
     let status: Status
     let apiClient: MastodonAPI?
     @ObservedObject var viewModel: StatusTranslationViewModel
-    var onMentionTap: ((String, URL) -> Void)? = nil
+    var onMentionTap: ((String, URL) -> Bool)? = nil
     var onHashtagTap: ((String, URL) -> Void)? = nil
     var onLinkTap: ((URL) -> Void)? = nil
 

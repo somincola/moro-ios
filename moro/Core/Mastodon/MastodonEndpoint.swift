@@ -133,7 +133,7 @@ enum MastodonEndpoint {
     case customEmojis
 
     // Reports
-    case report(accountID: String, statusIDs: [String], comment: String)
+    case report
 
     // Own Status Actions
     case deleteStatus(id: String)

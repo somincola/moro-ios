@@ -204,7 +204,6 @@ struct StatusDetailView: View {
                 apiClient: apiClient,
                 onDismiss: { actionSurface.dismissReport() }
             )
-            .moroSheetSurface(detents: [.large])
         }
     }
 

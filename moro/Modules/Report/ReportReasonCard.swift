@@ -1,84 +1,92 @@
-//
-//  ReportReasonCard.swift
-//  moro
-//
-//  Card component for displaying a report reason option.
-//
-
 import SwiftUI
 
 struct ReportReasonCard: View {
     @Environment(\.moroTheme) private var theme
-    
     let reason: ReportReason
     let isSelected: Bool
     let onTap: () -> Void
-    
+
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: theme.spacing.m) {
-                // Selection indicator
-                ZStack {
-                    Circle()
-                        .stroke(isSelected ? theme.colors.primary500 : theme.colors.textTertiary, lineWidth: 2)
-                        .frame(width: 22, height: 22)
-                    
-                    if isSelected {
-                        Circle()
-                            .fill(theme.colors.primary500)
-                            .frame(width: 12, height: 12)
-                    }
-                }
-                
-                // Text content
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(reason.title)
-                        .font(theme.typography.subtitle)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(theme.colors.textPrimary)
-                    
+                        .moroScaledFont(size: 17, weight: .medium)
+                        .foregroundStyle(theme.colors.primary500)
                     Text(reason.description)
                         .font(theme.typography.caption)
                         .foregroundStyle(theme.colors.textSecondary)
+                        .lineSpacing(3)
                 }
-                
-                Spacer()
-                
-                // Checkmark when selected
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .moroScaledFont(size: 14, weight: .bold)
-                        .foregroundStyle(theme.colors.primary500)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                ReportSelectionIndicator(isSelected: isSelected)
             }
-            .padding(theme.spacing.m)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? theme.colors.surfaceBase : theme.colors.surfaceSubtle)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? theme.colors.primary500 : theme.colors.border, lineWidth: isSelected ? 2 : 1)
-            )
-            .overlay(alignment: .leading) {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(theme.colors.primary500)
-                        .frame(width: 3)
-                        .padding(.vertical, 8)
-                        .padding(.leading, 6)
-                }
-            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 20)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .overlay(alignment: .bottom) { MoroDivider() }
     }
 }
 
-#Preview {
-    VStack(spacing: 12) {
-        ReportReasonCard(reason: .offensive, isSelected: true, onTap: {})
-        ReportReasonCard(reason: .spam, isSelected: false, onTap: {})
+/// A monochrome selection mark with an explicit inverse foreground in both appearances.
+struct ReportSelectionIndicator: View {
+    @Environment(\.moroTheme) private var theme
+    @ScaledMetric(relativeTo: .body) private var diameter: CGFloat = 22
+    let isSelected: Bool
+
+    var body: some View {
+        ZStack {
+            if isSelected {
+                Circle().fill(theme.colors.primary500)
+                Image(systemName: "checkmark")
+                    .font(.system(size: diameter * theme.fontScale * 0.5, weight: .bold))
+                    .foregroundStyle(theme.colors.primaryForeground)
+            } else {
+                Circle().strokeBorder(theme.colors.textSecondary, lineWidth: 1)
+            }
+        }
+        .frame(width: diameter * theme.fontScale, height: diameter * theme.fontScale)
+        .accessibilityHidden(true)
     }
-    .padding()
-    .background(Color.gray.opacity(0.1))
+}
+
+#Preview("Reasons · Light") {
+    @Previewable @State var selected: ReportReason? = .spam
+    NavigationStack {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(MoroL10n.Report.reasonLabel)
+                    .font(.title.bold())
+                    .padding(.bottom, 28)
+                ForEach(ReportReason.allCases) { reason in
+                    ReportReasonCard(reason: reason, isSelected: selected == reason) { selected = reason }
+                }
+            }
+            .padding(24)
+        }
+        .navigationTitle(MoroL10n.Profile.report)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+    .moroTheme(MoroTheme(colorScheme: .light))
+    .preferredColorScheme(.light)
+}
+
+#Preview("Reasons · Dark / Large Text") {
+    @Previewable @State var selected: ReportReason? = .violation
+    ScrollView {
+        VStack(spacing: 0) {
+            ForEach(ReportReason.allCases) { reason in
+                ReportReasonCard(reason: reason, isSelected: selected == reason) { selected = reason }
+            }
+        }
+        .padding(24)
+    }
+    .background(MoroTheme(colorScheme: .dark).colors.surfaceBase)
+    .moroTheme(MoroTheme(colorScheme: .dark, dynamicTypeSize: .accessibility1))
+    .preferredColorScheme(.dark)
+    .dynamicTypeSize(.accessibility1)
 }

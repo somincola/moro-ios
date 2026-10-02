@@ -1657,53 +1657,72 @@ struct moroTests {
         #expect(capturedRoutes.first == .statusDetail(explicit))
     }
 
-    @Test @MainActor func postNavigationMentionTapPrefersURLThenUsername() async throws {
+    @Test @MainActor func postNavigationMentionTapMatchesOnlyTheFullURL() {
         var capturedRoutes: [Route] = []
-        let byURL = Status.Mention(
-            id: "m1",
-            username: "alice",
-            url: URL(string: "https://example.com/@alice")!,
-            acct: "alice@example.com"
+        let mention = Status.Mention(
+            id: "m1", username: "alice", url: URL(string: "https://a.example/@alice")!,
+            acct: "alice@a.example"
         )
-        let byUsername = Status.Mention(
-            id: "m2",
-            username: "bob",
-            url: URL(string: "https://example.com/@bob")!,
-            acct: "bob@example.com"
-        )
-        let status = makeStatus(id: "status", mentions: [byURL, byUsername])
-
         let handlers = PostNavigationActionCenter.handlers(
-            for: status,
+            for: makeStatus(id: "status", mentions: [mention]),
             navigate: { capturedRoutes.append($0) }
         )
 
-        handlers.onMentionTap("bob", URL(string: "https://example.com/@alice")!)
-        handlers.onMentionTap("bob", URL(string: "https://not-matched.com")!)
-
-        #expect(capturedRoutes.count == 2)
-        #expect(capturedRoutes[0] == .mentionUser(byURL))
-        #expect(capturedRoutes[1] == .mentionUser(byUsername))
+        #expect(handlers.onMentionTap("different-label", mention.url))
+        #expect(!handlers.onMentionTap("alice", URL(string: "https://b.example/@alice")!))
+        #expect(capturedRoutes == [.mentionUser(mention)])
     }
 
-    @Test @MainActor func postNavigationMentionTapNoMatchDoesNotNavigate() async throws {
-        var capturedRoutes: [Route] = []
-        let onlyMention = Status.Mention(
-            id: "m1",
-            username: "alice",
-            url: URL(string: "https://example.com/@alice")!,
+    @Test @MainActor func postNavigationMentionTapUsesOriginalMentionsForBoosts() {
+        let mention = Status.Mention(
+            id: "m1", username: "alice", url: URL(string: "https://example.com/@alice")!,
             acct: "alice@example.com"
         )
-        let status = makeStatus(id: "status", mentions: [onlyMention])
+        let original = makeStatus(id: "original", mentions: [mention])
+        let boost = makeStatus(id: "boost", reblog: Indirect(original), mentions: [])
+        var capturedRoutes: [Route] = []
 
+        for status in [original, boost] {
+            let handlers = PostNavigationActionCenter.handlers(
+                for: status, navigate: { capturedRoutes.append($0) }
+            )
+            #expect(handlers.onMentionTap("alice", mention.url))
+        }
+
+        #expect(capturedRoutes == [.mentionUser(mention), .mentionUser(mention)])
+    }
+
+    @Test @MainActor func postNavigationMentionFallbackRespectsBrowserPreference() {
+        let settings = AppSettings.shared
+        let previous = settings.openLinksIn
+        defer { settings.openLinksIn = previous }
+        var capturedRoutes: [Route] = []
+        var openedURLs: [URL] = []
         let handlers = PostNavigationActionCenter.handlers(
-            for: status,
+            for: makeStatus(id: "status", mentions: []),
             navigate: { capturedRoutes.append($0) }
         )
+        let view = LinkedTextView(
+            html: "", mentions: nil, tags: nil, emojis: nil,
+            onMentionTap: handlers.onMentionTap
+        )
+        let url = URL(string: "https://remote.example/users/42")!
+        let action = LinkAction.mention(username: "alice", url: url)
+        let router = AppRouter()
+        let openURL = OpenURLAction { openedURLs.append($0); return .handled }
 
-        handlers.onMentionTap("charlie", URL(string: "https://example.com/@charlie")!)
-
+        #expect(!view.handleCustomLinkAction(action))
         #expect(capturedRoutes.isEmpty)
+        settings.openLinksIn = .browser
+        URLHandler.shared.handleLinkAction(action, router: router, systemOpenURL: openURL)
+        #expect(openedURLs == [url])
+        #expect(router.path.isEmpty)
+
+        settings.openLinksIn = .moro
+        URLHandler.shared.handleLinkAction(action, router: router, systemOpenURL: openURL)
+        #expect(URLHandler.shared.preferredInAppRoute(for: action) == .webPreview(url))
+        #expect(router.path.count == 1)
+        #expect(openedURLs == [url])
     }
 
     @Test @MainActor func postNavigationRoutesMediaAndProfileActions() async throws {
@@ -1851,9 +1870,14 @@ struct moroTests {
         #expect(routes.count == 6)
     }
 
-    @Test @MainActor func urlHandlerParsesHashtagRoute() async throws {
-        let url = URL(string: "https://mastodon.social/tags/swift")!
-        #expect(URLHandler.shared.parseMastodonURL(url) == .hashtag("swift"))
+    @Test @MainActor func urlHandlerRequiresParsedHashtagSemantics() {
+        let previous = AppSettings.shared.openLinksIn
+        AppSettings.shared.openLinksIn = .moro
+        defer { AppSettings.shared.openLinksIn = previous }
+        let url = URL(string: "https://example.com/tags/swift")!
+        #expect(URLHandler.shared.parseMastodonURL(url) == nil)
+        #expect(URLHandler.shared.preferredInAppRoute(for: url) == .webPreview(url))
+        #expect(URLHandler.shared.preferredInAppRoute(for: .hashtag(tag: "swift", url: url)) == .hashtag("swift"))
     }
 
     @Test @MainActor func urlHandlerParsesStatusRouteFromWebStatusesPath() async throws {
@@ -1915,20 +1939,35 @@ struct moroTests {
         #expect(URLHandler.shared.parseMastodonURL(URL(string: "custom://remote.example/@alice/100")!) == nil)
     }
 
-    @Test @MainActor func urlHandlerParsesMentionPathToAccountLookupRoute() async throws {
+    @Test @MainActor func urlHandlerRequiresParsedMentionSemantics() {
+        let previous = AppSettings.shared.openLinksIn
+        AppSettings.shared.openLinksIn = .moro
+        defer { AppSettings.shared.openLinksIn = previous }
         let url = URL(string: "https://mastodon.social/@alice")!
-        #expect(URLHandler.shared.parseMastodonURL(url) == .accountLookup("alice@mastodon.social"))
+        #expect(URLHandler.shared.parseMastodonURL(url) == nil)
+        #expect(URLHandler.shared.preferredInAppRoute(for: url) == .webPreview(url))
+        #expect(URLHandler.shared.preferredInAppRoute(for: .mention(username: "alice", url: url))
+            == .accountLookup("alice@mastodon.social"))
     }
 
-    @Test @MainActor func urlHandlerParsesUsersPathToUserProfileRoute() async throws {
-        let url = URL(string: "https://mastodon.social/users/4242")!
-        let route = URLHandler.shared.parseMastodonURL(url)
-
-        guard case .userProfile(let account)? = route else {
-            #expect(Bool(false))
-            return
+    @Test @MainActor func urlHandlerPreservesUnknownAndPartialPathsWithoutInventingAccountIDs() {
+        let previous = AppSettings.shared.openLinksIn
+        AppSettings.shared.openLinksIn = .moro
+        defer { AppSettings.shared.openLinksIn = previous }
+        for path in ["/users/42", "/accounts/42", "/users/alice", "/@alice/news",
+            "/help/tags/ios/setup", "/help/tags/ios", "/article/@alice",
+            "/help/statuses/123", "/@alice/123/embed", "/statuses/123/comments",
+            "/article?next=/@alice/123"] {
+            let url = URL(string: "https://remote.example" + path)!
+            #expect(URLHandler.shared.parseMastodonURL(url) == nil)
+            #expect(URLHandler.shared.preferredInAppRoute(for: url) == .webPreview(url))
+            #expect(URLHandler.shared.preferredInAppRoute(for: .mention(username: "alice", url: url)) == .webPreview(url))
         }
-        #expect(account.id == "4242")
+        for path in ["/@alice/123", "/@alice/statuses/123", "/statuses/123",
+            "/web/statuses/123", "/users/alice/statuses/123"] {
+            let url = URL(string: "https://remote.example" + path)!
+            #expect(URLHandler.shared.parseMastodonURL(url) == .statusLink(url))
+        }
     }
 
     @Test @MainActor func hiddenAppearanceControlsUseStandardDefaults() async throws {
@@ -2408,6 +2447,54 @@ struct moroTests {
         #expect(account.noteContentElements.plainTextValue == "#music #afrobeat #afrofunk")
     }
 
+    @Test @MainActor func profileBioAndFieldsShareTypedLinkRouting() throws {
+        let previous = AppSettings.shared.openLinksIn
+        defer { AppSettings.shared.openLinksIn = previous }
+        let html = """
+            <a class="mention" href="/@alice">@alice</a>
+            <a href="/tags/tutorial">#tutorial</a>
+            <a class="mention hashtag" rel="tag" href="/tags/Swift">#Swift</a>
+            <a class="mention" href="https://remote.example/users/42">@alice</a>
+            <a href="/help/tags/ios/setup?one=1&amp;two=2">Docs</a>
+            <a href="mailto:hello@example.com">Email</a>
+            """
+        let account = makeAccount(
+            note: html, fields: [AccountField(name: html, value: html)],
+            url: "https://profile.example/@owner"
+        )
+        let field = try #require(account.fields.first)
+        let sections = [
+            account.noteContentElements,
+            field.nameContentElements(emojis: [], contentBaseURL: account.contentBaseURL),
+            field.valueContentElements(emojis: [], contentBaseURL: account.contentBaseURL),
+        ]
+        let mentionURL = URL(string: "https://profile.example/@alice")!
+        let tutorialURL = URL(string: "https://profile.example/tags/tutorial")!
+        let tagURL = URL(string: "https://profile.example/tags/Swift")!
+        let foreignIDURL = URL(string: "https://remote.example/users/42")!
+        let docsURL = URL(string: "https://profile.example/help/tags/ios/setup?one=1&two=2")!
+        let mailURL = URL(string: "mailto:hello@example.com")!
+        let cases: [(URL, LinkAction, Route?)] = [
+            (mentionURL, .mention(username: "alice", url: mentionURL), .accountLookup("alice@profile.example")),
+            (tutorialURL, .link(url: tutorialURL), .webPreview(tutorialURL)),
+            (tagURL, .hashtag(tag: "Swift", url: tagURL), .hashtag("Swift")),
+            (foreignIDURL, .mention(username: "alice", url: foreignIDURL), .webPreview(foreignIDURL)),
+            (docsURL, .link(url: docsURL), .webPreview(docsURL)),
+            (mailURL, .link(url: mailURL), nil),
+        ]
+        for elements in sections {
+            let view = RichTextContentView(elements: elements)
+            for (url, expectedAction, expectedRoute) in cases {
+                let action = view.linkAction(for: url)
+                #expect(action == expectedAction)
+                AppSettings.shared.openLinksIn = .moro
+                #expect(URLHandler.shared.preferredInAppRoute(for: action) == expectedRoute)
+                AppSettings.shared.openLinksIn = .browser
+                #expect(URLHandler.shared.preferredInAppRoute(for: action) == nil)
+            }
+        }
+    }
+
     @Test @MainActor func accountFieldContentElementsSupportEmojiMentionsURLsAndHashtags() async throws {
         let account = makeAccount(
             note: "",
@@ -2767,7 +2854,7 @@ struct moroTests {
 
         #expect(status.hasFilterWarning)
         #expect(status.primaryFilterWarningTitle == "Politics")
-        #expect(status.filterWarningBannerText == "Filtered by 2 rules")
+        #expect(status.filterWarningBannerText == MoroL10n.SensitiveMedia.filteredByRules(2))
     }
 
     @Test @MainActor func timelineLoadInitialMergesNetworkWithCachedStatuses() async throws {
@@ -7729,6 +7816,9 @@ private extension moroTests {
         #expect(settings.serverDefaultPostLanguage == "fr")
     }
 
+}
+
+extension moroTests {
     func makeAccount(
         id: String = "account",
         username: String? = nil,
@@ -7800,7 +7890,7 @@ private extension moroTests {
         )
     }
 
-    func makeConversation(
+    private func makeConversation(
         id: String,
         unread: Bool,
         accounts: [Account] = [],
@@ -7868,6 +7958,9 @@ private extension moroTests {
         )
     }
 
+}
+
+private extension moroTests {
     func makeNotification(
         id: String,
         type: String,
@@ -8106,7 +8199,11 @@ final class MockMastodonAPI: MastodonAPI {
             StatusPollPayload?
         ) async throws -> StatusPublishResult)?
 
-    func fetchInstance() async throws -> MastodonInstance { throw MockError.unimplemented }
+    var fetchInstanceHandler: (() async throws -> MastodonInstance)?
+    func fetchInstance() async throws -> MastodonInstance {
+        guard let fetchInstanceHandler else { throw MockError.unimplemented }
+        return try await fetchInstanceHandler()
+    }
     var fetchInstanceV2Handler: (() async throws -> MastodonInstanceV2)?
     func fetchInstanceV2() async throws -> MastodonInstanceV2 {
         fetchInstanceV2CallCount += 1
@@ -8216,14 +8313,22 @@ final class MockMastodonAPI: MastodonAPI {
         }
         throw MockError.unimplemented
     }
-    func muteAccount(id: String) async throws -> Relationship { throw MockError.unimplemented }
+    var muteAccountHandler: ((String) async throws -> Relationship)?
+    func muteAccount(id: String) async throws -> Relationship {
+        guard let muteAccountHandler else { throw MockError.unimplemented }
+        return try await muteAccountHandler(id)
+    }
     func unmuteAccount(id: String) async throws -> Relationship {
         if let unmuteAccountHandler {
             return try await unmuteAccountHandler(id)
         }
         throw MockError.unimplemented
     }
-    func blockAccount(id: String) async throws -> Relationship { throw MockError.unimplemented }
+    var blockAccountHandler: ((String) async throws -> Relationship)?
+    func blockAccount(id: String) async throws -> Relationship {
+        guard let blockAccountHandler else { throw MockError.unimplemented }
+        return try await blockAccountHandler(id)
+    }
     func unblockAccount(id: String) async throws -> Relationship {
         if let unblockAccountHandler {
             return try await unblockAccountHandler(id)
@@ -8744,9 +8849,12 @@ final class MockMastodonAPI: MastodonAPI {
 
         throw MockError.unimplemented
     }
-    func report(accountID: String, statusIDs: [String], comment: String) async throws -> ReportResponse
-    {
-        throw MockError.unimplemented
+    var reportHandler: ((ReportRequest) async throws -> ReportResponse)?
+    var reportRequests: [ReportRequest] = []
+    func report(_ report: ReportRequest) async throws -> ReportResponse {
+        reportRequests.append(report)
+        guard let reportHandler else { throw MockError.unimplemented }
+        return try await reportHandler(report)
     }
     func deleteStatus(id: String) async throws { throw MockError.unimplemented }
     func pinStatus(id: String) async throws -> Status { throw MockError.unimplemented }

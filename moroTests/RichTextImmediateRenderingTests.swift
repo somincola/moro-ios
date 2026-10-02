@@ -1,10 +1,63 @@
 import Foundation
+import SwiftUI
 import Testing
 import UIKit
 @testable import moro
 
 @MainActor
 struct RichTextImmediateRenderingTests {
+    @Test func tapActionsPreserveParsedLinksMentionsAndHashtags() {
+        let links = [
+            "https://biplus.date/@Blocklist/117347208588612359",
+            "https://example.com/@alice",
+            "https://example.com/users/alice/statuses/123",
+            "https://example.com/accounts/123",
+            "https://example.com/article?next=/@alice",
+        ].map { URL(string: $0)! }
+        let mentionURL = URL(string: "https://example.com/people/bob")!
+        let tagURL = URL(string: "https://example.com/tags/Swift")!
+        let html = links.map { "<a href=\"\($0)\">链接</a>" }.joined(separator: " ")
+            + " <a class=\"mention\" href=\"\(mentionURL)\">@bob</a>"
+            + " <a class=\"hashtag\" href=\"\(tagURL)\">#Swift</a>"
+        let view = RichTextContentView(html: html, parsingOptions: .statusBody)
+
+        for url in links {
+            #expect(view.linkAction(for: url) == .link(url: url))
+        }
+        #expect(view.linkAction(for: mentionURL) == .mention(username: "bob", url: mentionURL))
+        #expect(view.linkAction(for: tagURL) == .hashtag(tag: "Swift", url: tagURL))
+    }
+
+    @Test func nativeFieldLinksRemainInteractiveWhenTextSelectionIsDisabled() async throws {
+        let url = URL(string: "https://example.com/field")!
+        var openedURLs: [URL] = []
+        let view = MixedTextEmojiView(
+            elements: [.link(text: "Field", url: url)], emojiSize: 16, textColor: .label,
+            linkColor: .systemBlue, codeBackgroundColor: .secondarySystemBackground,
+            isSelectable: false, onOpenURL: { openedURLs.append($0) })
+        let host = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 280, height: 100))
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        try await Task.sleep(for: .milliseconds(50))
+        host.view.layoutIfNeeded()
+        var pending = [host.view!]
+        var found: UITextView?
+        while let child = pending.popLast() {
+            if let textView = child as? UITextView { found = textView; break }
+            pending.append(contentsOf: child.subviews)
+        }
+        let textView = try #require(found)
+        #expect(textView.isSelectable && textView.isUserInteractionEnabled)
+        try #require(textView.attributedText.length > 0)
+        #expect(textView.attributedText.attribute(.link, at: 0, effectiveRange: nil) as? URL == url)
+        let coordinator = try #require(textView.delegate as? MixedTextEmojiView.Coordinator)
+        #expect(!coordinator.textView(textView, shouldInteractWith: url,
+            in: NSRange(location: 0, length: 5)))
+        #expect(openedURLs == [url])
+    }
+
     @Test func compactBioParagraphsKeepLineBreaksLinksAndEmojiWithoutChangingPostSpacing() throws {
         let url = URL(string: "https://example.com/article")!
         let emojiURL = URL(string: "https://example.com/cat.png")!

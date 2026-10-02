@@ -31,8 +31,8 @@ enum FeedbackMailContext {
     }
 
     static func messageBody(currentAccount: Account?) -> String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
         let systemVersion = UIDevice.current.systemVersion
         let model = UIDevice.current.model
         let accountText = currentAccount?.acct ?? MoroL10n.Feedback.notLoggedIn
@@ -43,10 +43,10 @@ enum FeedbackMailContext {
 
 
         ----
-        App: Moro \(version) (\(build))
-        Device: \(model)
+        \(MoroL10n.Feedback.appLabel): Moro \(version) (\(build))
+        \(MoroL10n.Feedback.deviceLabel): \(model)
         iOS: \(systemVersion)
-        Account: \(accountText)
+        \(MoroL10n.Feedback.accountLabel): \(accountText)
         """
     }
 

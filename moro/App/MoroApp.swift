@@ -33,7 +33,9 @@ struct MoroApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if shouldUseImagePreviewHarness {
+                if shouldUseAppStoreScreenshotHarness {
+                    appStoreScreenshotHarness.preferredColorScheme(colorScheme)
+                } else if shouldUseImagePreviewHarness {
                     imagePreviewHarness.preferredColorScheme(colorScheme)
                 } else if shouldUsePublishingHarness {
                     publishingHarness.preferredColorScheme(colorScheme)
@@ -126,6 +128,20 @@ struct MoroApp: App {
 
     private var launchArguments: [String] {
         ProcessInfo.processInfo.arguments
+    }
+
+    private var shouldUseAppStoreScreenshotHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("APP_STORE_SCREENSHOTS")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var appStoreScreenshotHarness: some View {
+        #if DEBUG
+        AppStoreScreenshotHarnessView()
+        #endif
     }
 
     private var shouldUseImagePreviewHarness: Bool {

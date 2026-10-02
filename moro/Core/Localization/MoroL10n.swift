@@ -14,7 +14,7 @@ public enum MoroL10n {
     /// Locale matching the localization the catalog actually resolves to, so
     /// language display names render in the app's language. Follows the
     /// system / per-app language setting like the strings themselves do.
-    static var preferredLocale: Locale {
+    public static var preferredLocale: Locale {
         Locale(identifier: moduleBundle.preferredLocalizations.first ?? "en")
     }
 
@@ -835,6 +835,8 @@ public enum MoroL10n {
     }
 
     public enum Post {
+        public static func quoteMediaCount(_ count: Int) -> String { format("post.quote.mediaCount", Int64(count)) }
+        public static func quotePollOptions(_ count: Int) -> String { format("post.quote.pollOptions", Int64(count)) }
         public static var boosted: String { text("post.boosted") }
         public static var replyingTo: String { text("post.replyingTo") }
         public static var quotedPost: String { text("post.quotedPost") }
@@ -871,6 +873,12 @@ public enum MoroL10n {
 
     /// Share / Copy / Mute / Block flow strings shown from the post "more" menu.
     public enum PostMenu {
+        // Menu labels; shared actions reuse the existing profile/compose labels.
+        public static var copyText: String { text("postMenu.action.copyText") }
+        public static var pin: String { text("postMenu.action.pin") }
+        public static var unpin: String { text("postMenu.action.unpin") }
+        public static var blockAndReport: String { text("postMenu.action.blockAndReport") }
+
         // Share & copy toasts
         public static var shareMissingLink: String { text("postMenu.shareMissingLink") }
         public static var shareUnavailable: String { text("postMenu.shareUnavailable") }
@@ -971,6 +979,7 @@ public enum MoroL10n {
     }
 
     public enum Registration {
+        public static var birthdayPlaceholder: String { text("registration.birthdayPlaceholder") }
         public static var continueButton: String { text("registration.continueButton") }
         public static var navTitleRules: String { text("registration.navTitle.rules") }
         public static var navTitleForm: String { text("registration.navTitle.form") }
@@ -1166,6 +1175,7 @@ public enum MoroL10n {
     }
 
     public enum About {
+        public static var mitLicense: String { text("about.mitLicense") }
         public static var title: String { text("about.title") }
         public static var tagline: String { text("about.tagline") }
         public static var sectionProductInfo: String { text("about.sectionProductInfo") }
@@ -1455,6 +1465,25 @@ public enum MoroL10n {
     }
 
     public enum Report {
+        public static var rulesTitle: String { text("report.rulesTitle") }
+        public static var rulesHint: String { text("report.rulesHint") }
+        public static var noRules: String { text("report.noRules") }
+        public static var chooseAnotherReason: String { text("report.chooseAnotherReason") }
+        public static var errorLoadRules: String { text("report.errorLoadRules") }
+        public static var commentTitle: String { text("report.commentTitle") }
+        public static var preferencesTitle: String { text("report.preferencesTitle") }
+        public static var skip: String { text("report.skip") }
+        public static var skipAndReport: String { text("report.skipAndReport") }
+        public static var noPosts: String { text("report.noPosts") }
+        public static var loadMore: String { text("report.loadMore") }
+        public static var resultHint: String { text("report.resultHint") }
+        public static var dislikeHint: String { text("report.dislikeHint") }
+        public static var unfollowHint: String { text("report.unfollowHint") }
+        public static var muteHint: String { text("report.muteHint") }
+        public static var blockHint: String { text("report.blockHint") }
+        public static var errorLoadRelationship: String { text("report.errorLoadRelationship") }
+        public static var errorAccountAction: String { text("report.errorAccountAction") }
+        public static func mediaCount(_ count: Int) -> String { format("report.mediaCount", Int64(count)) }
         public static var reasonOffensive: String { text("report.reason.offensive") }
         public static var reasonSpam: String { text("report.reason.spam") }
         public static var reasonIllegal: String { text("report.reason.illegal") }
@@ -1969,6 +1998,9 @@ public enum MoroL10n {
     }
 
     public enum Feedback {
+        public static var appLabel: String { text("feedback.appLabel") }
+        public static var deviceLabel: String { text("feedback.deviceLabel") }
+        public static var accountLabel: String { text("feedback.accountLabel") }
         public static var subject: String { text("feedback.subject") }
         public static var notLoggedIn: String { text("feedback.notLoggedIn") }
         public static var bodyPrompt: String { text("feedback.bodyPrompt") }
@@ -1986,6 +2018,10 @@ public enum MoroL10n {
     }
 
     public enum SensitiveMedia {
+        public static var showMore: String { text("sensitiveMedia.showMore") }
+        public static var showLess: String { text("sensitiveMedia.showLess") }
+        public static var filtered: String { text("sensitiveMedia.filtered") }
+        public static func filteredByRules(_ count: Int) -> String { format("sensitiveMedia.filteredByRules", Int64(count)) }
         public static var title: String { text("sensitiveMedia.title") }
         public static var tapToView: String { text("sensitiveMedia.tapToView") }
         public static var showAnyway: String { text("sensitiveMedia.showAnyway") }
