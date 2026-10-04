@@ -40,6 +40,73 @@ struct TimelineLiveUpdatesTests {
         #expect(state.statuses.map(\.id) == ["102", "101", "100"])
     }
 
+    @Test(arguments: [
+        ["100", "102", "205", "204"],
+        ["98", "999", "1001", "1000"],
+        ["18446744073709551615", "18446744073709551616", "18446744073709551700", "18446744073709551699"],
+    ])
+    func laterRemoteHeadOvertakesLocallyCreatedReply(ids: [String]) {
+        let baseline = ids[0], replyID = ids[1], newest = ids[2], older = ids[3]
+        let reply = ThreadReadingFixtures.status(replyID, parent: "parent", own: true)
+        var state = TimelineLiveUpdates(statuses: [post(baseline)])
+        state.receive(reply, currentAccountID: ThreadReadingFixtures.author.id)
+        #expect(state.statuses.first?.id == replyID)
+        #expect(state.metadata.fetchedHeadID == baseline)
+
+        state.receiveHead(TimelinePage(statuses: [post(newest), post(older)]),
+            sinceID: baseline, currentAccountID: ThreadReadingFixtures.author.id)
+
+        #expect(state.statuses.map(\.id) == [newest, older, replyID, baseline])
+        #expect(state.newCount == 2)
+        #expect(state.statuses.first { $0.id == replyID }?.inReplyToID == "parent")
+    }
+
+    @Test func remotePageInterleavesWithUnconfirmedLocalRows() {
+        var state = TimelineLiveUpdates(statuses: [post("100")])
+        state.receive(post("103", own: true), currentAccountID: ThreadReadingFixtures.author.id)
+        state.receiveHead(TimelinePage(statuses: [post("104"), post("102")]),
+            sinceID: "100", currentAccountID: ThreadReadingFixtures.author.id)
+        #expect(state.statuses.map(\.id) == ["104", "103", "102", "100"])
+        #expect(state.newCount == 2)
+    }
+
+    @Test(arguments: [false, true])
+    func legacyCacheMovesOldReplyBelowConfirmedHead(isOffline: Bool) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let clientID = UUID().uuidString
+        let cache = TimelineCache(directory: directory)
+        let reply = ThreadReadingFixtures.status("102", parent: "parent", own: true)
+        let anchor = TimelineReadingAnchor(statusID: "102", viewportOffset: -120)
+        let metadata = TimelineLiveMetadata(checkpointID: "100", fetchedHeadID: "205",
+            gaps: [TimelineGap(afterID: "204", beforeID: "100", maxID: "204",
+                sinceID: "100", targetHeadID: "205", sequence: 2)],
+            newIDs: ["205": 1, "204": 2], sequence: 2, readingAnchor: anchor)
+        await cache.setLiveSnapshot(statuses: [reply, post("205"), post("204"), post("100")],
+            live: metadata, for: clientID, filter: .home)
+        await cache.flushPendingWrites()
+
+        let cold = TimelineCache(directory: directory)
+        let api = MockMastodonAPI()
+        api.fetchHomeTimelineHandler = { _, _, _ in
+            if isOffline { throw URLError(.notConnectedToInternet) }
+            return [post("206"), post("205"), post("204")]
+        }
+        let model = TimelineViewModel(apiClient: api, feedCoordinator: FeedCoordinator(),
+            timelineCache: cold, cacheClientID: clientID, defersLivePresentation: true)
+        defer { model.clearStatuses() }
+        await model.loadInitial()
+        #expect(model.statuses.map(\.id) == ["205", "204", "102", "100"])
+        model.applyLiveUpdates()
+        let expected = isOffline ? ["205", "204", "102", "100"] : ["206", "205", "204", "102", "100"]
+        #expect(model.statuses.map(\.id) == expected)
+        #expect(model.savedReadingAnchor == anchor)
+        #expect(model.gaps.first?.beforeID == "100")
+        await model.flushCacheWrites()
+        let restored = TimelineCache(directory: directory)
+        #expect(await restored.getStatuses(for: clientID, filter: .home)?.map(\.id) == expected)
+    }
+
     @Test func onlyAcknowledgedBatchClearsAndLateGapPostsStayHistorical() throws {
         var state = TimelineLiveUpdates(statuses: [post("100")])
         state.receiveHead(TimelinePage(statuses: [post("104"), post("103")]), sinceID: "100", currentAccountID: nil)

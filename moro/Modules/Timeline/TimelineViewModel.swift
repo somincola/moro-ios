@@ -432,22 +432,24 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
                 deferredInitialFillTask?.cancel()
                 let cachedState = await timelineCache.getLiveMetadata(for: cacheClientID, filter: timelineCacheFilter!)
                 guard generation == dataGeneration, !Task.isCancelled else { return }
-                liveTimeline = TimelineLiveUpdates(statuses: cachedFallbackStatuses, metadata: cachedState)
+                let restored = TimelineLiveUpdates(statuses: cachedFallbackStatuses, metadata: cachedState)
+                liveTimeline = restored
+                let restoredStatuses = restored.statuses
                 let anchorIndex = cachedState?.readingAnchor.flatMap { anchor in
-                    cachedFallbackStatuses.firstIndex { $0.id == anchor.statusID }
+                    restoredStatuses.firstIndex { $0.id == anchor.statusID }
                 }
-                statuses = Array(cachedFallbackStatuses.prefix(max(bootstrapConfig.initialRenderCap, anchorIndex.map { $0 + 4 } ?? 0)))
+                statuses = Array(restoredStatuses.prefix(max(bootstrapConfig.initialRenderCap, anchorIndex.map { $0 + 4 } ?? 0)))
                 gaps = liveTimeline?.metadata.gaps ?? []
                 presentedSequence = liveTimeline?.metadata.sequence ?? 0
                 presentationRevision &+= 1
                 publishLiveNotice()
                 currentMaxID = statuses.last?.id
                 currentSinceID = statuses.first?.id
-                hasMore = cachedFallbackStatuses.count >= bootstrapConfig.initialLoadLimit
-                    || cachedFallbackStatuses.count > statuses.count
+                hasMore = restoredStatuses.count >= bootstrapConfig.initialLoadLimit
+                    || restoredStatuses.count > statuses.count
                 initialLoadState = .loaded
                 refreshState = .failed(error)
-                scheduleDeferredInitialFill(with: Array(cachedFallbackStatuses.dropFirst(statuses.count)))
+                scheduleDeferredInitialFill(with: Array(restoredStatuses.dropFirst(statuses.count)))
             } else {
                 initialLoadState = .failed(error)
             }
@@ -1098,11 +1100,13 @@ extension TimelineViewModel {
 
         let metadata = await timelineCache.getLiveMetadata(for: cacheClientID, filter: cacheFilter)
         guard generation == dataGeneration, !Task.isCancelled else { return false }
-        liveTimeline = TimelineLiveUpdates(statuses: cached, metadata: metadata)
-        let anchorIndex = metadata?.readingAnchor.flatMap { anchor in cached.firstIndex { $0.id == anchor.statusID } }
+        let restored = TimelineLiveUpdates(statuses: cached, metadata: metadata)
+        liveTimeline = restored
+        let restoredStatuses = restored.statuses
+        let anchorIndex = metadata?.readingAnchor.flatMap { anchor in restoredStatuses.firstIndex { $0.id == anchor.statusID } }
         let renderCount = max(bootstrapConfig.initialRenderCap, anchorIndex.map { $0 + 4 } ?? 0)
-        let initialCached = Array(cached.prefix(renderCount))
-        let deferredCached = Array(cached.dropFirst(renderCount))
+        let initialCached = Array(restoredStatuses.prefix(renderCount))
+        let deferredCached = Array(restoredStatuses.dropFirst(renderCount))
 
         statuses = initialCached
         gaps = liveTimeline?.metadata.gaps ?? []

@@ -52,6 +52,7 @@ struct TimelineLiveUpdates {
         let ids = Set(self.statuses.map(\.id))
         self.metadata.newIDs = self.metadata.newIDs.filter { ids.contains($0.key) }
         self.metadata.gaps.removeAll { !ids.contains($0.afterID) || !ids.contains($0.beforeID) }
+        restoreUnconfirmedHeadOrder()
     }
 
     var newCount: Int { metadata.newIDs.count }
@@ -70,8 +71,8 @@ struct TimelineLiveUpdates {
         recordNew(status, currentAccountID: currentAccountID)
     }
 
-    /// Page order determines where new rows go. Existing stream/local rows are
-    /// retained between overlapping server rows rather than sorted by created_at.
+    /// Preserve server page order and interleave unconfirmed stream/local rows by
+    /// their local-server cursors. created_at is not a timeline-ordering key.
     @discardableResult
     mutating func receiveHead(
         _ page: TimelinePage, sinceID: String?, currentAccountID: String?
@@ -231,7 +232,10 @@ struct TimelineLiveUpdates {
             if statuses.contains(where: { $0.id == status.id }) {
                 update(status)
             } else {
-                let index = anchor.flatMap { id in statuses.firstIndex { $0.id == id } } ?? 0
+                let anchorIndex = anchor.flatMap { id in statuses.firstIndex { $0.id == id } } ?? 0
+                let index = statuses[..<anchorIndex].firstIndex {
+                    Self.isNewerID(status.id, than: $0.id)
+                } ?? anchorIndex
                 statuses.insert(status, at: index)
                 inserted += 1
                 if countsAsNew { recordNew(status, currentAccountID: currentAccountID, sequence: sequence) }
@@ -239,6 +243,35 @@ struct TimelineLiveUpdates {
             anchor = status.id
         }
         return inserted
+    }
+
+    /// Older snapshots may have retained a local reply above a newer confirmed
+    /// head. Repair only that unconfirmed prefix, preserving server row order.
+    private mutating func restoreUnconfirmedHeadOrder() {
+        guard let headID = metadata.fetchedHeadID,
+            let headIndex = statuses.firstIndex(where: { $0.id == headID }), headIndex > 0
+        else { return }
+        let misplaced = statuses[..<headIndex].filter { Self.isNewerID(headID, than: $0.id) }
+        guard !misplaced.isEmpty else { return }
+        let misplacedIDs = Set(misplaced.map(\.id))
+        statuses.removeAll { misplacedIDs.contains($0.id) }
+        for status in misplaced.reversed() {
+            let index = statuses.firstIndex { Self.isNewerID(status.id, than: $0.id) } ?? statuses.endIndex
+            statuses.insert(status, at: index)
+        }
+    }
+
+    private static func isNewerID(_ lhs: String, than rhs: String) -> Bool {
+        // Decimal cursors can exceed UInt64. Opaque IDs retain the server's
+        // anchor-based order instead of receiving an invented lexical order.
+        guard !lhs.isEmpty, !rhs.isEmpty,
+            lhs.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }),
+            rhs.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 })
+        else { return false }
+        let left = lhs.utf8.drop(while: { $0 == 48 })
+        let right = rhs.utf8.drop(while: { $0 == 48 })
+        if left.count != right.count { return left.count > right.count }
+        return right.lexicographicallyPrecedes(left)
     }
 
     private mutating func recordNew(_ status: Status, currentAccountID: String?, sequence: UInt64? = nil) {
