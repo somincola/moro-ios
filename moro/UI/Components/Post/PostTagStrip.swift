@@ -42,15 +42,15 @@ struct PostTagStrip: View {
                         } label: {
                             Text("#\(tag.name)")
                                 .font(theme.typography.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(theme.colors.surfaceBase)
+                                .fontWeight(.medium)
+                                .foregroundStyle(theme.colors.textPrimary)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
                                 .padding(.horizontal, theme.spacing.s)
                                 .padding(.vertical, theme.spacing.xs)
                                 .background {
                                     Capsule(style: .continuous)
-                                        .fill(theme.colors.primary500)
+                                        .fill(theme.colors.primary50)
                                 }
                         }
                         .buttonStyle(.plain)

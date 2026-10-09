@@ -11,7 +11,10 @@
 
     struct MoroUIKitThemePalette {
         let colorScheme: ColorScheme
+        let colorSchemeContrast: ColorSchemeContrast
         let accent: MoroAccentStyle
+        let themeColor: MoroThemeColor
+        let customThemeColor: UInt32
         let fontScale: CGFloat
         let dynamicTypeSize: DynamicTypeSize
 
@@ -31,7 +34,10 @@
 
         init(theme: MoroTheme) {
             colorScheme = theme.colorScheme
+            colorSchemeContrast = theme.colorSchemeContrast
             accent = theme.accent
+            themeColor = theme.themeColor
+            customThemeColor = theme.customThemeColor
             fontScale = theme.fontScale
             dynamicTypeSize = theme.dynamicTypeSize
             canvasBackground = UIColor(theme.colors.surfaceBase)
@@ -67,7 +73,10 @@
 
         func matches(_ theme: MoroTheme) -> Bool {
             colorScheme == theme.colorScheme
+                && colorSchemeContrast == theme.colorSchemeContrast
                 && accent == theme.accent
+                && themeColor == theme.themeColor
+                && customThemeColor == theme.customThemeColor
                 && fontScale == theme.fontScale
                 && dynamicTypeSize == theme.dynamicTypeSize
         }

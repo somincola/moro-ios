@@ -14,13 +14,20 @@ struct GeneralSettingsView: View {
     var body: some View {
         List {
             Section {
-                Picker(MoroL10n.Settings.theme, selection: $settings.appearance) {
-                    ForEach(AppSettings.Appearance.allCases, id: \.rawValue) { appearance in
-                        Text(appearance.title).tag(appearance)
+                NavigationLink {
+                    DisplaySettingsView()
+                } label: {
+                    HStack {
+                        Text(MoroL10n.Display.title)
+                            .foregroundStyle(theme.colors.textPrimary)
+                        Spacer()
+                        Circle()
+                            .fill(theme.colors.contentLink)
+                            .frame(width: 16, height: 16)
+                            .accessibilityLabel(settings.themeColor.title)
                     }
                 }
-                .pickerStyle(.menu)
-                .tint(theme.colors.textSecondary)
+                .accessibilityIdentifier("settings.display")
             } header: {
                 Text(MoroL10n.Settings.appearance)
             }

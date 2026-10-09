@@ -191,6 +191,24 @@ public enum MoroL10n {
         }
     }
 
+    public enum Display {
+        public static var title: String { text("display.title") }
+        public static var themeColor: String { text("display.themeColor") }
+        public static var themeColorHint: String { text("display.themeColor.hint") }
+        public static var customColor: String { text("display.color.custom") }
+        public static var customColorHint: String { text("display.color.custom.hint") }
+        public static var footer: String { text("display.footer") }
+        public static var previewLead: String { text("display.preview.lead") }
+        public static var previewMiddle: String { text("display.preview.middle") }
+        public static var previewTail: String { text("display.preview.tail") }
+        public static var blue: String { text("display.color.blue") }
+        public static var yellow: String { text("display.color.yellow") }
+        public static var pink: String { text("display.color.pink") }
+        public static var purple: String { text("display.color.purple") }
+        public static var orange: String { text("display.color.orange") }
+        public static var green: String { text("display.color.green") }
+    }
+
     public enum Settings {
         public static var title: String { text("settings.title") }
         public static var accountPrivacySection: String { text("settings.section.accountPrivacy") }

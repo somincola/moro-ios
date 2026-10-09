@@ -12,6 +12,7 @@ struct AppCoordinatorView: View {
     @ObservedObject private var feedbackCenter = AppFeedbackCenter.shared
     @ObservedObject private var settings = AppSettings.shared
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var revealsLoginUnderOnboarding = false
 
@@ -19,6 +20,9 @@ struct AppCoordinatorView: View {
         MoroTheme(
             colorScheme: colorScheme,
             accent: settings.accentStyle,
+            themeColor: settings.themeColor,
+            customThemeColor: settings.customThemeColor,
+            colorSchemeContrast: colorSchemeContrast,
             fontScale: settings.typographyFontScale.factor,
             dynamicTypeSize: dynamicTypeSize
         )

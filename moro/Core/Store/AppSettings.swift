@@ -22,6 +22,9 @@ final class AppSettings: ObservableObject {
     private enum Keys {
         // Appearance
         static let appearance = "appearance"
+        // Preserve the existing preference when promoting link colors to theme colors.
+        static let themeColor = "contentLinkColor"
+        static let customThemeColor = "customThemeColor"
         static let appIcon = "appIcon"
         static let tabIconTheme = "tabIconTheme"
         static let navigationStyle = "navigationStyle"
@@ -96,6 +99,18 @@ final class AppSettings: ObservableObject {
     @Published var appearance: Appearance {
         didSet {
             userDefaults.set(appearance.rawValue, forKey: Keys.appearance)
+        }
+    }
+
+    @Published var themeColor: MoroThemeColor {
+        didSet {
+            userDefaults.set(themeColor.rawValue, forKey: Keys.themeColor)
+        }
+    }
+
+    @Published var customThemeColor: UInt32 {
+        didSet {
+            userDefaults.set(Int(customThemeColor), forKey: Keys.customThemeColor)
         }
     }
 
@@ -778,6 +793,13 @@ final class AppSettings: ObservableObject {
         // Appearance
         let appearanceRaw = userDefaults.integer(forKey: Keys.appearance)
         self.appearance = Appearance(rawValue: appearanceRaw) ?? .system
+        self.themeColor = MoroThemeColor(
+            rawValue: userDefaults.string(forKey: Keys.themeColor) ?? ""
+        ) ?? .blue
+        let customRGB = userDefaults.object(forKey: Keys.customThemeColor) as? NSNumber
+        self.customThemeColor = customRGB.flatMap { value in
+            (0...0xFFFFFF).contains(value.int64Value) ? UInt32(value.int64Value) : nil
+        } ?? MoroThemeColor.defaultCustomRGB
         let appIconRaw = userDefaults.string(forKey: Keys.appIcon) ?? AppIconChoice.default.rawValue
         self.appIcon = AppIconChoice(rawValue: appIconRaw) ?? .default
         self.tabIconTheme = Self.defaultNavigationAppearance.tabIconTheme

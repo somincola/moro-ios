@@ -133,7 +133,6 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             configureHierarchy()
             configureTabs()
             apply(theme: appliedTheme)
-            applyInboxBadge()
             updateAvatar(appliedAvatarURL, force: true)
             updateSelectedTab(coordinator.selectedTab)
         }
@@ -175,7 +174,10 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             }
 
             if appliedTheme.colorScheme != theme.colorScheme
+                || appliedTheme.colorSchemeContrast != theme.colorSchemeContrast
                 || appliedTheme.accent != theme.accent
+                || appliedTheme.themeColor != theme.themeColor
+                || appliedTheme.customThemeColor != theme.customThemeColor
                 || appliedTheme.fontScale != theme.fontScale
             {
                 apply(theme: theme)
@@ -263,6 +265,8 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             inboxNavigationController.apply(theme: theme)
             meNavigationController.apply(theme: theme)
 
+            applyInboxBadge()
+
             if loadedAvatarImage != nil {
                 applyAvatarImages()
             }
@@ -270,11 +274,17 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
         private func applyInboxBadge() {
             let count = appliedUnreadInboxCount
-            inboxNavigationController.tabBarItem.badgeValue = count == 0
+            let item: UITabBarItem = inboxNavigationController.tabBarItem
+            item.badgeValue = count == 0
                 ? nil
                 : (count > 99 ? "99+" : "\(count)")
-            inboxNavigationController.tabBarItem.badgeColor = .systemRed
-            inboxNavigationController.tabBarItem.accessibilityLabel = count > 0
+            item.badgeColor = UIColor(appliedTheme.colors.themeTint)
+            for state in [UIControl.State.normal, .selected] {
+                item.setBadgeTextAttributes([
+                    .foregroundColor: UIColor(appliedTheme.colors.themeTintForeground),
+                ], for: state)
+            }
+            item.accessibilityLabel = count > 0
                 ? MoroL10n.Navigation.inboxUnread(count)
                 : MainTab.inbox.title
         }
@@ -499,7 +509,10 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
         func apply(theme: MoroTheme) {
             let shouldUpdateRootView = appliedTheme.colorScheme != theme.colorScheme
+                || appliedTheme.colorSchemeContrast != theme.colorSchemeContrast
                 || appliedTheme.accent != theme.accent
+                || appliedTheme.themeColor != theme.themeColor
+                || appliedTheme.customThemeColor != theme.customThemeColor
                 || appliedTheme.fontScale != theme.fontScale
             appliedTheme = theme
             if shouldUpdateRootView {

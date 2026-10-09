@@ -18,6 +18,7 @@ import SwiftUI
 /// app-root `AppCoordinatorView.effectiveTheme`; keep the two in sync.
 private struct SystemColorSchemeMoroTheme: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject private var settings = AppSettings.shared
 
@@ -27,6 +28,9 @@ private struct SystemColorSchemeMoroTheme: ViewModifier {
                 MoroTheme(
                     colorScheme: colorScheme,
                     accent: settings.accentStyle,
+                    themeColor: settings.themeColor,
+                    customThemeColor: settings.customThemeColor,
+                    colorSchemeContrast: colorSchemeContrast,
                     fontScale: settings.typographyFontScale.factor,
                     dynamicTypeSize: dynamicTypeSize
                 )

@@ -415,7 +415,7 @@ private struct DirectMessageConversationRow: View {
             .overlay(alignment: .leading) {
                 if isUnread {
                     Capsule(style: .continuous)
-                        .fill(theme.colors.contentLink)
+                        .fill(theme.colors.unreadIndicator)
                         .frame(width: 3)
                         .padding(.vertical, 10)
                 }
@@ -505,7 +505,7 @@ private struct DirectMessageConversationRow: View {
 
                 if isUnread {
                     Circle()
-                        .fill(theme.colors.contentLink)
+                        .fill(theme.colors.unreadIndicator)
                         .frame(width: 7, height: 7)
                 }
             }

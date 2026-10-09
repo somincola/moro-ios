@@ -702,7 +702,7 @@ private struct ConversationMessageRow: View {
                 RichTextContentView(
                     elements: contentElements,
                     textColorOverride: isOutgoing ? theme.colors.primaryForeground : theme.colors.textPrimary,
-                    linkColorOverride: isOutgoing ? theme.colors.primaryForeground : theme.colors.primary500,
+                    linkColorOverride: isOutgoing ? theme.colors.primaryForeground : theme.colors.contentLink,
                     underlinesLinks: true
                 )
                     .fixedSize(horizontal: false, vertical: true)
