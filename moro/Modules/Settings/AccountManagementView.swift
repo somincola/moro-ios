@@ -18,7 +18,7 @@ struct AccountManagementView: View {
 
     @Environment(\.moroTheme) private var theme
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
+    @Environment(\.settingsContext) private var settingsContext
     @EnvironmentObject private var appState: AppState
 
     let accountSessions: [StoredAccountSession]
@@ -29,7 +29,7 @@ struct AccountManagementView: View {
     let onRemoveAccount: (String) -> Void
 
     @State private var pendingRemovalSession: StoredAccountSession?
-    @State private var deletionOpenFailed = false
+    @State private var showLogoutConfirmation = false
     @State private var editProfileRoute: EditProfileRoute?
 
     // ponytail: item-based destination instead of isPresented — the bool overload's pop
@@ -41,10 +41,6 @@ struct AccountManagementView: View {
         let current = accountSessions.filter { $0.id == activeSessionID }
         let others = accountSessions.filter { $0.id != activeSessionID }
         return current + others
-    }
-
-    private var activeSession: StoredAccountSession? {
-        orderedSessions.first { $0.id == activeSessionID }
     }
 
     var body: some View {
@@ -126,14 +122,19 @@ struct AccountManagementView: View {
                         )
                     )
             }
-        }
-        .moroSettingsListChrome()
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if let activeSession {
-                serverAccountDeletionLink(for: activeSession)
+
+            Section {
+                Button(role: .destructive) {
+                    showLogoutConfirmation = true
+                } label: {
+                    Label(MoroL10n.Settings.logout, systemImage: "rectangle.portrait.and.arrow.right")
+                        .frame(minHeight: 44)
+                }
+                .accessibilityIdentifier("settings.logout")
             }
         }
-        .navigationTitle(MoroL10n.AccountMgmt.navTitle)
+        .moroSettingsListChrome()
+        .navigationTitle(MoroL10n.Settings.loginManagement)
         .navigationBarTitleDisplayMode(.inline)
         .alert(
             MoroL10n.AccountMgmt.removeTitle,
@@ -161,13 +162,13 @@ struct AccountManagementView: View {
                 Text(MoroL10n.AccountMgmt.removeHint2)
             }
         }
-        .alert(
-            MoroL10n.AccountMgmt.deleteOpenFailedTitle,
-            isPresented: $deletionOpenFailed
-        ) {
-            Button(MoroL10n.Common.ok, role: .cancel) {}
+        .alert(MoroL10n.Settings.logoutAlertTitle, isPresented: $showLogoutConfirmation) {
+            Button(MoroL10n.Common.cancel, role: .cancel) {}
+            Button(MoroL10n.Settings.logoutAction, role: .destructive) {
+                settingsContext.onLogout()
+            }
         } message: {
-            Text(MoroL10n.AccountMgmt.deleteOpenFailedMessage)
+            Text(MoroL10n.Settings.logoutAlertMessage)
         }
         .navigationDestination(item: $editProfileRoute) { _ in
             if let apiClient {
@@ -177,46 +178,6 @@ struct AccountManagementView: View {
                 )
             } else {
                 EmptyView()
-            }
-        }
-    }
-
-    private func serverAccountDeletionLink(
-        for session: StoredAccountSession
-    ) -> some View {
-        Button {
-            openAccountDeletion(for: session)
-        } label: {
-            HStack(spacing: 6) {
-                Text(MoroL10n.AccountMgmt.deleteAccount)
-                    .multilineTextAlignment(.center)
-                Image(systemName: "arrow.up.right")
-                    .moroScaledFont(size: 11, weight: .semibold)
-            }
-            .font(theme.typography.caption)
-            .foregroundStyle(theme.colors.textPrimary)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 24)
-        .padding(.vertical, 6)
-        .background(theme.colors.groupedBackground)
-        .accessibilityLabel(MoroL10n.AccountMgmt.deleteAccount)
-        .accessibilityHint(MoroL10n.AccountMgmt.deleteFooter(session.instanceHost))
-        .accessibilityIdentifier("accountManagement.serverAccountSettings")
-    }
-
-    private func openAccountDeletion(for session: StoredAccountSession) {
-        guard let instanceURL = session.instanceURL,
-              let deletionURL = MastodonAccountDeletionURL.make(from: instanceURL) else {
-            deletionOpenFailed = true
-            return
-        }
-
-        openURL(deletionURL) { accepted in
-            if !accepted {
-                deletionOpenFailed = true
             }
         }
     }
@@ -294,5 +255,82 @@ struct AccountManagementView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(theme.colors.surfaceSubtle)
         )
+    }
+}
+
+struct ServerAccountActionsView: View {
+    @Environment(\.moroTheme) private var theme
+    @Environment(\.openURL) private var openURL
+    @State private var deletionOpenFailed = false
+
+    let session: StoredAccountSession
+
+    var body: some View {
+        List {
+            Section {
+                serverAccountDeletionLink(for: session)
+                    .listRowInsets(EdgeInsets(
+                        top: 0,
+                        leading: theme.spacing.contentHorizontalInset,
+                        bottom: 0,
+                        trailing: theme.spacing.contentHorizontalInset
+                    ))
+            } footer: {
+                Text(MoroL10n.AccountMgmt.deleteFooter(session.instanceHost))
+                    .font(theme.typography.caption)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .moroSettingsListChrome()
+        .navigationTitle(MoroL10n.AccountMgmt.deleteAccount)
+        .navigationBarTitleDisplayMode(.inline)
+        .alert(
+            MoroL10n.AccountMgmt.deleteOpenFailedTitle,
+            isPresented: $deletionOpenFailed
+        ) {
+            Button(MoroL10n.Common.ok, role: .cancel) {}
+        } message: {
+            Text(MoroL10n.AccountMgmt.deleteOpenFailedMessage)
+        }
+    }
+
+    private func serverAccountDeletionLink(
+        for session: StoredAccountSession
+    ) -> some View {
+        Button(role: .destructive) {
+            openAccountDeletion(for: session)
+        } label: {
+            HStack(spacing: 12) {
+                Text(MoroL10n.AccountMgmt.deleteAccount)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Image(systemName: "arrow.up.right")
+                    .font(theme.typography.caption)
+                    .accessibilityHidden(true)
+            }
+            .font(.body)
+            .foregroundStyle(.red)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(MoroL10n.AccountMgmt.deleteAccount)
+        .accessibilityHint(MoroL10n.AccountMgmt.deleteFooter(session.instanceHost))
+        .accessibilityIdentifier("accountManagement.serverAccountSettings")
+    }
+
+    private func openAccountDeletion(for session: StoredAccountSession) {
+        guard let instanceURL = session.instanceURL,
+              let deletionURL = MastodonAccountDeletionURL.make(from: instanceURL) else {
+            deletionOpenFailed = true
+            return
+        }
+
+        openURL(deletionURL) { accepted in
+            if !accepted {
+                deletionOpenFailed = true
+            }
+        }
     }
 }

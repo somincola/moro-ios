@@ -101,6 +101,8 @@ struct MoroApp: App {
                                 Task { await CacheManager.shared.timelineCache.flushPendingWrites() }
                             }
                             guard newPhase == .active else { return }
+                            PushSubscriptionCoordinator.shared.resumeSettings(
+                                apiClient: coordinator.apiClient, sessionKey: coordinator.activeSessionID)
                             Task {
                                 await coordinator.refreshCurrentAccountIfNeeded()
                             }

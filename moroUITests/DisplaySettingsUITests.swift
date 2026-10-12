@@ -11,6 +11,7 @@ final class DisplaySettingsUITests: XCTestCase {
         app.launch()
         defer { app.terminate() }
         openDisplay(app)
+        XCTAssertEqual(app.buttons["display.appearance.0"].label, "System")
         XCTAssertEqual(
             app.staticTexts["display.section.appearance"].frame.height,
             app.staticTexts["display.section.theme-color"].frame.height,
@@ -46,7 +47,8 @@ final class DisplaySettingsUITests: XCTestCase {
         app.launch()
         defer { app.terminate() }
         openDisplay(app)
-        XCTAssertTrue(app.navigationBars["显示"].exists)
+        XCTAssertTrue(app.navigationBars["外观与显示"].exists)
+        XCTAssertEqual(app.buttons["display.appearance.0"].label, "系统")
         XCTAssertGreaterThan(
             app.staticTexts["display.section.appearance"].frame.height, 40,
             "Largest Dynamic Type must actually be applied"
@@ -71,6 +73,7 @@ final class DisplaySettingsUITests: XCTestCase {
         app.launch()
         defer { app.terminate() }
         openDisplay(app)
+        XCTAssertEqual(app.buttons["display.appearance.0"].label, "System")
         for rawValue in [1, 2, 0] {
             let card = app.buttons["display.appearance.\(rawValue)"]
             XCTAssertTrue(card.isHittable)
@@ -128,6 +131,44 @@ final class DisplaySettingsUITests: XCTestCase {
         XCTAssertTrue(blue.isSelected)
     }
 
+    func testFourPostTextSizesUpdatePreviewAndPersist() {
+        let app = makeApp()
+        app.launch()
+        defer { app.terminate() }
+        openDisplay(app)
+        tap("display.font-size", in: app)
+        let slider = app.sliders["display.font-size"]
+        let preview = app.descendants(matching: .any)["display.preview"]
+        let trackY = slider.frame.midY
+        let previewHeight = preview.frame.height
+        for (index, title) in ["Small", "Standard", "Large", "Extra large"].enumerated() {
+            slider.adjust(toNormalizedSliderPosition: CGFloat(index) / 3)
+            XCTAssertEqual(slider.value as? String, title)
+            XCTAssertEqual(slider.normalizedSliderPosition, CGFloat(index) / 3, accuracy: 0.02)
+            XCTAssertEqual(slider.frame.midY, trackY, accuracy: 1, "Preview wrapping must not move the thumb while dragging")
+            XCTAssertEqual(preview.frame.height, previewHeight, accuracy: 1)
+        }
+        slider.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: slider.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)))
+        XCTAssertEqual(slider.value as? String, "Small")
+        XCTAssertEqual(slider.frame.midY, trackY, accuracy: 1)
+        slider.adjust(toNormalizedSliderPosition: 0.43)
+        XCTAssertEqual(slider.value as? String, "Standard", "Release between detents must select the nearest size")
+        XCTAssertEqual(slider.normalizedSliderPosition, 1.0 / 3, accuracy: 0.02)
+        slider.adjust(toNormalizedSliderPosition: 1)
+        attach(app, name: "display-extra-large-post-text")
+        app.terminate()
+        app.launch()
+        openDisplay(app)
+        XCTAssertEqual(app.sliders["display.font-size"].value as? String, "Extra large")
+        tap("display.font-size", in: app)
+        app.sliders["display.font-size"].adjust(toNormalizedSliderPosition: 1.0 / 3)
+        XCTAssertEqual(app.sliders["display.font-size"].value as? String, "Standard")
+        app.navigationBars.buttons.firstMatch.tap()
+        tap("settings.display", in: app)
+        XCTAssertEqual(app.sliders["display.font-size"].value as? String, "Standard")
+    }
+
     private func makeApp() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = [
@@ -142,7 +183,6 @@ final class DisplaySettingsUITests: XCTestCase {
     }
 
     private func openDisplay(_ app: XCUIApplication) {
-        tap("settings.preferences", in: app)
         tap("settings.display", in: app)
         XCTAssertTrue(app.descendants(matching: .any)["display.preview"].waitForExistence(timeout: 5))
     }

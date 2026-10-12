@@ -150,7 +150,7 @@ struct ContentConcealView<Content: View>: View {
             // Fixed title - always visible with bold font (weight 600)
             if let spoilerText = viewModel.spoilerText, !spoilerText.isEmpty {
                 Text(spoilerText)
-                    .font(theme.typography.body)
+                    .font(Font(theme.postUIFont(sizeAdjustment: -1)))
                     .fontWeight(.semibold) // SwiftUI semibold is approximately 600
                     .foregroundStyle(theme.colors.textPrimary)
             } else {

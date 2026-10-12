@@ -9,12 +9,14 @@ import SwiftUI
 
 struct MoroSettingsListChrome: ViewModifier {
     @Environment(\.moroTheme) private var theme
+    let separators: Visibility
 
     func body(content: Content) -> some View {
         content
             .listStyle(.insetGrouped)
             .listSectionSpacing(24)
-            .listRowSeparator(.hidden)
+            .listRowSeparator(separators)
+            .listRowSeparatorTint(theme.colors.borderSubtle)
             .contentMargins(.top, 0, for: .scrollContent)
             .scrollContentBackground(.hidden)
             .background(theme.colors.background)
@@ -25,7 +27,21 @@ struct MoroSettingsListChrome: ViewModifier {
 }
 
 extension View {
-    func moroSettingsListChrome() -> some View {
-        modifier(MoroSettingsListChrome())
+    func moroSettingsListChrome(separators: Visibility = .hidden) -> some View {
+        modifier(MoroSettingsListChrome(separators: separators))
+    }
+}
+
+struct MoroSettingsSectionHeader: View {
+    @Environment(\.moroTheme) private var theme
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(theme.typography.caption)
+            .fontWeight(.medium)
+            .foregroundStyle(theme.colors.textSecondary)
+            .textCase(nil)
+            .accessibilityAddTraits(.isHeader)
     }
 }

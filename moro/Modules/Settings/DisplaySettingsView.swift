@@ -5,12 +5,25 @@ struct DisplaySettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
     @Environment(\.moroTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var fontSizeStep: Double
+
+    init() {
+        _fontSizeStep = State(initialValue: Double(
+            MoroPostFontSize.allCases.firstIndex(of: AppSettings.shared.postFontSize) ?? 1
+        ))
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 appearanceSection
+                fontSizeSection
                 themeColorSection
+                appIconLink
+                Text(MoroL10n.Display.footer)
+                    .font(theme.typography.caption)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: 560)
             .padding(.horizontal, 24)
@@ -18,9 +31,105 @@ struct DisplaySettingsView: View {
             .frame(maxWidth: .infinity)
         }
         .background(theme.colors.surfaceBase)
-        .navigationTitle(MoroL10n.Display.title)
+        .navigationTitle(MoroL10n.Settings.appearanceDisplay)
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: settings.themeColor)
+        .sensoryFeedback(.selection, trigger: previewFontSize)
+        .onChange(of: settings.postFontSize) { _, size in
+            fontSizeStep = Double(MoroPostFontSize.allCases.firstIndex(of: size) ?? 1)
+        }
+    }
+
+    private var appIconLink: some View {
+        VStack(spacing: 12) {
+            Divider().overlay(theme.colors.borderSubtle)
+            NavigationLink {
+                List { AppIconSettingsView() }
+                    .moroSettingsListChrome()
+                    .navigationTitle(MoroL10n.GeneralSettings.appIconSection)
+                    .navigationBarTitleDisplayMode(.inline)
+            } label: {
+                HStack(spacing: 12) {
+                    Text(MoroL10n.GeneralSettings.appIconSection)
+                        .font(theme.typography.body)
+                        .foregroundStyle(theme.colors.textPrimary)
+                    Spacer(minLength: 8)
+                    Image(settings.appIcon.previewAssetName)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 28, height: 28)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .accessibilityHidden(true)
+                    Image(systemName: "chevron.right")
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textTertiary)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(MoroL10n.GeneralSettings.appIconSection)
+            .accessibilityValue(settings.appIcon.title)
+            .accessibilityIdentifier("settings.appIcon")
+        }
+    }
+
+    private var fontSizeSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(MoroL10n.Display.fontSize)
+                    .font(theme.typography.subtitle)
+                    .foregroundStyle(theme.colors.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(previewFontSize.title)
+                    .font(theme.typography.caption)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+
+            postPreview
+
+            HStack(spacing: 12) {
+                Text(verbatim: "Aa").moroScaledFont(size: 12)
+                    .accessibilityHidden(true)
+                VStack(spacing: 0) {
+                    PostFontSizeSlider(
+                        value: $fontSizeStep, tint: UIColor(theme.colors.themeTint),
+                        onCommit: saveFontSize
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    HStack {
+                        ForEach(Array(MoroPostFontSize.allCases.enumerated()), id: \.element) { index, size in
+                            if index > 0 { Spacer() }
+                            Circle()
+                                .fill(size == previewFontSize ? theme.colors.textPrimary : theme.colors.textTertiary)
+                                .frame(width: 4, height: 4)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .accessibilityHidden(true)
+                }
+                Text(verbatim: "Aa").moroScaledFont(size: 20)
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(theme.colors.textSecondary)
+
+            Text(MoroL10n.Display.fontSizeHint)
+                .font(theme.typography.caption)
+                .foregroundStyle(theme.colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var previewFontSize: MoroPostFontSize {
+        let index = min(max(Int(fontSizeStep.rounded()), 0), MoroPostFontSize.allCases.count - 1)
+        return MoroPostFontSize.allCases[index]
+    }
+
+    private func saveFontSize() {
+        let size = previewFontSize
+        if settings.postFontSize != size { settings.postFontSize = size }
     }
 
     private var appearanceSection: some View {
@@ -99,8 +208,6 @@ struct DisplaySettingsView: View {
                     .lineSpacing(3)
             }
 
-            postPreview
-
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 4) {
                     colorOptions
@@ -121,10 +228,6 @@ struct DisplaySettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Text(MoroL10n.Display.footer)
-                .font(theme.typography.caption)
-                .foregroundStyle(theme.colors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -195,7 +298,6 @@ struct DisplaySettingsView: View {
 
     private var postPreview: some View {
         // This fixed example is rendered locally; preview links never navigate.
-        let url = URL(string: "https://example.com")!
         return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "person.fill")
@@ -213,20 +315,13 @@ struct DisplaySettingsView: View {
                         .foregroundStyle(theme.colors.textSecondary)
                 }
             }
-            RichTextContentView(
-                elements: [
-                    .text(MoroL10n.Display.previewLead),
-                    .mention(username: "@moro", url: url),
-                    .text(MoroL10n.Display.previewMiddle),
-                    .link(text: "example.com", url: url),
-                    .text(MoroL10n.Display.previewTail),
-                    .hashtag(tag: "#Moro", url: url),
-                ],
-                isSelectable: false,
-                fontOverride: theme.typography.body,
-                onLinkTap: { _ in }
-            )
-            .allowsHitTesting(false)
+            ZStack(alignment: .topLeading) {
+                // Reserve the largest layout so wrapping cannot move the slider during a drag.
+                previewText(font: theme.postUIFont(for: .extraLarge))
+                    .hidden()
+                    .accessibilityHidden(true)
+                previewText(font: theme.postUIFont(for: previewFontSize))
+            }
         }
         .padding(16)
         .overlay {
@@ -235,6 +330,110 @@ struct DisplaySettingsView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("display.preview")
+    }
+
+    private func previewText(font bodyFont: UIFont) -> some View {
+        let url = URL(string: "https://example.com")!
+        return RichTextContentView(
+            elements: [
+                .text(MoroL10n.Display.previewLead),
+                .mention(username: "@moro", url: url),
+                .text(MoroL10n.Display.previewMiddle),
+                .link(text: "example.com", url: url),
+                .text(MoroL10n.Display.previewTail),
+                .hashtag(tag: "#Moro", url: url),
+            ],
+            emojiSize: bodyFont.pointSize * 1.25,
+            isSelectable: false,
+            fontOverride: Font(bodyFont),
+            uiFontOverride: bodyFont,
+            lineSpacing: 4 * bodyFont.pointSize / 16,
+            onLinkTap: { _ in }
+        )
+        .allowsHitTesting(false)
+    }
+}
+
+// Observe touch release separately because iOS 26 Slider editing callbacks can stay active.
+private struct PostFontSizeSlider: UIViewRepresentable {
+    @Binding var value: Double
+    let tint: UIColor
+    let onCommit: () -> Void
+
+    func makeUIView(context: Context) -> FontSizeSlider {
+        let slider = FontSizeSlider()
+        slider.minimumValue = 0
+        slider.maximumValue = Float(MoroPostFontSize.allCases.count - 1)
+        slider.accessibilityIdentifier = "display.font-size"
+        slider.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        slider.addTarget(
+            context.coordinator, action: #selector(Coordinator.commit(_:)),
+            for: .editingDidEnd
+        )
+        let tracking = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.released(_:)))
+        tracking.minimumPressDuration = 0
+        tracking.allowableMovement = .greatestFiniteMagnitude
+        tracking.cancelsTouchesInView = false
+        tracking.delegate = context.coordinator
+        slider.addGestureRecognizer(tracking)
+        return slider
+    }
+
+    func updateUIView(_ slider: FontSizeSlider, context: Context) {
+        context.coordinator.parent = self
+        slider.tintColor = tint
+        slider.accessibilityLabel = MoroL10n.Display.fontSize
+        let index = min(max(Int(value.rounded()), 0), MoroPostFontSize.allCases.count - 1)
+        slider.accessibilityValue = MoroPostFontSize.allCases[index].title
+        if slider.value != Float(value) {
+            slider.setValue(Float(value), animated: false)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var parent: PostFontSizeSlider
+
+        init(_ parent: PostFontSizeSlider) { self.parent = parent }
+
+        @objc func changed(_ slider: UISlider) {
+            parent.value = Double(slider.value)
+        }
+
+        @objc func released(_ gesture: UILongPressGestureRecognizer) {
+            guard gesture.state == .ended || gesture.state == .cancelled,
+                let slider = gesture.view as? UISlider
+            else { return }
+            // The native slider applies its final value later in the same touch event.
+            DispatchQueue.main.async { [weak self, weak slider] in
+                guard let self, let slider else { return }
+                self.commit(slider)
+            }
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            true
+        }
+
+        @objc func commit(_ slider: UISlider) {
+            let step = slider.value.rounded()
+            slider.setValue(step, animated: !UIAccessibility.isReduceMotionEnabled)
+            parent.value = Double(step)
+            parent.onCommit()
+        }
+    }
+
+    final class FontSizeSlider: UISlider {
+        override func accessibilityIncrement() {
+            value = min(value.rounded() + 1, maximumValue)
+            sendActions(for: [.valueChanged, .editingDidEnd])
+        }
+
+        override func accessibilityDecrement() {
+            value = max(value.rounded() - 1, minimumValue)
+            sendActions(for: [.valueChanged, .editingDidEnd])
+        }
     }
 }
 

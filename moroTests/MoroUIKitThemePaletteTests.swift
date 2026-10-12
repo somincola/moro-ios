@@ -24,18 +24,10 @@ import XCTest
             XCTAssertTrue(palette.matches(theme))
         }
 
-        func testPaletteReflectsDarkAppearanceAndFontScale() {
-            let regularTheme = MoroTheme(colorScheme: .dark, fontScale: 1)
-            let scaledTheme = MoroTheme(colorScheme: .dark, fontScale: 1.2)
-            let regular = regularTheme.uiKitPalette
-            let scaled = scaledTheme.uiKitPalette
-
-            XCTAssertEqual(scaled.interfaceStyle, .dark)
-            XCTAssertGreaterThan(
-                scaled.font(forTextStyle: .body).pointSize,
-                regular.font(forTextStyle: .body).pointSize
-            )
-            XCTAssertFalse(regular.matches(scaledTheme))
+        func testPaletteReflectsDarkAppearance() {
+            let dark = MoroTheme(colorScheme: .dark).uiKitPalette
+            XCTAssertEqual(dark.interfaceStyle, .dark)
+            XCTAssertFalse(dark.matches(MoroTheme(colorScheme: .light)))
         }
 
         func testUIKitFontUsesTheSameDynamicTypeSizeAsSwiftUITheme() {

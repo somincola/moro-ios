@@ -68,10 +68,21 @@ struct EditProfileView: View {
                 NavigationLink {
                     ProfileDisplaySettingsView(apiClient: apiClient, accountKey: activeAccountKey)
                 } label: {
-                    ProfileEditorSummaryRow(title: MoroL10n.ProfileEditing.displaySettings,
-                        summary: MoroL10n.ProfileEditing.showTags)
+                    ProfileEditorSummaryRow(title: MoroL10n.Settings.profilePublic,
+                        summary: MoroL10n.Settings.serverScope)
                 }
                 .accessibilityIdentifier("profile.edit.display")
+            }
+            Section {
+                NavigationLink {
+                    ProfileDisplaySettingsView(apiClient: apiClient, accountKey: activeAccountKey, scope: .local)
+                } label: {
+                    ProfileEditorSummaryRow(title: MoroL10n.Settings.profileReading,
+                        summary: MoroL10n.Settings.profileLocalScope)
+                }
+                .accessibilityIdentifier("profile.edit.localDisplay")
+            } header: {
+                MoroSettingsSectionHeader(title: MoroL10n.Settings.appSection)
             }
         }
         .profileEditorChrome()

@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct BoostOrQuoteDialog: View {
     let status: Status
@@ -21,45 +22,62 @@ struct BoostOrQuoteDialog: View {
     
     @Environment(\.moroTheme) private var theme
     
-    private let rowHeight: CGFloat = 52
-    private let iconSize: CGFloat = 18
+    private let rowHeight: CGFloat = 60
+    private let iconSize: CGFloat = 24
     
     var body: some View {
-        VStack(spacing: 0) {
-            actionRow(
-                title: isBoosted ? MoroL10n.BoostDialog.unboost : MoroL10n.BoostDialog.boost,
-                icon: "repeat"
-            ) {
-                if isBoosted {
-                    onUnboost()
-                } else {
-                    onBoost()
-                }
-                onDismiss()
-            }
-
-            if canQuote, let title = quoteButtonTitle {
-                divider
-
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 4) {
                 actionRow(
-                    title: title,
-                    icon: "quote.bubble"
+                    title: isBoosted ? MoroL10n.BoostDialog.unboost : MoroL10n.BoostDialog.boost,
+                    icon: "arrow.2.squarepath"
                 ) {
-                    onQuote()
+                    if isBoosted {
+                        onUnboost()
+                    } else {
+                        onBoost()
+                    }
                     onDismiss()
                 }
-            } else if let subtitle = quoteButtonSubtitle {
-                divider
-                Text(subtitle)
-                    .font(theme.typography.caption)
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .padding(.horizontal, theme.spacing.l)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(height: rowHeight)
+                .accessibilityIdentifier("boostDialog.boost")
+
+                if canQuote, let title = quoteButtonTitle {
+                    actionRow(
+                        title: title,
+                        icon: "pencil.line"
+                    ) {
+                        onQuote()
+                        onDismiss()
+                    }
+                    .accessibilityIdentifier("boostDialog.quote")
+                } else if let subtitle = quoteButtonSubtitle {
+                    Text(subtitle)
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(minHeight: rowHeight)
+                }
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+            .padding(.bottom, 4)
         }
+        .scrollBounceBehavior(.basedOnSize)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(theme.colors.background)
+        .background(theme.colors.surfaceElevated.ignoresSafeArea())
+        .dynamicTypeSize(theme.dynamicTypeSize)
+        .moroSheetSurface(
+            detents: [
+                theme.dynamicTypeSize.isAccessibilitySize ? .medium : .height(
+                    Self.preferredDetentHeight(
+                        quoteButtonTitle: quoteButtonTitle,
+                        quoteButtonSubtitle: quoteButtonSubtitle
+                    )
+                )
+            ],
+            cornerRadius: 28
+        )
     }
     
     @ViewBuilder
@@ -69,25 +87,26 @@ struct BoostOrQuoteDialog: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: theme.spacing.s) {
+            HStack(spacing: 20) {
                 Image(systemName: icon)
-                    .moroScaledFont(size: iconSize, weight: .semibold)
+                    .moroScaledFont(size: iconSize)
+                    .frame(width: UIFontMetrics(forTextStyle: .body).scaledValue(
+                        for: 28,
+                        compatibleWith: UITraitCollection(
+                            preferredContentSizeCategory: theme.dynamicTypeSize.uiContentSizeCategory
+                        )
+                    ))
                 Text(title)
-                    .font(theme.typography.bodyStrong)
+                    .font(.body.weight(.medium))
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
             .foregroundStyle(theme.colors.textPrimary)
-            .padding(.horizontal, theme.spacing.l)
-            .frame(height: rowHeight)
+            .padding(.vertical, 16)
+            .frame(minHeight: rowHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-    
-    private var divider: some View {
-        Rectangle()
-            .fill(theme.colors.borderSubtle)
-            .frame(height: 1)
     }
     
     static func preferredDetentHeight(
@@ -95,8 +114,7 @@ struct BoostOrQuoteDialog: View {
         quoteButtonSubtitle: String?
     ) -> CGFloat {
         let hasSecondaryRow = quoteButtonTitle != nil || quoteButtonSubtitle != nil
-        // A compact baseline with small headroom for system drag indicator / rounding.
-        return hasSecondaryRow ? 112 : 64
+        return hasSecondaryRow ? 144 : 80
     }
 }
 

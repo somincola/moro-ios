@@ -22,8 +22,8 @@ struct AppCoordinatorView: View {
             accent: settings.accentStyle,
             themeColor: settings.themeColor,
             customThemeColor: settings.customThemeColor,
+            postFontSize: settings.postFontSize,
             colorSchemeContrast: colorSchemeContrast,
-            fontScale: settings.typographyFontScale.factor,
             dynamicTypeSize: dynamicTypeSize
         )
     }

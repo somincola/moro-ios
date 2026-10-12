@@ -494,6 +494,39 @@ struct moroTests {
         #expect(hidden == true)
     }
 
+    @Test @MainActor func localProfileDisplaySavesWithoutContactingTheServer() async throws {
+        let suite = "profile-local-display-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = ProfilePresentationPreferences(defaults: defaults)
+        let api = MockMastodonAPI()
+        var contactedServer = false
+        api.fetchEditableProfileHandler = {
+            contactedServer = true
+            throw MockMastodonAPI.MockError.forcedFailure
+        }
+        api.profileDisplayUpdateHandler = { _ in
+            contactedServer = true
+            throw MockMastodonAPI.MockError.forcedFailure
+        }
+        api.credentialsUpdateHandler = { _ in
+            contactedServer = true
+            throw MockMastodonAPI.MockError.forcedFailure
+        }
+        let state = AppState()
+        state.currentAccount = makeAccount()
+        let originalAccountID = state.currentAccount?.id
+        let model = ProfileDisplayViewModel(apiClient: api, accountKey: "A", preferences: preferences)
+        model.showTags = false
+        #expect(model.serverUpdate == nil)
+        #expect(await model.save(to: state))
+        #expect(!contactedServer)
+        #expect(!preferences.showsFeaturedTags(accountKey: "A"))
+        #expect(preferences.showsFeaturedTags(accountKey: "B"))
+        #expect(state.currentAccount?.id == originalAccountID)
+        #expect(!model.hasChanges)
+    }
+
     @Test @MainActor func mediaPreferenceChangesDiscardAnOldRequestAndHideTheTab() async {
         let api = MockMastodonAPI()
         let started = AsyncStream<Void>.makeStream()
@@ -1971,7 +2004,6 @@ struct moroTests {
     }
 
     @Test @MainActor func hiddenAppearanceControlsUseStandardDefaults() async throws {
-        #expect(AppSettings.defaultTypographyFontScale == .standard)
         #expect(AppSettings.defaultTimelineDensity == .comfortable)
         #expect(AppSettings.defaultNavigationAppearance == .standard)
         #expect(AppSettings.defaultNavigationAppearance.tabIconTheme == .standard)
@@ -8633,18 +8665,24 @@ final class MockMastodonAPI: MastodonAPI {
         throw MockError.unimplemented
     }
     func fetchPushSubscription() async throws -> PushSubscription {
-        throw MockError.unimplemented
+        guard let fetchPushSubscriptionHandler else { throw MockError.unimplemented }
+        return try await fetchPushSubscriptionHandler()
     }
+    var fetchPushSubscriptionHandler: (() async throws -> PushSubscription)?
+    var updatePushSubscriptionHandler: ((PushSubscription.Alerts, String?) async throws -> PushSubscription)?
+    var createPushSubscriptionHandler: ((PushSubscription.Alerts, String?) async throws -> PushSubscription)?
     func createPushSubscription(
         endpoint: String, p256dh: String, auth: String,
         alerts: PushSubscription.Alerts, policy: String?
     ) async throws -> PushSubscription {
-        throw MockError.unimplemented
+        guard let createPushSubscriptionHandler else { throw MockError.unimplemented }
+        return try await createPushSubscriptionHandler(alerts, policy)
     }
     func updatePushSubscription(alerts: PushSubscription.Alerts, policy: String?) async throws
         -> PushSubscription
     {
-        throw MockError.unimplemented
+        guard let updatePushSubscriptionHandler else { throw MockError.unimplemented }
+        return try await updatePushSubscriptionHandler(alerts, policy)
     }
     func deletePushSubscription() async throws { throw MockError.unimplemented }
     func fetchFilters() async throws -> [ServerFilter] { throw MockError.unimplemented }

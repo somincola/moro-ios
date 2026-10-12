@@ -33,7 +33,7 @@ struct StorageSettingsView: View {
             }
         }
         .moroSettingsListChrome()
-        .navigationTitle(MoroL10n.AppSupport.storage)
+        .navigationTitle(MoroL10n.Settings.storageData)
         .navigationBarTitleDisplayMode(.inline)
         .task { await store.refresh() }
         .confirmationDialog(MoroL10n.AppSupport.clearCache, isPresented: $confirmsClear, titleVisibility: .visible) {

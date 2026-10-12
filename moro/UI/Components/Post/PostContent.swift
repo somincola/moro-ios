@@ -8,7 +8,6 @@
 import SwiftUI
 
 fileprivate enum PostContentMetrics {
-    static let emojiSize: CGFloat = 20
     static let quoteHeaderIconSize: CGFloat = 12
     static let quoteAvatarSize: CGFloat = 20
     static let quoteMetadataSpacing: CGFloat = 4
@@ -33,8 +32,7 @@ struct PostContent: View {
     var onPollVote: ((String, [Int]) async -> Bool)? = nil
     var onQuotedStatusTap: ((Status) -> Void)? = nil
     var onImageTap: ((URL) -> Void)? = nil
-    var textFont: Font? = nil // Optional custom font for text content
-    var uiTextFont: UIFont? = nil // UIKit path for custom emoji rich text
+    var isFocused: Bool = false
     var contentLineSpacing: CGFloat = 4 // Line spacing for the body text (timeline density)
     var quoteStyle: QuoteStyle = .flat // Style for quote display
     var isQuoted: Bool = false // Whether this is a quoted/referenced post (for gray styling)
@@ -43,7 +41,6 @@ struct PostContent: View {
     @State private var isQuoteNoticeExpanded = false
     @Environment(\.moroTheme) private var theme
     @Environment(\.openURL) private var openURL
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     init(
@@ -56,8 +53,7 @@ struct PostContent: View {
         onPollVote: ((String, [Int]) async -> Bool)? = nil,
         onQuotedStatusTap: ((Status) -> Void)? = nil,
         onImageTap: ((URL) -> Void)? = nil,
-        textFont: Font? = nil,
-        uiTextFont: UIFont? = nil,
+        isFocused: Bool = false,
         contentLineSpacing: CGFloat = 4,
         quoteStyle: QuoteStyle = .flat,
         isQuoted: Bool = false
@@ -71,8 +67,7 @@ struct PostContent: View {
         self.onPollVote = onPollVote
         self.onQuotedStatusTap = onQuotedStatusTap
         self.onImageTap = onImageTap
-        self.textFont = textFont
-        self.uiTextFont = uiTextFont
+        self.isFocused = isFocused
         self.contentLineSpacing = contentLineSpacing
         self.quoteStyle = quoteStyle
         self.isQuoted = isQuoted
@@ -90,6 +85,8 @@ struct PostContent: View {
 
     var body: some View {
         let textColor = isQuoted ? theme.colors.textSecondary : theme.colors.textPrimary
+        let bodyFont = theme.postUIFont(sizeAdjustment: isFocused ? 2 : 0)
+        let lineSpacing = contentLineSpacing * bodyFont.pointSize / 16
         ContentConcealView(viewModel: concealViewModel) {
             VStack(alignment: .leading, spacing: theme.spacing.s) {
                 // Text content with clickable links (mentions, hashtags, URLs, emojis)
@@ -99,10 +96,10 @@ struct PostContent: View {
                     tags: status.tags,
                     emojis: status.emojis,
                     parsingOptions: .statusBody,
-                    emojiSize: PostContentMetrics.emojiSize, // Emoji size
-                    lineSpacing: contentLineSpacing,
-                    fontOverride: textFont ?? .system(size: 16, weight: .regular),
-                    uiFontOverride: uiTextFont ?? (textFont == nil ? timelineBodyUIFont : nil),
+                    emojiSize: bodyFont.pointSize * 1.25,
+                    lineSpacing: lineSpacing,
+                    fontOverride: Font(bodyFont),
+                    uiFontOverride: bodyFont,
                     textColorOverride: textColor,
                     onMentionTap: onMentionTap,
                     onHashtagTap: onHashtagTap,
@@ -114,6 +111,8 @@ struct PostContent: View {
                     status: status,
                     apiClient: translationAPIClient,
                     viewModel: translationViewModel,
+                    bodyFont: bodyFont,
+                    lineSpacing: lineSpacing,
                     onMentionTap: onMentionTap,
                     onHashtagTap: onHashtagTap,
                     onLinkTap: onLinkTap
@@ -196,18 +195,6 @@ struct PostContent: View {
         )
     }
 
-    private var timelineBodyUIFont: UIFont {
-        UIFontMetrics(forTextStyle: .body).scaledFont(
-            for: .systemFont(
-                ofSize: 16 * theme.fontScale,
-                weight: .regular
-            ),
-            compatibleWith: UITraitCollection(
-                preferredContentSizeCategory: dynamicTypeSize.uiContentSizeCategory
-            )
-        )
-    }
-    
     // MARK: - Quote View
     
     enum QuoteStyle {
@@ -389,9 +376,9 @@ struct PostContent: View {
 
                     if !quoteText.isEmpty {
                         Text(quoteText)
-                            .font(theme.typography.caption)
+                            .font(Font(theme.postUIFont(sizeAdjustment: -3)))
                             .foregroundStyle(theme.colors.textSecondary)
-                            .lineLimit(3)
+                            .lineLimit(theme.dynamicTypeSize.isAccessibilitySize ? nil : 3)
                             .multilineTextAlignment(.leading)
                     } else {
                         Text(MoroL10n.Post.noTextContent)

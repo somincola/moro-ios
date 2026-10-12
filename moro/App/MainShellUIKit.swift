@@ -178,7 +178,8 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
                 || appliedTheme.accent != theme.accent
                 || appliedTheme.themeColor != theme.themeColor
                 || appliedTheme.customThemeColor != theme.customThemeColor
-                || appliedTheme.fontScale != theme.fontScale
+                || appliedTheme.postFontSize != theme.postFontSize
+                || appliedTheme.dynamicTypeSize != theme.dynamicTypeSize
             {
                 apply(theme: theme)
             }
@@ -513,7 +514,8 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
                 || appliedTheme.accent != theme.accent
                 || appliedTheme.themeColor != theme.themeColor
                 || appliedTheme.customThemeColor != theme.customThemeColor
-                || appliedTheme.fontScale != theme.fontScale
+                || appliedTheme.postFontSize != theme.postFontSize
+                || appliedTheme.dynamicTypeSize != theme.dynamicTypeSize
             appliedTheme = theme
             if shouldUpdateRootView {
                 rootView = Self.hostedRootView(

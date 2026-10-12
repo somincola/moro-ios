@@ -2,7 +2,7 @@
 //  MoroSettingsSwitchStyle.swift
 //  moro
 //
-//  Settings-specific switch style using the selected theme color.
+//  Settings-specific switch style aligned with the monochrome design system.
 //
 
 import SwiftUI
@@ -66,28 +66,27 @@ struct MoroSettingsSwitchStyle: ToggleStyle {
         .listRowInsets(Metrics.rowInsets)
         .accessibilityAddTraits(.isToggle)
         .accessibilityValue(configuration.isOn ? MoroL10n.SettingsSwitch.on : MoroL10n.SettingsSwitch.off)
-        .opacity(configuration.isOn ? 1 : 0.96)
     }
 
     private func trackFillColor(isOn: Bool) -> Color {
         if isOn {
-            return theme.colors.themeTint
+            return theme.colors.primary500
         }
-        return theme.colorScheme == .dark ? Color(hex: 0x2A2D31) : Color(hex: 0xE7E8EB)
+        return theme.colors.primaryForeground
     }
 
     private func trackBorderColor(isOn: Bool) -> Color {
         if isOn {
-            return theme.colors.themeTint.opacity(theme.colorScheme == .dark ? 0.88 : 0.92)
+            return theme.colors.primary500.opacity(theme.colorScheme == .dark ? 0.88 : 0.92)
         }
-        return theme.colors.borderSubtle
+        return theme.colors.textSecondary
     }
 
     private func thumbColor(isOn: Bool) -> Color {
         if isOn {
-            return theme.colors.themeTintForeground
+            return theme.colors.primaryForeground
         }
-        return theme.colorScheme == .dark ? Color(hex: 0xF5F5F7) : .white
+        return theme.colors.primary500
     }
 }
 

@@ -193,6 +193,12 @@ public enum MoroL10n {
 
     public enum Display {
         public static var title: String { text("display.title") }
+        public static var fontSize: String { text("display.fontSize") }
+        public static var fontSizeHint: String { text("display.fontSize.hint") }
+        public static var fontSmall: String { text("display.fontSize.small") }
+        public static var fontStandard: String { text("display.fontSize.standard") }
+        public static var fontLarge: String { text("display.fontSize.large") }
+        public static var fontExtraLarge: String { text("display.fontSize.extraLarge") }
         public static var themeColor: String { text("display.themeColor") }
         public static var themeColorHint: String { text("display.themeColor.hint") }
         public static var customColor: String { text("display.color.custom") }
@@ -211,6 +217,22 @@ public enum MoroL10n {
 
     public enum Settings {
         public static var title: String { text("settings.title") }
+        public static var loginManagement: String { text("settings.row.loginManagement") }
+        public static var appearanceDisplay: String { text("settings.row.appearanceDisplay") }
+        public static var readingMedia: String { text("settings.row.readingMedia") }
+        public static var postingInteractions: String { text("settings.row.postingInteractions") }
+        public static var storageData: String { text("settings.row.storageData") }
+        public static var profile: String { text("settings.row.profile") }
+        public static var privacyVisibility: String { text("settings.row.privacyVisibility") }
+        public static var contentSafety: String { text("settings.row.contentSafety") }
+        public static var notificationRules: String { text("settings.row.notificationRules") }
+        public static var profileReading: String { text("settings.row.profileReading") }
+        public static var profilePublic: String { text("settings.row.profilePublic") }
+        public static var currentAccountSection: String { text("settings.section.currentAccount") }
+        public static var localScope: String { text("settings.footer.localScope") }
+        public static var serverScope: String { text("settings.footer.serverScope") }
+        public static var profileLocalScope: String { text("settings.footer.profileLocalScope") }
+        public static var pushScope: String { text("settings.footer.pushScope") }
         public static var accountPrivacySection: String { text("settings.section.accountPrivacy") }
         public static var accountServerSection: String { text("settings.section.accountServer") }
         public static var appSection: String { text("settings.section.app") }
@@ -316,19 +338,6 @@ public enum MoroL10n {
         }
         public static var postVisibilityMentionedOnly: String {
             text("appsettings.postVisibility.mentionedOnly")
-        }
-        public static var typographySection: String { text("appsettings.typography.section") }
-        public static var typographyFooter: String { text("appsettings.typography.footer") }
-        public static var typographyScaleExtraSmall: String {
-            text("appsettings.typography.scale.extraSmall")
-        }
-        public static var typographyScaleSmall: String { text("appsettings.typography.scale.small") }
-        public static var typographyScaleStandard: String {
-            text("appsettings.typography.scale.standard")
-        }
-        public static var typographyScaleLarge: String { text("appsettings.typography.scale.large") }
-        public static var typographyScaleExtraLarge: String {
-            text("appsettings.typography.scale.extraLarge")
         }
         public static var densitySection: String { text("appsettings.density.section") }
         public static var densityComfortable: String { text("appsettings.density.comfortable") }
@@ -1422,6 +1431,7 @@ public enum MoroL10n {
         public static var typeNewFollowers: String { text("notifSettings.type.newFollowers") }
         public static var sectionPush: String { text("notifSettings.section.push") }
         public static var pushFooter: String { text("notifSettings.push.footer") }
+        public static var pushSaveFailed: String { text("notifSettings.push.saveFailed") }
         public static var pushUnavailable: String { text("notifSettings.push.unavailable") }
         public static var openSystemSettings: String { text("notifSettings.push.openSystemSettings") }
     }

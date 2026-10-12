@@ -2,13 +2,13 @@
 //  AppIconSettingsView.swift
 //  moro
 //
-//  App icon picker, rendered as a Section inside GeneralSettingsView.
+//  App icon picker, rendered as a Section inside the display settings gallery.
 //
 
 import SwiftUI
 import UIKit
 
-/// App icon grid rendered as a `Section` for `GeneralSettingsView`.
+/// App icon grid rendered as a `Section` in its own settings gallery.
 struct AppIconSettingsView: View {
     @StateObject private var settings = AppSettings.shared
     @Environment(\.moroTheme) private var theme

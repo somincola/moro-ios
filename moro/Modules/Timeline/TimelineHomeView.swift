@@ -502,15 +502,6 @@ struct TimelineHomeView: View {
                     actionSurface.dismissBoostDialog()
                 }
             )
-            .moroSheetSurface(
-                detents: [
-                    .height(
-                        BoostOrQuoteDialog.preferredDetentHeight(
-                            quoteButtonTitle: quoteInfo.title,
-                            quoteButtonSubtitle: quoteInfo.subtitle
-                        ))
-                ]
-            )
         }
         .alert(
             item: Binding(

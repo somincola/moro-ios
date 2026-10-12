@@ -24,6 +24,7 @@ struct ComposePreviewSheet: View {
     @Environment(\.moroTheme) private var theme
 
     var body: some View {
+        let bodyFont = theme.postUIFont()
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: theme.spacing.m) {
@@ -38,22 +39,29 @@ struct ComposePreviewSheet: View {
                         }
                     }
                     if viewModel.isContentWarningActive, !viewModel.contentWarning.isEmpty {
-                        Text(viewModel.contentWarning).font(theme.typography.subtitle)
+                        Text(viewModel.contentWarning).font(Font(theme.postUIFont(sizeAdjustment: -1, weight: .semibold)))
                             .accessibilityIdentifier("compose.previewCW")
                         MoroDivider()
                     }
-                    RichTextContentView(elements: ComposePreviewContent.elements(for: viewModel.content), onLinkTap: { action in
-                        switch action {
-                        case .link(let url), .mention(_, let url), .hashtag(_, let url): openURL(url)
+                    RichTextContentView(
+                        elements: ComposePreviewContent.elements(for: viewModel.content),
+                        emojiSize: bodyFont.pointSize * 1.25,
+                        fontOverride: Font(bodyFont),
+                        uiFontOverride: bodyFont,
+                        lineSpacing: 4 * bodyFont.pointSize / 16,
+                        onLinkTap: { action in
+                            switch action {
+                            case .link(let url), .mention(_, let url), .hashtag(_, let url): openURL(url)
+                            }
                         }
-                    })
-                        .accessibilityIdentifier("compose.previewBody")
+                    )
+                    .accessibilityIdentifier("compose.previewBody")
                     ComposeMediaGridView(attachments: viewModel.mediaAttachments,
                         onRemove: { _ in }, onEditAlt: { _ in }, onRetry: { _ in }, showsEditingControls: false)
                     if viewModel.isPollActive {
                         ForEach(Array(viewModel.pollOptions.enumerated()), id: \.offset) { _, option in
                             Label(option, systemImage: viewModel.pollMultiple ? "square" : "circle")
-                                .font(theme.typography.body)
+                                .font(Font(theme.postUIFont(sizeAdjustment: -3)))
                                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         }
                     }

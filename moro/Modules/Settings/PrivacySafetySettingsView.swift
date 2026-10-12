@@ -9,7 +9,6 @@ import SwiftUI
 
 struct PrivacySafetySettingsView: View {
     @Environment(\.moroTheme) private var theme
-    @Environment(\.activeAccountKey) private var activeAccountKey
     @EnvironmentObject private var appState: AppState
     @StateObject private var settings = AppSettings.shared
     
@@ -25,60 +24,16 @@ struct PrivacySafetySettingsView: View {
     
     var body: some View {
         List {
-            // Privacy Presets Section
-            Section {
-                privacyPresetButton(
-                    title: MoroL10n.PrivacySafety.presetOpenTitle,
-                    description: MoroL10n.PrivacySafety.presetOpenDescription,
-                    preset: .openPublic
-                )
-                
-                privacyPresetButton(
-                    title: MoroL10n.PrivacySafety.presetPrivateTitle,
-                    description: MoroL10n.PrivacySafety.presetPrivateDescription,
-                    preset: .privateRestricted
-                )
-            } header: {
-                Text(MoroL10n.PrivacySafety.sectionPresets)
-        }
-            
             Section {
                 Toggle(MoroL10n.PrivacySafety.toggleApproveFollows, isOn: privacyBoolBinding(\.manuallyApproveFollowRequests))
-                if let apiClient {
-                    NavigationLink(MoroL10n.ProfileEditing.displaySettings) {
-                        ProfileDisplaySettingsView(apiClient: apiClient, accountKey: activeAccountKey)
-                    }
-                } else {
+                    .accessibilityIdentifier("settings.privacy.approveFollows")
+                if apiClient == nil {
                     Toggle(MoroL10n.PrivacySafety.toggleShowFollowCounts, isOn: privacyBoolBinding(\.showFollowersAndFollowing))
                 }
                 Toggle(MoroL10n.PrivacySafety.toggleSuggestAccount, isOn: privacyBoolBinding(\.suggestMyAccountToOthers))
                 Toggle(MoroL10n.PrivacySafety.toggleSearchEngine, isOn: privacyBoolBinding(\.appearInSearchEngines))
             } header: {
-                Text(MoroL10n.PrivacySafety.sectionOptions)
-        }
-
-            if let apiClient {
-                Section {
-                    NavigationLink {
-                        AccountGovernanceView(kind: .muted, apiClient: apiClient)
-                    } label: {
-                        Label(MoroL10n.PrivacySafety.governanceMuted, systemImage: "speaker.slash")
-                    }
-
-                    NavigationLink {
-                        AccountGovernanceView(kind: .blocked, apiClient: apiClient)
-                    } label: {
-                        Label(MoroL10n.PrivacySafety.governanceBlocked, systemImage: "hand.raised")
-                    }
-
-                    NavigationLink {
-                        FiltersSettingsView(apiClient: apiClient)
-                    } label: {
-                        Label(MoroL10n.PrivacySafety.governanceFilters, systemImage: "line.3.horizontal.decrease.circle")
-                    }
-                } header: {
-                    Text(MoroL10n.PrivacySafety.sectionGovernance)
-        }
+                MoroSettingsSectionHeader(title: MoroL10n.PrivacySafety.sectionOptions)
             }
             
             Section {
@@ -88,13 +43,29 @@ struct PrivacySafetySettingsView: View {
                     }
                 }
             } header: {
-                Text(MoroL10n.PrivacySafety.sectionDefaults)
+                MoroSettingsSectionHeader(title: MoroL10n.PrivacySafety.sectionDefaults)
+            }
+
+            Section {
+                privacyPresetButton(
+                    title: MoroL10n.PrivacySafety.presetOpenTitle,
+                    description: MoroL10n.PrivacySafety.presetOpenDescription,
+                    preset: .openPublic
+                )
+                privacyPresetButton(
+                    title: MoroL10n.PrivacySafety.presetPrivateTitle,
+                    description: MoroL10n.PrivacySafety.presetPrivateDescription,
+                    preset: .privateRestricted
+                )
+            } header: {
+                MoroSettingsSectionHeader(title: MoroL10n.PrivacySafety.sectionPresets)
             }
         }
         .disabled(isSaving)
         .moroSettingsSwitchStyle()
-        .moroSettingsListChrome()
-        .navigationTitle(MoroL10n.PrivacySafety.title)
+        .moroSettingsListChrome(separators: .visible)
+        .textCase(nil)
+        .navigationTitle(MoroL10n.Settings.privacyVisibility)
         .navigationBarTitleDisplayMode(.inline)
         .alert(MoroL10n.PrivacySafety.saveFailed, isPresented: $showSaveError) {
             Button(MoroL10n.PrivacySafety.confirm, role: .cancel) { }
@@ -241,6 +212,43 @@ struct PrivacySafetySettingsView: View {
         }
 
         isSaving = false
+    }
+}
+
+struct ContentSafetySettingsView: View {
+    let apiClient: MastodonAPI
+
+    var body: some View {
+        List {
+            Section {
+                NavigationLink {
+                    AccountGovernanceView(kind: .muted, apiClient: apiClient)
+                } label: {
+                    Label(MoroL10n.PrivacySafety.governanceMuted, systemImage: "speaker.slash")
+                }
+                .accessibilityIdentifier("settings.muted")
+
+                NavigationLink {
+                    AccountGovernanceView(kind: .blocked, apiClient: apiClient)
+                } label: {
+                    Label(MoroL10n.PrivacySafety.governanceBlocked, systemImage: "hand.raised")
+                }
+                .accessibilityIdentifier("settings.blocked")
+
+                NavigationLink {
+                    FiltersSettingsView(apiClient: apiClient)
+                } label: {
+                    Label(MoroL10n.PrivacySafety.governanceFilters, systemImage: "line.3.horizontal.decrease.circle")
+                }
+                .accessibilityIdentifier("settings.filters")
+            } footer: {
+                Text(MoroL10n.Settings.serverScope)
+            }
+        }
+        .moroSettingsListChrome(separators: .visible)
+        .textCase(nil)
+        .navigationTitle(MoroL10n.Settings.contentSafety)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

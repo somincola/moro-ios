@@ -7,6 +7,76 @@ final class ThreadReadingUITests: XCTestCase {
     @MainActor func testSuppliedThreadInLightMode() { verifySuppliedThread(scheme: "light") }
     @MainActor func testSuppliedThreadInDarkMode() { verifySuppliedThread(scheme: "dark") }
 
+    @MainActor func testBoostDialogInLightMode() { verifyBoostDialog(scheme: "light") }
+    @MainActor func testBoostDialogInDarkMode() { verifyBoostDialog(scheme: "dark") }
+    @MainActor func testBoostDialogAtLargestTextSize() { verifyBoostDialog(scheme: "light", largeText: true) }
+
+    @MainActor private func verifyBoostDialog(scheme: String, largeText: Bool = false) {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        let settingsArguments = [
+            "UITEST_SETTINGS_SHEET", "UITEST_DISABLE_ANIMATIONS",
+            "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+        ]
+        app.launchArguments = settingsArguments
+        app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
+        app.launchEnvironment["UITEST_COLOR_SCHEME"] = scheme
+        app.launch()
+        XCTAssertTrue(app.buttons["settings.posting"].waitForExistence(timeout: 5))
+        app.buttons["settings.posting"].tap()
+        let confirmation = app.switches["Ask before boosting posts"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        let original = confirmation.value as? String ?? ""
+        XCTAssertTrue(["0", "Off", "1", "On"].contains(original))
+        let changedPreference = ["0", "Off"].contains(original)
+        if changedPreference { confirmation.tap() }
+        app.terminate()
+        defer {
+            app.terminate()
+            if changedPreference {
+                app.launchArguments = settingsArguments
+                app.launchEnvironment["UITEST_DYNAMIC_TYPE_SIZE"] = nil
+                app.launch()
+                XCTAssertTrue(app.buttons["settings.posting"].waitForExistence(timeout: 5))
+                app.buttons["settings.posting"].tap()
+                XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+                if confirmation.value as? String != original { confirmation.tap() }
+                app.terminate()
+            }
+        }
+        app.launchArguments = [
+            "UITEST_THREAD_READING", "UITEST_DISABLE_ANIMATIONS",
+            "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+        ]
+        app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
+        app.launchEnvironment["UITEST_COLOR_SCHEME"] = scheme
+        if largeText {
+            app.launchEnvironment["UITEST_DYNAMIC_TYPE_SIZE"] = "accessibilityXXXL"
+        }
+        app.launch()
+        let trigger = app.buttons.matching(identifier: "转发").element(boundBy: 1)
+        XCTAssertTrue(trigger.waitForExistence(timeout: 10))
+        reveal(trigger, app: app)
+        trigger.tap()
+        let boost = app.buttons["boostDialog.boost"]
+        let quote = app.buttons["boostDialog.quote"]
+        XCTAssertTrue(boost.waitForExistence(timeout: 5))
+        XCTAssertTrue(quote.exists)
+        XCTAssertEqual(boost.label, "转发")
+        XCTAssertEqual(quote.label, "引用转发")
+        for row in [boost, quote] {
+            XCTAssertTrue(row.isHittable)
+            XCTAssertGreaterThanOrEqual(row.frame.height, 44)
+            XCTAssertGreaterThanOrEqual(row.frame.minX, 0)
+            XCTAssertLessThanOrEqual(row.frame.maxX, app.windows.firstMatch.frame.maxX)
+        }
+        if largeText { XCTAssertGreaterThan(boost.frame.height, 90) }
+        attach(app, "boost-dialog-\(scheme)-\(largeText ? "largest" : "standard")")
+        quote.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["compose.audienceMenu"].waitForExistence(timeout: 8))
+        XCTAssertFalse(quote.exists)
+    }
+
     @MainActor private func verifyFlow(scheme: String, largeText: Bool = false) {
         continueAfterFailure = false
         let app = XCUIApplication()

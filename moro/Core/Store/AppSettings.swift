@@ -13,9 +13,12 @@ import SwiftUI
 /// Centralized app settings manager
 @MainActor
 final class AppSettings: ObservableObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = AppSettings()
 
-    private let userDefaults = UserDefaults.standard
+    private let userDefaults: UserDefaults
 
     // MARK: - Keys
 
@@ -25,6 +28,7 @@ final class AppSettings: ObservableObject {
         // Preserve the existing preference when promoting link colors to theme colors.
         static let themeColor = "contentLinkColor"
         static let customThemeColor = "customThemeColor"
+        static let postFontSize = "postFontSize"
         static let appIcon = "appIcon"
         static let tabIconTheme = "tabIconTheme"
         static let navigationStyle = "navigationStyle"
@@ -75,8 +79,7 @@ final class AppSettings: ObservableObject {
         // Pinned Timelines
         static let pinnedTimelineListsByAccount = "pinnedTimelineListsByAccount"
 
-        // Typography & Density
-        static let typographyFontScale = "typographyFontScale"
+        // Density
         static let timelineDensity = "timelineDensity"
     }
 
@@ -111,6 +114,12 @@ final class AppSettings: ObservableObject {
     @Published var customThemeColor: UInt32 {
         didSet {
             userDefaults.set(Int(customThemeColor), forKey: Keys.customThemeColor)
+        }
+    }
+
+    @Published var postFontSize: MoroPostFontSize {
+        didSet {
+            userDefaults.set(postFontSize.rawValue, forKey: Keys.postFontSize)
         }
     }
 
@@ -689,47 +698,6 @@ final class AppSettings: ObservableObject {
         pinnedTimelineListsByAccount[accountKey] = items
     }
 
-    // MARK: - Typography (Font Scale)
-
-    /// In-app font scale stacked on top of the system Dynamic Type setting.
-    /// A free in-app preference; `standard` is 1.0×.
-    enum TypographyFontScale: String, CaseIterable {
-        case extraSmall
-        case small
-        case standard
-        case large
-        case extraLarge
-
-        /// Multiplier applied to base font sizes before Dynamic Type scaling.
-        var factor: CGFloat {
-            switch self {
-            case .extraSmall: return 0.85
-            case .small: return 0.92
-            case .standard: return 1.0
-            case .large: return 1.15
-            case .extraLarge: return 1.30
-            }
-        }
-
-        var title: String {
-            switch self {
-            case .extraSmall: return MoroL10n.AppSettings.typographyScaleExtraSmall
-            case .small: return MoroL10n.AppSettings.typographyScaleSmall
-            case .standard: return MoroL10n.AppSettings.typographyScaleStandard
-            case .large: return MoroL10n.AppSettings.typographyScaleLarge
-            case .extraLarge: return MoroL10n.AppSettings.typographyScaleExtraLarge
-            }
-        }
-    }
-
-    static let defaultTypographyFontScale: TypographyFontScale = .standard
-
-    @Published var typographyFontScale: TypographyFontScale {
-        didSet {
-            userDefaults.set(typographyFontScale.rawValue, forKey: Keys.typographyFontScale)
-        }
-    }
-
     // MARK: - Timeline Density
 
     /// Timeline row density: line spacing, avatar size, and row padding.
@@ -789,7 +757,8 @@ final class AppSettings: ObservableObject {
 
     // MARK: - Initialization
 
-    private init() {
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
         // Appearance
         let appearanceRaw = userDefaults.integer(forKey: Keys.appearance)
         self.appearance = Appearance(rawValue: appearanceRaw) ?? .system
@@ -800,6 +769,7 @@ final class AppSettings: ObservableObject {
         self.customThemeColor = customRGB.flatMap { value in
             (0...0xFFFFFF).contains(value.int64Value) ? UInt32(value.int64Value) : nil
         } ?? MoroThemeColor.defaultCustomRGB
+        self.postFontSize = MoroPostFontSize(rawValue: userDefaults.integer(forKey: Keys.postFontSize)) ?? .standard
         let appIconRaw = userDefaults.string(forKey: Keys.appIcon) ?? AppIconChoice.default.rawValue
         self.appIcon = AppIconChoice(rawValue: appIconRaw) ?? .default
         self.tabIconTheme = Self.defaultNavigationAppearance.tabIconTheme
@@ -908,13 +878,13 @@ final class AppSettings: ObservableObject {
         }
 
         // Hidden appearance controls use stable defaults until product tuning returns.
-        self.typographyFontScale = Self.defaultTypographyFontScale
         self.timelineDensity = Self.defaultTimelineDensity
 
         // Replace legacy values so removed controls cannot continue affecting the UI.
         userDefaults.set(tabIconTheme.rawValue, forKey: Keys.tabIconTheme)
         userDefaults.set(navigationStyle.rawValue, forKey: Keys.navigationStyle)
-        userDefaults.set(typographyFontScale.rawValue, forKey: Keys.typographyFontScale)
+        // Retired global scaling has different semantics from post reading size.
+        userDefaults.removeObject(forKey: "typographyFontScale")
         userDefaults.set(timelineDensity.rawValue, forKey: Keys.timelineDensity)
     }
 }

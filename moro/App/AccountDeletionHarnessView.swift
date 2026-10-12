@@ -39,14 +39,7 @@ struct AccountDeletionHarnessView: View {
 
     var body: some View {
         NavigationStack {
-            AccountManagementView(
-                accountSessions: [session],
-                activeSessionID: session.id,
-                apiClient: nil,
-                onSwitchAccount: { _ in },
-                onAddAccount: {},
-                onRemoveAccount: { _ in }
-            )
+            ServerAccountActionsView(session: session)
         }
         .environmentObject(appState)
     }

@@ -852,7 +852,7 @@ struct ProfileView: View {
         value: String,
         label: String
     ) -> some View {
-        let collectionsAreHidden = account.hideCollections == true
+        let collectionsAreHidden = account.hideCollections == true && !isCurrentUser
 
         return Button {
             if collectionsAreHidden {

@@ -125,7 +125,7 @@ struct PollView: View {
                     }
 
                     Text(option.title)
-                        .font(theme.typography.caption)
+                        .font(Font(theme.postUIFont(sizeAdjustment: -3)))
                         .foregroundStyle(theme.colors.textPrimary)
                         .fontWeight(isUserChoice ? .semibold : .regular)
                         .multilineTextAlignment(.leading)

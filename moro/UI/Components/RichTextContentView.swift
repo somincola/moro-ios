@@ -306,7 +306,7 @@ struct RichTextContentView: View {
         if let uiFontOverride { return uiFontOverride }
         return UIFontMetrics(forTextStyle: .subheadline).scaledFont(
             for: .systemFont(
-                ofSize: 15 * theme.fontScale,
+                ofSize: 15,
                 weight: .regular
             ),
             compatibleWith: UITraitCollection(

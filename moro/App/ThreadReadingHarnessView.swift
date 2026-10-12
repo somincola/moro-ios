@@ -13,7 +13,7 @@ import SwiftUI
         Status(id: id, content: content ?? "<p>回复 \(id)</p>", createdAt: Date(timeIntervalSince1970: 1_788_631_200),
             account: own ? author : other, mediaAttachments: [], favouritesCount: 0, reblogsCount: 0,
             repliesCount: 0, bookmarked: false, favourited: false, reblogged: false,
-            inReplyToID: parent, inReplyToAccountID: parent == nil ? nil : author.id)
+            inReplyToID: parent, inReplyToAccountID: parent == nil ? nil : author.id, visibility: "public")
     }
     static var focus: Status {
         status("focus", parent: "parent", content: "<p>当前帖子：阅读完整讨论。</p><p>链接 <a href=\"https://example.com/full/path?one=1&amp;two=2\">https://example.com/full/path?one=1&amp;two=2</a></p><pre><code>let value = 1\nprint(value)</code></pre>")
@@ -43,6 +43,7 @@ import SwiftUI
 struct ThreadReadingHarnessView: View {
     @StateObject private var router = AppRouter()
     @StateObject private var appState = AppState()
+    @ObservedObject private var settings = AppSettings.shared
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let focusedStatus: Status
@@ -66,7 +67,7 @@ struct ThreadReadingHarnessView: View {
         }
         .environment(\.appRouter, router)
         .environmentObject(appState)
-        .moroTheme(MoroTheme(colorScheme: colorScheme, dynamicTypeSize: dynamicTypeSize))
+        .moroTheme(MoroTheme(colorScheme: colorScheme, postFontSize: settings.postFontSize, dynamicTypeSize: dynamicTypeSize))
     }
 }
 

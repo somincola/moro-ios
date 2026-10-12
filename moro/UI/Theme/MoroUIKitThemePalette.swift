@@ -15,7 +15,7 @@
         let accent: MoroAccentStyle
         let themeColor: MoroThemeColor
         let customThemeColor: UInt32
-        let fontScale: CGFloat
+        let postFontSize: MoroPostFontSize
         let dynamicTypeSize: DynamicTypeSize
 
         let canvasBackground: UIColor
@@ -38,7 +38,7 @@
             accent = theme.accent
             themeColor = theme.themeColor
             customThemeColor = theme.customThemeColor
-            fontScale = theme.fontScale
+            postFontSize = theme.postFontSize
             dynamicTypeSize = theme.dynamicTypeSize
             canvasBackground = UIColor(theme.colors.surfaceBase)
             groupedBackground = UIColor(theme.colors.groupedBackground)
@@ -66,7 +66,7 @@
             let traits = UITraitCollection(preferredContentSizeCategory: dynamicTypeSize.uiContentSizeCategory)
             let preferredPointSize = UIFont.preferredFont(forTextStyle: textStyle, compatibleWith: traits).pointSize
             return UIFont.systemFont(
-                ofSize: max(preferredPointSize * fontScale, 1),
+                ofSize: preferredPointSize,
                 weight: weight
             )
         }
@@ -77,7 +77,7 @@
                 && accent == theme.accent
                 && themeColor == theme.themeColor
                 && customThemeColor == theme.customThemeColor
-                && fontScale == theme.fontScale
+                && postFontSize == theme.postFontSize
                 && dynamicTypeSize == theme.dynamicTypeSize
         }
     }

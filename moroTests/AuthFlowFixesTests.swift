@@ -33,6 +33,18 @@ struct AuthFlowFixesTests {
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok-123")
     }
 
+    @Test func capturedCredentialsStayWithOriginalAccount() {
+        let provider = StubTokenProvider(authToken: "account-a")
+        let original = AuthInterceptor(tokenProvider: provider)
+        let snapshot = original.snapshot()
+        provider.authToken = "account-b"
+        var request = URLRequest(url: URL(string: "https://example.com")!)
+        snapshot.apply(to: &request)
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer account-a")
+        original.apply(to: &request)
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer account-b")
+    }
+
     /// Repeated calls while the login screen is on-screen must reuse one AuthService
     /// instead of rebuilding it (and a fresh AccountSessionStore) on every render.
     @Test @MainActor func loginAuthServiceIsCachedAcrossCalls() {

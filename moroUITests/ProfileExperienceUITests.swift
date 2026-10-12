@@ -5,6 +5,36 @@ import XCTest
 final class ProfileExperienceUITests: XCTestCase {
     private let rawLink = "https://example.com/a/long/path?first=1&second=2"
 
+    func testHiddenConnectionsRemainAccessibleToTheAccountOwner() {
+        let app = launch(extra: ["UITEST_PROFILE_HIDE_COLLECTIONS": "1"])
+        defer { app.terminate() }
+        for (kind, title) in [("following", "Following"), ("followers", "Followers")] {
+            let stat = app.buttons["profile.stat.\(kind)"]
+            reveal(stat, in: app)
+            XCTAssertNotEqual(stat.value as? String, "List hidden")
+            stat.tap()
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.staticTexts["Connection Tester"].waitForExistence(timeout: 5))
+            attach(app, "profile-owner-hidden-\(kind)")
+            back(app)
+        }
+    }
+
+    func testHiddenConnectionsStayPrivateToOtherViewers() {
+        let app = launch(extra: ["UITEST_PROFILE_HIDE_COLLECTIONS": "1", "UITEST_OTHER_PROFILE": "1"])
+        defer { app.terminate() }
+        for (kind, title) in [("following", "Following"), ("followers", "Followers")] {
+            let stat = app.buttons["profile.stat.\(kind)"]
+            reveal(stat, in: app)
+            XCTAssertEqual(stat.value as? String, "List hidden")
+            stat.tap()
+            XCTAssertTrue(app.buttons["profile.moreButton"].isHittable)
+            XCTAssertFalse(app.navigationBars[title].exists)
+            XCTAssertFalse(app.staticTexts["Connection Tester"].exists)
+        }
+        attach(app, "profile-visitor-hidden-connections")
+    }
+
     func testCompactProfileInfoInLightAndDarkAtDefaultAndAccessibilitySizes() {
         for scheme in ["light", "dark"] {
             for large in [false, true] {
@@ -390,11 +420,15 @@ final class ProfileExperienceUITests: XCTestCase {
         XCTAssertFalse(appTag.isSelected)
         for _ in 0..<3 { app.swipeDown() }
         openOverview(app)
-        app.buttons["profile.edit.display"].tap()
+        app.buttons["profile.edit.localDisplay"].tap()
         let local = app.switches["profile.display.featuredTags"]
         XCTAssertTrue(local.waitForExistence(timeout: 8))
         local.tap()
         XCTAssertTrue(["0", "Off"].contains(local.value as? String ?? ""))
+        XCTAssertFalse(app.switches["profile.display.media"].exists)
+        app.buttons["profile.display.save"].tap()
+        XCTAssertTrue(app.buttons["profile.edit.display"].waitForExistence(timeout: 8))
+        app.buttons["profile.edit.display"].tap()
         let media = app.switches["profile.display.media"]
         XCTAssertTrue(media.waitForExistence(timeout: 5))
         media.tap()
@@ -406,7 +440,7 @@ final class ProfileExperienceUITests: XCTestCase {
         XCTAssertFalse(appTag.exists)
         XCTAssertFalse(app.buttons["profile.tab.media"].exists)
         openOverview(app)
-        app.buttons["profile.edit.display"].tap()
+        app.buttons["profile.edit.localDisplay"].tap()
         XCTAssertTrue(local.waitForExistence(timeout: 5))
         XCTAssertTrue(["0", "Off"].contains(local.value as? String ?? ""))
         local.tap()
@@ -436,7 +470,7 @@ final class ProfileExperienceUITests: XCTestCase {
         let media = app.switches["profile.display.media"]
         XCTAssertTrue(media.waitForExistence(timeout: 8))
         XCTAssertFalse(media.isEnabled)
-        XCTAssertTrue(app.switches["profile.display.featuredTags"].isEnabled)
+        XCTAssertFalse(app.switches["profile.display.featuredTags"].exists)
         XCTAssertTrue(app.switches["profile.display.connections"].isEnabled)
     }
 
@@ -479,7 +513,7 @@ final class ProfileExperienceUITests: XCTestCase {
                     switch destination {
                     case "fields": target = app.buttons["profile.field.0"]
                     case "featuredTags": target = app.textFields["profile.featuredTags.input"]
-                    case "display": target = app.switches["profile.display.featuredTags"]
+                    case "display": target = app.switches["profile.display.media"]
                     default: target = app.textFields["profile.basic.name"]
                     }
                     reveal(target, in: app)

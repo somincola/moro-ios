@@ -115,7 +115,7 @@ struct StatusEditHistorySheetView: View {
                 !spoiler.isEmpty
             {
                 Text(MoroL10n.EditHistory.contentWarning(spoiler))
-                    .font(theme.typography.caption)
+                    .font(Font(theme.postUIFont(sizeAdjustment: -1)))
                     .foregroundStyle(theme.colors.textSecondary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -127,7 +127,7 @@ struct StatusEditHistorySheetView: View {
 
             let plainText = HTMLParser.stripHTML(item.content)
             Text(plainText.isEmpty ? MoroL10n.EditHistory.noBody : plainText)
-                .font(theme.typography.body)
+                .font(Font(theme.postUIFont()))
                 .foregroundStyle(theme.colors.textPrimary)
                 .multilineTextAlignment(.leading)
 
