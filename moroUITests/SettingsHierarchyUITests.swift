@@ -277,6 +277,34 @@ final class SettingsHierarchyUITests: XCTestCase {
         attach(app, "settings-delete-account-chinese-dark-large")
     }
 
+    func testSensitiveContentSettings() {
+        let app = launch(dark: true)
+        defer { app.terminate() }
+        tap("settings.reading", in: app)
+        tap("settings.sensitiveMedia", in: app)
+        let warnAll = app.buttons["settings.sensitiveMedia.hideAll"]
+        XCTAssertTrue(warnAll.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["settings.sensitiveMedia.default"].isSelected)
+        attach(app, "settings-sensitive-media-choice")
+        warnAll.tap()
+        XCTAssertTrue(warnAll.isSelected)
+        back(app)
+        let row = app.buttons["settings.sensitiveMedia"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("Always Warn"))
+        let expand = app.switches["settings.expandContentWarnings"]
+        XCTAssertEqual(expand.label, "Always expand posts with content warnings")
+        let original = expand.value as? String
+        expand.tap()
+        XCTAssertNotEqual(expand.value as? String, original)
+        attach(app, "settings-sensitive-content-section")
+        // Restore defaults for other tests.
+        expand.tap()
+        tap("settings.sensitiveMedia", in: app)
+        app.buttons["settings.sensitiveMedia.default"].tap()
+        back(app)
+    }
+
     func testAccountPageAndReportStyleChoicePages() {
         let app = launch(dark: true)
         defer { app.terminate() }

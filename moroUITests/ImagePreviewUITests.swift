@@ -217,6 +217,33 @@ final class ImagePreviewUITests: XCTestCase {
         attach(app, "long-image-bottom-unobscured")
     }
 
+    func testShareButtonAndLongPressActionsLeaveTheImageUncovered() {
+        let app = launch(index: 1)
+        defer { app.terminate() }
+        let share = app.buttons["imagePreview.share"]
+        XCTAssertTrue(share.isHittable)
+        XCTAssertGreaterThanOrEqual(share.frame.height, 44)
+        // Chrome stays in the top bar: nothing is pinned over the image's lower half.
+        XCTAssertLessThan(share.frame.maxY, app.frame.height * 0.2)
+        XCTAssertLessThan(app.buttons["imagePreview.alt"].frame.maxY, app.frame.height * 0.2)
+        attach(app, "preview-top-bar-with-share")
+
+        center(app).press(forDuration: 0.8)
+        let copy = app.buttons["拷贝"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["保存到相册"].exists)
+        XCTAssertTrue(app.buttons["分享…"].exists)
+        attach(app, "preview-long-press-actions")
+        copy.tap()
+        let notice = app.staticTexts["imagePreview.notice"]
+        XCTAssertTrue(notice.waitForExistence(timeout: 5))
+        XCTAssertEqual(notice.label, "已拷贝图片")
+        XCTAssertTrue(notice.waitForNonExistence(timeout: 5))
+        // The long press must not have zoomed, paged or dismissed.
+        XCTAssertEqual(app.images["imagePreview.image"].firstMatch.value as? String, "100%")
+        XCTAssertEqual(app.staticTexts["imagePreview.page"].label, "2 / 3")
+    }
+
     private func launch(index: Int = 0, altText: String? = nil,
         environment: [String: String] = [:]) -> XCUIApplication {
         let app = XCUIApplication()

@@ -37,9 +37,7 @@ private struct SystemColorSchemeMoroTheme: ViewModifier {
             )
             .environment(
                 \.moroMediaPrefs,
-                MoroMediaPreferences(
-                    autoplayGIFs: settings.autoplayGIFs
-                )
+                MoroMediaPreferences(settings: settings)
             )
     }
 }

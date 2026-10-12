@@ -219,6 +219,11 @@ public enum MoroL10n {
         public static var title: String { text("settings.title") }
         public static var loginManagement: String { text("settings.row.loginManagement") }
         public static var account: String { text("settings.row.account") }
+        public static var sensitiveSection: String { text("settings.sensitive.section") }
+        public static var sensitiveMediaDisplay: String { text("settings.sensitive.mediaDisplay") }
+        public static var sensitiveMediaDisplayHint: String { text("settings.sensitive.mediaDisplay.hint") }
+        public static var expandContentWarnings: String { text("settings.sensitive.expandWarnings") }
+        public static var sensitiveFooter: String { text("settings.sensitive.footer") }
         public static var appearanceDisplay: String { text("settings.row.appearanceDisplay") }
         public static var readingMedia: String { text("settings.row.readingMedia") }
         public static var postingInteractions: String { text("settings.row.postingInteractions") }
@@ -2066,6 +2071,13 @@ public enum MoroL10n {
         public static var tapToView: String { text("sensitiveMedia.tapToView") }
         public static var showAnyway: String { text("sensitiveMedia.showAnyway") }
         public static var contentWarning: String { text("sensitiveMedia.contentWarning") }
+        public static var hiddenMedia: String { text("sensitiveMedia.hiddenMedia") }
+        public static var displayHideAll: String { text("sensitiveMedia.display.hideAll") }
+        public static var displayHideAllDetail: String { text("sensitiveMedia.display.hideAll.detail") }
+        public static var displayDefault: String { text("sensitiveMedia.display.default") }
+        public static var displayDefaultDetail: String { text("sensitiveMedia.display.default.detail") }
+        public static var displayShowAll: String { text("sensitiveMedia.display.showAll") }
+        public static var displayShowAllDetail: String { text("sensitiveMedia.display.showAll.detail") }
         // A11y: spoken state ("revealed"/"hidden") and the reveal hint
         public static var valueRevealed: String { text("sensitiveMedia.value.revealed") }
         public static var valueHidden: String { text("sensitiveMedia.value.hidden") }
@@ -2136,6 +2148,17 @@ public enum MoroL10n {
         public static var off: String { text("settings.switchOff") }
     }
 
+    public enum MediaExport {
+        public static var saveToPhotos: String { text("mediaExport.saveToPhotos") }
+        public static var share: String { text("mediaExport.share") }
+        public static var copy: String { text("mediaExport.copy") }
+        public static var saved: String { text("mediaExport.saved") }
+        public static var copied: String { text("mediaExport.copied") }
+        public static var downloadFailed: String { text("mediaExport.downloadFailed") }
+        public static var saveFailed: String { text("mediaExport.saveFailed") }
+        public static var photoAccessDenied: String { text("mediaExport.photoAccessDenied") }
+    }
+
     public enum ImagePreview {
         public static var zoomAction: String { text("imagePreview.zoomAction") }
         public static var altBadge: String { text("imagePreview.altBadge") }
@@ -2143,6 +2166,7 @@ public enum MoroL10n {
         public static var emptyState: String { text("imagePreview.emptyState") }
         public static var noAltDescription: String { text("imagePreview.noAltDescription") }
         public static var loadFailed: String { text("imagePreview.loadFailed") }
+        public static var shareAccessibility: String { text("imagePreview.shareAccessibility") }
     }
 
     public enum EmojiPicker {

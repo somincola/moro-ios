@@ -20,6 +20,11 @@ struct VideoPlayerView: View {
     @StateObject private var playerObserver = VideoPlayerObserver()
     @State private var showControls = true
     @State private var isRevealed = false
+    @Environment(\.moroMediaPrefs) private var mediaPrefs
+
+    private var isConcealed: Bool {
+        mediaPrefs.concealsMedia(markedSensitive: isSensitive) && !isRevealed
+    }
     
     // Check if autoplay should be enabled
     private var shouldAutoplay: Bool {
@@ -38,7 +43,7 @@ struct VideoPlayerView: View {
         GeometryReader { geometry in
             ZStack {
                 // Video player or preview
-                if isRevealed || !isSensitive {
+                if !isConcealed {
                     videoContent
                 } else {
                     // Sensitive content overlay
@@ -49,7 +54,7 @@ struct VideoPlayerView: View {
             .clipped()
             .contentShape(Rectangle())
             .onTapGesture {
-                if isSensitive && !isRevealed {
+                if isConcealed {
                     isRevealed = true
                 } else {
                     onTap?()
@@ -155,7 +160,7 @@ struct VideoPlayerView: View {
                     .moroScaledFont(size: 32)
                     .foregroundStyle(.white)
                 
-                Text(MoroL10n.SensitiveMedia.title)
+                Text(mediaPrefs.concealLabel(markedSensitive: isSensitive))
                     .font(theme.typography.subtitle)
                     .foregroundStyle(.white)
                 

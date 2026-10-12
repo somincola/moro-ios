@@ -44,6 +44,8 @@ final class AppSettings: ObservableObject {
         // Design
         static let playAnimations = "playAnimations"
         static let autoplayGIFs = "autoplayGIFs"
+        static let sensitiveMediaDisplay = "sensitiveMediaDisplay"
+        static let expandContentWarnings = "expandContentWarnings"
 
         // Language
         static let defaultPostLanguage = "defaultPostLanguage"
@@ -375,6 +377,16 @@ final class AppSettings: ObservableObject {
         didSet {
             userDefaults.set(autoplayGIFs, forKey: Keys.autoplayGIFs)
         }
+    }
+
+    // MARK: - Sensitive Content
+
+    @Published var sensitiveMediaDisplay: SensitiveMediaDisplay {
+        didSet { userDefaults.set(sensitiveMediaDisplay.rawValue, forKey: Keys.sensitiveMediaDisplay) }
+    }
+
+    @Published var expandContentWarnings: Bool {
+        didSet { userDefaults.set(expandContentWarnings, forKey: Keys.expandContentWarnings) }
     }
 
     // MARK: - Video Autoplay Mode
@@ -793,6 +805,9 @@ final class AppSettings: ObservableObject {
         // Design (default: true for better UX)
         self.playAnimations = userDefaults.object(forKey: Keys.playAnimations) as? Bool ?? true
         self.autoplayGIFs = userDefaults.object(forKey: Keys.autoplayGIFs) as? Bool ?? true
+        self.sensitiveMediaDisplay = userDefaults.string(forKey: Keys.sensitiveMediaDisplay)
+            .flatMap(SensitiveMediaDisplay.init(rawValue:)) ?? .default
+        self.expandContentWarnings = userDefaults.object(forKey: Keys.expandContentWarnings) as? Bool ?? false
 
         // Video Autoplay Mode (default: wifi)
         if let modeRaw = userDefaults.string(forKey: Keys.autoplayVideoMode),

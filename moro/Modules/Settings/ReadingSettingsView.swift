@@ -37,6 +37,24 @@ struct ReadingSettingsView: View {
             }
 
             Section {
+                NavigationLink {
+                    SensitiveMediaChoiceView()
+                } label: {
+                    LabeledContent(MoroL10n.Settings.sensitiveMediaDisplay) {
+                        Text(settings.sensitiveMediaDisplay.title)
+                            .foregroundStyle(theme.colors.textSecondary)
+                    }
+                }
+                .accessibilityIdentifier("settings.sensitiveMedia")
+                Toggle(MoroL10n.Settings.expandContentWarnings, isOn: $settings.expandContentWarnings)
+                    .accessibilityIdentifier("settings.expandContentWarnings")
+            } header: {
+                MoroSettingsSectionHeader(title: MoroL10n.Settings.sensitiveSection)
+            } footer: {
+                Text(MoroL10n.Settings.sensitiveFooter)
+            }
+
+            Section {
                 Picker(MoroL10n.GeneralSettings.openLinksIn, selection: $settings.openLinksIn) {
                     ForEach(AppSettings.OpenLinksIn.allCases, id: \.rawValue) { option in
                         Text(option.title).tag(option)
@@ -76,5 +94,21 @@ struct ReadingSettingsView: View {
         .textCase(nil)
         .navigationTitle(MoroL10n.Settings.readingMedia)
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct SensitiveMediaChoiceView: View {
+    @ObservedObject private var settings = AppSettings.shared
+
+    var body: some View {
+        MoroChoicePage(
+            heading: MoroL10n.Settings.sensitiveMediaDisplay,
+            hint: MoroL10n.Settings.sensitiveMediaDisplayHint,
+            options: SensitiveMediaDisplay.allCases.map {
+                MoroChoiceOption(value: $0, title: $0.title, detail: $0.detail)
+            },
+            selection: settings.sensitiveMediaDisplay,
+            accessibilityPrefix: "settings.sensitiveMedia"
+        ) { settings.sensitiveMediaDisplay = $0 }
     }
 }

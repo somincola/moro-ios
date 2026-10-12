@@ -31,7 +31,12 @@ struct MediaGridImageView: View {
         self.transitionNamespace = transitionNamespace
         self.contentMode = contentMode
         self.onTap = onTap
-        _isRevealed = State(initialValue: !isSensitive)
+    }
+
+    /// Concealment follows the Media Display setting, so flipping it updates
+    /// every visible cell without re-creating them.
+    private var isConcealed: Bool {
+        mediaPrefs.concealsMedia(markedSensitive: isSensitive) && !isRevealed
     }
 
     /// Determine if this attachment is a GIF
@@ -63,7 +68,7 @@ struct MediaGridImageView: View {
                 )
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .clipped()
-                    .blur(radius: (isSensitive && !isRevealed) ? 25 : 0)
+                    .blur(radius: isConcealed ? 25 : 0)
 
                 // GIF play indicator if autoplay is disabled
                 if isGIF && !mediaPrefs.autoplayGIFs {
@@ -81,7 +86,7 @@ struct MediaGridImageView: View {
                 }
 
                 // Sensitive content overlay
-                if isSensitive && !isRevealed {
+                if isConcealed {
                     sensitiveOverlay
                 }
             }
@@ -90,6 +95,19 @@ struct MediaGridImageView: View {
             .contentShape(Rectangle())
             .onTapGesture {
                 handleTap()
+            }
+            .contentShape(.contextMenuPreview, Rectangle())
+            .contextMenu {
+                // Concealed media gets no menu: the lifted preview would reveal it.
+                if !isConcealed {
+                    ForEach(MediaExportAction.allCases, id: \.self) { action in
+                        Button {
+                            Task { await perform(action) }
+                        } label: {
+                            Label(action.title, systemImage: action.systemImage)
+                        }
+                    }
+                }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(mediaAccessibilityLabel)
@@ -103,8 +121,8 @@ struct MediaGridImageView: View {
     private var mediaAccessibilityLabel: Text {
         let alt = attachment.description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let base = alt.isEmpty ? MoroL10n.Media.accessibilityImage : alt
-        if isSensitive && !isRevealed {
-            return Text("\(MoroL10n.SensitiveMedia.title), \(base)")
+        if isConcealed {
+            return Text("\(mediaPrefs.concealLabel(markedSensitive: isSensitive)), \(base)")
         }
         return Text(base)
     }
@@ -140,7 +158,7 @@ struct MediaGridImageView: View {
                     .moroScaledFont(size: 28, weight: .medium)
                     .foregroundStyle(.white)
 
-                Text(MoroL10n.SensitiveMedia.title)
+                Text(mediaPrefs.concealLabel(markedSensitive: isSensitive))
                     .font(theme.typography.caption)
                     .fontWeight(.medium)
                     .foregroundStyle(.white)
@@ -150,8 +168,18 @@ struct MediaGridImageView: View {
 
     // MARK: - Actions
 
+    private func perform(_ action: MediaExportAction) async {
+        do {
+            if let message = try await action.perform(on: attachment.url) {
+                AppFeedbackCenter.shared.showSuccess(message)
+            }
+        } catch {
+            AppFeedbackCenter.shared.showError(MediaExportService.message(for: error))
+        }
+    }
+
     private func handleTap() {
-        if isSensitive && !isRevealed {
+        if isConcealed {
             withAnimation(.easeInOut(duration: 0.3)) {
                 isRevealed = true
             }

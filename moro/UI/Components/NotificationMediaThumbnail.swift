@@ -13,6 +13,7 @@ struct NotificationMediaThumbnail: View {
     let size: CGFloat
 
     @Environment(\.moroTheme) private var theme
+    @Environment(\.moroMediaPrefs) private var mediaPrefs
 
     private var attachment: Status.Attachment? { attachments.first }
     private var additionalCount: Int { max(attachments.count - 1, 0) }
@@ -21,7 +22,7 @@ struct NotificationMediaThumbnail: View {
         ZStack {
             thumbnailContent
 
-            if isSensitive {
+            if mediaPrefs.concealsMedia(markedSensitive: isSensitive) {
                 Color.black.opacity(0.52)
                 Image(systemName: "eye.slash.fill")
                     .moroScaledFont(size: 17, weight: .semibold)
