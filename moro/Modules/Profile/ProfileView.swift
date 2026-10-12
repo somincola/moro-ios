@@ -369,7 +369,6 @@ struct ProfileView: View {
                 account: viewModel.account ?? account,
                 relationship: nil,
                 onShare: shareUser,
-                onEditProfile: { router.navigate(to: .editProfile) },
                 onSettings: presentSettings,
                 onBookmarks: { router.navigate(to: .bookmarks) },
                 onFavourites: { router.navigate(to: .favourites) },
@@ -635,13 +634,8 @@ struct ProfileView: View {
         }
         .frame(height: visibleHeight)
         .frame(maxWidth: .infinity)
+        // No bottom rule: the gradient alone fades the banner into the page.
         .offset(y: -max(scrollOffset, 0))
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(theme.colors.borderSubtle)
-                .frame(height: 0.5)
-                .allowsHitTesting(false)
-        }
         .overlay(alignment: .top) {
             LinearGradient(
                 colors: [.black.opacity(0.28), .clear],
@@ -677,7 +671,9 @@ struct ProfileView: View {
 
             Spacer()
 
-            if !isCurrentUser {
+            if isCurrentUser {
+                editProfileButton
+            } else {
                 actionButtons
             }
         }
@@ -756,6 +752,27 @@ struct ProfileView: View {
     // MARK: - Action Buttons
 
     @ViewBuilder
+    /// Own-profile counterpart of the Follow button: same footprint, secondary surface,
+    /// so the header keeps its geometry and "my profile" reads differently at a glance.
+    private var editProfileButton: some View {
+        Button {
+            router.navigate(to: .editProfile)
+        } label: {
+            Text(MoroL10n.Profile.editProfileButton)
+                .font(theme.typography.body)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .foregroundStyle(theme.colors.textPrimary)
+                .padding(.horizontal, 20)
+                .frame(height: 36)
+                .moroRelationshipControlSurface(.secondary, theme: theme)
+        }
+        .buttonStyle(.plain)
+        // Wait for the profile to load so the editor never opens on empty data.
+        .disabled(viewModel.account == nil)
+        .accessibilityIdentifier("profile.editButton")
+    }
+
     private var actionButtons: some View {
         HStack(spacing: theme.spacing.m) {
             FollowButton(

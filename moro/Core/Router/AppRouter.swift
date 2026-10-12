@@ -17,6 +17,7 @@ protocol AppRouterNavigator: AnyObject {
     func pop()
     func popToRoot()
     func replace(with route: Route)
+    func replaceTop(with route: Route)
 }
 
 @MainActor
@@ -55,6 +56,18 @@ final class AppRouter: ObservableObject {
             return
         }
         path.removeLast(path.count)
+    }
+
+    /// Swap the top page for another route in place (no animation, back stack kept).
+    /// Used when a placeholder page resolves into its real destination, so the
+    /// destination gets its own scene (e.g. a hero profile instead of a lookup page).
+    func replaceTop(with route: Route) {
+        if let navigator {
+            navigator.replaceTop(with: route)
+            return
+        }
+        if !path.isEmpty { path.removeLast() }
+        path.append(route)
     }
 
     /// Replace the current navigation stack with a new route
@@ -359,6 +372,7 @@ extension View {
 
 @MainActor
 private struct AccountLookupRouteView: View {
+    @Environment(\.appRouter) private var router
     let acct: String
     let apiClient: MastodonAPI
 
@@ -385,16 +399,44 @@ private struct AccountLookupRouteView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task(id: acct) {
             guard resolvedAccount == nil, !lookupFailed else { return }
-            do {
-                resolvedAccount = try await apiClient.lookupAccount(acct: normalizedAcct)
-            } catch {
+            var account = try? await apiClient.lookupAccount(acct: normalizedAcct)
+            if account == nil {
+                // `lookup` only knows accounts this server has already seen; a resolving
+                // search fetches a remote account over WebFinger on first contact.
+                account = await resolveViaSearch()
+            }
+            guard let account else {
                 lookupFailed = true
+                return
+            }
+            if router.navigator != nil {
+                // Become the regular profile route so the page gets the profile's hero
+                // scene (transparent bar over the banner) rather than this lookup's.
+                router.replaceTop(with: .userProfile(account))
+            } else {
+                resolvedAccount = account
             }
         }
     }
 
     private var normalizedAcct: String {
         acct.hasPrefix("@") ? String(acct.dropFirst()) : acct
+    }
+
+    private func resolveViaSearch() async -> Account? {
+        guard let results = try? await apiClient.search(
+            query: "@\(normalizedAcct)", type: .accounts, resolve: true, limit: 5, offset: nil
+        ) else { return nil }
+        let target = normalizedAcct.lowercased()
+        let username = target.split(separator: "@").first.map(String.init) ?? target
+        let domain = target.split(separator: "@").dropFirst().first.map(String.init)
+        return results.accounts.first { account in
+            let acct = account.acct.lowercased()
+            if acct == target { return true }
+            // Local accounts come back without a domain; match them by profile host.
+            guard acct == username, let domain else { return false }
+            return account.url.flatMap(URL.init(string:))?.host?.lowercased() == domain
+        }
     }
 
     private var displayAcct: String {

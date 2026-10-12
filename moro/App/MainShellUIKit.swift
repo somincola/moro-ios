@@ -629,6 +629,29 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             popToRootViewController(animated: true)
         }
 
+        func replaceTop(with route: Route) {
+            let controller = MainShellHostingController(
+                rootView: routeView(route, router),
+                sceneDescriptor: route.sceneDescriptor,
+                theme: appliedTheme
+            )
+            guard viewControllers.count > 1 else {
+                pushViewController(controller, animated: false)
+                return
+            }
+            var stack = viewControllers
+            stack[stack.count - 1] = controller
+            setViewControllers(stack, animated: false)
+            // A non-animated swap may not round-trip through the delegate; sync the bar now.
+            let descriptor = route.sceneDescriptor
+            applyNavigationAppearance(for: descriptor)
+            onSceneChanged(descriptor)
+            setNavigationBarHidden(
+                shouldHideNavigationBar(isRoot: false, sceneDescriptor: descriptor),
+                animated: false
+            )
+        }
+
         func replace(with route: Route) {
             let root = viewControllers.first
                 ?? MainShellHostingController(

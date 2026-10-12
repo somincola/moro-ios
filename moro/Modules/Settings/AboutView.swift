@@ -10,6 +10,8 @@ import UIKit
 
 struct AboutView: View {
     @Environment(\.moroTheme) private var theme
+    @Environment(\.settingsContext) private var settingsContext
+    @Environment(\.openURL) private var openURL
 
     private let githubURL = URL(string: "https://github.com/somincola/moro-ios")!
 
@@ -26,6 +28,23 @@ struct AboutView: View {
                 hero
                     .padding(.bottom, theme.spacing.xl)
 
+                divider
+                Button {
+                    if let openAccount = settingsContext.onOpenAccount {
+                        openAccount(MoroBrand.authorAcct)
+                    } else {
+                        openURL(MoroBrand.authorProfileURL)
+                    }
+                } label: {
+                    rowLabel(
+                        title: MoroL10n.About.followAuthor,
+                        systemImage: "person.crop.circle.badge.plus",
+                        accessory: "chevron.right",
+                        value: "@acacius"
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("about.followAuthor")
                 divider
                 externalLinkRow(
                     title: MoroL10n.About.versionHistory,
@@ -137,7 +156,7 @@ struct AboutView: View {
         .buttonStyle(.plain)
     }
 
-    private func rowLabel(title: String, systemImage: String, accessory: String) -> some View {
+    private func rowLabel(title: String, systemImage: String, accessory: String, value: String? = nil) -> some View {
         HStack(spacing: theme.spacing.m) {
             Image(systemName: systemImage)
                 .moroScaledFont(size: 17, weight: .medium)
@@ -149,6 +168,13 @@ struct AboutView: View {
                 .foregroundStyle(theme.colors.textPrimary)
 
             Spacer(minLength: theme.spacing.m)
+
+            if let value {
+                Text(verbatim: value)
+                    .font(theme.typography.body)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .lineLimit(1)
+            }
 
             Image(systemName: accessory)
                 .moroScaledFont(size: 12, weight: .semibold)

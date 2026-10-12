@@ -37,16 +37,6 @@ struct PrivacySafetySettingsView: View {
             }
             
             Section {
-                Picker(MoroL10n.PrivacySafety.defaultVisibility, selection: privacyVisibilityBinding) {
-                    ForEach(AppSettings.PostVisibility.allCases, id: \.rawValue) { visibility in
-                        Text(visibility.localizedName).tag(visibility)
-                    }
-                }
-            } header: {
-                MoroSettingsSectionHeader(title: MoroL10n.PrivacySafety.sectionDefaults)
-            }
-
-            Section {
                 privacyPresetButton(
                     title: MoroL10n.PrivacySafety.presetOpenTitle,
                     description: MoroL10n.PrivacySafety.presetOpenDescription,
@@ -149,17 +139,6 @@ struct PrivacySafetySettingsView: View {
         .buttonStyle(.plain)
     }
 
-    private var privacyVisibilityBinding: Binding<AppSettings.PostVisibility> {
-        Binding(
-            get: { settings.defaultPostVisibility },
-            set: { newValue in
-                applyPrivacyMutation { settings in
-                    settings.defaultPostVisibility = newValue
-                }
-            }
-        )
-    }
-
     private func privacyBoolBinding(
         _ keyPath: ReferenceWritableKeyPath<AppSettings, Bool>
     ) -> Binding<Bool> {
@@ -196,14 +175,7 @@ struct PrivacySafetySettingsView: View {
         saveError = nil
 
         do {
-            let updatedAccount = try await apiClient.updateAccountCredentials(
-                discoverable: settings.suggestMyAccountToOthers,
-                locked: settings.manuallyApproveFollowRequests,
-                indexable: settings.appearInSearchEngines,
-                hideCollections: !settings.showFollowersAndFollowing,
-                privacy: settings.defaultPostVisibility.sourcePrivacyValue
-            )
-            appState.currentAccount = updatedAccount
+            appState.currentAccount = try await PrivacySettingsSync.push(settings, using: apiClient)
         } catch {
             previousSnapshot.apply(to: settings)
             saveError = error
@@ -212,6 +184,21 @@ struct PrivacySafetySettingsView: View {
         }
 
         isSaving = false
+    }
+}
+
+/// Account-level privacy fields share one update_credentials call, whichever page edits them
+/// (Privacy edits the switches; Posting edits the default visibility).
+@MainActor
+enum PrivacySettingsSync {
+    static func push(_ settings: AppSettings, using apiClient: MastodonAPI) async throws -> Account {
+        try await apiClient.updateAccountCredentials(
+            discoverable: settings.suggestMyAccountToOthers,
+            locked: settings.manuallyApproveFollowRequests,
+            indexable: settings.appearInSearchEngines,
+            hideCollections: !settings.showFollowersAndFollowing,
+            privacy: settings.defaultPostVisibility.sourcePrivacyValue
+        )
     }
 }
 

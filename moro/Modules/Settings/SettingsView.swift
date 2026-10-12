@@ -23,14 +23,11 @@ struct SettingsView: View {
         static let minimumRowHeight: CGFloat = 52
         static let rowVerticalPadding: CGFloat = 10
         static let rowSpacing: CGFloat = 12
+        static let accountAvatarSize: CGFloat = 52
     }
 
     init(apiClient: MastodonAPI? = nil) {
         self.apiClient = apiClient
-    }
-
-    private var hasAccountContext: Bool {
-        appState.currentAccount != nil || apiClient != nil
     }
 
     private var currentAccount: Account? {
@@ -77,9 +74,9 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var menuRows: some View {
-        if hasAccountContext {
+        if let currentAccount {
             Section {
-                accountManagementRow
+                accountCardRow(currentAccount)
             }
         }
 
@@ -105,15 +102,35 @@ struct SettingsView: View {
             }
             .accessibilityIdentifier("settings.posting")
 
-            if hasAccountContext {
-                NavigationLink {
-                    NotificationSettingsView(apiClient: apiClient, mode: .push)
-                } label: {
-                    settingsRow(MoroL10n.NotificationSettings.sectionPush, icon: "bell.badge")
-                }
-                .accessibilityIdentifier("settings.push")
+            NavigationLink {
+                NotificationSettingsView(apiClient: apiClient)
+            } label: {
+                settingsRow(MoroL10n.NotificationSettings.title, icon: "bell.badge")
             }
+            .accessibilityIdentifier("settings.notifications")
+            .listRowSeparator(.hidden, edges: .bottom)
+        }
 
+        Section {
+            NavigationLink {
+                PrivacySafetySettingsView(apiClient: apiClient)
+            } label: {
+                settingsRow(MoroL10n.Settings.privacyVisibility, icon: "hand.raised")
+            }
+            .accessibilityIdentifier("settings.privacy")
+
+            if let apiClient {
+                NavigationLink {
+                    ContentSafetySettingsView(apiClient: apiClient)
+                } label: {
+                    settingsRow(MoroL10n.Settings.contentSafety, icon: "line.3.horizontal.decrease.circle")
+                }
+                .accessibilityIdentifier("settings.contentSafety")
+                .listRowSeparator(.hidden, edges: .bottom)
+            }
+        }
+
+        Section {
             NavigationLink {
                 StorageSettingsView()
             } label: {
@@ -125,67 +142,6 @@ struct SettingsView: View {
             }
             .accessibilityIdentifier("settings.storage")
             .listRowSeparator(.hidden, edges: .bottom)
-        } header: {
-            MoroSettingsSectionHeader(title: MoroL10n.Settings.appSection)
-        } footer: {
-            Text(MoroL10n.Settings.localScope)
-        }
-
-        if hasAccountContext {
-            Section {
-                if let apiClient {
-                    NavigationLink {
-                        EditProfileView(apiClient: apiClient, currentAccount: currentAccount)
-                    } label: {
-                        settingsRow(MoroL10n.Settings.profile, icon: "person.crop.circle")
-                    }
-                    .accessibilityIdentifier("settings.profile")
-                }
-
-                NavigationLink {
-                    PrivacySafetySettingsView(apiClient: apiClient)
-                } label: {
-                    settingsRow(MoroL10n.Settings.privacyVisibility, icon: "hand.raised")
-                }
-                .accessibilityIdentifier("settings.privacy")
-
-                if let apiClient {
-                    NavigationLink {
-                        ContentSafetySettingsView(apiClient: apiClient)
-                    } label: {
-                        settingsRow(MoroL10n.Settings.contentSafety, icon: "line.3.horizontal.decrease.circle")
-                    }
-                    .accessibilityIdentifier("settings.contentSafety")
-                }
-
-                NavigationLink {
-                    NotificationSettingsView(apiClient: apiClient, mode: .intake)
-                } label: {
-                    settingsRow(MoroL10n.Settings.notificationRules, icon: "tray")
-                }
-                .accessibilityIdentifier("settings.notificationRules")
-
-                if let apiClient {
-                    NavigationLink {
-                        InstanceDetailsView(apiClient: apiClient)
-                    } label: {
-                        settingsRow(MoroL10n.Settings.thisServer, icon: "building.2")
-                    }
-                    .accessibilityIdentifier("settings.server")
-                }
-
-                if let activeSession {
-                    NavigationLink {
-                        ServerAccountActionsView(session: activeSession)
-                    } label: {
-                        settingsRow(MoroL10n.AccountMgmt.deleteAccount, icon: "trash", color: .red)
-                    }
-                    .accessibilityIdentifier("settings.accountActions")
-                    .listRowSeparator(.hidden, edges: .bottom)
-                }
-            } header: {
-                MoroSettingsSectionHeader(title: MoroL10n.Settings.currentAccountSection)
-            }
         }
 
         Section {
@@ -195,30 +151,56 @@ struct SettingsView: View {
             .accessibilityIdentifier("settings.feedback")
 
             aboutRow
-        } header: {
-            MoroSettingsSectionHeader(title: MoroL10n.Settings.supportAboutSection)
         }
-
     }
 
-    @ViewBuilder
-    private var accountManagementRow: some View {
-        if hasAccountContext {
-            NavigationLink {
-                AccountManagementView(
-                    accountSessions: ctx.accountSessions,
-                    activeSessionID: ctx.activeSessionID,
-                    apiClient: apiClient,
-                    onSwitchAccount: ctx.onSwitchAccount,
-                    onAddAccount: ctx.onAddAccount,
-                    onRemoveAccount: ctx.onRemoveAccount
+    /// Identity card at the top of Settings; the single entry to sign-ins, profile,
+    /// server details, sign-out and account deletion.
+    private func accountCardRow(_ account: Account) -> some View {
+        NavigationLink {
+            AccountManagementView(
+                accountSessions: ctx.accountSessions,
+                activeSessionID: ctx.activeSessionID,
+                apiClient: apiClient,
+                onSwitchAccount: ctx.onSwitchAccount,
+                onAddAccount: ctx.onAddAccount,
+                onRemoveAccount: ctx.onRemoveAccount
+            )
+        } label: {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+                : AnyLayout(HStackLayout(spacing: 14))
+            layout {
+                MoroAvatar(
+                    imageURL: account.avatarAnimatedURL,
+                    staticImageURL: account.avatarURL,
+                    initials: account.displayNameInitials,
+                    size: Metrics.accountAvatarSize
                 )
-            } label: {
-                settingsRow(MoroL10n.Settings.loginManagement, icon: "person.2")
+                VStack(alignment: .leading, spacing: 3) {
+                    AccountDisplayNameView(
+                        account: account,
+                        typography: .subtitle,
+                        textColor: theme.colors.textPrimary
+                    )
+                    Text(accountHandle(account))
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textSecondary)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                        .truncationMode(.middle)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .accessibilityIdentifier("settings.accounts")
-            .listRowSeparator(.hidden, edges: .bottom)
+            .padding(.vertical, 12)
         }
+        .accessibilityIdentifier("settings.accounts")
+        .listRowSeparator(.hidden)
+    }
+
+    private func accountHandle(_ account: Account) -> String {
+        let host = activeSession?.instanceHost ?? currentAccountDomain
+        guard let host, !account.acct.contains("@") else { return "@\(account.acct)" }
+        return "@\(account.acct)@\(host)"
     }
 
     private var aboutRow: some View {

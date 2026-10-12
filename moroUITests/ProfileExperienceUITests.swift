@@ -554,9 +554,9 @@ final class ProfileExperienceUITests: XCTestCase {
     }
 
     private func openOverview(_ app: XCUIApplication) {
-        app.buttons["profile.moreButton"].tap()
-        let edit = app.buttons.matching(NSPredicate(format: "label ==[c] %@", "Edit profile")).firstMatch
+        let edit = app.buttons["profile.editButton"]
         XCTAssertTrue(edit.waitForExistence(timeout: 5))
+        XCTAssertEqual(edit.label, "Edit Profile")
         edit.tap()
         XCTAssertTrue(app.buttons["profile.edit.basic"].waitForExistence(timeout: 5))
     }

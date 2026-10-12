@@ -8,24 +8,21 @@
 import SwiftUI
 import UIKit
 
+/// One page for everything notification-related: this device's push alerts first,
+/// then the server-side intake rules. Reached from Settings and the Notifications tab.
 struct NotificationSettingsView: View {
-    enum Mode { case push, intake }
-
     @Environment(\.activeAccountKey) private var activeAccountKey
 
     let apiClient: MastodonAPI?
-    let mode: Mode
 
-    init(apiClient: MastodonAPI? = nil, mode: Mode = .intake) {
+    init(apiClient: MastodonAPI? = nil) {
         self.apiClient = apiClient
-        self.mode = mode
     }
 
     var body: some View {
         NotificationSettingsContentView(
             apiClient: apiClient,
-            accountKey: activeAccountKey,
-            mode: mode
+            accountKey: activeAccountKey
         )
         .id(activeAccountKey)
     }
@@ -38,14 +35,17 @@ private struct NotificationSettingsContentView: View {
     @ObservedObject private var pushSync = PushSubscriptionCoordinator.shared
     @StateObject private var policyController: NotificationPolicyController
 
+    /// Live client for server intake rules.
     let apiClient: MastodonAPI?
+    /// Push sync keeps a credential snapshot so a save that outlives this page (or an
+    /// account switch) still lands on the account that made the change.
+    let pushClient: MastodonAPI?
     let accountKey: String
-    let mode: NotificationSettingsView.Mode
 
-    init(apiClient: MastodonAPI?, accountKey: String, mode: NotificationSettingsView.Mode) {
-        self.apiClient = mode == .push ? (apiClient as? MastodonClient)?.sessionSnapshot() ?? apiClient : apiClient
+    init(apiClient: MastodonAPI?, accountKey: String) {
+        self.apiClient = apiClient
+        self.pushClient = (apiClient as? MastodonClient)?.sessionSnapshot() ?? apiClient
         self.accountKey = accountKey
-        self.mode = mode
         _policyController = StateObject(
             wrappedValue: NotificationPolicyController(accountKey: accountKey)
         )
@@ -53,35 +53,29 @@ private struct NotificationSettingsContentView: View {
 
     var body: some View {
         List {
-            if mode == .intake {
-                notificationIntakeSection
-            } else {
-                pushPreferencesSection
-            }
+            pushPreferencesSection
+            notificationIntakeSection
         }
         .moroSettingsSwitchStyle()
         .moroSettingsListChrome(separators: .visible)
         .textCase(nil)
-        .navigationTitle(mode == .push
-            ? MoroL10n.NotificationSettings.sectionPush
-            : MoroL10n.Settings.notificationRules)
+        .navigationTitle(MoroL10n.NotificationSettings.title)
         .navigationBarTitleDisplayMode(.inline)
-        .accessibilityIdentifier(mode == .push ? "notificationSettings.pushPage" : "notificationSettings.intakePage")
+        .accessibilityIdentifier("notificationSettings.page")
         .task {
+            if let pushClient, PushRegistrationCenter.isPushCapabilityEnabled {
+                pushSync.resumeSettings(apiClient: pushClient, sessionKey: accountKey)
+                await pushRegistration.refreshAuthorizationStatus()
+            }
             guard let apiClient else {
                 policyController.markUnsupported()
                 return
             }
-            if mode == .intake {
-                await policyController.refresh(using: apiClient)
-            } else if PushRegistrationCenter.isPushCapabilityEnabled {
-                await pushRegistration.refreshAuthorizationStatus()
-                pushSync.resumeSettings(apiClient: apiClient, sessionKey: accountKey)
-            }
+            await policyController.refresh(using: apiClient)
         }
         .onChange(of: pushRegistration.deviceTokenHex) { _, _ in
-            guard mode == .push, let apiClient else { return }
-            pushSync.resumeSettings(apiClient: apiClient, sessionKey: accountKey)
+            guard let pushClient else { return }
+            pushSync.resumeSettings(apiClient: pushClient, sessionKey: accountKey)
         }
     }
 
@@ -117,32 +111,38 @@ private struct NotificationSettingsContentView: View {
             case .loaded:
                 if let serverPolicy = policyController.policy {
                     policyRuleRow(
+                        id: "notFollowing",
                         title: MoroL10n.NotificationSettings.notFollowing,
                         detail: MoroL10n.NotificationSettings.notFollowingDetail,
                         selection: policyBinding(\.forNotFollowing)
                     )
                     policyRuleRow(
+                        id: "notFollowers",
                         title: MoroL10n.NotificationSettings.notFollowers,
                         detail: MoroL10n.NotificationSettings.notFollowersDetail,
                         selection: policyBinding(\.forNotFollowers)
                     )
                     policyRuleRow(
+                        id: "newAccounts",
                         title: MoroL10n.NotificationSettings.newAccounts,
                         detail: MoroL10n.NotificationSettings.newAccountsDetail,
                         selection: policyBinding(\.forNewAccounts)
                     )
                     policyRuleRow(
+                        id: "privateMentions",
                         title: MoroL10n.NotificationSettings.privateMentions,
                         detail: MoroL10n.NotificationSettings.privateMentionsDetail,
                         selection: policyBinding(\.forPrivateMentions)
                     )
                     policyRuleRow(
+                        id: "limitedAccounts",
                         title: MoroL10n.NotificationSettings.limitedAccounts,
                         detail: MoroL10n.NotificationSettings.limitedAccountsDetail,
                         selection: policyBinding(\.forLimitedAccounts)
                     )
                     if serverPolicy.forBots != nil {
                         policyRuleRow(
+                            id: "bots",
                             title: MoroL10n.NotificationSettings.bots,
                             detail: MoroL10n.NotificationSettings.botsDetail,
                             selection: botsPolicyBinding
@@ -214,14 +214,15 @@ private struct NotificationSettingsContentView: View {
     private var pushPreferencesSection: some View {
         Section {
             if PushRegistrationCenter.isPushCapabilityEnabled {
-                Picker(
-                    MoroL10n.NotificationSettings.receiveFrom,
-                    selection: pushBinding(\.notificationPolicy)
-                ) {
-                    ForEach(AppSettings.NotificationPolicy.allCases, id: \.rawValue) { policy in
-                        Text(policy.localizedName).tag(policy)
+                NavigationLink {
+                    PushSourceChoiceView(pushClient: pushClient, accountKey: accountKey)
+                } label: {
+                    LabeledContent(MoroL10n.NotificationSettings.receiveFrom) {
+                        Text(settings.notificationPolicy.localizedName)
+                            .foregroundStyle(theme.colors.textSecondary)
                     }
                 }
+                .accessibilityIdentifier("notificationSettings.push.receiveFrom")
 
                 Toggle(
                     MoroL10n.NotificationSettings.typeMentions,
@@ -252,8 +253,8 @@ private struct NotificationSettingsContentView: View {
                             .foregroundStyle(theme.colors.error)
                             .accessibilityIdentifier("notificationSettings.push.saveError")
                         Button {
-                            guard let apiClient else { return }
-                            pushSync.resumeSettings(apiClient: apiClient, sessionKey: accountKey)
+                            guard let pushClient else { return }
+                            pushSync.resumeSettings(apiClient: pushClient, sessionKey: accountKey)
                         } label: {
                             Text(MoroL10n.Notifications.retryAction)
                                 .frame(minHeight: 44)
@@ -284,36 +285,48 @@ private struct NotificationSettingsContentView: View {
                 .foregroundStyle(theme.colors.textSecondary)
             }
         } header: {
-            MoroSettingsSectionHeader(title: MoroL10n.NotificationSettings.sectionPush)
+            HStack {
+                MoroSettingsSectionHeader(title: MoroL10n.NotificationSettings.sectionPush)
+                Spacer()
+            }
         } footer: {
-            Text("\(MoroL10n.Settings.pushScope)\n\n\(MoroL10n.NotificationSettings.pushFooter)")
+            Text(MoroL10n.NotificationSettings.pushFooter)
         }
     }
 
+    /// Rule summary row; the choice itself happens on a report-style page with
+    /// a sentence for what each disposition actually does.
     private func policyRuleRow(
+        id: String,
         title: String,
         detail: String,
         selection: Binding<ServerNotificationPolicy.Disposition>
     ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .foregroundStyle(theme.colors.textPrimary)
-                Text(detail)
-                    .font(theme.typography.caption)
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 8)
-            Picker(title, selection: selection) {
-                ForEach(ServerNotificationPolicy.Disposition.allCases) { disposition in
-                    Text(disposition.localizedName).tag(disposition)
+        NavigationLink {
+            PolicyRuleChoiceView(
+                controller: policyController,
+                title: title,
+                detail: detail,
+                selection: selection
+            )
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .foregroundStyle(theme.colors.textPrimary)
+                    Text(detail)
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                Spacer(minLength: 8)
+                Text(selection.wrappedValue.localizedName)
+                    .foregroundStyle(theme.colors.textSecondary)
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .disabled(policyController.isSaving)
+            .padding(.vertical, 4)
         }
+        .disabled(policyController.isSaving)
+        .accessibilityIdentifier("notificationSettings.rule.\(id)")
     }
 
     private func policyBinding(
@@ -343,10 +356,58 @@ private struct NotificationSettingsContentView: View {
             get: { settings[keyPath: keyPath] },
             set: { value in
                 settings[keyPath: keyPath] = value
-                guard let apiClient else { return }
-                pushSync.saveSettings(.init(settings: settings), apiClient: apiClient, accountKey: accountKey)
+                guard let pushClient else { return }
+                pushSync.saveSettings(.init(settings: settings), apiClient: pushClient, accountKey: accountKey)
             }
         )
+    }
+}
+
+private struct PolicyRuleChoiceView: View {
+    @ObservedObject var controller: NotificationPolicyController
+    let title: String
+    let detail: String
+    let selection: Binding<ServerNotificationPolicy.Disposition>
+
+    var body: some View {
+        MoroChoicePage(
+            heading: title,
+            hint: detail,
+            footnote: MoroL10n.NotificationSettings.intakeFooter,
+            errorMessage: controller.saveError,
+            options: ServerNotificationPolicy.Disposition.allCases.map {
+                MoroChoiceOption(value: $0, title: $0.localizedName, detail: $0.localizedDetail)
+            },
+            selection: selection.wrappedValue,
+            isBusy: controller.isSaving,
+            accessibilityPrefix: "notificationSettings.choice"
+        ) { selection.wrappedValue = $0 }
+    }
+}
+
+private struct PushSourceChoiceView: View {
+    @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var pushSync = PushSubscriptionCoordinator.shared
+    let pushClient: MastodonAPI?
+    let accountKey: String
+
+    var body: some View {
+        MoroChoicePage(
+            heading: MoroL10n.NotificationSettings.receiveFrom,
+            hint: MoroL10n.NotificationSettings.receiveFromHint,
+            footnote: MoroL10n.NotificationSettings.pushFooter,
+            errorMessage: pushSync.failedSettings.contains(accountKey)
+                ? MoroL10n.NotificationSettings.pushSaveFailed : nil,
+            options: AppSettings.NotificationPolicy.allCases.map {
+                MoroChoiceOption(value: $0, title: $0.localizedName)
+            },
+            selection: settings.notificationPolicy,
+            accessibilityPrefix: "notificationSettings.push.source"
+        ) { policy in
+            settings.notificationPolicy = policy
+            guard let pushClient else { return }
+            pushSync.saveSettings(.init(settings: settings), apiClient: pushClient, accountKey: accountKey)
+        }
     }
 }
 
@@ -356,6 +417,14 @@ private extension ServerNotificationPolicy.Disposition {
         case .accept: return MoroL10n.NotificationSettings.policyAccept
         case .filter: return MoroL10n.NotificationSettings.policyFilter
         case .drop: return MoroL10n.NotificationSettings.policyDrop
+        }
+    }
+
+    var localizedDetail: String {
+        switch self {
+        case .accept: return MoroL10n.NotificationSettings.policyAcceptDetail
+        case .filter: return MoroL10n.NotificationSettings.policyFilterDetail
+        case .drop: return MoroL10n.NotificationSettings.policyDropDetail
         }
     }
 }

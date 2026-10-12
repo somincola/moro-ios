@@ -218,6 +218,7 @@ public enum MoroL10n {
     public enum Settings {
         public static var title: String { text("settings.title") }
         public static var loginManagement: String { text("settings.row.loginManagement") }
+        public static var account: String { text("settings.row.account") }
         public static var appearanceDisplay: String { text("settings.row.appearanceDisplay") }
         public static var readingMedia: String { text("settings.row.readingMedia") }
         public static var postingInteractions: String { text("settings.row.postingInteractions") }
@@ -720,6 +721,7 @@ public enum MoroL10n {
     public enum Profile {
         // Menu actions
         public static var share: String { text("profile.action.share") }
+        public static var editProfileButton: String { text("profile.action.editProfile") }
         public static var copyLink: String { text("profile.action.copyLink") }
         public static var openInBrowser: String { text("profile.action.openInBrowser") }
         public static var addToList: String { text("profile.action.addToList") }
@@ -1120,6 +1122,11 @@ public enum MoroL10n {
         public static var governanceFilters: String { text("privacy.governance.filters") }
         public static var sectionGovernance: String { text("privacy.section.governance") }
         public static var defaultVisibility: String { text("privacy.defaultVisibility") }
+        public static var visibilityHint: String { text("privacy.defaultVisibility.hint") }
+        public static var visibilityPublicDetail: String { text("privacy.defaultVisibility.public.detail") }
+        public static var visibilityUnlistedDetail: String { text("privacy.defaultVisibility.unlisted.detail") }
+        public static var visibilityFollowersDetail: String { text("privacy.defaultVisibility.followers.detail") }
+        public static var visibilityMentionedDetail: String { text("privacy.defaultVisibility.mentioned.detail") }
         public static var sectionDefaults: String { text("privacy.section.defaults") }
         public static var saveFailed: String { text("privacy.saveFailed") }
         public static var confirm: String { text("privacy.confirm") }
@@ -1211,6 +1218,7 @@ public enum MoroL10n {
         public static var sectionLinks: String { text("about.sectionLinks") }
         public static var githubRepo: String { text("about.githubRepo") }
         public static var website: String { text("about.website") }
+        public static var followAuthor: String { text("about.followAuthor") }
         public static var versionHistory: String { text("about.versionHistory") }
         public static var openSourceLicenses: String { text("about.openSourceLicenses") }
         public static var feedbackEmail: String { text("about.feedbackEmail") }
@@ -1393,6 +1401,7 @@ public enum MoroL10n {
     public enum NotificationSettings {
         public static var title: String { text("notifSettings.title") }
         public static var receiveFrom: String { text("notifSettings.inApp.receiveFrom") }
+        public static var receiveFromHint: String { text("notifSettings.push.receiveFrom.hint") }
         public static var sectionIntake: String { text("notifSettings.section.intake") }
         public static var intakeFooter: String { text("notifSettings.intake.footer") }
         public static var notFollowing: String { text("notifSettings.intake.notFollowing") }
@@ -1418,6 +1427,9 @@ public enum MoroL10n {
         public static var bots: String { text("notifSettings.intake.bots") }
         public static var botsDetail: String { text("notifSettings.intake.bots.detail") }
         public static var policyAccept: String { text("notifSettings.policy.accept") }
+        public static var policyAcceptDetail: String { text("notifSettings.policy.accept.detail") }
+        public static var policyFilterDetail: String { text("notifSettings.policy.filter.detail") }
+        public static var policyDropDetail: String { text("notifSettings.policy.drop.detail") }
         public static var policyFilter: String { text("notifSettings.policy.filter") }
         public static var policyDrop: String { text("notifSettings.policy.drop") }
         public static var policyUnsupported: String { text("notifSettings.policy.unsupported") }

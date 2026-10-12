@@ -237,6 +237,13 @@ struct MainTabView: View {
             },
             onRemoveAccount: { sessionID in
                 onRemoveAccount(sessionID)
+            },
+            onOpenAccount: { acct in
+                coordinator.dismissPresentedSheet()
+                // Push after the sheet starts dismissing so the profile lands on the visible stack.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    coordinator.navigate(to: .accountLookup(acct))
+                }
             }
         )
     }

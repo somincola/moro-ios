@@ -14,6 +14,9 @@ struct SettingsContext {
     var onSwitchAccount: (String) -> Void = { _ in }
     var onAddAccount: () -> Void = {}
     var onRemoveAccount: (String) -> Void = { _ in }
+    /// Closes Settings and opens an account (`user@domain`) in the app's own profile view.
+    /// Nil outside the main shell; callers fall back to the web profile.
+    var onOpenAccount: ((String) -> Void)? = nil
 }
 
 private struct SettingsContextKey: EnvironmentKey {

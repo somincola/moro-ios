@@ -30,11 +30,11 @@ struct AccountManagementView: View {
 
     @State private var pendingRemovalSession: StoredAccountSession?
     @State private var showLogoutConfirmation = false
-    @State private var editProfileRoute: EditProfileRoute?
+    @ScaledMetric(relativeTo: .body) private var iconColumnWidth: CGFloat = 24
 
-    // ponytail: item-based destination instead of isPresented — the bool overload's pop
-    // didn't sync with dismiss()/edge-swipe, leaving Edit Profile with no way back.
-    private enum EditProfileRoute: Hashable { case edit }
+    private var activeSession: StoredAccountSession? {
+        accountSessions.first { $0.id == activeSessionID }
+    }
 
     private var orderedSessions: [StoredAccountSession] {
         guard let activeSessionID else { return accountSessions }
@@ -123,18 +123,49 @@ struct AccountManagementView: View {
                     )
             }
 
+            if let apiClient {
+                Section {
+                    NavigationLink {
+                        EditProfileView(apiClient: apiClient, currentAccount: appState.currentAccount)
+                    } label: {
+                        detailRow(MoroL10n.EditProfile.title, icon: "person.crop.circle")
+                    }
+                    .accessibilityIdentifier("settings.profile")
+
+                    NavigationLink {
+                        InstanceDetailsView(apiClient: apiClient)
+                    } label: {
+                        detailRow(MoroL10n.Settings.thisServer, icon: "building.2", value: activeSession?.instanceHost)
+                    }
+                    .accessibilityIdentifier("settings.server")
+                    .listRowSeparator(.hidden, edges: .bottom)
+                }
+                .listRowSeparator(.visible, edges: .bottom)
+                .listRowSeparatorTint(theme.colors.borderSubtle)
+            }
+
             Section {
                 Button(role: .destructive) {
                     showLogoutConfirmation = true
                 } label: {
-                    Label(MoroL10n.Settings.logout, systemImage: "rectangle.portrait.and.arrow.right")
-                        .frame(minHeight: 44)
+                    detailRow(MoroL10n.Settings.logout, icon: "rectangle.portrait.and.arrow.right", color: theme.colors.textPrimary)
                 }
                 .accessibilityIdentifier("settings.logout")
             }
+
+            if let activeSession {
+                Section {
+                    NavigationLink {
+                        ServerAccountActionsView(session: activeSession)
+                    } label: {
+                        detailRow(MoroL10n.AccountMgmt.deleteAccount, icon: "trash", color: .red)
+                    }
+                    .accessibilityIdentifier("settings.accountActions")
+                }
+            }
         }
         .moroSettingsListChrome()
-        .navigationTitle(MoroL10n.Settings.loginManagement)
+        .navigationTitle(MoroL10n.Settings.account)
         .navigationBarTitleDisplayMode(.inline)
         .alert(
             MoroL10n.AccountMgmt.removeTitle,
@@ -170,16 +201,6 @@ struct AccountManagementView: View {
         } message: {
             Text(MoroL10n.Settings.logoutAlertMessage)
         }
-        .navigationDestination(item: $editProfileRoute) { _ in
-            if let apiClient {
-                EditProfileView(
-                    apiClient: apiClient,
-                    currentAccount: appState.currentAccount
-                )
-            } else {
-                EmptyView()
-            }
-        }
     }
 
     /// One account row: tap the current account to edit it, tap another account to switch.
@@ -188,18 +209,10 @@ struct AccountManagementView: View {
     private func accountRow(_ session: StoredAccountSession) -> some View {
         let isCurrent = session.id == activeSessionID
         if isCurrent {
-            // Tapping the current account opens Edit Profile (no inline pencil).
-            if apiClient != nil {
-                Button {
-                    editProfileRoute = .edit
-                } label: {
-                    sessionRow(session, isCurrent: true)
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint(MoroL10n.AccountMgmt.editProfile)
-            } else {
-                sessionRow(session, isCurrent: true)
-            }
+            // The current account is a status row; profile editing has its own row below.
+            sessionRow(session, isCurrent: true)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isSelected)
         } else {
             Button {
                 dismiss()
@@ -208,6 +221,37 @@ struct AccountManagementView: View {
                 sessionRow(session, isCurrent: false)
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    private func detailRow(
+        _ title: String,
+        icon: String,
+        value: String? = nil,
+        color: Color? = nil
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .moroScaledFont(size: 18, weight: .regular)
+                .foregroundStyle(color ?? theme.colors.textSecondary)
+                .frame(width: iconColumnWidth)
+            Text(title)
+                .font(.body)
+                .foregroundStyle(color ?? theme.colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            if let value {
+                Text(value)
+                    .font(theme.typography.body)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .alignmentGuide(.listRowSeparatorLeading) { dimensions in
+            dimensions[.leading] + iconColumnWidth + 12
         }
     }
 
@@ -239,8 +283,7 @@ struct AccountManagementView: View {
             Spacer()
 
             if isCurrent {
-                // Filled accent badge with a punched-out check. Edit Profile is
-                // reached by tapping the current-account row (see accountRow).
+                // Filled accent badge with a punched-out check marks the active sign-in.
                 Image(systemName: "checkmark.circle.fill")
                     .moroScaledFont(size: 22, weight: .regular)
                     .foregroundStyle(theme.colors.primary500)

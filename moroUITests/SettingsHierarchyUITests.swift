@@ -22,7 +22,7 @@ final class SettingsHierarchyUITests: XCTestCase {
     func testPushChangeSyncsAfterImmediatelyReturning() {
         let app = launch(pushSync: true)
         defer { app.terminate() }
-        tap("settings.push", in: app)
+        tap("settings.notifications", in: app)
         let mentions = app.switches["notificationSettings.push.mentions"]
         XCTAssertTrue(mentions.waitForExistence(timeout: 5))
         let original = mentions.value as? String
@@ -38,7 +38,7 @@ final class SettingsHierarchyUITests: XCTestCase {
         }
         XCTAssertEqual(app.staticTexts["settings.harness.serverMentions"].label, expected)
         app.buttons["settings.sheet.open"].tap()
-        tap("settings.push", in: app)
+        tap("settings.notifications", in: app)
         XCTAssertNotEqual(mentions.value as? String, original)
         mentions.tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "notificationSettings.push.saving").firstMatch.waitForNonExistence(timeout: 8))
@@ -48,7 +48,7 @@ final class SettingsHierarchyUITests: XCTestCase {
     func testPushFailureKeepsChoiceAndOffersRetry() {
         let app = launch(pushSync: true, pushFailure: true)
         defer { app.terminate() }
-        tap("settings.push", in: app)
+        tap("settings.notifications", in: app)
         let mentions = app.switches["notificationSettings.push.mentions"]
         XCTAssertTrue(mentions.waitForExistence(timeout: 5))
         let original = mentions.value as? String
@@ -74,7 +74,7 @@ final class SettingsHierarchyUITests: XCTestCase {
         XCTAssertTrue(NSPredicate(format: "label == %@", expected).evaluate(with: result)
             || XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "label == %@", expected), evaluatedWith: result)], timeout: 5) == .completed)
         app.buttons["settings.sheet.open"].tap()
-        tap("settings.push", in: app)
+        tap("settings.notifications", in: app)
         mentions.tap()
         XCTAssertTrue(saving.waitForNonExistence(timeout: 8))
     }
@@ -82,7 +82,7 @@ final class SettingsHierarchyUITests: XCTestCase {
     func testPushFailureAfterReturningStillShowsNotice() {
         let app = launch(pushSync: true, pushFailure: true)
         defer { app.terminate() }
-        tap("settings.push", in: app)
+        tap("settings.notifications", in: app)
         let mentions = app.switches["notificationSettings.push.mentions"]
         XCTAssertTrue(mentions.waitForExistence(timeout: 5))
         mentions.tap()
@@ -92,7 +92,7 @@ final class SettingsHierarchyUITests: XCTestCase {
         XCTAssertTrue(notice.waitForExistence(timeout: 6))
         XCTAssertTrue(app.navigationBars.buttons.firstMatch.isHittable)
         attach(app, "push-save-failure-after-returning")
-        tap("settings.push", in: app)
+        tap("settings.notifications", in: app)
         let saving = app.descendants(matching: .any).matching(identifier: "notificationSettings.push.saving").firstMatch
         XCTAssertTrue(saving.waitForNonExistence(timeout: 8))
         XCTAssertFalse(app.buttons["notificationSettings.push.retry"].exists)
@@ -105,7 +105,9 @@ final class SettingsHierarchyUITests: XCTestCase {
         defer { app.terminate() }
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["settings.preferences"].exists)
-        XCTAssertTrue(app.staticTexts["About Account"].exists)
+        XCTAssertTrue(app.buttons["settings.accounts"].exists)
+        XCTAssertFalse(app.buttons["settings.profile"].exists)
+        XCTAssertFalse(app.buttons["settings.accountActions"].exists)
         XCTAssertFalse(app.staticTexts["settings.currentAccount"].exists)
         attach(app, "settings-home-english-dark")
         tap("settings.display", in: app)
@@ -143,10 +145,20 @@ final class SettingsHierarchyUITests: XCTestCase {
         tap("settings.posting", in: app)
         XCTAssertTrue(app.buttons["settings.postLanguage"].exists)
         XCTAssertTrue(app.switches["settings.confirm.altText"].exists)
+        tap("settings.defaultVisibility", in: app)
+        XCTAssertTrue(app.buttons["settings.visibility.public"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["settings.visibility.mentionedOnly"].exists)
+        attach(app, "settings-default-visibility-english-dark")
+        back(app)
         tap("settings.emoji", in: app)
         back(app)
-        XCTAssertTrue(app.navigationBars["Interactions"].exists)
+        XCTAssertTrue(app.navigationBars["Posting"].exists)
         attach(app, "settings-posting-english-dark")
+        back(app)
+
+        tap("settings.privacy", in: app)
+        XCTAssertTrue(app.switches["settings.privacy.approveFollows"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["settings.defaultVisibility"].exists)
         back(app)
 
         tap("settings.accounts", in: app)
@@ -154,8 +166,10 @@ final class SettingsHierarchyUITests: XCTestCase {
         tap("settings.logout", in: app)
         XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 3))
         app.alerts.buttons["Cancel"].tap()
-        XCTAssertTrue(app.navigationBars["Sign-in Management"].exists)
-        back(app)
+        XCTAssertTrue(app.navigationBars["Account"].exists)
+        tap("settings.profile", in: app, activate: false)
+        tap("settings.server", in: app, activate: false)
+        attach(app, "settings-account-english-dark")
         tap("settings.accountActions", in: app)
         let deletion = app.buttons["accountManagement.serverAccountSettings"]
         XCTAssertTrue(deletion.waitForExistence(timeout: 5))
@@ -185,6 +199,7 @@ final class SettingsHierarchyUITests: XCTestCase {
         app.buttons["profile.display.save"].tap()
         back(app)
 
+        tap("settings.accounts", in: app)
         tap("settings.profile", in: app)
         tap("profile.edit.display", in: app)
         XCTAssertTrue(app.switches["profile.display.media"].waitForExistence(timeout: 5))
@@ -194,18 +209,20 @@ final class SettingsHierarchyUITests: XCTestCase {
         attach(app, "settings-public-profile-display")
         back(app)
         back(app)
-
-        tap("settings.push", in: app)
-        XCTAssertTrue(app.navigationBars["Push Notifications"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["notificationSettings.pushPage"].exists)
-        XCTAssertFalse(app.descendants(matching: .any)["notificationSettings.intakePage"].exists)
-        attach(app, "settings-device-push")
         back(app)
-        tap("settings.notificationRules", in: app)
-        XCTAssertTrue(app.navigationBars["Notification Rules"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["notificationSettings.intakePage"].exists)
-        XCTAssertFalse(app.descendants(matching: .any)["notificationSettings.pushPage"].exists)
-        attach(app, "settings-server-notification-rules")
+
+        XCTAssertFalse(app.buttons["settings.notificationRules"].exists)
+        tap("settings.notifications", in: app)
+        XCTAssertTrue(app.navigationBars["Notifications"].exists)
+        XCTAssertTrue(app.switches["notificationSettings.push.mentions"].waitForExistence(timeout: 5))
+        attach(app, "settings-notifications-push")
+        tap("notificationSettings.push.receiveFrom", in: app)
+        XCTAssertTrue(app.buttons["notificationSettings.push.source.anyone"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["notificationSettings.push.source.noone"].exists)
+        attach(app, "settings-notifications-receive-from")
+        back(app)
+        app.swipeUp()
+        attach(app, "settings-notifications-rules")
     }
 
     func testChineseDarkModeAndLargestTextKeepMenusReachable() {
@@ -239,7 +256,7 @@ final class SettingsHierarchyUITests: XCTestCase {
         attach(app, "settings-posting-chinese-dark-large")
         back(app)
         tap("settings.privacy", in: app)
-        XCTAssertTrue(app.navigationBars["隐私与可见性"].exists)
+        XCTAssertTrue(app.navigationBars["隐私"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.switches["settings.privacy.approveFollows"].waitForExistence(timeout: 5))
         attach(app, "settings-privacy-chinese-dark-large")
         back(app)
@@ -248,6 +265,8 @@ final class SettingsHierarchyUITests: XCTestCase {
         back(app)
         back(app)
         XCTAssertFalse(app.staticTexts["settings.currentAccount"].exists)
+        tap("settings.accounts", in: app)
+        attach(app, "settings-account-chinese-dark-large")
         tap("settings.accountActions", in: app)
         let deletion = app.buttons["accountManagement.serverAccountSettings"]
         XCTAssertTrue(deletion.waitForExistence(timeout: 5))
@@ -256,6 +275,52 @@ final class SettingsHierarchyUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(deletion.frame.minX, 0)
         XCTAssertLessThanOrEqual(deletion.frame.maxX, app.windows.firstMatch.frame.maxX)
         attach(app, "settings-delete-account-chinese-dark-large")
+    }
+
+    func testAccountPageAndReportStyleChoicePages() {
+        let app = launch(dark: true)
+        defer { app.terminate() }
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["settings.notificationRules"].exists)
+
+        tap("settings.about", in: app)
+        let follow = app.buttons["about.followAuthor"]
+        XCTAssertTrue(follow.waitForExistence(timeout: 5))
+        XCTAssertTrue(follow.label.contains("Follow the Developer"))
+        attach(app, "settings-about-follow-author")
+        back(app)
+
+        tap("settings.accounts", in: app)
+        XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
+        tap("settings.profile", in: app, activate: false)
+        tap("settings.server", in: app, activate: false)
+        tap("settings.accountActions", in: app, activate: false)
+        attach(app, "settings-account-page")
+        back(app)
+
+        tap("settings.notifications", in: app)
+        XCTAssertTrue(app.navigationBars["Notifications"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.switches["notificationSettings.push.mentions"].waitForExistence(timeout: 5))
+        attach(app, "settings-notifications-page")
+        tap("notificationSettings.push.receiveFrom", in: app)
+        XCTAssertTrue(app.buttons["notificationSettings.push.source.anyone"].waitForExistence(timeout: 5))
+        attach(app, "settings-notifications-receive-from")
+        back(app)
+        let rule = app.buttons["notificationSettings.rule.notFollowing"]
+        if rule.waitForExistence(timeout: 5) {
+            tap("notificationSettings.rule.notFollowing", in: app)
+            XCTAssertTrue(app.buttons["notificationSettings.choice.filter"].waitForExistence(timeout: 5))
+            attach(app, "settings-notifications-rule-choice")
+            back(app)
+        }
+        app.swipeUp()
+        attach(app, "settings-notifications-rules")
+        back(app)
+
+        tap("settings.posting", in: app)
+        tap("settings.defaultVisibility", in: app)
+        XCTAssertTrue(app.buttons["settings.visibility.public"].waitForExistence(timeout: 5))
+        attach(app, "settings-default-visibility")
     }
 
     private func launch(chinese: Bool = false, large: Bool = false, dark: Bool = false, pushSync: Bool = false, pushFailure: Bool = false) -> XCUIApplication {
