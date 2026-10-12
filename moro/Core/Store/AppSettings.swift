@@ -798,7 +798,7 @@ final class AppSettings: ObservableObject {
         self.askBeforeBlockingAUser =
             userDefaults.object(forKey: Keys.askBeforeBlockingAUser) as? Bool ?? true
         self.askBeforeBoostingAPost =
-            userDefaults.object(forKey: Keys.askBeforeBoostingAPost) as? Bool ?? false
+            userDefaults.object(forKey: Keys.askBeforeBoostingAPost) as? Bool ?? true
         self.askBeforeDeletingAPost =
             userDefaults.object(forKey: Keys.askBeforeDeletingAPost) as? Bool ?? true
 

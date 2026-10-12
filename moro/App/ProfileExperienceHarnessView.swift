@@ -112,6 +112,12 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             "follow_request": true, "favourite": true, "poll": true, "update": false,
             "admin.sign_up": false, "admin.report": false],
     ]
+    private static var notificationPolicy: [String: Any] = [
+        "for_not_following": "accept", "for_not_followers": "filter",
+        "for_new_accounts": "filter", "for_private_mentions": "drop",
+        "for_limited_accounts": "filter", "for_bots": "drop",
+        "summary": ["pending_requests_count": 0, "pending_notifications_count": 0],
+    ]
 
     @MainActor static func makeClient() -> MastodonClient {
         let configuration = URLSessionConfiguration.ephemeral
@@ -187,6 +193,28 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
         let method = request.httpMethod ?? "GET"
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         func parameter(_ name: String) -> String? { query.first { $0.name == name }?.value }
+        if path == "/api/v1/mutes" || path == "/api/v1/blocks" {
+            var managed = accountPayload()
+            managed.merge(["id": "fixture-governance", "username": "managed", "acct": "managed",
+                           "display_name": "Managed account"]) { _, new in new }
+            return (200, [managed])
+        }
+        if path.hasSuffix("/unmute") || path.hasSuffix("/unblock") {
+            let id = path.split(separator: "/").dropLast().last.map(String.init) ?? "fixture-governance"
+            return (200, ["id": id, "following": false, "followed_by": false,
+                          "blocking": false, "blocked_by": false, "muting": false,
+                          "muting_notifications": false, "requested": false,
+                          "domain_blocking": false, "endorsed": false, "notifying": false])
+        }
+        if path == "/api/v2/filters" {
+            return (200, [["id": "fixture-filter", "title": "Spoiler filter", "context": ["home"],
+                           "expires_at": NSNull(), "filter_action": "warn",
+                           "keywords": [["id": "fixture-keyword", "keyword": "spoiler", "whole_word": true]]]])
+        }
+        if path.hasPrefix("/api/v2/filters/"), method == "DELETE" { return (200, [:]) }
+        if path == "/api/v1/domain_blocks" {
+            return (200, method == "GET" ? ["blocked.example.invalid"] : [])
+        }
         if path == "/api/v1/push/subscription" {
             if method == "PUT" {
                 pushSaveAttempts += 1
@@ -199,6 +227,12 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
                 }
             }
             return (200, pushSubscription)
+        }
+        if path == "/api/v2/notifications/policy" {
+            if method == "PUT", let update = try? JSONSerialization.jsonObject(with: body(request)) as? [String: Any] {
+                notificationPolicy.merge(update) { _, new in new }
+            }
+            return (200, notificationPolicy)
         }
         if path == "/api/v1/profile" {
             if legacy { return (404, ["error": "Not found"]) }

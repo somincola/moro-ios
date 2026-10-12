@@ -30,6 +30,8 @@ struct SettingsSheetView: View {
                     dismiss()
                 }
         }
+        // Monochrome back buttons, matching the close button and page accents.
+        .tint(theme.colors.primary500)
         .overlay(alignment: .bottom) {
             if let message = feedbackCenter.currentMessage, case .error = message.kind {
                 MoroNoticePill(icon: "exclamationmark", text: message.text)

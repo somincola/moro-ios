@@ -19,7 +19,7 @@ struct SavedSearchesView: View {
     }
 
     var body: some View {
-        List {
+        MoroSettingsList {
             Section {
                 if library.saved.isEmpty {
                     Text(MoroL10n.Search.noSaved)
@@ -71,6 +71,7 @@ struct SavedSearchesView: View {
 
 private struct SavedSearchNameSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.moroTheme) private var theme
     let item: SearchLibraryItem
     @ObservedObject var library: SearchLibraryStore
     @State private var name: String
@@ -89,8 +90,10 @@ private struct SavedSearchNameSheet: View {
                     .focused($isFocused)
                     .submitLabel(.done)
                     .onSubmit(save)
+                    .listRowBackground(theme.colors.groupedSurface)
                 Text("\(item.query) · \(item.scope.title)")
                     .foregroundStyle(.secondary)
+                    .listRowBackground(theme.colors.groupedSurface)
             }
             .moroSettingsListChrome()
             .navigationTitle(MoroL10n.Search.renameSearch)

@@ -22,7 +22,7 @@ struct FiltersSettingsView: View {
     }
 
     var body: some View {
-        List {
+        MoroSettingsList {
             if let transientErrorMessage = viewModel.transientErrorMessage {
                 Section {
                     HStack(alignment: .top, spacing: theme.spacing.s) {
@@ -162,19 +162,26 @@ struct FiltersSettingsView: View {
                         editorDraft = .from(filter)
                         showEditor = true
                     }
+                    .accessibilityIdentifier("filters.rule.\(filter.id)")
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button {
                             Task {
                                 await viewModel.deleteFilter(filter)
                             }
                         } label: {
-                            Label(MoroL10n.Filters.delete, systemImage: "trash")
+                            Label {
+                                Text(MoroL10n.Filters.delete)
+                            } icon: {
+                                MoroMenuGlyph(systemImage: "trash", tintColor: .white)
+                            }
+                            .labelStyle(.titleAndIcon)
                         }
                         .tint(theme.colors.error)
+                        .accessibilityIdentifier("filters.delete.\(filter.id)")
                     }
                 }
             } header: {
-                Text(MoroL10n.Filters.sectionRules)
+                MoroSettingsSectionHeader(title: MoroL10n.Filters.sectionRules)
             } footer: {
                 Text(MoroL10n.Filters.sectionRulesFooter)
             }
@@ -200,15 +207,22 @@ struct FiltersSettingsView: View {
                         Text(domain)
                             .font(theme.typography.body)
                             .foregroundStyle(theme.colors.textPrimary)
+                            .accessibilityIdentifier("filters.domain.\(domain)")
                         Spacer()
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button {
                             Task { await viewModel.unblockDomain(domain) }
                         } label: {
-                            Label(MoroL10n.Filters.domainBlockUnblock, systemImage: "trash")
+                            Label {
+                                Text(MoroL10n.Filters.domainBlockUnblock)
+                            } icon: {
+                                MoroMenuGlyph(systemImage: "trash", tintColor: .white)
+                            }
+                            .labelStyle(.titleAndIcon)
                         }
                         .tint(theme.colors.error)
+                        .accessibilityIdentifier("filters.unblock.\(domain)")
                     }
                 }
             }
@@ -219,7 +233,7 @@ struct FiltersSettingsView: View {
                 Label(MoroL10n.Filters.domainBlockAddLabel, systemImage: "globe.badge.chevron.backward")
             }
         } header: {
-            Text(MoroL10n.Filters.sectionDomains)
+            MoroSettingsSectionHeader(title: MoroL10n.Filters.sectionDomains)
         } footer: {
             Text(MoroL10n.Filters.sectionDomainsFooter)
         }
@@ -430,27 +444,31 @@ private struct FilterEditorSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(MoroL10n.Filters.formTitleSection) {
+                Section(moroHeader: MoroL10n.Filters.formTitleSection) {
                     TextField(MoroL10n.Filters.formTitlePlaceholder, text: $draft.title)
                 }
+                .listRowBackground(theme.colors.groupedSurface)
 
                 if draft.isEditing {
                     keywordEditingSection
+                        .listRowBackground(theme.colors.groupedSurface)
                 } else {
-                    Section(MoroL10n.Filters.formKeywordsSection) {
+                    Section(moroHeader: MoroL10n.Filters.formKeywordsSection) {
                         TextField(MoroL10n.Filters.formKeywordPlaceholder, text: $draft.keyword)
                     }
+                    .listRowBackground(theme.colors.groupedSurface)
                 }
 
-                Section(MoroL10n.Filters.formActionSection) {
+                Section(moroHeader: MoroL10n.Filters.formActionSection) {
                     Picker(MoroL10n.Filters.formActionLabel, selection: $draft.action) {
                         Text(ServerFilter.Action.warn.localizedTitle).tag(ServerFilter.Action.warn)
                         Text(ServerFilter.Action.hide.localizedTitle).tag(ServerFilter.Action.hide)
                     }
                     .pickerStyle(.segmented)
                 }
+                .listRowBackground(theme.colors.groupedSurface)
 
-                Section(MoroL10n.Filters.formScopeSection) {
+                Section(moroHeader: MoroL10n.Filters.formScopeSection) {
                     ForEach(FilterEditorDraft.supportedContexts, id: \.self) { context in
                         Toggle(
                             context.localizedTitle,
@@ -467,6 +485,7 @@ private struct FilterEditorSheet: View {
                         )
                     }
                 }
+                .listRowBackground(theme.colors.groupedSurface)
             }
             .moroSettingsSwitchStyle()
             .moroSettingsListChrome()
@@ -534,7 +553,12 @@ private struct FilterEditorSheet: View {
                         Button {
                             Task { await deleteKeyword(keyword) }
                         } label: {
-                            Label(MoroL10n.Filters.delete, systemImage: "trash")
+                            Label {
+                                Text(MoroL10n.Filters.delete)
+                            } icon: {
+                                MoroMenuGlyph(systemImage: "trash", tintColor: .white)
+                            }
+                            .labelStyle(.titleAndIcon)
                         }
                         .tint(theme.colors.error)
                     }
@@ -559,7 +583,7 @@ private struct FilterEditorSheet: View {
                 .font(theme.typography.caption)
             }
         } header: {
-            Text(MoroL10n.Filters.formKeywordsSectionHeader)
+            MoroSettingsSectionHeader(title: MoroL10n.Filters.formKeywordsSectionHeader)
         } footer: {
             Text(MoroL10n.Filters.formKeywordsFooter)
         }

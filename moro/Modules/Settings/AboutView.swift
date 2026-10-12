@@ -12,6 +12,7 @@ struct AboutView: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.settingsContext) private var settingsContext
     @Environment(\.openURL) private var openURL
+    @ScaledMetric(relativeTo: .body) private var iconColumnWidth = MoroSettingsMetrics.iconColumnWidth
 
     private let githubURL = URL(string: "https://github.com/somincola/moro-ios")!
 
@@ -23,12 +24,15 @@ struct AboutView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
+        MoroSettingsList {
+            Section {
                 hero
-                    .padding(.bottom, theme.spacing.xl)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
+                    .listRowSeparator(.hidden)
+            }
 
-                divider
+            Section {
                 Button {
                     if let openAccount = settingsContext.onOpenAccount {
                         openAccount(MoroBrand.authorAcct)
@@ -43,83 +47,73 @@ struct AboutView: View {
                         value: "@acacius"
                     )
                 }
-                .buttonStyle(.plain)
                 .accessibilityIdentifier("about.followAuthor")
-                divider
-                externalLinkRow(
-                    title: MoroL10n.About.versionHistory,
-                    systemImage: "clock.arrow.circlepath",
-                    destination: MoroAppStore.productURL
-                )
-                .accessibilityIdentifier("about.versionHistory")
-                divider
                 externalLinkRow(
                     title: MoroL10n.AppSupport.rate,
                     systemImage: "star",
                     destination: MoroAppStore.reviewURL
                 )
                 .accessibilityIdentifier("about.rate")
-                divider
+                externalLinkRow(
+                    title: MoroL10n.About.versionHistory,
+                    systemImage: "clock.arrow.circlepath",
+                    destination: MoroAppStore.productURL
+                )
+                .accessibilityIdentifier("about.versionHistory")
+            }
+
+            Section {
                 externalLinkRow(
                     title: MoroL10n.About.website,
                     systemImage: "globe",
                     destination: MoroBrand.websiteURL
                 )
-                divider
                 externalLinkRow(
                     title: MoroL10n.About.githubRepo,
                     systemImage: "chevron.left.forwardslash.chevron.right",
                     destination: githubURL
                 )
-                divider
+            }
+
+            Section {
                 externalLinkRow(
                     title: MoroL10n.Registration.privacyPolicy,
                     systemImage: "hand.raised",
                     destination: MoroBrand.privacyPolicyURL
                 )
-                divider
                 externalLinkRow(
                     title: MoroL10n.Registration.termsOfService,
                     systemImage: "doc.text",
                     destination: MoroBrand.termsOfUseURL
                 )
-                divider
                 NavigationLink {
                     OpenSourceLicensesView()
                 } label: {
-                    rowLabel(
-                        title: MoroL10n.About.openSourceLicenses,
-                        systemImage: "doc.plaintext",
-                        accessory: "chevron.right"
-                    )
+                    rowLabel(title: MoroL10n.About.openSourceLicenses, systemImage: "doc.plaintext")
                 }
-                .buttonStyle(.plain)
                 .accessibilityIdentifier("about.licenses")
-                divider
             }
-            .padding(.horizontal, theme.spacing.xl)
-            .padding(.vertical, theme.spacing.l)
         }
-        .background(theme.colors.background)
+        .moroSettingsListChrome()
         .navigationTitle(MoroL10n.About.title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(theme.colors.background, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
     }
 
     private var hero: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             appIconPreview
+                .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
+                .padding(.bottom, 6)
 
             Text(verbatim: appTitle)
                 .font(theme.typography.title)
-                .fontWeight(.bold)
+                .fontWeight(.semibold)
                 .foregroundStyle(theme.colors.textPrimary)
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("about.appVersion")
 
             Text(MoroL10n.About.tagline)
-                .font(theme.typography.body)
+                .font(theme.typography.caption)
                 .foregroundStyle(theme.colors.textSecondary)
                 .multilineTextAlignment(.center)
         }
@@ -141,7 +135,7 @@ struct AboutView: View {
                 .frame(width: 48, height: 48)
                 .foregroundStyle(theme.colors.textPrimary)
                 .frame(width: 80, height: 80)
-                .background(theme.colors.surfaceSubtle, in: RoundedRectangle(cornerRadius: 19))
+                .background(theme.colors.groupedSurface, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
         }
     }
 
@@ -153,42 +147,48 @@ struct AboutView: View {
         Link(destination: destination) {
             rowLabel(title: title, systemImage: systemImage, accessory: "arrow.up.right")
         }
-        .buttonStyle(.plain)
     }
 
-    private func rowLabel(title: String, systemImage: String, accessory: String, value: String? = nil) -> some View {
-        HStack(spacing: theme.spacing.m) {
+    /// Same anatomy as the Settings home rows: gray icon column, primary title,
+    /// optional secondary value and a quiet trailing accessory. NavigationLink rows
+    /// pass no accessory and get the system chevron.
+    private func rowLabel(
+        title: String,
+        systemImage: String,
+        accessory: String? = nil,
+        value: String? = nil
+    ) -> some View {
+        HStack(spacing: MoroSettingsMetrics.iconTitleSpacing) {
             Image(systemName: systemImage)
-                .moroScaledFont(size: 17, weight: .medium)
+                .moroScaledFont(size: MoroSettingsMetrics.iconPointSize, weight: .regular)
+                .symbolRenderingMode(.monochrome)
                 .foregroundStyle(theme.colors.textSecondary)
-                .frame(width: 24, height: 24)
+                .frame(width: iconColumnWidth)
 
             Text(title)
-                .font(theme.typography.body)
+                .font(.body)
                 .foregroundStyle(theme.colors.textPrimary)
 
-            Spacer(minLength: theme.spacing.m)
+            Spacer(minLength: 8)
 
             if let value {
                 Text(verbatim: value)
-                    .font(theme.typography.body)
+                    .font(.body)
                     .foregroundStyle(theme.colors.textSecondary)
                     .lineLimit(1)
             }
 
-            Image(systemName: accessory)
-                .moroScaledFont(size: 12, weight: .semibold)
-                .foregroundStyle(theme.colors.textTertiary)
+            if let accessory {
+                Image(systemName: accessory)
+                    .moroScaledFont(size: 13, weight: .semibold)
+                    .foregroundStyle(theme.colors.textTertiary)
+            }
         }
-        .padding(.vertical, 14)
-        .frame(minHeight: 52)
+        .padding(.vertical, 4)
         .contentShape(Rectangle())
-    }
-
-    private var divider: some View {
-        Rectangle()
-            .fill(theme.colors.borderSubtle)
-            .frame(height: 1)
+        .alignmentGuide(.listRowSeparatorLeading) { dimensions in
+            dimensions[.leading] + iconColumnWidth + MoroSettingsMetrics.iconTitleSpacing
+        }
     }
 }
 

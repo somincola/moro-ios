@@ -4,6 +4,38 @@ import XCTest
 final class SettingsHierarchyUITests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
 
+    func testContentControlsSwipeActionsInLightMode() { checkContentControlsSwipeActions(dark: false) }
+    func testContentControlsSwipeActionsInDarkMode() { checkContentControlsSwipeActions(dark: true) }
+
+    private func checkContentControlsSwipeActions(dark: Bool) {
+        let app = launch(chinese: true, dark: dark)
+        defer { app.terminate() }
+        tap("settings.contentSafety", in: app)
+        XCTAssertTrue(app.navigationBars["内容控制"].waitForExistence(timeout: 5))
+
+        for (entry, row, action) in [
+            ("settings.muted", app.buttons["governance.account.fixture-governance"],
+             app.buttons["governance.release.fixture-governance"]),
+            ("settings.blocked", app.buttons["governance.account.fixture-governance"],
+             app.buttons["governance.release.fixture-governance"]),
+            ("settings.filters", app.buttons["filters.rule.fixture-filter"],
+             app.buttons["filters.delete.fixture-filter"]),
+            ("settings.filters", app.staticTexts["filters.domain.blocked.example.invalid"],
+             app.buttons["filters.unblock.blocked.example.invalid"]),
+        ] {
+            tap(entry, in: app)
+            XCTAssertTrue(row.waitForExistence(timeout: 5), entry)
+            let start = row.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: -130, dy: 0)))
+            XCTAssertTrue(action.waitForExistence(timeout: 5), entry)
+            XCTAssertTrue(action.isHittable, entry)
+            attach(app, "content-controls-\(entry)-\(dark ? "dark" : "light")-\(row.identifier)")
+            action.tap()
+            XCTAssertTrue(row.waitForNonExistence(timeout: 5), entry)
+            back(app)
+        }
+    }
+
     func testPostingCopyAndSwitchesWithPinkTheme() {
         let app = launch(dark: true)
         defer { app.terminate() }
@@ -335,12 +367,11 @@ final class SettingsHierarchyUITests: XCTestCase {
         attach(app, "settings-notifications-receive-from")
         back(app)
         let rule = app.buttons["notificationSettings.rule.notFollowing"]
-        if rule.waitForExistence(timeout: 5) {
-            tap("notificationSettings.rule.notFollowing", in: app)
-            XCTAssertTrue(app.buttons["notificationSettings.choice.filter"].waitForExistence(timeout: 5))
-            attach(app, "settings-notifications-rule-choice")
-            back(app)
-        }
+        XCTAssertTrue(rule.waitForExistence(timeout: 5))
+        tap("notificationSettings.rule.notFollowing", in: app)
+        XCTAssertTrue(app.buttons["notificationSettings.choice.filter"].waitForExistence(timeout: 5))
+        attach(app, "settings-notifications-rule-choice")
+        back(app)
         app.swipeUp()
         attach(app, "settings-notifications-rules")
         back(app)
@@ -351,7 +382,7 @@ final class SettingsHierarchyUITests: XCTestCase {
         attach(app, "settings-default-visibility")
     }
 
-    private func launch(chinese: Bool = false, large: Bool = false, dark: Bool = false, pushSync: Bool = false, pushFailure: Bool = false) -> XCUIApplication {
+    private func launch(chinese: Bool = false, large: Bool = false, dark: Bool? = nil, pushSync: Bool = false, pushFailure: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = [
             "UITEST_SETTINGS_SHEET", "UITEST_DISABLE_ANIMATIONS",
@@ -363,7 +394,7 @@ final class SettingsHierarchyUITests: XCTestCase {
         app.launchEnvironment["UITEST_SETTINGS_ACCOUNT"] = "1"
         app.launchEnvironment["UITEST_DISABLE_ANIMATIONS"] = "1"
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
-        app.launchEnvironment["UITEST_COLOR_SCHEME"] = chinese || dark ? "dark" : "light"
+        app.launchEnvironment["UITEST_COLOR_SCHEME"] = (dark ?? chinese) ? "dark" : "light"
         if pushSync { app.launchEnvironment["UITEST_SETTINGS_PUSH_SYNC"] = "1" }
         if pushFailure { app.launchEnvironment["UITEST_PUSH_SAVE_FAILS_ONCE"] = "1" }
         if large { app.launchEnvironment["UITEST_DYNAMIC_TYPE_SIZE"] = "accessibilityXXXL" }
@@ -374,8 +405,15 @@ final class SettingsHierarchyUITests: XCTestCase {
     private func back(_ app: XCUIApplication) { app.navigationBars.buttons.firstMatch.tap() }
 
     private func tap(_ identifier: String, in app: XCUIApplication, activate: Bool = true) {
-        let element = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
-        _ = element.waitForExistence(timeout: 2)
+        // Typed queries first: an `.any` query fetches attributes for every element,
+        // and that logging volume can get the app's log client quarantined.
+        var element = app.buttons[identifier]
+        if !element.waitForExistence(timeout: 2) {
+            let toggle = app.switches[identifier]
+            element = toggle.exists
+                ? toggle : app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+            _ = element.waitForExistence(timeout: 1)
+        }
         for _ in 0..<10 where !element.exists || !element.isHittable { app.swipeUp() }
         for _ in 0..<10 where !element.exists || !element.isHittable { app.swipeDown() }
         XCTAssertTrue(element.exists, identifier)

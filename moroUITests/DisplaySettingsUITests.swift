@@ -47,7 +47,7 @@ final class DisplaySettingsUITests: XCTestCase {
         app.launch()
         defer { app.terminate() }
         openDisplay(app)
-        XCTAssertTrue(app.navigationBars["外观与显示"].exists)
+        XCTAssertTrue(app.navigationBars["外观"].exists)
         XCTAssertEqual(app.buttons["display.appearance.0"].label, "系统")
         XCTAssertGreaterThan(
             app.staticTexts["display.section.appearance"].frame.height, 40,
@@ -95,13 +95,15 @@ final class DisplaySettingsUITests: XCTestCase {
         openDisplay(app)
         tap("display.color.blue", in: app)
         tap("display.color.custom", in: app)
-        let sliders = app.buttons["Sliders"]
-        XCTAssertTrue(sliders.waitForExistence(timeout: 5))
-        sliders.tap()
-        let red = app.sliders.firstMatch
-        XCTAssertTrue(red.waitForExistence(timeout: 5))
-        let percent = Double((red.value as? String ?? "").filter { $0.isNumber || $0 == "." }) ?? 0
-        red.adjust(toNormalizedSliderPosition: percent >= 50 ? 0.2 : 0.8)
+        // Pick a swatch in the native grid. The picker's sliders are not exposed as
+        // XCUI sliders, so adjusting "the first slider" never changed the color.
+        let grid = app.buttons["Grid"]
+        XCTAssertTrue(grid.waitForExistence(timeout: 5))
+        grid.tap()
+        let swatch = app.otherElements
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "dark purple")).firstMatch
+        XCTAssertTrue(swatch.waitForExistence(timeout: 5))
+        swatch.tap()
         attach(app, name: "display-native-custom-color-picker")
         let close = app.buttons["close"]
         XCTAssertTrue(close.waitForExistence(timeout: 5))
@@ -188,10 +190,12 @@ final class DisplaySettingsUITests: XCTestCase {
     }
 
     private func tap(_ identifier: String, in app: XCUIApplication) {
-        let element = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
-        _ = element.waitForExistence(timeout: 3)
-        for _ in 0..<8 where !element.exists || !element.isHittable {
-            let scrollView = app.scrollViews.firstMatch
+        let element = settingsElement(identifier, in: app)
+        // A control whose center sits in the home-indicator strip reports hittable,
+        // but the system gesture area swallows the tap; scroll it fully into view.
+        let visibleMaxY = app.windows.firstMatch.frame.maxY - 60
+        for _ in 0..<8 where !element.exists || !element.isHittable || element.frame.maxY > visibleMaxY {
+            let scrollView = scrollContainer(app)
             if element.exists && element.frame.width > 0 && element.frame.maxY < scrollView.frame.minY {
                 scrollView.swipeDown()
             } else {
@@ -199,12 +203,30 @@ final class DisplaySettingsUITests: XCTestCase {
             }
         }
         for _ in 0..<8 where !element.exists || !element.isHittable {
-            app.scrollViews.firstMatch.swipeDown()
+            scrollContainer(app).swipeDown()
         }
         if !element.exists || !element.isHittable { attach(app, name: "display-unreachable-\(identifier)") }
         XCTAssertTrue(element.exists, identifier)
         XCTAssertTrue(element.isHittable, identifier)
         element.tap()
+    }
+
+    /// Settings pages are grouped Lists (collection views); the home sheet may still be a scroll view.
+    private func scrollContainer(_ app: XCUIApplication) -> XCUIElement {
+        let list = app.collectionViews.firstMatch
+        return list.exists ? list : app.scrollViews.firstMatch
+    }
+
+    /// Typed queries first: an `.any` query fetches attributes for every element,
+    /// and that logging volume can get the app's log client quarantined.
+    private func settingsElement(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        let button = app.buttons[identifier]
+        if button.waitForExistence(timeout: 3) { return button }
+        let slider = app.sliders[identifier]
+        if slider.exists { return slider }
+        let element = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+        _ = element.waitForExistence(timeout: 1)
+        return element
     }
 
     private func attach(_ app: XCUIApplication, name: String) {

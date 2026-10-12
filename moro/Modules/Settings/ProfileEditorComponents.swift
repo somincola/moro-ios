@@ -64,8 +64,6 @@ private struct ProfileEditorExitGuard: ViewModifier {
 extension View {
     func profileEditorChrome() -> some View {
         moroSettingsListChrome()
-            .contentMargins(.top, 12, for: .scrollContent)
-            .contentMargins(.bottom, 24, for: .scrollContent)
     }
 
     func profileEditorExitGuard(hasChanges: Bool, isSaving: Bool) -> some View {

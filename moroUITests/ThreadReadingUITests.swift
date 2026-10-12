@@ -10,8 +10,14 @@ final class ThreadReadingUITests: XCTestCase {
     @MainActor func testBoostDialogInLightMode() { verifyBoostDialog(scheme: "light") }
     @MainActor func testBoostDialogInDarkMode() { verifyBoostDialog(scheme: "dark") }
     @MainActor func testBoostDialogAtLargestTextSize() { verifyBoostDialog(scheme: "light", largeText: true) }
+    @MainActor func testQuoteFromMoreMenuWithConfirmationOffInLightMode() {
+        verifyBoostDialog(scheme: "light", askBeforeBoosting: false)
+    }
+    @MainActor func testQuoteFromMoreMenuWithConfirmationOffInDarkMode() {
+        verifyBoostDialog(scheme: "dark", askBeforeBoosting: false)
+    }
 
-    @MainActor private func verifyBoostDialog(scheme: String, largeText: Bool = false) {
+    @MainActor private func verifyBoostDialog(scheme: String, largeText: Bool = false, askBeforeBoosting: Bool = true) {
         continueAfterFailure = false
         let app = XCUIApplication()
         let settingsArguments = [
@@ -28,7 +34,7 @@ final class ThreadReadingUITests: XCTestCase {
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
         let original = confirmation.value as? String ?? ""
         XCTAssertTrue(["0", "Off", "1", "On"].contains(original))
-        let changedPreference = ["0", "Off"].contains(original)
+        let changedPreference = ["1", "On"].contains(original) != askBeforeBoosting
         if changedPreference { confirmation.tap() }
         app.terminate()
         defer {
@@ -60,19 +66,30 @@ final class ThreadReadingUITests: XCTestCase {
         trigger.tap()
         let boost = app.buttons["boostDialog.boost"]
         let quote = app.buttons["boostDialog.quote"]
-        XCTAssertTrue(boost.waitForExistence(timeout: 5))
-        XCTAssertTrue(quote.exists)
-        XCTAssertEqual(boost.label, "转发")
-        XCTAssertEqual(quote.label, "引用转发")
-        for row in [boost, quote] {
-            XCTAssertTrue(row.isHittable)
-            XCTAssertGreaterThanOrEqual(row.frame.height, 44)
-            XCTAssertGreaterThanOrEqual(row.frame.minX, 0)
-            XCTAssertLessThanOrEqual(row.frame.maxX, app.windows.firstMatch.frame.maxX)
+        if askBeforeBoosting {
+            XCTAssertTrue(boost.waitForExistence(timeout: 5))
+            XCTAssertTrue(quote.exists)
+            XCTAssertEqual(boost.label, "转发")
+            XCTAssertEqual(quote.label, "引用")
+            for row in [boost, quote] {
+                XCTAssertTrue(row.isHittable)
+                XCTAssertGreaterThanOrEqual(row.frame.height, 44)
+                XCTAssertGreaterThanOrEqual(row.frame.minX, 0)
+                XCTAssertLessThanOrEqual(row.frame.maxX, app.windows.firstMatch.frame.maxX)
+            }
+            if largeText { XCTAssertGreaterThan(boost.frame.height, 90) }
+            attach(app, "boost-dialog-\(scheme)-\(largeText ? "largest" : "standard")")
+            quote.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
+        } else {
+            XCTAssertTrue(app.buttons.matching(identifier: "取消转发").firstMatch.waitForExistence(timeout: 8))
+            XCTAssertFalse(boost.exists)
+            app.buttons.matching(identifier: "post.more.focus").element(boundBy: 1).tap()
+            let menuQuote = app.buttons["post.quote.focus"]
+            XCTAssertTrue(menuQuote.waitForExistence(timeout: 5))
+            XCTAssertEqual(menuQuote.label, "引用")
+            attach(app, "quote-more-menu-\(scheme)")
+            menuQuote.tap()
         }
-        if largeText { XCTAssertGreaterThan(boost.frame.height, 90) }
-        attach(app, "boost-dialog-\(scheme)-\(largeText ? "largest" : "standard")")
-        quote.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
         XCTAssertTrue(app.buttons["compose.audienceMenu"].waitForExistence(timeout: 8))
         XCTAssertFalse(quote.exists)
     }

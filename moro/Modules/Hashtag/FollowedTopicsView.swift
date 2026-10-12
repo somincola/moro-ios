@@ -16,7 +16,7 @@ struct FollowedTopicsView: View {
     }
 
     var body: some View {
-        List {
+        MoroSettingsList {
             Section {
                 if model.tags.isEmpty, model.hasLoaded, !model.isLoading, model.error == nil {
                     Text(MoroL10n.Topics.empty)

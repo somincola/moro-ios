@@ -22,9 +22,9 @@ struct ProfileBasicsEditor: View {
     @FocusState private var focusedInput: FocusedInput?
 
     private enum Metrics {
-        static let pagePadding: CGFloat = MoroLayoutMetrics.contentHorizontalInset
-        static let sectionSpacing: CGFloat = 24
-        static let mediaCornerRadius: CGFloat = 8
+        static let pagePadding: CGFloat = MoroSettingsMetrics.pageHorizontalInset
+        static let sectionSpacing: CGFloat = MoroSettingsMetrics.sectionSpacing
+        static let mediaCornerRadius: CGFloat = MoroSettingsMetrics.cardCornerRadius
         static let avatarSize: CGFloat = 78
     }
 
@@ -53,12 +53,9 @@ struct ProfileBasicsEditor: View {
             .padding(.bottom, theme.spacing.xxl)
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(theme.colors.groupedBackground)
-        .tint(theme.colors.primary500)
+        .moroSettingsPageChrome()
         .navigationTitle(MoroL10n.EditProfile.sectionBasicInfo)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(theme.colors.surfaceBase, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 saveButton
@@ -124,7 +121,7 @@ struct ProfileBasicsEditor: View {
                 avatarPreview
                     .overlay {
                         Circle()
-                            .stroke(theme.colors.surfaceBase, lineWidth: 3)
+                            .stroke(theme.colors.groupedBackground, lineWidth: 3)
                     }
 
                 avatarControls
@@ -139,7 +136,7 @@ struct ProfileBasicsEditor: View {
     @ViewBuilder
     private var headerPreview: some View {
         ZStack {
-            theme.colors.surfaceSubtle
+            theme.colors.groupedSurface
 
             if let image = viewModel.headerPreviewImage {
                 Image(uiImage: image)
@@ -180,7 +177,7 @@ struct ProfileBasicsEditor: View {
             )
         } else {
             Circle()
-                .fill(theme.colors.surfaceSubtle)
+                .fill(theme.colors.groupedSurface)
                 .frame(width: Metrics.avatarSize, height: Metrics.avatarSize)
                 .overlay {
                     Image(systemName: "person.fill")
@@ -309,7 +306,7 @@ struct ProfileBasicsEditor: View {
                 }
                 .padding(14)
             }
-            .editProfileSectionSurface(theme: theme)
+            .moroSettingsCard()
         }
     }
 
@@ -320,11 +317,10 @@ struct ProfileBasicsEditor: View {
         )
     }
 
-    @ViewBuilder
     private func sectionTitle(_ title: String) -> some View {
-        Text(title)
-            .moroScaledFont(size: 13, weight: .semibold)
-            .foregroundStyle(theme.colors.textSecondary)
+        // Matches List section headers: same type, inset to the card's text.
+        MoroSettingsSectionHeader(title: title)
+            .padding(.horizontal, 14)
     }
 
     @ViewBuilder
@@ -363,15 +359,4 @@ struct ProfileBasicsEditor: View {
     }
 
 
-}
-
-private extension View {
-    func editProfileSectionSurface(theme: MoroTheme) -> some View {
-        background(theme.colors.surfaceBase)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(theme.colors.borderSubtle, lineWidth: 1)
-            }
-    }
 }

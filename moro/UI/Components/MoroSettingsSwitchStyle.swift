@@ -2,26 +2,22 @@
 //  MoroSettingsSwitchStyle.swift
 //  moro
 //
-//  Settings-specific switch style aligned with the monochrome design system.
+//  Settings switch: system green or gray track with a white thumb.
 //
 
 import SwiftUI
 
 struct MoroSettingsSwitchStyle: ToggleStyle {
     @Environment(\.moroTheme) private var theme
+    /// Outside a List there are no row insets, so the control keeps a full 44pt frame.
+    var standalone = false
 
     private enum Metrics {
         static let trackWidth: CGFloat = 50
         static let trackHeight: CGFloat = 30
         static let thumbSize: CGFloat = 24
         static let horizontalInset: CGFloat = 3
-        static let minimumTapHeight: CGFloat = 44
-        static let rowInsets = EdgeInsets(
-            top: 4,
-            leading: MoroLayoutMetrics.contentHorizontalInset,
-            bottom: 4,
-            trailing: MoroLayoutMetrics.contentHorizontalInset
-        )
+        static let hitSlop: CGFloat = (44 - trackHeight) / 2
     }
 
     func makeBody(configuration: Configuration) -> some View {
@@ -32,6 +28,7 @@ struct MoroSettingsSwitchStyle: ToggleStyle {
         } label: {
             HStack(spacing: 12) {
                 configuration.label
+                    .foregroundStyle(theme.colors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Spacer(minLength: 12)
@@ -40,17 +37,10 @@ struct MoroSettingsSwitchStyle: ToggleStyle {
                     cornerRadius: Metrics.trackHeight / 2,
                     style: .continuous
                 )
-                .fill(trackFillColor(isOn: configuration.isOn))
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius: Metrics.trackHeight / 2,
-                        style: .continuous
-                    )
-                    .stroke(trackBorderColor(isOn: configuration.isOn), lineWidth: 1)
-                }
+                .fill(Color(uiColor: configuration.isOn ? .systemGreen : .systemGray4))
                 .overlay(alignment: configuration.isOn ? .trailing : .leading) {
                     Circle()
-                        .fill(thumbColor(isOn: configuration.isOn))
+                        .fill(.white)
                         .frame(width: Metrics.thumbSize, height: Metrics.thumbSize)
                         .padding(.horizontal, Metrics.horizontalInset)
                         .shadow(color: .black.opacity(theme.colorScheme == .dark ? 0.28 : 0.12), radius: 6, y: 2)
@@ -58,40 +48,22 @@ struct MoroSettingsSwitchStyle: ToggleStyle {
                 .frame(width: Metrics.trackWidth, height: Metrics.trackHeight)
                 .accessibilityHidden(true)
             }
-            .frame(minHeight: Metrics.minimumTapHeight)
+            // Lay out at the track's height so switch rows share the list's
+            // standard row height; the hit area still extends to a 44pt target.
+            .frame(minHeight: Metrics.trackHeight)
+            .padding(.vertical, Metrics.hitSlop)
             .contentShape(Rectangle())
+            .padding(.vertical, standalone ? 0 : -Metrics.hitSlop)
         }
         .buttonStyle(.plain)
-        // Keep the full tap target without adding the list's default vertical padding again.
-        .listRowInsets(Metrics.rowInsets)
+        // Default list insets: the label lines up with link and picker rows.
         .accessibilityAddTraits(.isToggle)
         .accessibilityValue(configuration.isOn ? MoroL10n.SettingsSwitch.on : MoroL10n.SettingsSwitch.off)
-    }
-
-    private func trackFillColor(isOn: Bool) -> Color {
-        if isOn {
-            return theme.colors.primary500
-        }
-        return theme.colors.primaryForeground
-    }
-
-    private func trackBorderColor(isOn: Bool) -> Color {
-        if isOn {
-            return theme.colors.primary500.opacity(theme.colorScheme == .dark ? 0.88 : 0.92)
-        }
-        return theme.colors.textSecondary
-    }
-
-    private func thumbColor(isOn: Bool) -> Color {
-        if isOn {
-            return theme.colors.primaryForeground
-        }
-        return theme.colors.primary500
     }
 }
 
 extension View {
-    func moroSettingsSwitchStyle() -> some View {
-        toggleStyle(MoroSettingsSwitchStyle())
+    func moroSettingsSwitchStyle(standalone: Bool = false) -> some View {
+        toggleStyle(MoroSettingsSwitchStyle(standalone: standalone))
     }
 }

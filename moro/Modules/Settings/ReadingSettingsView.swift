@@ -8,7 +8,7 @@ struct ReadingSettingsView: View {
     let apiClient: MastodonAPI?
 
     var body: some View {
-        List {
+        MoroSettingsList {
             Section {
                 Toggle(MoroL10n.GeneralSettings.newPostBanner, isOn: $settings.timelineInAppNewPostBannerEnabled)
                     .accessibilityIdentifier("settings.reading.newPostBanner")
@@ -23,10 +23,13 @@ struct ReadingSettingsView: View {
                     .accessibilityIdentifier("settings.reading.autoplayGIFs")
                 Toggle(MoroL10n.GeneralSettings.playAnimations, isOn: $settings.playAnimations)
                     .accessibilityIdentifier("settings.reading.playAnimations")
-                Picker(MoroL10n.GeneralSettings.videoAutoplayMode, selection: $settings.videoAutoplayMode) {
+                Picker(selection: $settings.videoAutoplayMode) {
                     ForEach(AppSettings.VideoAutoplayMode.allCases, id: \.rawValue) { mode in
                         Text(mode.title).tag(mode)
                     }
+                } label: {
+                    Text(MoroL10n.GeneralSettings.videoAutoplayMode)
+                        .foregroundStyle(theme.colors.textPrimary)
                 }
                 .pickerStyle(.menu)
                 .tint(theme.colors.textSecondary)
@@ -40,9 +43,12 @@ struct ReadingSettingsView: View {
                 NavigationLink {
                     SensitiveMediaChoiceView()
                 } label: {
-                    LabeledContent(MoroL10n.Settings.sensitiveMediaDisplay) {
+                    LabeledContent {
                         Text(settings.sensitiveMediaDisplay.title)
                             .foregroundStyle(theme.colors.textSecondary)
+                    } label: {
+                        Text(MoroL10n.Settings.sensitiveMediaDisplay)
+                            .foregroundStyle(theme.colors.textPrimary)
                     }
                 }
                 .accessibilityIdentifier("settings.sensitiveMedia")
@@ -55,10 +61,13 @@ struct ReadingSettingsView: View {
             }
 
             Section {
-                Picker(MoroL10n.GeneralSettings.openLinksIn, selection: $settings.openLinksIn) {
+                Picker(selection: $settings.openLinksIn) {
                     ForEach(AppSettings.OpenLinksIn.allCases, id: \.rawValue) { option in
                         Text(option.title).tag(option)
                     }
+                } label: {
+                    Text(MoroL10n.GeneralSettings.openLinksIn)
+                        .foregroundStyle(theme.colors.textPrimary)
                 }
                 .pickerStyle(.menu)
                 .tint(theme.colors.textSecondary)

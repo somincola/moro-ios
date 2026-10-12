@@ -316,6 +316,7 @@ struct StatusDetailView: View {
             onCopyLink: actions.menu?.onCopyLink,
             onCopyText: actions.menu?.onCopyText,
             onOpenInBrowser: actions.menu?.onOpenInBrowser,
+            onQuote: actions.onQuote,
             onEdit: actions.onEdit,
             onMuteUser: actions.menu?.onMuteUser,
             onBlockUser: actions.menu?.onBlockUser,

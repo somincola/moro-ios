@@ -12,29 +12,19 @@ struct TranslationSettingsView: View {
     @Environment(\.moroTheme) private var theme
 
     var body: some View {
-        List {
+        MoroSettingsList {
             Section {
                 ForEach(AppSettings.ContentTranslationMode.allCases, id: \.rawValue) { mode in
-                    Button {
+                    MoroChoiceRow(
+                        title: mode.localizedName,
+                        detail: nil,
+                        isSelected: settings.contentTranslationMode == mode
+                    ) {
                         settings.contentTranslationMode = mode
-                    } label: {
-                        HStack {
-                            Text(mode.localizedName)
-                                .foregroundStyle(theme.colors.textPrimary)
-                            Spacer()
-                            if settings.contentTranslationMode == mode {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .moroScaledFont(size: 14, weight: .semibold)
-                                    .foregroundStyle(theme.colors.primary500)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
                 }
             } header: {
-                Text(MoroL10n.Translation.providerSectionTitle)
+                MoroSettingsSectionHeader(title: MoroL10n.Translation.providerSectionTitle)
             }
 
             Section {

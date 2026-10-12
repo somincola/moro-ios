@@ -2825,6 +2825,71 @@ struct moroTests {
         )
     }
 
+    @Test @MainActor func boostConfirmationDefaultsOnAndPreservesSavedChoice() throws {
+        let suite = "BoostPreferenceTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let settings = AppSettings(userDefaults: defaults)
+        #expect(settings.askBeforeBoostingAPost)
+        settings.askBeforeBoostingAPost = false
+        #expect(!AppSettings(userDefaults: defaults).askBeforeBoostingAPost)
+        settings.askBeforeBoostingAPost = true
+        #expect(AppSettings(userDefaults: defaults).askBeforeBoostingAPost)
+    }
+
+    @Test @MainActor func quoteActionRemainsAvailableWithBoostConfirmationOff() throws {
+        let settings = AppSettings.shared
+        let previous = settings.askBeforeBoostingAPost
+        let savedValue = UserDefaults.standard.object(forKey: "askBeforeBoostingAPost")
+        defer {
+            settings.askBeforeBoostingAPost = previous
+            if let savedValue { UserDefaults.standard.set(savedValue, forKey: "askBeforeBoostingAPost") }
+            else { UserDefaults.standard.removeObject(forKey: "askBeforeBoostingAPost") }
+        }
+        settings.askBeforeBoostingAPost = false
+        let api = MockMastodonAPI()
+        let surface = PostActionSurfaceCenter()
+        let status = makeStatus(id: "quote-without-confirmation", visibility: "public")
+        var toggledDirectly = false
+        surface.presentBoostOrToggle(for: status, currentUserID: "me") { toggledDirectly = true }
+        #expect(toggledDirectly)
+        #expect(surface.boostDialogStatus == nil)
+        let handlers = PostInteractionHandlers(
+            interactionService: PostInteractionService(apiClient: api), actionSurface: surface,
+            postMenuActionCenter: PostMenuActionCenter(apiClient: api), apiClient: api,
+            currentUserID: "me", router: AppRouter(), onRemoveStatus: nil
+        )
+        let quote = try #require(handlers.buildPostActions(for: status).onQuote)
+        quote()
+        let context = try #require(surface.composeContext?.context)
+        guard case .quote(let original) = context else { Issue.record("Expected quote composer"); return }
+        #expect(original?.id == status.id)
+    }
+
+    @Test(arguments: ["public", "unlisted", "private", "direct"])
+    @MainActor func quoteMenuUsesOriginalPostVisibility(_ visibility: String) throws {
+        let api = MockMastodonAPI()
+        let surface = PostActionSurfaceCenter()
+        let original = makeStatus(id: "original-to-quote", visibility: visibility)
+        let wrapper = makeStatus(id: "boost-wrapper", reblog: Indirect(original))
+        let handlers = PostInteractionHandlers(
+            interactionService: PostInteractionService(apiClient: api), actionSurface: surface,
+            postMenuActionCenter: PostMenuActionCenter(apiClient: api), apiClient: api,
+            currentUserID: "me", router: AppRouter(), onRemoveStatus: nil
+        )
+        for status in [original, wrapper] {
+            let quote = handlers.buildPostActions(for: status).onQuote
+            #expect((quote != nil) == ["public", "unlisted"].contains(visibility))
+            if let quote {
+                quote()
+                let context = try #require(surface.composeContext?.context)
+                guard case .quote(let quoted) = context else { Issue.record("Expected quote composer"); return }
+                #expect(quoted?.id == original.id)
+            }
+        }
+    }
+
     @Test @MainActor func deleteAndRedraftMenuActionRequestsConfirmationBeforeDeleting() throws {
         let api = MockMastodonAPI()
         let actionSurface = PostActionSurfaceCenter()

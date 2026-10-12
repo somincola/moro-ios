@@ -4,21 +4,23 @@ struct OpenSourceLicensesView: View {
     @Environment(\.moroTheme) private var theme
 
     var body: some View {
-        List(ThirdPartyLicense.all) { license in
-            NavigationLink {
-                OpenSourceLicenseDetailView(license: license)
-            } label: {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(verbatim: license.name)
-                        .font(theme.typography.body)
-                        .foregroundStyle(theme.colors.textPrimary)
-                    Text(MoroL10n.About.mitLicense)
-                        .font(theme.typography.caption)
-                        .foregroundStyle(theme.colors.textSecondary)
+        MoroSettingsList {
+            ForEach(ThirdPartyLicense.all) { license in
+                NavigationLink {
+                    OpenSourceLicenseDetailView(license: license)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(verbatim: license.name)
+                            .font(theme.typography.body)
+                            .foregroundStyle(theme.colors.textPrimary)
+                        Text(MoroL10n.About.mitLicense)
+                            .font(theme.typography.caption)
+                            .foregroundStyle(theme.colors.textSecondary)
+                    }
+                    .padding(.vertical, 6)
                 }
-                .padding(.vertical, 6)
+                .accessibilityIdentifier("about.license.\(license.name)")
             }
-            .accessibilityIdentifier("about.license.\(license.name)")
         }
         .moroSettingsListChrome()
         .navigationTitle(MoroL10n.About.openSourceLicenses)
@@ -45,14 +47,17 @@ private struct OpenSourceLicenseDetailView: View {
             Text(verbatim: noticeText)
                 .font(theme.typography.caption)
                 .foregroundStyle(theme.colors.textSecondary)
+                .lineSpacing(2)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(theme.spacing.xl)
+                .padding(theme.spacing.l)
+                .moroSettingsCard()
+                .padding(.horizontal, MoroSettingsMetrics.pageHorizontalInset)
+                .padding(.top, 12)
+                .padding(.bottom, 32)
         }
-        .background(theme.colors.background)
+        .moroSettingsPageChrome()
         .navigationTitle(license.name)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(theme.colors.background, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
     }
 }

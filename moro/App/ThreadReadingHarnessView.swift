@@ -100,6 +100,9 @@ final class ThreadFixtureProtocol: URLProtocol, @unchecked Sendable {
                 pending.append(contentsOf: (children[reply.id] ?? []).reversed())
             }
             prepared["/api/v1/statuses/\(status.id)"] = try! encoder.encode(status)
+            prepared["/api/v1/statuses/\(status.id)/reblog"] = try! encoder.encode(
+                status.updating(reblogsCount: status.reblogsCount + 1, reblogged: true))
+            prepared["/api/v1/statuses/\(status.id)/unreblog"] = try! encoder.encode(status)
             prepared["/api/v1/statuses/\(status.id)/context"] = try! encoder.encode(
                 status.id == focus.id ? context : StatusContext(ancestors: ancestors.reversed(), descendants: descendants))
         }

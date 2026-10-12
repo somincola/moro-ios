@@ -6,6 +6,20 @@ import UIKit
 
 @MainActor
 struct ThemeColorTests {
+    @Test(arguments: [ColorScheme.light, .dark], [ColorSchemeContrast.standard, .increased])
+    func settingsCardsKeepSystemBaseColorInsideSheets(_ scheme: ColorScheme, _ contrast: ColorSchemeContrast) {
+        let base = UITraitCollection { traits in
+            traits.userInterfaceStyle = scheme == .dark ? .dark : .light
+            traits.userInterfaceLevel = .base
+            traits.accessibilityContrast = contrast == .increased ? .high : .normal
+        }
+        let sheet = base.modifyingTraits { $0.userInterfaceLevel = .elevated }
+        let colors = MoroColors(colorScheme: scheme, colorSchemeContrast: contrast)
+        #expect(UIColor(colors.groupedSurface).resolvedColor(with: sheet).isEqual(
+            UIColor.secondarySystemGroupedBackground.resolvedColor(with: base)
+        ))
+    }
+
     @Test(arguments: MoroThemeColor.allCases, [ColorScheme.light, .dark])
     func selectionLeavesAuthorAndSemanticColorsUnchanged(_ selection: MoroThemeColor, _ scheme: ColorScheme) {
         let baseline = MoroColors(colorScheme: scheme)

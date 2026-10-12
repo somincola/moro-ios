@@ -935,7 +935,7 @@ struct ComposeView: View {
             
             Toggle(MoroL10n.Compose.pollAllowMultiple, isOn: $viewModel.pollMultiple)
                 .font(theme.typography.body)
-                .moroSettingsSwitchStyle()
+                .moroSettingsSwitchStyle(standalone: true)
             
             Divider()
             

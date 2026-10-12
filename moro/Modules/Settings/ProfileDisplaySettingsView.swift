@@ -15,7 +15,7 @@ struct ProfileDisplaySettingsView: View {
     }
 
     var body: some View {
-        List {
+        MoroSettingsList {
             if scope == .local {
                 Section {
                     Toggle(MoroL10n.ProfileEditing.showTags, isOn: $model.showTags)

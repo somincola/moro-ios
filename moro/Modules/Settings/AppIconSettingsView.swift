@@ -50,7 +50,7 @@ struct AppIconSettingsView: View {
                 Text(appIconSwitchErrorMessage ?? MoroL10n.GeneralSettings.retryLater)
             }
         } header: {
-            Text(MoroL10n.GeneralSettings.appIconSection)
+            MoroSettingsSectionHeader(title: MoroL10n.GeneralSettings.appIconSection)
                 .moroScaledFont(size: 13, weight: .regular)
                 .foregroundStyle(theme.colors.textTertiary)
                 .textCase(.none)
@@ -88,7 +88,7 @@ struct AppIconSettingsView: View {
                             .foregroundStyle(theme.colors.primary500)
                             .background(
                                 Circle()
-                                    .fill(theme.colors.background)
+                                    .fill(theme.colors.groupedSurface)
                             )
                             .offset(x: 5, y: -5)
                     }

@@ -8,7 +8,7 @@ struct PostingSettingsView: View {
     let apiClient: MastodonAPI?
 
     var body: some View {
-        List {
+        MoroSettingsList {
             Section {
                 NavigationLink {
                     PostLanguagePickerView(

@@ -13,7 +13,7 @@ struct ProfileFieldsEditor: View {
     }
 
     var body: some View {
-        List {
+        MoroSettingsList {
             Section {
                 ForEach(model.fields) { field in
                     fieldRow(field)
@@ -175,10 +175,11 @@ private struct ProfileFieldEditor: View {
                     .lineLimit(1...3)
                     .accessibilityIdentifier("profile.field.name")
             } header: {
-                Text(MoroL10n.EditProfile.fieldLabel)
+                MoroSettingsSectionHeader(title: MoroL10n.EditProfile.fieldLabel)
             } footer: {
                 Text("\(draft.name.count)/\(limits.fieldNameLength)").monospacedDigit()
             }
+            .listRowBackground(theme.colors.groupedSurface)
             Section {
                 TextField(MoroL10n.EditProfile.fieldValuePlaceholder, text: $draft.value, axis: .vertical)
                     .lineLimit(3...8)
@@ -186,18 +187,20 @@ private struct ProfileFieldEditor: View {
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("profile.field.value")
             } header: {
-                Text(MoroL10n.EditProfile.fieldValue)
+                MoroSettingsSectionHeader(title: MoroL10n.EditProfile.fieldValue)
             } footer: {
                 Text("\(draft.value.count)/\(limits.fieldValueLength)").monospacedDigit()
             }
+            .listRowBackground(theme.colors.groupedSurface)
             if isExisting {
                 Section {
                     Button(role: .destructive) { onDelete(); dismiss() } label: {
                         Label(MoroL10n.Common.delete, systemImage: "trash")
-                            .frame(minHeight: 44)
+                            .labelStyle(MoroSettingsRowLabelStyle(tint: theme.colors.error))
                     }
                     .accessibilityIdentifier("profile.field.delete")
                 }
+                .listRowBackground(theme.colors.groupedSurface)
             }
         }
         .environment(\.editMode, .constant(.inactive))

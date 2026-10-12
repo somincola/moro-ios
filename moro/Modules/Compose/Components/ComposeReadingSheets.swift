@@ -91,7 +91,7 @@ struct ComposeMediaOrderSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            MoroSettingsList {
                 Section {
                     ForEach(Array(viewModel.mediaAttachments.enumerated()), id: \.element.id) { index, attachment in
                         HStack(spacing: theme.spacing.m) {

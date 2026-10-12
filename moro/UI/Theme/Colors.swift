@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct MoroColors {
     // Color scheme for dynamic color switching
@@ -155,6 +156,16 @@ struct MoroColors {
         @unknown default:
             return Color(hex: 0xFAFAFA)
         }
+    }
+
+    /// Use the system's darker base card color consistently inside the settings sheet.
+    var groupedSurface: Color {
+        let traits = UITraitCollection { traits in
+            traits.userInterfaceStyle = colorScheme == .dark ? .dark : .light
+            traits.userInterfaceLevel = .base
+            traits.accessibilityContrast = colorSchemeContrast == .increased ? .high : .normal
+        }
+        return Color(uiColor: UIColor.secondarySystemGroupedBackground.resolvedColor(with: traits))
     }
 
     /// Surface Base - Primary page surface for cards/containers

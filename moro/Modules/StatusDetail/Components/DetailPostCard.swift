@@ -71,6 +71,7 @@ struct DetailPostCard: View {
                 isBlockingUser: actions.menu?.isBlockingUser,
                 onReply: actions.onReply,
                 onBoost: actions.onBoost,
+                onQuote: actions.onQuote,
                 onLike: actions.onLike,
                 onBookmark: actions.onBookmark,
                 onShare: actions.menu?.onShare,

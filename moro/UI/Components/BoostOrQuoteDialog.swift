@@ -131,7 +131,8 @@ struct QuoteButtonInfo {
         // 3. Whether user follows the author (for followers-only quotes)
         
         // For now, we'll assume quotes are enabled if the status is public/unlisted
-        let isPublicOrUnlisted = status.visibility == "public" || status.visibility == "unlisted"
+        let visibility = status.displayStatus.visibility
+        let isPublicOrUnlisted = visibility == "public" || visibility == "unlisted"
         
         if isPublicOrUnlisted {
             return QuoteButtonInfo(

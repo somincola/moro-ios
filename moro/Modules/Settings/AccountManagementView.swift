@@ -9,11 +9,8 @@ import SwiftUI
 
 struct AccountManagementView: View {
     private enum Metrics {
-        // The inset-grouped list already supplies the page margin. Avoid
-        // stacking another horizontal inset around the account cards.
-        static let accountRowOuterInset: CGFloat = 0
-        static let accountRowInnerInset: CGFloat = 12
-        static let accountContentInset = accountRowOuterInset + accountRowInnerInset
+        static let avatarSize: CGFloat = 40
+        static let avatarSpacing: CGFloat = 12
     }
 
     @Environment(\.moroTheme) private var theme
@@ -44,83 +41,43 @@ struct AccountManagementView: View {
     }
 
     var body: some View {
-        List {
-            ForEach(orderedSessions) { session in
-                accountRow(session)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(
-                        EdgeInsets(
-                            top: 6,
-                            leading: Metrics.accountRowOuterInset,
-                            bottom: 6,
-                            trailing: Metrics.accountRowOuterInset
-                        )
-                    )
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
-                            pendingRemovalSession = session
-                        } label: {
-                            Label(MoroL10n.AccountMgmt.remove, systemImage: "trash")
+        MoroSettingsList {
+            Section {
+                ForEach(orderedSessions) { session in
+                    accountRow(session)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                pendingRemovalSession = session
+                            } label: {
+                                Label(MoroL10n.AccountMgmt.remove, systemImage: "trash")
+                            }
+                            .tint(.red)
                         }
-                        .tint(.red)
-                    }
-            }
-
-            Button {
-                dismiss()
-                onAddAccount()
-            } label: {
-                HStack(spacing: 12) {
-                    ZStack {
-                        Circle()
-                            .stroke(theme.colors.borderSubtle, lineWidth: 1.5)
-                        Image(systemName: "plus")
-                            .moroScaledFont(size: 18, weight: .semibold)
-                            .foregroundStyle(theme.colors.primary500)
-                    }
-                    .frame(width: 44, height: 44)
-
-                    Text(MoroL10n.AccountMgmt.addAccount)
-                        .font(theme.typography.bodyStrong)
-                        .foregroundStyle(theme.colors.textPrimary)
-                    Spacer()
                 }
-                .padding(.horizontal, Metrics.accountRowInnerInset)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(theme.colors.surfaceSubtle)
-                )
-            }
-            .buttonStyle(.plain)
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
-            .listRowInsets(
-                EdgeInsets(
-                    top: 6,
-                    leading: Metrics.accountRowOuterInset,
-                    bottom: 6,
-                    trailing: Metrics.accountRowOuterInset
-                )
-            )
 
-            if !orderedSessions.isEmpty {
-                Text(MoroL10n.AccountMgmt.swipeToRemoveHint)
-                    .font(theme.typography.caption)
-                    .foregroundStyle(theme.colors.textTertiary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(
-                        EdgeInsets(
-                            top: 0,
-                            leading: Metrics.accountContentInset,
-                            bottom: 8,
-                            trailing: Metrics.accountContentInset
-                        )
-                    )
+                Button {
+                    dismiss()
+                    onAddAccount()
+                } label: {
+                    HStack(spacing: Metrics.avatarSpacing) {
+                        Image(systemName: "plus")
+                            .moroScaledFont(size: 17, weight: .medium)
+                            .foregroundStyle(theme.colors.textSecondary)
+                            .frame(width: Metrics.avatarSize, height: Metrics.avatarSize)
+                            .background(Circle().fill(theme.colors.groupedBackground))
+                        Text(MoroL10n.AccountMgmt.addAccount)
+                            .font(.body)
+                            .foregroundStyle(theme.colors.textPrimary)
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + Metrics.avatarSize + Metrics.avatarSpacing }
+            } footer: {
+                if !orderedSessions.isEmpty {
+                    Text(MoroL10n.AccountMgmt.swipeToRemoveHint)
+                }
             }
 
             if let apiClient {
@@ -232,7 +189,7 @@ struct AccountManagementView: View {
     ) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .moroScaledFont(size: 18, weight: .regular)
+                .moroScaledFont(size: MoroSettingsMetrics.iconPointSize, weight: .regular)
                 .foregroundStyle(color ?? theme.colors.textSecondary)
                 .frame(width: iconColumnWidth)
             Text(title)
@@ -248,7 +205,6 @@ struct AccountManagementView: View {
                     .truncationMode(.middle)
             }
         }
-        .frame(minHeight: 44)
         .contentShape(Rectangle())
         .alignmentGuide(.listRowSeparatorLeading) { dimensions in
             dimensions[.leading] + iconColumnWidth + 12
@@ -260,12 +216,12 @@ struct AccountManagementView: View {
         _ session: StoredAccountSession,
         isCurrent: Bool
     ) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Metrics.avatarSpacing) {
             MoroAvatar(
                 imageURL: session.account.avatarAnimatedURL,
                 staticImageURL: session.account.avatarURL,
                 initials: session.account.displayNameInitials,
-                size: 44
+                size: Metrics.avatarSize
             )
 
             VStack(alignment: .leading, spacing: 2) {
@@ -280,24 +236,16 @@ struct AccountManagementView: View {
                     .lineLimit(1)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
             if isCurrent {
-                // Filled accent badge with a punched-out check marks the active sign-in.
-                Image(systemName: "checkmark.circle.fill")
-                    .moroScaledFont(size: 22, weight: .regular)
-                    .foregroundStyle(theme.colors.primary500)
+                MoroSelectionIndicator(isSelected: true)
                     .accessibilityLabel(MoroL10n.AccountMgmt.currentAccount)
             }
         }
+        .padding(.vertical, 4)
         .contentShape(Rectangle())
-        .padding(.horizontal, Metrics.accountRowInnerInset)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(theme.colors.surfaceSubtle)
-        )
+        .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] + Metrics.avatarSize + Metrics.avatarSpacing }
     }
 }
 
@@ -309,15 +257,9 @@ struct ServerAccountActionsView: View {
     let session: StoredAccountSession
 
     var body: some View {
-        List {
+        MoroSettingsList {
             Section {
                 serverAccountDeletionLink(for: session)
-                    .listRowInsets(EdgeInsets(
-                        top: 0,
-                        leading: theme.spacing.contentHorizontalInset,
-                        bottom: 0,
-                        trailing: theme.spacing.contentHorizontalInset
-                    ))
             } footer: {
                 Text(MoroL10n.AccountMgmt.deleteFooter(session.instanceHost))
                     .font(theme.typography.caption)
@@ -349,12 +291,12 @@ struct ServerAccountActionsView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
                 Image(systemName: "arrow.up.right")
-                    .font(theme.typography.caption)
+                    .moroScaledFont(size: 13, weight: .semibold)
                     .accessibilityHidden(true)
             }
             .font(.body)
             .foregroundStyle(.red)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

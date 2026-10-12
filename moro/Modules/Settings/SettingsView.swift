@@ -18,11 +18,10 @@ struct SettingsView: View {
     @ScaledMetric(relativeTo: .body) private var iconColumnWidth = Metrics.iconColumnWidth
 
     private enum Metrics {
-        static let iconColumnWidth: CGFloat = 24
-        static let iconSymbolSize: CGFloat = 18
-        static let minimumRowHeight: CGFloat = 52
-        static let rowVerticalPadding: CGFloat = 10
-        static let rowSpacing: CGFloat = 12
+        static let iconColumnWidth = MoroSettingsMetrics.iconColumnWidth
+        static let iconSymbolSize = MoroSettingsMetrics.iconPointSize
+        static let rowVerticalPadding: CGFloat = 4
+        static let rowSpacing = MoroSettingsMetrics.iconTitleSpacing
         static let accountAvatarSize: CGFloat = 52
     }
 
@@ -50,20 +49,10 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        List {
+        MoroSettingsList {
             menuRows
-                .listRowInsets(EdgeInsets(
-                    top: 0,
-                    leading: MoroLayoutMetrics.contentHorizontalInset,
-                    bottom: 0,
-                    trailing: MoroLayoutMetrics.contentHorizontalInset
-                ))
-                .listRowSeparator(.visible, edges: .bottom)
         }
         .moroSettingsListChrome()
-        .listSectionSpacing(28)
-        .environment(\.defaultMinListRowHeight, Metrics.minimumRowHeight)
-        .listRowSeparatorTint(theme.colors.borderSubtle)
         .moroSettingsSwitchStyle()
         .navigationTitle(MoroL10n.Settings.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -244,8 +233,8 @@ struct SettingsView: View {
                 valueLabel(value)
             }
         }
+        // Height comes from the shared list minimum so every settings row matches.
         .padding(.vertical, Metrics.rowVerticalPadding)
-        .frame(minHeight: Metrics.minimumRowHeight)
         .alignmentGuide(.listRowSeparatorLeading) { dimensions in
             dimensions[.leading] + iconColumnWidth + Metrics.rowSpacing
         }

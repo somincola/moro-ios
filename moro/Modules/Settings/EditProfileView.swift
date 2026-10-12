@@ -11,32 +11,34 @@ struct EditProfileView: View {
     private var account: Account? { appState.currentAccount ?? currentAccount }
 
     var body: some View {
-        List {
+        MoroSettingsList {
             if let account {
                 Section {
-                    VStack(spacing: 0) {
-                        if let url = account.profileHeaderURL {
-                            MoroNetworkImage(url: url)
-                                .frame(height: 112)
-                                .clipped()
-                        }
-                        HStack(spacing: 14) {
-                            MoroAvatar(imageURL: account.profileAvatarURL,
-                                staticImageURL: account.avatarURL,
-                                initials: account.displayNameInitials, size: 60)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(account.displayNameFormatted)
-                                    .font(theme.typography.bodyStrong)
-                                    .foregroundStyle(theme.colors.textPrimary)
-                                Text("@\(account.acct)")
-                                    .font(theme.typography.caption)
-                                    .foregroundStyle(theme.colors.textSecondary)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding(16)
+                    // The banner runs edge to edge; the identity row keeps the
+                    // default insets so it lines up with the rows below.
+                    if let url = account.profileHeaderURL {
+                        MoroNetworkImage(url: url)
+                            .frame(height: 112)
+                            .clipped()
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
                     }
-                    .listRowInsets(EdgeInsets())
+                    HStack(spacing: 14) {
+                        MoroAvatar(imageURL: account.profileAvatarURL,
+                            staticImageURL: account.avatarURL,
+                            initials: account.displayNameInitials, size: 60)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(account.displayNameFormatted)
+                                .font(theme.typography.bodyStrong)
+                                .foregroundStyle(theme.colors.textPrimary)
+                            Text("@\(account.acct)")
+                                .font(theme.typography.caption)
+                                .foregroundStyle(theme.colors.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.vertical, 6)
+                    .listRowSeparator(.hidden)
                 }
             }
             Section {

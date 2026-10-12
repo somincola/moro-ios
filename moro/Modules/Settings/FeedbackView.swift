@@ -26,7 +26,7 @@ struct FeedbackView: View {
     @State private var draft: ComposeDraft?
 
     var body: some View {
-        List {
+        MoroSettingsList {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(MoroL10n.AppSupport.invitation).font(.headline)

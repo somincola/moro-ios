@@ -14,23 +14,50 @@ struct DisplaySettingsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                appearanceSection
-                fontSizeSection
-                themeColorSection
-                appIconLink
-                Text(MoroL10n.Display.footer)
-                    .font(theme.typography.caption)
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        MoroSettingsList {
+            Section {
+                appearanceTiles
+                    .padding(.vertical, 6)
+            } header: {
+                MoroSettingsSectionHeader(title: MoroL10n.Settings.appearance)
+                    .accessibilityIdentifier("display.section.appearance")
             }
-            .frame(maxWidth: 560)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 28)
-            .frame(maxWidth: .infinity)
+
+            Section {
+                fontSizeControls
+                    .padding(.vertical, 8)
+            } header: {
+                HStack(alignment: .firstTextBaseline) {
+                    MoroSettingsSectionHeader(title: MoroL10n.Display.fontSize)
+                    Spacer(minLength: 8)
+                    Text(previewFontSize.title)
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textSecondary)
+                        .textCase(nil)
+                }
+            } footer: {
+                Text(MoroL10n.Display.fontSizeHint)
+            }
+
+            Section {
+                themeColorOptions
+                    .padding(.vertical, 6)
+            } header: {
+                MoroSettingsSectionHeader(title: MoroL10n.Display.themeColor)
+                    .accessibilityIdentifier("display.section.theme-color")
+            } footer: {
+                Text(settings.themeColor == .custom
+                    ? "\(MoroL10n.Display.themeColorHint)\n\(MoroL10n.Display.customColorHint)"
+                    : MoroL10n.Display.themeColorHint)
+            }
+
+            Section {
+                appIconLink
+            } footer: {
+                Text(MoroL10n.Display.footer)
+            }
         }
-        .background(theme.colors.surfaceBase)
+        .moroSettingsListChrome()
         .navigationTitle(MoroL10n.Settings.appearanceDisplay)
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: settings.themeColor)
@@ -41,53 +68,31 @@ struct DisplaySettingsView: View {
     }
 
     private var appIconLink: some View {
-        VStack(spacing: 12) {
-            Divider().overlay(theme.colors.borderSubtle)
-            NavigationLink {
-                List { AppIconSettingsView() }
-                    .moroSettingsListChrome()
-                    .navigationTitle(MoroL10n.GeneralSettings.appIconSection)
-                    .navigationBarTitleDisplayMode(.inline)
-            } label: {
-                HStack(spacing: 12) {
-                    Text(MoroL10n.GeneralSettings.appIconSection)
-                        .font(theme.typography.body)
-                        .foregroundStyle(theme.colors.textPrimary)
-                    Spacer(minLength: 8)
-                    Image(settings.appIcon.previewAssetName)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 28, height: 28)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        .accessibilityHidden(true)
-                    Image(systemName: "chevron.right")
-                        .font(theme.typography.caption)
-                        .foregroundStyle(theme.colors.textTertiary)
-                }
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
+        NavigationLink {
+            MoroSettingsList { AppIconSettingsView() }
+                .moroSettingsListChrome()
+                .navigationTitle(MoroL10n.GeneralSettings.appIconSection)
+                .navigationBarTitleDisplayMode(.inline)
+        } label: {
+            HStack(spacing: 12) {
+                Text(MoroL10n.GeneralSettings.appIconSection)
+                    .foregroundStyle(theme.colors.textPrimary)
+                Spacer(minLength: 8)
+                Image(settings.appIcon.previewAssetName)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 30, height: 30)
+                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .accessibilityHidden(true)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(MoroL10n.GeneralSettings.appIconSection)
-            .accessibilityValue(settings.appIcon.title)
-            .accessibilityIdentifier("settings.appIcon")
         }
+        .accessibilityLabel(MoroL10n.GeneralSettings.appIconSection)
+        .accessibilityValue(settings.appIcon.title)
+        .accessibilityIdentifier("settings.appIcon")
     }
 
-    private var fontSizeSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(MoroL10n.Display.fontSize)
-                    .font(theme.typography.subtitle)
-                    .foregroundStyle(theme.colors.textPrimary)
-                    .accessibilityAddTraits(.isHeader)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text(previewFontSize.title)
-                    .font(theme.typography.caption)
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-
+    private var fontSizeControls: some View {
+        VStack(alignment: .leading, spacing: 16) {
             postPreview
 
             HStack(spacing: 12) {
@@ -114,11 +119,6 @@ struct DisplaySettingsView: View {
                     .accessibilityHidden(true)
             }
             .foregroundStyle(theme.colors.textSecondary)
-
-            Text(MoroL10n.Display.fontSizeHint)
-                .font(theme.typography.caption)
-                .foregroundStyle(theme.colors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -132,24 +132,16 @@ struct DisplaySettingsView: View {
         if settings.postFontSize != size { settings.postFontSize = size }
     }
 
-    private var appearanceSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(MoroL10n.Settings.appearance)
-                .font(theme.typography.subtitle)
-                .foregroundStyle(theme.colors.textPrimary)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("display.section.appearance")
-
-            LazyVGrid(
-                columns: Array(
-                    repeating: GridItem(.flexible(), spacing: 12),
-                    count: dynamicTypeSize.isAccessibilitySize ? 1 : 3
-                ),
-                spacing: 12
-            ) {
-                ForEach(AppSettings.Appearance.allCases, id: \.rawValue) { appearance in
-                    appearanceCard(appearance)
-                }
+    private var appearanceTiles: some View {
+        LazyVGrid(
+            columns: Array(
+                repeating: GridItem(.flexible(), spacing: 10),
+                count: dynamicTypeSize.isAccessibilitySize ? 1 : 3
+            ),
+            spacing: 10
+        ) {
+            ForEach(AppSettings.Appearance.allCases, id: \.rawValue) { appearance in
+                appearanceCard(appearance)
             }
         }
     }
@@ -175,17 +167,16 @@ struct DisplaySettingsView: View {
                     .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? nil : 36)
             }
             .font(theme.typography.body)
-            .foregroundStyle(theme.colors.textPrimary)
+            .foregroundStyle(selected ? theme.colors.textPrimary : theme.colors.textSecondary)
             .padding(.horizontal, 12)
-            .padding(.vertical, 18)
-            .frame(maxWidth: .infinity, minHeight: 104)
-            .background(selected ? theme.colors.surfaceSubtle : .clear)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, minHeight: 100)
+            .background(theme.colors.groupedBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(selected ? theme.colors.textPrimary : theme.colors.borderSubtle, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(selected ? theme.colors.textPrimary : .clear, lineWidth: 1.5)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(appearance.title)
@@ -193,42 +184,19 @@ struct DisplaySettingsView: View {
         .accessibilityIdentifier("display.appearance.\(appearance.rawValue)")
     }
 
-    private var themeColorSection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(MoroL10n.Display.themeColor)
-                    .font(theme.typography.subtitle)
-                    .foregroundStyle(theme.colors.textPrimary)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("display.section.theme-color")
-                Text(MoroL10n.Display.themeColorHint)
-                    .font(theme.typography.body)
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .lineSpacing(3)
+    private var themeColorOptions: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 4) {
+                colorOptions
             }
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 4) {
-                    colorOptions
-                }
-                LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4),
-                    spacing: 16
-                ) {
-                    colorOptions
-                }
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4),
+                spacing: 16
+            ) {
+                colorOptions
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            if settings.themeColor == .custom {
-                Text(MoroL10n.Display.customColorHint)
-                    .font(theme.typography.caption)
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -240,18 +208,20 @@ struct DisplaySettingsView: View {
             .labelsHidden()
             .scaleEffect(44.0 / 28)
             .frame(width: 44, height: 44)
+            // Traits and identifier belong to the well alone; applied after the
+            // overlay they would also expose the decorative checkmark to VoiceOver.
+            .accessibilityAddTraits(settings.themeColor == .custom ? .isSelected : [])
+            .accessibilityIdentifier("display.color.custom")
             .overlay(alignment: .topTrailing) {
                 if settings.themeColor == .custom {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(theme.colors.textPrimary)
-                        .background(theme.colors.surfaceBase, in: Circle())
+                        .background(theme.colors.groupedSurface, in: Circle())
                         .accessibilityHidden(true)
                         .allowsHitTesting(false)
                 }
             }
-            .accessibilityAddTraits(settings.themeColor == .custom ? .isSelected : [])
-            .accessibilityIdentifier("display.color.custom")
     }
 
     private var customColor: Binding<Color> {
@@ -304,7 +274,7 @@ struct DisplaySettingsView: View {
                     .font(.system(size: 20))
                     .foregroundStyle(theme.colors.textSecondary)
                     .frame(width: 40, height: 40)
-                    .background(theme.colors.surfaceSubtle, in: RoundedRectangle(cornerRadius: 12))
+                    .background(theme.colors.groupedSurface, in: RoundedRectangle(cornerRadius: 12))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: "Moro")
@@ -324,10 +294,11 @@ struct DisplaySettingsView: View {
             }
         }
         .padding(16)
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(theme.colors.borderSubtle, lineWidth: 1)
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            theme.colors.groupedBackground,
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("display.preview")
     }

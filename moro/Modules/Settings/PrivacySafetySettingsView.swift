@@ -23,7 +23,7 @@ struct PrivacySafetySettingsView: View {
     }
     
     var body: some View {
-        List {
+        MoroSettingsList {
             Section {
                 Toggle(MoroL10n.PrivacySafety.toggleApproveFollows, isOn: privacyBoolBinding(\.manuallyApproveFollowRequests))
                     .accessibilityIdentifier("settings.privacy.approveFollows")
@@ -105,38 +105,17 @@ struct PrivacySafetySettingsView: View {
         }
     }
     
-    @ViewBuilder
+    /// Presets read like the choice pages: title + detail with the shared selection mark.
     private func privacyPresetButton(title: String, description: String, preset: PrivacyPreset) -> some View {
-        Button(action: {
+        MoroChoiceRow(
+            title: title,
+            detail: description,
+            isSelected: preset.matches(settings: settings)
+        ) {
             applyPrivacyMutation { settings in
                 preset.apply(to: settings)
             }
-        }) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(theme.typography.body)
-                        .fontWeight(.medium)
-                        .foregroundStyle(theme.colors.textPrimary)
-                    
-                    Text(description)
-                        .font(theme.typography.caption)
-                        .foregroundStyle(theme.colors.textSecondary)
-                }
-                
-                Spacer()
-                
-                if preset.matches(settings: settings) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(theme.colors.primary500)
-                } else {
-                    Image(systemName: "circle")
-                        .foregroundStyle(theme.colors.textTertiary)
-                }
-            }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
     }
 
     private func privacyBoolBinding(
@@ -206,7 +185,7 @@ struct ContentSafetySettingsView: View {
     let apiClient: MastodonAPI
 
     var body: some View {
-        List {
+        MoroSettingsList {
             Section {
                 NavigationLink {
                     AccountGovernanceView(kind: .muted, apiClient: apiClient)

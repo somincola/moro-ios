@@ -3016,7 +3016,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Stummschaltung, Sperren & Filter"
+            "value" : "Inhaltskontrolle"
           }
         },
         "en" : {
@@ -3028,43 +3028,43 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Silencios, bloqueos y filtros"
+            "value" : "Control de contenido"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Masquage, blocage et filtres"
+            "value" : "Contrôle du contenu"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Silenziamenti, blocchi e filtri"
+            "value" : "Controllo dei contenuti"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ミュート・ブロック・フィルター"
+            "value" : "コンテンツ管理"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Silenciamentos, bloqueios e filtros"
+            "value" : "Controlo de conteúdo"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "静音、屏蔽与过滤"
+            "value" : "内容控制"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "靜音、封鎖與過濾"
+            "value" : "內容控制"
           }
         }
       }
@@ -17530,55 +17530,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zitieren und teilen"
+            "value" : "Zitieren"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quote Boost"
+            "value" : "Quote"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Citar impulso"
+            "value" : "Citar"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Booster avec citation"
+            "value" : "Citer"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cita e condividi"
+            "value" : "Cita"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "引用ブースト"
+            "value" : "引用"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Citar ao Partilhar"
+            "value" : "Citar"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "引用转发"
+            "value" : "引用"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "引用轉發"
+            "value" : "引用"
           }
         }
       }

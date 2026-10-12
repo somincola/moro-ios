@@ -52,7 +52,7 @@ private struct NotificationSettingsContentView: View {
     }
 
     var body: some View {
-        List {
+        MoroSettingsList {
             pushPreferencesSection
             notificationIntakeSection
         }
@@ -310,7 +310,7 @@ private struct NotificationSettingsContentView: View {
                 selection: selection
             )
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .foregroundStyle(theme.colors.textPrimary)

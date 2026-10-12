@@ -20,6 +20,7 @@ struct PostToolbar: View {
     var isBlockingUser: Bool? = nil
     var onReply: (() -> Void)? = nil
     var onBoost: (() -> Void)? = nil
+    var onQuote: (() -> Void)? = nil
     var onLike: (() -> Void)? = nil
     var onBookmark: (() -> Void)? = nil
     var onShare: (() -> Void)? = nil
@@ -141,6 +142,7 @@ struct PostToolbar: View {
             onCopyLink: onCopyLink,
             onCopyText: onCopyText,
             onOpenInBrowser: onOpenInBrowser,
+            onQuote: onQuote,
             onEdit: onEdit,
             onMuteUser: onMuteUser,
             onBlockUser: onBlockUser,

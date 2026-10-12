@@ -9,7 +9,7 @@ struct FeaturedTagsEditor: View {
     }
 
     var body: some View {
-        List {
+        MoroSettingsList {
             Section {
                 TextField(MoroL10n.ProfileEditing.tagPlaceholder, text: $model.input)
                     .textInputAutocapitalization(.never)
@@ -52,7 +52,7 @@ struct FeaturedTagsEditor: View {
                             .frame(minHeight: 44)
                         }
                     }
-                } header: { Text(MoroL10n.ProfileEditing.suggestions) }
+                } header: { MoroSettingsSectionHeader(title: MoroL10n.ProfileEditing.suggestions) }
             }
 
             Section {
