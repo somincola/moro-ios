@@ -465,6 +465,9 @@ public enum MoroL10n {
         // Media toolbar
         public static var mediaPhotoLibrary: String { text("compose.media.photoLibrary") }
         public static var mediaTakePhotoOrVideo: String { text("compose.media.takePhotoOrVideo") }
+        public static var cameraAccessTitle: String { text("compose.camera.accessTitle") }
+        public static var cameraAccessMessage: String { text("compose.camera.accessMessage") }
+        public static var cameraAccessOpenSettings: String { text("compose.camera.openSettings") }
         public static var mediaBrowseFiles: String { text("compose.media.browseFiles") }
 
         // Visibility

@@ -5,6 +5,7 @@
 //  Compose view for creating new posts, replies, quotes, and editing statuses.
 //
 
+import AVFoundation
 import SwiftUI
 import UIKit
 import PhotosUI
@@ -152,6 +153,7 @@ struct ComposeView: View {
     
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var destination: ComposeDestination?
+    @State private var showsCameraAccessAlert = false
     @State private var isExpandedEditor = false
     @State private var inputMode: ComposeInputMode = .keyboard
     @State private var emojiPickerHeight = ComposeInputLayout.defaultEmojiPickerHeight
@@ -385,6 +387,16 @@ struct ComposeView: View {
                     discardDraftAndDismiss()
                 }
                 Button(MoroL10n.Common.cancel, role: .cancel) { }
+            }
+            .alert(MoroL10n.Compose.cameraAccessTitle, isPresented: $showsCameraAccessAlert) {
+                Button(MoroL10n.Compose.cameraAccessOpenSettings) {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                Button(MoroL10n.Common.cancel, role: .cancel) { }
+            } message: {
+                Text(MoroL10n.Compose.cameraAccessMessage)
             }
             .sheet(item: sheetDestination) { destination in
                 composeSheet(for: destination)
@@ -1028,7 +1040,13 @@ struct ComposeView: View {
                             // iPad and the Simulator can be camera-less; presenting
                             // .camera anyway raises an exception.
                             guard UIImagePickerController.isSourceTypeAvailable(.camera) else { return }
-                            destination = .camera
+                            Task {
+                                if await CameraAccess.requestIfNeeded() {
+                                    destination = .camera
+                                } else {
+                                    showsCameraAccessAlert = true
+                                }
+                            }
                         }) {
                             HStack(spacing: theme.spacing.s) {
                                 Image(systemName: "camera")
@@ -1944,6 +1962,25 @@ struct ComposeView: View {
 }
 
 // MARK: - Camera View
+
+/// Asks for camera access before the picker opens, so the one-time system prompt
+/// is Moro's own (no privacy shield behind it) and a denial gets a clear path to
+/// Settings instead of a black camera screen.
+@MainActor
+enum CameraAccess {
+    static func requestIfNeeded() async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            return true
+        case .notDetermined:
+            return await PrivacyProtectionCenter.shared.whilePresentingSystemPrompt {
+                await AVCaptureDevice.requestAccess(for: .video)
+            }
+        default:
+            return false
+        }
+    }
+}
 
 struct CameraView: UIViewControllerRepresentable {
     let onImageCaptured: (UIImage) -> Void
