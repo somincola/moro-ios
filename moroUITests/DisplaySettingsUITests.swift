@@ -154,6 +154,15 @@ final class DisplaySettingsUITests: XCTestCase {
             .press(forDuration: 0.05, thenDragTo: slider.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)))
         XCTAssertEqual(slider.value as? String, "Small")
         XCTAssertEqual(slider.frame.midY, trackY, accuracy: 1)
+        // The thumb is held on a detent between steps; a slow drag must still walk all of them.
+        slider.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)).press(
+            forDuration: 0.05,
+            thenDragTo: slider.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)),
+            withVelocity: XCUIGestureVelocity(80),
+            thenHoldForDuration: 0.1
+        )
+        XCTAssertEqual(slider.value as? String, "Extra large")
+        XCTAssertEqual(slider.normalizedSliderPosition, 1, accuracy: 0.02)
         slider.adjust(toNormalizedSliderPosition: 0.43)
         XCTAssertEqual(slider.value as? String, "Standard", "Release between detents must select the nearest size")
         XCTAssertEqual(slider.normalizedSliderPosition, 1.0 / 3, accuracy: 0.02)

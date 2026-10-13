@@ -61,7 +61,6 @@ struct DisplaySettingsView: View {
         .navigationTitle(MoroL10n.Settings.appearanceDisplay)
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: settings.themeColor)
-        .sensoryFeedback(.selection, trigger: previewFontSize)
         .onChange(of: settings.postFontSize) { _, size in
             fontSizeStep = Double(MoroPostFontSize.allCases.firstIndex(of: size) ?? 1)
         }
@@ -113,6 +112,7 @@ struct DisplaySettingsView: View {
                         }
                     }
                     .padding(.horizontal, 14)
+                    .animation(.snappy(duration: 0.18), value: previewFontSize)
                     .accessibilityHidden(true)
                 }
                 Text(verbatim: "Aa").moroScaledFont(size: 20)
@@ -325,7 +325,9 @@ struct DisplaySettingsView: View {
     }
 }
 
-// Observe touch release separately because iOS 26 Slider editing callbacks can stay active.
+/// A four-detent slider: the thumb never rests between sizes. While dragging it
+/// clicks from detent to detent with a light selection haptic, and release commits.
+/// Touch release is observed separately because iOS 26 editing callbacks can stay active.
 private struct PostFontSizeSlider: UIViewRepresentable {
     @Binding var value: Double
     let tint: UIColor
@@ -335,18 +337,20 @@ private struct PostFontSizeSlider: UIViewRepresentable {
         let slider = FontSizeSlider()
         slider.minimumValue = 0
         slider.maximumValue = Float(MoroPostFontSize.allCases.count - 1)
+        slider.value = Float(value.rounded())
         slider.accessibilityIdentifier = "display.font-size"
         slider.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
         slider.addTarget(
             context.coordinator, action: #selector(Coordinator.commit(_:)),
             for: .editingDidEnd
         )
-        let tracking = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.released(_:)))
+        let tracking = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tracked(_:)))
         tracking.minimumPressDuration = 0
         tracking.allowableMovement = .greatestFiniteMagnitude
         tracking.cancelsTouchesInView = false
         tracking.delegate = context.coordinator
         slider.addGestureRecognizer(tracking)
+        context.coordinator.attach(to: slider)
         return slider
     }
 
@@ -354,10 +358,11 @@ private struct PostFontSizeSlider: UIViewRepresentable {
         context.coordinator.parent = self
         slider.tintColor = tint
         slider.accessibilityLabel = MoroL10n.Display.fontSize
-        let index = min(max(Int(value.rounded()), 0), MoroPostFontSize.allCases.count - 1)
-        slider.accessibilityValue = MoroPostFontSize.allCases[index].title
-        if slider.value != Float(value) {
-            slider.setValue(Float(value), animated: false)
+        let step = Float(min(max(value.rounded(), 0), Double(MoroPostFontSize.allCases.count - 1)))
+        slider.accessibilityValue = MoroPostFontSize.allCases[Int(step)].title
+        context.coordinator.detent = step
+        if slider.value != step {
+            slider.setValue(step, animated: false)
         }
     }
 
@@ -365,21 +370,62 @@ private struct PostFontSizeSlider: UIViewRepresentable {
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var parent: PostFontSizeSlider
+        /// The detent the thumb currently rests on.
+        var detent: Float = 0
+        private var feedback: UISelectionFeedbackGenerator?
 
         init(_ parent: PostFontSizeSlider) { self.parent = parent }
 
-        @objc func changed(_ slider: UISlider) {
-            parent.value = Double(slider.value)
+        func attach(to slider: UISlider) {
+            detent = slider.value
+            feedback = UISelectionFeedbackGenerator(view: slider)
         }
 
-        @objc func released(_ gesture: UILongPressGestureRecognizer) {
-            guard gesture.state == .ended || gesture.state == .cancelled,
-                let slider = gesture.view as? UISlider
-            else { return }
-            // The native slider applies its final value later in the same touch event.
-            DispatchQueue.main.async { [weak self, weak slider] in
-                guard let self, let slider else { return }
-                self.commit(slider)
+        @objc func changed(_ slider: UISlider) {
+            let step = slider.value.rounded()
+            guard step != detent else {
+                // Hold the thumb on its detent; the finger has not reached the next one yet.
+                slider.setValue(step, animated: false)
+                return
+            }
+            detent = step
+            // Glide the short distance to the new detent rather than teleporting.
+            if UIAccessibility.isReduceMotionEnabled {
+                slider.setValue(step, animated: false)
+            } else {
+                UIView.animate(
+                    withDuration: 0.22, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0,
+                    options: [.beginFromCurrentState, .allowUserInteraction]
+                ) {
+                    slider.setValue(step, animated: false)
+                    slider.layoutIfNeeded()
+                }
+            }
+            if slider.isTracking || isTouching {
+                feedback?.selectionChanged(at: thumbCenter(of: slider))
+                feedback?.prepare()
+            }
+            parent.value = Double(step)
+        }
+
+        private var isTouching = false
+
+        @objc func tracked(_ gesture: UILongPressGestureRecognizer) {
+            switch gesture.state {
+            case .began:
+                isTouching = true
+                // Warm the Taptic Engine so the first detent clicks without latency.
+                feedback?.prepare()
+            case .ended, .cancelled, .failed:
+                isTouching = false
+                guard let slider = gesture.view as? UISlider else { return }
+                // The native slider applies its final value later in the same touch event.
+                DispatchQueue.main.async { [weak self, weak slider] in
+                    guard let self, let slider else { return }
+                    self.commit(slider)
+                }
+            default:
+                break
             }
         }
 
@@ -389,9 +435,18 @@ private struct PostFontSizeSlider: UIViewRepresentable {
 
         @objc func commit(_ slider: UISlider) {
             let step = slider.value.rounded()
-            slider.setValue(step, animated: !UIAccessibility.isReduceMotionEnabled)
+            if slider.value != step {
+                slider.setValue(step, animated: !UIAccessibility.isReduceMotionEnabled)
+            }
+            detent = step
             parent.value = Double(step)
             parent.onCommit()
+        }
+
+        private func thumbCenter(of slider: UISlider) -> CGPoint {
+            let track = slider.trackRect(forBounds: slider.bounds)
+            let thumb = slider.thumbRect(forBounds: slider.bounds, trackRect: track, value: slider.value)
+            return CGPoint(x: thumb.midX, y: thumb.midY)
         }
     }
 
