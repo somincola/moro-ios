@@ -220,6 +220,84 @@ struct PushSettingsSyncTests {
         #expect(store.failedSettings.isEmpty)
     }
 
+    @Test func relaunchRecreatesSubscriptionWithTheLastConfirmedChoice() async throws {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(userDefaults: defaults)
+        let api = MockMastodonAPI()
+        var server: PushSubscription? = subscription(.standardDefaults)
+        api.fetchPushSubscriptionHandler = {
+            guard let server else { throw APIError.http(statusCode: 404, data: nil) }
+            return server
+        }
+        api.updatePushSubscriptionHandler = { alerts, policy in
+            server = subscription(alerts, policy: policy)
+            return server!
+        }
+        var created = [(PushSubscription.Alerts, String?)]()
+        api.createPushSubscriptionHandler = { alerts, policy in
+            created.append((alerts, policy))
+            server = subscription(alerts, policy: policy)
+            return server!
+        }
+        settings.receiveFavourites = false
+        settings.notificationPolicy = .followed
+        let first = PushSubscriptionCoordinator(userDefaults: defaults)
+        first.saveSettings(.init(settings: settings), apiClient: api, accountKey: "a")
+        try await finish(first, accountKey: "a")
+
+        // The server dropped the subscription while the app was closed.
+        server = nil
+        let relaunched = PushSubscriptionCoordinator(userDefaults: defaults)
+        await relaunched.ensureSubscription(apiClient: api, sessionKey: "a", deviceToken: "00ff")
+        try await finish(relaunched, accountKey: "a")
+        let recreated = try #require(created.first)
+        #expect(!recreated.0.favourite && recreated.0.mention)
+        #expect(recreated.1 == "following")
+        #expect(server?.alerts.favourite == false)
+    }
+
+    @Test func failedSubscriptionCheckNeverRecreatesWithDefaults() async throws {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = PushSubscriptionCoordinator(userDefaults: defaults)
+        let api = MockMastodonAPI()
+        api.fetchPushSubscriptionHandler = { throw URLError(.notConnectedToInternet) }
+        var creates = 0
+        api.createPushSubscriptionHandler = { alerts, policy in
+            creates += 1
+            return subscription(alerts, policy: policy)
+        }
+        await store.ensureSubscription(apiClient: api, sessionKey: "a", deviceToken: "00ff")
+        #expect(creates == 0)
+
+        // The check is retried on the next activation once the network is back.
+        api.fetchPushSubscriptionHandler = { throw APIError.http(statusCode: 404, data: nil) }
+        await store.ensureSubscription(apiClient: api, sessionKey: "a", deviceToken: "00ff")
+        #expect(creates == 1)
+    }
+
+    @Test func staleSubscriptionKeepsTheServerChoiceWhenRebound() async throws {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = PushSubscriptionCoordinator(userDefaults: defaults)
+        let api = MockMastodonAPI()
+        var stale = PushSubscription.Alerts.standardDefaults
+        stale.mention = false
+        stale.reblog = false
+        stale.status = true
+        api.fetchPushSubscriptionHandler = { subscription(stale, policy: "follower") }
+        var created: (PushSubscription.Alerts, String?)?
+        api.createPushSubscriptionHandler = { alerts, policy in
+            created = (alerts, policy)
+            return subscription(alerts, policy: policy)
+        }
+        await store.ensureSubscription(apiClient: api, sessionKey: "a", deviceToken: "00ff")
+        let rebound = try #require(created)
+        #expect(!rebound.0.mention && !rebound.0.reblog && rebound.0.status && rebound.0.favourite)
+        #expect(rebound.1 == "follower")
+    }
+
     private func makeDefaults() -> (UserDefaults, String) {
         let suite = "PushSettingsSyncTests.\(UUID().uuidString)"
         return (UserDefaults(suiteName: suite)!, suite)

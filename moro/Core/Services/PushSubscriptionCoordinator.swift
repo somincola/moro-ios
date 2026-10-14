@@ -38,6 +38,15 @@ final class PushSubscriptionCoordinator: ObservableObject {
             followers = settings.receiveNewFollowers
         }
 
+        /// The choice a server subscription currently carries.
+        init(subscription: PushSubscription) {
+            policy = subscription.policy ?? "all"
+            mentions = subscription.alerts.mention
+            boosts = subscription.alerts.reblog
+            favourites = subscription.alerts.favourite
+            followers = subscription.alerts.follow
+        }
+
         func applying(to alerts: PushSubscription.Alerts) -> PushSubscription.Alerts {
             var alerts = alerts
             alerts.mention = mentions
@@ -52,9 +61,12 @@ final class PushSubscriptionCoordinator: ObservableObject {
     @Published private(set) var savingSettings = Set<String>()
     @Published private(set) var failedSettings = Set<String>()
     private static let pendingSettingsKey = "push_pending_settings_v1"
+    /// Last choice confirmed by each account's server. Persisted so a subscription
+    /// recreated after relaunch (new token, expired record) keeps the user's choice.
+    private static let syncedSettingsKey = "push_synced_settings_v1"
     private let userDefaults: UserDefaults
     private var pendingSettings: [String: Preferences]
-    private var syncedSettings: [String: Preferences] = [:]
+    private var syncedSettings: [String: Preferences]
     private var settingsTasks: [String: Task<Void, Never>] = [:]
     private var settingsWorkIDs: [String: UUID] = [:]
 
@@ -67,7 +79,12 @@ final class PushSubscriptionCoordinator: ObservableObject {
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
-        pendingSettings = userDefaults.data(forKey: Self.pendingSettingsKey)
+        pendingSettings = Self.loadSettings(userDefaults, key: Self.pendingSettingsKey)
+        syncedSettings = Self.loadSettings(userDefaults, key: Self.syncedSettingsKey)
+    }
+
+    private static func loadSettings(_ userDefaults: UserDefaults, key: String) -> [String: Preferences] {
+        userDefaults.data(forKey: key)
             .flatMap { try? JSONDecoder().decode([String: Preferences].self, from: $0) } ?? [:]
     }
 
@@ -103,7 +120,7 @@ final class PushSubscriptionCoordinator: ObservableObject {
                     _ = try await client.updatePushSubscription(
                         alerts: preferences.applying(to: subscription.alerts), policy: preferences.policy)
                     try Task.checkCancellation()
-                    self.syncedSettings[key] = preferences
+                    self.recordSynced(preferences, for: key)
                     if self.pendingSettings[key] == preferences {
                         self.pendingSettings.removeValue(forKey: key)
                         self.persistPendingSettings()
@@ -126,13 +143,28 @@ final class PushSubscriptionCoordinator: ObservableObject {
         savingSettings.remove(accountKey)
         failedSettings.remove(accountKey)
         persistPendingSettings()
+        persistSyncedSettings()
+    }
+
+    private func recordSynced(_ preferences: Preferences, for key: String) {
+        guard syncedSettings[key] != preferences else { return }
+        syncedSettings[key] = preferences
+        persistSyncedSettings()
     }
 
     private func persistPendingSettings() {
-        if pendingSettings.isEmpty {
-            userDefaults.removeObject(forKey: Self.pendingSettingsKey)
-        } else if let data = try? JSONEncoder().encode(pendingSettings) {
-            userDefaults.set(data, forKey: Self.pendingSettingsKey)
+        persist(pendingSettings, key: Self.pendingSettingsKey)
+    }
+
+    private func persistSyncedSettings() {
+        persist(syncedSettings, key: Self.syncedSettingsKey)
+    }
+
+    private func persist(_ settings: [String: Preferences], key: String) {
+        if settings.isEmpty {
+            userDefaults.removeObject(forKey: key)
+        } else if let data = try? JSONEncoder().encode(settings) {
+            userDefaults.set(data, forKey: key)
         }
     }
 
@@ -184,24 +216,39 @@ final class PushSubscriptionCoordinator: ObservableObject {
         let expectedEndpoint = PushRegistrationCenter.relayEndpointURL(
             deviceTokenHex: deviceToken, sessionKey: sessionKey)
 
-        // Already bound to this device? Nothing to do.
-        if let existing = try? await apiClient.fetchPushSubscription(),
-            existing.endpoint == expectedEndpoint
-        {
+        let existing: PushSubscription?
+        do {
+            existing = try await apiClient.fetchPushSubscription()
+        } catch let error where Self.isMissingSubscription(error) {
+            existing = nil
+        } catch {
+            // Offline or a server hiccup says nothing about the subscription. Recreating
+            // here would reset the user's alerts to defaults; retry on the next activation.
+            AppLogger.error("[Push] subscription check failed: \(error)")
+            return
+        }
+
+        // Already bound to this device? Remember the server's choice and stop.
+        if let existing, existing.endpoint == expectedEndpoint {
+            if let sessionKey { recordSynced(Preferences(subscription: existing), for: sessionKey) }
             ensuredKeys.insert(key)
             resumeSettings(apiClient: apiClient, sessionKey: sessionKey)
             return
         }
 
         // Missing, or pointing at a stale token/relay: (re)create. Mastodon's
-        // POST replaces any previous subscription for this token.
+        // POST replaces any previous subscription for this token. Carry the user's
+        // choice over: unsent edit, then last confirmed choice, then whatever the
+        // stale subscription still holds; defaults only for a brand-new account.
         do {
             let preferences = sessionKey.flatMap { pendingSettings[$0] ?? syncedSettings[$0] }
+                ?? existing.map(Preferences.init(subscription:))
+            let baseAlerts = existing?.alerts ?? .standardDefaults
             _ = try await apiClient.createPushSubscription(
                 endpoint: expectedEndpoint,
                 p256dh: try WebPushKeyStore.publicKeyBase64URL(),
                 auth: try WebPushKeyStore.authSecretBase64URL(),
-                alerts: preferences?.applying(to: .standardDefaults) ?? .standardDefaults,
+                alerts: preferences?.applying(to: baseAlerts) ?? baseAlerts,
                 policy: preferences?.policy ?? "all"
             )
             ensuredKeys.insert(key)
@@ -214,6 +261,11 @@ final class PushSubscriptionCoordinator: ObservableObject {
             // surfaces the state for manual repair.
             AppLogger.error("[Push] automatic subscription failed: \(error)")
         }
+    }
+
+    /// Mastodon answers 404 when the token has no Web Push subscription yet.
+    private static func isMissingSubscription(_ error: Error) -> Bool {
+        (error as? APIError)?.httpStatusCode == 404
     }
 }
 
