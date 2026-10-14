@@ -369,6 +369,9 @@ private struct PostFontSizeSlider: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        // UIKit bridge released with the view; keep teardown off the main-actor
+        // executor (iOS 26.0–26.2 runtime crash, see docs/IOS26_DEINIT_COMPATIBILITY.md).
+        nonisolated deinit {}
         var parent: PostFontSizeSlider
         /// The detent the thumb currently rests on.
         var detent: Float = 0
@@ -451,6 +454,8 @@ private struct PostFontSizeSlider: UIViewRepresentable {
     }
 
     final class FontSizeSlider: UISlider {
+        nonisolated deinit {}
+
         override func accessibilityIncrement() {
             value = min(value.rounded() + 1, maximumValue)
             sendActions(for: [.valueChanged, .editingDidEnd])

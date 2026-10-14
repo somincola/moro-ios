@@ -29,7 +29,10 @@ enum PrivacyProtectionPolicy {
 /// permission) so the inactive phase it causes doesn't raise the privacy shield.
 @MainActor
 final class PrivacyProtectionCenter: ObservableObject {
+    nonisolated deinit {}
     static let shared = PrivacyProtectionCenter()
+
+    private init() {}
 
     @Published private(set) var isPresentingSystemPrompt = false
     private var activePrompts = 0
