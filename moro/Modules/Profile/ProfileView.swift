@@ -95,6 +95,16 @@ struct ProfileView: View {
         )
     }
 
+    /// The bar reads as solid once the collapsing chrome is mostly opaque.
+    private var isNavigationChromeSolid: Bool { profileChromeProgress >= 0.55 }
+
+    /// Bar controls: white over the banner, the theme's text color on the solid bar.
+    /// Set explicitly because iOS 18 keeps the shell's white tint (invisible on a light
+    /// bar) and resolves a plain menu label to the system accent in dark mode.
+    private var navigationForeground: Color {
+        isNavigationChromeSolid ? theme.colors.textPrimary : .white
+    }
+
     private var navChromeVisible: Bool {
         profileChromeProgress >= 1
     }
@@ -231,7 +241,7 @@ struct ProfileView: View {
         .ignoresSafeArea(.container, edges: .top)
         .background(sceneCanvasColor)
         .background {
-            ProfileNavigationBarHeightReader { navigationBarHeight = $0 }
+            ProfileNavigationBarHeightReader(tint: UIColor(navigationForeground)) { navigationBarHeight = $0 }
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
@@ -245,7 +255,7 @@ struct ProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(
-            profileChromeProgress >= 0.55 ? colorScheme : .dark,
+            isNavigationChromeSolid ? colorScheme : .dark,
             for: .navigationBar
         )
         .toolbar {
@@ -368,6 +378,7 @@ struct ProfileView: View {
             ProfileMoreButton(
                 account: viewModel.account ?? account,
                 relationship: nil,
+                iconColor: navigationForeground,
                 onShare: shareUser,
                 onSettings: presentSettings,
                 onBookmarks: { router.navigate(to: .bookmarks) },
@@ -480,6 +491,7 @@ struct ProfileView: View {
         ProfileMoreButton(
             account: viewModel.account ?? account,
             relationship: viewModel.relationship,
+            iconColor: navigationForeground,
             onShare: shareUser,
             onCopyLink: copyUserLink,
             onOpenInBrowser: openUserInBrowser,

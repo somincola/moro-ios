@@ -24,6 +24,8 @@ struct FloatingNavIconLabel: View {
 struct ProfileMoreButton: View {
     let account: Account?
     let relationship: Relationship?
+    /// Explicit icon color; nil inherits the bar tint.
+    var iconColor: Color? = nil
     var onShare: () -> Void
     var onEditProfile: (() -> Void)? = nil
     var onSettings: (() -> Void)? = nil
@@ -39,6 +41,7 @@ struct ProfileMoreButton: View {
     init(
         account: Account?,
         relationship: Relationship?,
+        iconColor: Color? = nil,
         onShare: @escaping () -> Void,
         onEditProfile: (() -> Void)? = nil,
         onSettings: (() -> Void)? = nil,
@@ -53,6 +56,7 @@ struct ProfileMoreButton: View {
     ) {
         self.account = account
         self.relationship = relationship
+        self.iconColor = iconColor
         self.onShare = onShare
         self.onEditProfile = onEditProfile
         self.onSettings = onSettings
@@ -184,6 +188,8 @@ struct ProfileMoreButton: View {
         } label: {
             Image(systemName: "ellipsis")
                 .moroScaledFont(size: 17, weight: .semibold)
+                .foregroundStyle(iconColor.map(AnyShapeStyle.init) ?? AnyShapeStyle(.tint))
+                .animation(.easeOut(duration: 0.15), value: iconColor)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(MoroL10n.Profile.moreActions))
