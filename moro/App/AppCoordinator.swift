@@ -23,7 +23,9 @@ final class AppCoordinator: ObservableObject {
 
     @Published private(set) var destination: Destination
     @Published private(set) var accountSessions: [StoredAccountSession] = []
-    @Published private(set) var activeSessionID: String?
+    @Published private(set) var activeSessionID: String? {
+        didSet { RelationshipStore.shared.activeScope = activeSessionID ?? "" }
+    }
     @Published private(set) var opensRegistrationAfterOnboarding = false
     let appState: AppState
     @Published private(set) var apiClient: MastodonAPI

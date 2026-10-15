@@ -789,6 +789,7 @@ struct ProfileView: View {
         HStack(spacing: theme.spacing.m) {
             FollowButton(
                 relationship: viewModel.relationship,
+                isResolved: viewModel.isRelationshipResolved,
                 isLoading: viewModel.isUpdatingRelationship,
                 isInteractionDisabled: viewModel.isUpdatingNotification,
                 onFollow: toggleFollow,

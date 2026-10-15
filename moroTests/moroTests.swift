@@ -7826,7 +7826,10 @@ private extension moroTests {
         api.fetchRelationshipsHandler = { ids in
             ids.map { self.makeRelationship(id: $0) }
         }
-        let center = PostMenuActionCenter(apiClient: api, relationshipCacheLimit: 2)
+        // The app-wide store would otherwise answer for evicted entries; keep it to
+        // one entry so this exercises the menu's own LRU.
+        let shared = RelationshipStore(limit: 1, updates: PassthroughSubject<UpdatedElement, Never>())
+        let center = PostMenuActionCenter(apiClient: api, relationshipCacheLimit: 2, relationshipStore: shared)
         let alice = makeStatus(id: "alice-status", account: makeAccount(id: "alice"))
         let bob = makeStatus(id: "bob-status", account: makeAccount(id: "bob"))
         let charlie = makeStatus(id: "charlie-status", account: makeAccount(id: "charlie"))

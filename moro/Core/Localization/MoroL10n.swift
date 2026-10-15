@@ -751,6 +751,7 @@ public enum MoroL10n {
         public static var follow: String { text("profile.follow.follow") }
         public static var following: String { text("profile.follow.following") }
         public static var followRequested: String { text("profile.follow.requested") }
+        public static var followChecking: String { text("profile.follow.checking") }
         public static var cancelFollowRequest: String { text("profile.follow.cancelRequest") }
         public static var blocked: String { text("profile.follow.blocked") }
 

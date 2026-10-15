@@ -35,6 +35,34 @@ final class ProfileExperienceUITests: XCTestCase {
         attach(app, "profile-visitor-hidden-connections")
     }
 
+    func testFollowStateWaitsForTheServerAndBellShowsSubscriptionState() {
+        for scheme in ["light", "dark"] {
+            let app = launch(extra: ["UITEST_OTHER_PROFILE": "1", "UITEST_PROFILE_RELATIONSHIP": "following",
+                                     "UITEST_PROFILE_RELATIONSHIP_DELAY": "8"], scheme: scheme, animations: true)
+            // Unknown state is a neutral capsule, never a guessed "Follow".
+            let placeholder = app.descendants(matching: .any)["profile.follow.placeholder"]
+            XCTAssertTrue(placeholder.waitForExistence(timeout: 3))
+            XCTAssertEqual(placeholder.label, "Checking follow status")
+            XCTAssertFalse(app.buttons["profile.follow"].exists)
+            attach(app, "profile-follow-checking-\(scheme)")
+
+            let follow = app.buttons["profile.follow"]
+            XCTAssertTrue(follow.waitForExistence(timeout: 12))
+            XCTAssertEqual(follow.label, "Following")
+            XCTAssertFalse(placeholder.exists)
+
+            let bell = app.buttons["profile.notificationToggle"]
+            XCTAssertTrue(bell.waitForExistence(timeout: 3))
+            XCTAssertEqual(bell.label, "Turn on post notifications")
+            attach(app, "profile-bell-off-\(scheme)")
+            bell.tap()
+            waitLabel(bell, contains: "Turn off")
+            Thread.sleep(forTimeInterval: 1.2)  // let the replace + wiggle finish for the screenshot
+            attach(app, "profile-bell-on-\(scheme)")
+            app.terminate()
+        }
+    }
+
     func testCompactProfileInfoInLightAndDarkAtDefaultAndAccessibilitySizes() {
         for scheme in ["light", "dark"] {
             for large in [false, true] {

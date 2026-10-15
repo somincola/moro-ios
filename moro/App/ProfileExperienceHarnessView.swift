@@ -106,6 +106,13 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
         ["id": "tag-daily", "name": "daily", "statuses_count": "1"],
     ]
     private static var pushSaveAttempts = 0
+    /// Visitor-mode relationship. Unset keeps the historical empty `/relationships` reply.
+    private static let relationshipMode = ProcessInfo.processInfo.environment["UITEST_PROFILE_RELATIONSHIP"]
+    private static var relationship: [String: Any] = [
+        "id": "fixture-profile", "following": relationshipMode == "following", "followed_by": false,
+        "blocking": false, "blocked_by": false, "muting": false, "muting_notifications": false,
+        "requested": false, "domain_blocking": false, "endorsed": false, "notifying": false,
+    ]
     private static var pushSubscription: [String: Any] = [
         "id": 1, "endpoint": "https://relay-fixture.invalid/push", "policy": "all",
         "alerts": ["mention": true, "status": false, "reblog": true, "follow": true,
@@ -161,6 +168,15 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        if request.url?.path.hasSuffix("/relationships") == true,
+           let delay = ProcessInfo.processInfo.environment["UITEST_PROFILE_RELATIONSHIP_DELAY"].flatMap(Double.init) {
+            pushResponseTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                self?.completeLoading()
+            }
+            return
+        }
         if request.url?.path == "/api/v1/push/subscription", request.httpMethod == "GET",
            ProcessInfo.processInfo.environment["UITEST_SETTINGS_PUSH_SYNC"] == "1" {
             pushResponseTask = Task { [weak self] in
@@ -275,7 +291,18 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             tags.removeAll { $0["id"] as? String == url.lastPathComponent }
             return (200, [:])
         }
-        if path.hasSuffix("/relationships") { return (200, []) }
+        if path.hasSuffix("/relationships") { return (200, relationshipMode == nil ? [] : [relationship]) }
+        if relationshipMode != nil, method == "POST", path.hasSuffix("/follow") {
+            let options = (try? JSONSerialization.jsonObject(with: body(request))) as? [String: Any] ?? [:]
+            relationship["following"] = true
+            if let notify = options["notify"] as? Bool { relationship["notifying"] = notify }
+            return (200, relationship)
+        }
+        if relationshipMode != nil, method == "POST", path.hasSuffix("/unfollow") {
+            relationship["following"] = false
+            relationship["notifying"] = false
+            return (200, relationship)
+        }
         if path.hasSuffix("/followers") || path.hasSuffix("/following") {
             var connection = accountPayload()
             connection["id"] = "fixture-connection"
