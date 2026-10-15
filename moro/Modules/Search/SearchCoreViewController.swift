@@ -57,6 +57,14 @@ final class SearchCoreViewController: UIViewController {
         var isLoadingMoreAccounts = false
         var hasMoreAccounts = false
         var nextAccountOffset = 0
+        /// False when the accounts are server suggestions, which have no further pages.
+        var accountsArePaged = true
+    }
+
+    /// One part of the discovery page: what loaded, or why it didn't.
+    struct DiscoveryResult<Value> {
+        let value: Value?
+        let error: Error?
     }
 
     let apiClient: MastodonAPI

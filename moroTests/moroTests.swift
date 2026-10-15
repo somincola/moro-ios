@@ -4161,6 +4161,14 @@ struct moroTests {
         #expect(limitItem?.value == "10")
     }
 
+    @Test @MainActor func suggestedAccountsEndpointUsesV2SuggestionsWithLimit() async throws {
+        let endpoint = MastodonEndpoint.suggestedAccounts(limit: 20)
+
+        #expect(endpoint.method == "GET")
+        #expect(endpoint.path == "/api/v2/suggestions")
+        #expect(endpoint.queryItems?.first(where: { $0.name == "limit" })?.value == "20")
+    }
+
     @Test @MainActor func notificationUnreadCountEndpointUsesMastodon43Path() async throws {
         let endpoint = MastodonEndpoint.notificationUnreadCount
 
@@ -8526,6 +8534,9 @@ final class MockMastodonAPI: MastodonAPI {
         order: MastodonDirectoryOrder?,
         local: Bool?
     ) async throws -> [Account] {
+        throw MockError.unimplemented
+    }
+    func fetchSuggestedAccounts(limit: Int?) async throws -> [Account] {
         throw MockError.unimplemented
     }
     func fetchAnnouncements() async throws -> [Announcement] {

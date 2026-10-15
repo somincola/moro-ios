@@ -621,6 +621,13 @@ struct MastodonClient: MastodonAPI {
         return try await perform(request)
     }
 
+    func fetchSuggestedAccounts(limit: Int? = 10) async throws -> [Account] {
+        struct Suggestion: Decodable { let account: Account }
+        let request = try authorizedRequest(for: .suggestedAccounts(limit: limit))
+        let suggestions: [Suggestion] = try await perform(request)
+        return suggestions.map(\.account)
+    }
+
     func fetchAnnouncements() async throws -> [Announcement] {
         let endpoint = MastodonEndpoint.announcements
         let request = try authorizedRequest(for: endpoint)
