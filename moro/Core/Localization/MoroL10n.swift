@@ -1003,16 +1003,6 @@ public enum MoroL10n {
     }
 
     public enum Onboarding {
-        public static var tagline: String { text("onboarding.tagline") }
-        public static var previewTimelineTitle: String { text("onboarding.preview.timelineTitle") }
-        public static var previewTimelineBody: String { text("onboarding.preview.timelineBody") }
-        public static var previewComposeTitle: String { text("onboarding.preview.composeTitle") }
-        public static var previewComposeBody: String { text("onboarding.preview.composeBody") }
-        public static var previewSyncTitle: String { text("onboarding.preview.syncTitle") }
-        public static var previewSyncBody: String { text("onboarding.preview.syncBody") }
-        public static var pillarLight: String { text("onboarding.pillar.light") }
-        public static var pillarSimple: String { text("onboarding.pillar.simple") }
-        public static var pillarFriendly: String { text("onboarding.pillar.friendly") }
         public static var getStarted: String { text("onboarding.getStarted") }
     }
 

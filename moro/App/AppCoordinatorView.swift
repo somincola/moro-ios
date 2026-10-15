@@ -51,7 +51,7 @@ struct AppCoordinatorView: View {
                             .accessibilityHidden(true)
                         }
 
-                        OnboardingView(
+                        OnboardingGlobeView(
                             onExitStart: {
                                 revealsLoginUnderOnboarding = true
                             },

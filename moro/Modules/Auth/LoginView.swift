@@ -2,7 +2,8 @@
 //  LoginView.swift
 //  moro
 //
-//  Mastodon instance login screen with OAuth flow.
+//  Mastodon instance login screen with OAuth flow. The sky above the form is a
+//  starfield of known servers that follows what's typed into the domain field.
 //
 
 import SwiftUI
@@ -10,7 +11,7 @@ import AuthenticationServices
 
 struct LoginView: View {
     @ObservedObject var authService: AuthService
-    @State private var instanceDomain: String = RecommendedServers.primary
+    @State private var instanceDomain = ""
     @State private var isLoading = false
     @State private var showingRegistration: Bool
     @State private var feedbackMessage: String?
@@ -31,37 +32,31 @@ struct LoginView: View {
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(spacing: 0) {
-                    VStack(spacing: theme.spacing.xxxl) {
-                        loginHeader
+        ZStack {
+            LoginStarfieldView(query: instanceDomain)
+                .ignoresSafeArea()
 
-                        VStack(spacing: theme.spacing.xl) {
-                            domainField
+            GeometryReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        // Leaves the upper sky to the stars.
+                        Spacer(minLength: max(proxy.size.height * 0.4, 180))
 
-                            if let feedbackMessage {
-                                InlineFeedbackCard(
-                                    kind: feedbackKind,
-                                    message: feedbackMessage,
-                                    actionTitle: retryAction != nil ? MoroL10n.Login.retry : nil,
-                                    action: retryAction
-                                )
-                            }
-                        }
+                        form
+
+                        Spacer(minLength: theme.spacing.xxxl)
+
+                        registerLink
                     }
-
-                    Spacer(minLength: 72)
-
-                    actionGroup
+                    .padding(.horizontal, theme.spacing.xl)
+                    .padding(.bottom, theme.spacing.xl)
+                    .frame(minHeight: proxy.size.height, alignment: .top)
                 }
-                .padding(.horizontal, theme.spacing.xl)
-                .padding(.top, 76)
-                .padding(.bottom, 64)
-                .frame(minHeight: proxy.size.height, alignment: .top)
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .background(theme.colors.surfaceBase)
         }
+        .background(theme.starfieldBackground.ignoresSafeArea())
         .animation(.default, value: feedbackMessage)
         .fullScreenCover(isPresented: $showingRegistration) {
             RegistrationCoordinatorView(
@@ -75,94 +70,104 @@ struct LoginView: View {
         }
     }
 
+    /// An example address in the field; a widely known server rather than a default.
+    static let placeholderDomain = "mastodon.social"
+
     // MARK: - Subviews
 
-    private var loginHeader: some View {
-        VStack(spacing: theme.spacing.l) {
-            Image("AppIconPreviewDefault")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 84, height: 84)
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(theme.colors.borderSubtle, lineWidth: 1)
-                }
-                .shadow(color: theme.colors.textPrimary.opacity(0.08), radius: 14, y: 8)
-                .accessibilityHidden(true)
-
-            VStack(spacing: theme.spacing.s) {
+    private var form: some View {
+        VStack(alignment: .leading, spacing: theme.spacing.xl) {
+            VStack(alignment: .leading, spacing: theme.spacing.s) {
                 Text(MoroL10n.Login.title)
                     .font(theme.typography.title)
                     .foregroundStyle(theme.colors.textPrimary)
-                    .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
 
                 Text(MoroL10n.Login.subtitle)
                     .font(theme.typography.body)
                     .foregroundStyle(theme.colors.textSecondary)
-                    .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            VStack(spacing: theme.spacing.m) {
+                domainField
+
+                if let feedbackMessage {
+                    InlineFeedbackCard(
+                        kind: feedbackKind,
+                        message: feedbackMessage,
+                        actionTitle: retryAction != nil ? MoroL10n.Login.retry : nil,
+                        action: retryAction
+                    )
+                }
+
+                loginButton
+            }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            // Keeps the text readable where it overlaps the lower stars.
+            LinearGradient(
+                stops: [
+                    .init(color: theme.starfieldBackground.opacity(0), location: 0),
+                    .init(color: theme.starfieldBackground.opacity(0.85), location: 0.3),
+                    .init(color: theme.starfieldBackground.opacity(0.85), location: 1),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .padding(.top, -56)
+            .padding(.horizontal, -theme.spacing.xl)
+            .allowsHitTesting(false)
+        }
     }
 
     private var domainField: some View {
-        VStack(alignment: .leading, spacing: theme.spacing.m) {
-            Text(MoroL10n.Login.instanceAddress)
-                .font(theme.typography.bodyStrong)
+        HStack(spacing: theme.spacing.s) {
+            Image(systemName: "globe")
+                .moroScaledFont(size: 16, weight: .regular)
+                .foregroundStyle(theme.colors.textSecondary)
+                .accessibilityHidden(true)
+
+            TextField(LoginView.placeholderDomain, text: $instanceDomain)
+                .font(theme.typography.body)
                 .foregroundStyle(theme.colors.textPrimary)
-
-            HStack(spacing: theme.spacing.s) {
-                Image(systemName: "globe")
-                    .moroScaledFont(size: 16, weight: .regular)
-                    .foregroundStyle(theme.colors.textSecondary)
-
-                TextField(RecommendedServers.primary, text: $instanceDomain)
-                    .font(theme.typography.body)
-                    .foregroundStyle(theme.colors.textPrimary)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                    .submitLabel(.go)
-                    .disabled(isLoading)
-                    .onSubmit { login() }
-                    .onChange(of: instanceDomain) { _, _ in
-                        feedbackMessage = nil
-                        retryAction = nil
-                    }
-
-                if !instanceDomain.isEmpty && !isLoading {
-                    Button {
-                        instanceDomain = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .moroScaledFont(size: 16)
-                            .foregroundStyle(theme.colors.textTertiary)
-                    }
-                    .buttonStyle(.plain)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .submitLabel(.go)
+                .disabled(isLoading)
+                .onSubmit { login() }
+                .onChange(of: instanceDomain) { _, _ in
+                    feedbackMessage = nil
+                    retryAction = nil
                 }
-            }
-            .padding(.horizontal, theme.spacing.m)
-            .frame(height: 56)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(theme.colors.surfaceSubtle)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(theme.colors.borderSubtle, lineWidth: 1)
-            )
-        }
-    }
+                .accessibilityLabel(MoroL10n.Login.instanceAddress)
+                .accessibilityIdentifier("login.domain")
 
-    private var actionGroup: some View {
-        VStack(spacing: theme.spacing.m) {
-            loginButton
-            registerLink
+            if !instanceDomain.isEmpty && !isLoading {
+                Button {
+                    instanceDomain = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .moroScaledFont(size: 16)
+                        .foregroundStyle(theme.colors.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(MoroL10n.EditProfile.clearText)
+                .accessibilityIdentifier("login.clear")
+            }
         }
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, theme.spacing.m)
+        .frame(height: 56)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(theme.colors.surfaceSubtle)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(theme.colors.borderSubtle, lineWidth: 1)
+        )
     }
 
     private var loginButton: some View {
@@ -181,16 +186,18 @@ struct LoginView: View {
             }
             .font(theme.typography.subtitle)
             .foregroundStyle(theme.colors.primaryForeground)
-            .frame(width: 220, height: 50)
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(theme.colors.primary500)
             )
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(sanitizedDomain.isEmpty || isLoading)
         .opacity(sanitizedDomain.isEmpty ? 0.55 : 1)
-        .frame(maxWidth: .infinity)
+        .accessibilityIdentifier("login.submit")
     }
 
     private var registerLink: some View {
