@@ -94,6 +94,17 @@ struct MainTabView: View {
         activeSessionID ?? "no-active-session"
     }
 
+    /// Touch and hold the Me tab to switch accounts.
+    private var accountSwitcherConfiguration: AccountSwitcherConfiguration {
+        AccountSwitcherConfiguration(
+            sessions: accountSessions,
+            activeSessionID: activeSessionID,
+            onSwitch: onSwitchAccount,
+            onAddAccount: { coordinator.showAddAccountLogin = true },
+            onPresentationChange: { coordinator.isAccountSwitcherPresented = $0 }
+        )
+    }
+
     private var currentTabAvatarURL: URL? {
         appState.currentAccount?.avatarURL
             ?? accountSessions.first(where: { $0.id == activeSessionID })?.account.avatarURL
@@ -112,7 +123,8 @@ struct MainTabView: View {
                 exploreView: exploreRootView,
                 inboxView: inboxRootView,
                 meView: meRootView,
-                routeView: routeView(for:router:)
+                routeView: routeView(for:router:),
+                accountSwitcher: accountSwitcherConfiguration
             )
 
         }
@@ -462,6 +474,11 @@ private struct HomeTabRootView: View {
             composeButton
                 .padding(.trailing, theme.spacing.l)
                 .padding(.bottom, composeButtonTabBarSpacing)
+                // Steps aside for the account switcher, which floats in the same corner.
+                .scaleEffect(coordinator.isAccountSwitcherPresented ? 0.6 : 1)
+                .opacity(coordinator.isAccountSwitcherPresented ? 0 : 1)
+                .allowsHitTesting(!coordinator.isAccountSwitcherPresented)
+                .animation(.snappy(duration: 0.22), value: coordinator.isAccountSwitcherPresented)
         }
     }
 

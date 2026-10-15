@@ -1817,6 +1817,10 @@ public enum MoroL10n {
         }
     }
 
+    public enum AccountSwitcher {
+        public static func switchTo(_ acct: String) -> String { format("accountSwitcher.switchTo", acct) }
+    }
+
     public enum NewConversation {
         public static var searchFailed: String { text("newConversation.searchFailed") }
         public static var navTitle: String { text("newConversation.navTitle") }

@@ -91,8 +91,13 @@ struct DisplaySettingsView: View {
     }
 
     private var fontSizeControls: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             postPreview
+
+            Rectangle()
+                .fill(theme.colors.divider)
+                .frame(height: 0.5)
+                .accessibilityHidden(true)
 
             HStack(spacing: 12) {
                 Text(verbatim: "Aa").moroScaledFont(size: 12)
@@ -148,35 +153,44 @@ struct DisplaySettingsView: View {
 
     private func appearanceCard(_ appearance: AppSettings.Appearance) -> some View {
         let selected = settings.appearance == appearance
-        let icon: String = switch appearance {
-        case .system: "circle.lefthalf.filled"
-        case .light: "sun.max"
-        case .dark: "moon"
-        }
         return Button {
             settings.appearance = appearance
         } label: {
-            VStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 28))
-                    .frame(width: 32, height: 32)
-                    .accessibilityHidden(true)
+            // A miniature of the app in that mode, with the name underneath, the way the
+            // system's own appearance picker reads.
+            VStack(spacing: 10) {
+                AppearanceThumbnail(
+                    appearance: appearance,
+                    themeColor: settings.themeColor,
+                    customThemeColor: settings.customThemeColor,
+                    contrast: theme.colorSchemeContrast
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: 76)
+                .overlay {
+                    RoundedRectangle(cornerRadius: AppearanceThumbnail.cornerRadius, style: .continuous)
+                        .strokeBorder(theme.colors.borderSubtle, lineWidth: 0.5)
+                }
+                .overlay {
+                    if selected {
+                        // The same ring-with-a-gap the Me tab and account switcher use.
+                        RoundedRectangle(cornerRadius: AppearanceThumbnail.cornerRadius + 4, style: .continuous)
+                            .strokeBorder(theme.colors.textPrimary, lineWidth: 2)
+                            .padding(-4)
+                    }
+                }
+                .padding(4)
+
                 Text(appearance.title)
+                    .font(theme.typography.body)
+                    .fontWeight(selected ? .semibold : .regular)
+                    .foregroundStyle(selected ? theme.colors.textPrimary : theme.colors.textSecondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? nil : 36)
             }
-            .font(theme.typography.body)
-            .foregroundStyle(selected ? theme.colors.textPrimary : theme.colors.textSecondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 16)
-            .frame(maxWidth: .infinity, minHeight: 100)
-            .background(theme.colors.groupedBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(selected ? theme.colors.textPrimary : .clear, lineWidth: 1.5)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .animation(.snappy(duration: 0.2), value: selected)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(appearance.title)
@@ -267,16 +281,19 @@ struct DisplaySettingsView: View {
     }
 
     private var postPreview: some View {
-        // This fixed example is rendered locally; preview links never navigate.
-        return VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "person.fill")
-                    .font(.system(size: 20))
-                    .foregroundStyle(theme.colors.textSecondary)
+        // This fixed example is rendered locally; preview links never navigate. It sits
+        // straight on the section's surface, like a post in the timeline, with no card
+        // of its own, so the section doesn't read as a card inside a card.
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(settings.appIcon.previewAssetName)
+                    .resizable()
+                    .scaledToFill()
                     .frame(width: 40, height: 40)
-                    .background(theme.colors.groupedSurface, in: RoundedRectangle(cornerRadius: 12))
+                    .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(theme.colors.borderSubtle, lineWidth: 0.5))
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: "Moro")
                         .font(theme.typography.bodyStrong)
                         .foregroundStyle(theme.colors.textPrimary)
@@ -286,20 +303,27 @@ struct DisplaySettingsView: View {
                 }
             }
             ZStack(alignment: .topLeading) {
-                // Reserve the largest layout so wrapping cannot move the slider during a drag.
-                previewText(font: theme.postUIFont(for: .extraLarge))
-                    .hidden()
-                    .accessibilityHidden(true)
+                // Reserve the tallest layout so wrapping cannot move the slider during a
+                // drag. Every size is measured: a smaller font can wrap onto an extra line
+                // and end up taller than the largest one.
+                ForEach(MoroPostFontSize.allCases, id: \.self) { size in
+                    previewText(font: theme.postUIFont(for: size))
+                        .hidden()
+                        .accessibilityHidden(true)
+                }
                 previewText(font: theme.postUIFont(for: previewFontSize))
             }
         }
-        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            theme.colors.groupedBackground,
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-        .accessibilityElement(children: .combine)
+        // Without a card behind it, the accessibility frame would shrink to the visible
+        // text and change with every size. An imperceptible fill keeps the element's
+        // frame equal to the reserved layout.
+        .background(Color.primary.opacity(0.001))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: "Moro, @moro@example.com. " + [
+            MoroL10n.Display.previewLead, "@moro", MoroL10n.Display.previewMiddle,
+            "example.com", MoroL10n.Display.previewTail, "#Moro",
+        ].joined()))
         .accessibilityIdentifier("display.preview")
     }
 
@@ -482,4 +506,69 @@ private struct PostFontSizeSlider: UIViewRepresentable {
             .dynamicTypeSize(.accessibility3)
     }
     .preferredColorScheme(.dark)
+}
+
+/// A miniature of a post in the given appearance. "System" shows light and dark split
+/// on a diagonal.
+private struct AppearanceThumbnail: View {
+    static let cornerRadius: CGFloat = 12
+
+    let appearance: AppSettings.Appearance
+    let themeColor: MoroThemeColor
+    let customThemeColor: UInt32
+    let contrast: ColorSchemeContrast
+
+    var body: some View {
+        ZStack {
+            switch appearance {
+            case .light:
+                mini(.light)
+            case .dark:
+                mini(.dark)
+            case .system:
+                mini(.light)
+                mini(.dark).mask(DiagonalHalf())
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
+        .accessibilityHidden(true)
+    }
+
+    private func mini(_ scheme: ColorScheme) -> some View {
+        let palette = MoroColors(
+            colorScheme: scheme, themeColor: themeColor,
+            customThemeColor: customThemeColor, colorSchemeContrast: contrast
+        )
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(palette.themeTint)
+                    .frame(width: 14, height: 14)
+                VStack(alignment: .leading, spacing: 3) {
+                    Capsule().fill(palette.textPrimary.opacity(0.85)).frame(width: 30, height: 4)
+                    Capsule().fill(palette.textTertiary).frame(width: 20, height: 3)
+                }
+            }
+            Capsule().fill(palette.textSecondary.opacity(0.45)).frame(height: 4)
+            Capsule().fill(palette.textSecondary.opacity(0.45)).frame(width: 38, height: 4)
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        // The grouped canvas, not the plain surface: a light thumbnail stays visible on
+        // the white section it sits in.
+        .background(palette.groupedBackground)
+    }
+}
+
+/// The lower-right half of a rectangle, split on a gentle diagonal.
+private struct DiagonalHalf: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { path in
+            path.move(to: CGPoint(x: rect.minX + rect.width * 0.62, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.38, y: rect.maxY))
+            path.closeSubpath()
+        }
+    }
 }

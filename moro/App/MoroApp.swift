@@ -184,8 +184,7 @@ struct MoroApp: App {
 
     @ViewBuilder private var pushHarness: some View {
         #if DEBUG
-        PushNotificationHarnessView()
-            .moroTheme(MoroTheme(accent: .monochrome))
+        PushNotificationHarnessRoot()
         #endif
     }
 

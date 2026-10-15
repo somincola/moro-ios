@@ -130,6 +130,7 @@ struct ThemeColorTests {
         controller.loadViewIfNeeded()
         let tabs = try #require(controller.children.first as? UITabBarController)
         let item = try #require(tabs.tabBar.items?[2])
+        var previous = item.image
         for theme in [
             MoroTheme(themeColor: .pink),
             MoroTheme(colorScheme: .dark, themeColor: .green),
@@ -141,13 +142,21 @@ struct ThemeColorTests {
                 contentVersion: "theme-test", homeView: empty, exploreView: empty,
                 inboxView: empty, meView: empty, routeView: { _, _ in empty }
             )
-            #expect(item.badgeValue == "3")
-            #expect(item.badgeColor?.isEqual(UIColor(theme.colors.themeTint)) == true)
-            for state in [UIControl.State.normal, .selected] {
-                let foreground = item.badgeTextAttributes(for: state)?[.foregroundColor] as? UIColor
-                #expect(foreground?.isEqual(UIColor(theme.colors.themeTintForeground)) == true)
-            }
+            // Unread is the bell's own red badge layer, drawn in this theme's colors,
+            // not a system badge; the count lives in the VoiceOver label.
+            #expect(item.badgeValue == nil)
+            #expect(item.image?.renderingMode == .alwaysOriginal)
+            #expect(item.image !== previous, "The badged bell is redrawn for every theme")
+            #expect(item.accessibilityLabel == MoroL10n.Navigation.inboxUnread(3))
+            previous = item.image
         }
+        controller.apply(
+            theme: MoroTheme(), unreadInboxCount: 0, currentUserAvatarURL: nil,
+            contentVersion: "theme-test", homeView: empty, exploreView: empty,
+            inboxView: empty, meView: empty, routeView: { _, _ in empty }
+        )
+        #expect(item.image?.renderingMode != .alwaysOriginal)
+        #expect(item.accessibilityLabel == MainTab.inbox.title)
     }
 
     @Test(arguments: MoroThemeColor.allCases)

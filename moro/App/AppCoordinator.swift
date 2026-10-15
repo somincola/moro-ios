@@ -159,6 +159,7 @@ final class AppCoordinator: ObservableObject {
             startupSessionValidationTask?.cancel()
             do {
                 guard let session = try await authService.switchToSession(id: sessionID) else {
+                    AccountSwitchTransition.shared.cancel()
                     AppFeedbackCenter.shared.showError(MoroL10n.AppCoord.switchFailed)
                     return
                 }
@@ -171,6 +172,7 @@ final class AppCoordinator: ObservableObject {
                 )
                 AppFeedbackCenter.shared.showSuccess(MoroL10n.AppCoord.switchedTo(session.account.acct))
             } catch {
+                AccountSwitchTransition.shared.cancel()
                 AppFeedbackCenter.shared.showError(MoroL10n.AppCoord.switchFailed)
                 reloadSessions()
             }
