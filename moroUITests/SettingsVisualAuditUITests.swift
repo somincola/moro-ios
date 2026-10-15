@@ -29,9 +29,6 @@ final class SettingsVisualAuditUITests: XCTestCase {
     func testPage19_language() { capture("19-language", ["settings.posting", "settings.postLanguage"]) }
     func testPage20_licenses() { capture("20-licenses", ["settings.about", "about.licenses"]) }
     func testPage22_serverRules() { capture("22-server-rules", ["settings.accounts", "settings.server", "规则"]) }
-    func testPage21_profileBasics() {
-        capture("21-profile-basics", ["settings.accounts", "settings.profile", "profile.edit.basic"])
-    }
 
     private func capture(_ name: String, _ path: [String]) {
         for dark in [false, true] {

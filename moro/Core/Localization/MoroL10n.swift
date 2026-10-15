@@ -1375,6 +1375,15 @@ public enum MoroL10n {
         public static var mediaAvatar: String { text("editProfile.media.avatar") }
         public static var mediaHeader: String { text("editProfile.media.header") }
         public static var mediaChange: String { text("editProfile.media.change") }
+        public static var mediaChoosePhoto: String { text("editProfile.media.choosePhoto") }
+        public static var mediaRevert: String { text("editProfile.media.revert") }
+        public static var mediaRemoveAvatar: String { text("editProfile.media.removeAvatar") }
+        public static var mediaRemoveHeader: String { text("editProfile.media.removeHeader") }
+        public static var mediaAddHeader: String { text("editProfile.media.addHeader") }
+        public static var fieldsFooter: String { text("editProfile.fields.footer") }
+        public static var fieldOptions: String { text("editProfile.field.options") }
+        public static var sectionProfileSettings: String { text("editProfile.section.profileSettings") }
+        public static var clearText: String { text("editProfile.clearText") }
         public static var noDisplayName: String { text("editProfile.noDisplayName") }
         public static var sectionBasicInfo: String { text("editProfile.section.basicInfo") }
         public static var fieldDisplayName: String { text("editProfile.field.displayName") }
