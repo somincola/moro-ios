@@ -239,7 +239,7 @@ struct InstanceDetailsView: View {
                             MoroAvatar(
                                 imageURL: admin.avatarAnimatedURL,
                                 staticImageURL: admin.avatarURL,
-                                initials: admin.displayNameInitials,
+                                initials: admin.displayNameInitials, seed: admin.placeholderSeed,
                                 size: 44
                             )
 

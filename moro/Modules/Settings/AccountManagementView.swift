@@ -220,7 +220,7 @@ struct AccountManagementView: View {
             MoroAvatar(
                 imageURL: session.account.avatarAnimatedURL,
                 staticImageURL: session.account.avatarURL,
-                initials: session.account.displayNameInitials,
+                initials: session.account.displayNameInitials, seed: session.account.placeholderSeed,
                 size: Metrics.avatarSize
             )
 

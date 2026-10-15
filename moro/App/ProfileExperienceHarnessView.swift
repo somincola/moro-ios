@@ -161,6 +161,10 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             payload["followers_count"] = 70
         }
         if legacy { for key in ["show_media", "show_media_replies", "show_featured"] { payload.removeValue(forKey: key) } }
+        if let avatar = ProcessInfo.processInfo.environment["UITEST_PROFILE_AVATAR_URL"] {
+            payload["avatar"] = avatar
+            payload["avatar_static"] = avatar
+        }
         if ProcessInfo.processInfo.environment["UITEST_PROFILE_MEDIA"] == "1" {
             for (key, file) in [("avatar", "avatar"), ("avatar_static", "avatar"), ("header", "header"), ("header_static", "header")] {
                 payload[key] = "https://profile-fixture.invalid/\(file).png"

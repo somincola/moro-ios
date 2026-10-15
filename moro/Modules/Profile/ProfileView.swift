@@ -9,44 +9,6 @@ import SwiftUI
 
 // MARK: - Profile View
 
-private struct ProfileHeaderPlaceholder: View {
-    let backgroundColor: Color
-    let lineColor: Color
-
-    var body: some View {
-        Canvas { context, size in
-            context.fill(
-                Path(CGRect(origin: .zero, size: size)),
-                with: .color(backgroundColor)
-            )
-
-            let spacing: CGFloat = 28
-            var fineLines = Path()
-            for originX in stride(
-                from: -size.height,
-                through: size.width + size.height,
-                by: spacing
-            ) {
-                fineLines.move(to: CGPoint(x: originX, y: 0))
-                fineLines.addLine(to: CGPoint(x: originX + size.height, y: size.height))
-            }
-            context.stroke(fineLines, with: .color(lineColor), lineWidth: 0.7)
-
-            var broadLines = Path()
-            for originX in stride(
-                from: -size.height,
-                through: size.width + size.height,
-                by: spacing * 3
-            ) {
-                broadLines.move(to: CGPoint(x: originX, y: size.height))
-                broadLines.addLine(to: CGPoint(x: originX + size.height, y: 0))
-            }
-            context.stroke(broadLines, with: .color(lineColor.opacity(0.55)), lineWidth: 0.6)
-        }
-        .accessibilityHidden(true)
-    }
-}
-
 private struct ProfileStatButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -621,16 +583,20 @@ struct ProfileView: View {
         let visibleHeight = totalHeight + pullDistance
 
         ZStack(alignment: .bottom) {
-            ProfileHeaderPlaceholder(
-                backgroundColor: theme.colors.surfaceSubtle,
-                lineColor: theme.colors.textMuted.opacity(0.16)
-            )
-
             if let headerURL = acc?.profileHeaderURL {
                 MoroNetworkImage(url: headerURL)
                     .frame(maxWidth: .infinity)
                     .frame(height: visibleHeight + 2)
                     .clipped()
+            } else if let acc {
+                // No cover: the avatar blurred into a wash, or the account's own tone.
+                ProfileGeneratedHeader(avatarURL: acc.profileAvatarURL, seed: acc.placeholderSeed)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: visibleHeight + 2)
+                    .clipped()
+            } else {
+                // Account still loading: stay neutral rather than flash a guessed tone.
+                theme.colors.surfaceSubtle
             }
 
             LinearGradient(
@@ -673,6 +639,7 @@ struct ProfileView: View {
                 imageURL: acc?.avatarAnimatedURL,
                 staticImageURL: acc?.avatarURL,
                 initials: acc?.displayNameInitials ?? "?",
+                seed: acc?.placeholderSeed,
                 size: avatarSize
             )
             .overlay(

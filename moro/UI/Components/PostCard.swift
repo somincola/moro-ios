@@ -168,7 +168,7 @@ struct PostCard: View {
                     MoroAvatar(
                         imageURL: status.account.avatarAnimatedURL,
                         staticImageURL: status.account.avatarURL,
-                        initials: status.account.displayNameInitials,
+                        initials: status.account.displayNameInitials, seed: status.account.placeholderSeed,
                         size: avatarSize
                     )
                 }

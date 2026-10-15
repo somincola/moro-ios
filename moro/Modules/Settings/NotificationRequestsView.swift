@@ -87,7 +87,7 @@ struct NotificationRequestsView: View {
                 MoroAvatar(
                     imageURL: request.account.avatarAnimatedURL,
                     staticImageURL: request.account.avatarURL,
-                    initials: request.account.displayNameInitials,
+                    initials: request.account.displayNameInitials, seed: request.account.placeholderSeed,
                     size: 44
                 )
                 VStack(alignment: .leading, spacing: 2) {

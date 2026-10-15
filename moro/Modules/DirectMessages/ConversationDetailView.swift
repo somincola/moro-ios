@@ -513,7 +513,7 @@ private struct ConversationParticipantsSheet: View {
             MoroAvatar(
                 imageURL: account.avatarAnimatedURL,
                 staticImageURL: account.avatarURL,
-                initials: account.displayNameInitials,
+                initials: account.displayNameInitials, seed: account.placeholderSeed,
                 size: 40
             )
 
@@ -655,7 +655,7 @@ private struct ConversationMessageRow: View {
                         MoroAvatar(
                             imageURL: status.account.avatarAnimatedURL,
                             staticImageURL: status.account.avatarURL,
-                            initials: status.account.displayNameInitials,
+                            initials: status.account.displayNameInitials, seed: status.account.placeholderSeed,
                             size: 30
                         )
                     }

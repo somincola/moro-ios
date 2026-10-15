@@ -450,7 +450,7 @@ struct ReportView: View {
         return HStack(spacing: 12) {
             MoroAvatar(
                 imageURL: account.avatarAnimatedURL, staticImageURL: account.avatarURL,
-                initials: account.displayNameInitials, size: 32)
+                initials: account.displayNameInitials, seed: account.placeholderSeed, size: 32)
             VStack(alignment: .leading, spacing: 3) {
                 AccountDisplayNameView(
                     account: account, typography: .bodyStrong,

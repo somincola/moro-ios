@@ -135,7 +135,7 @@ struct ListMembersView: View {
             MoroAvatar(
                 imageURL: account.avatarAnimatedURL,
                 staticImageURL: account.avatarURL,
-                initials: account.displayNameInitials,
+                initials: account.displayNameInitials, seed: account.placeholderSeed,
                 size: 36
             )
 
@@ -288,7 +288,7 @@ private struct ListMemberPickerSheet: View {
             MoroAvatar(
                 imageURL: account.avatarAnimatedURL,
                 staticImageURL: account.avatarURL,
-                initials: account.displayNameInitials,
+                initials: account.displayNameInitials, seed: account.placeholderSeed,
                 size: 34
             )
 

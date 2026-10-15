@@ -30,7 +30,7 @@ struct ComposePreviewSheet: View {
                 VStack(alignment: .leading, spacing: theme.spacing.m) {
                     if let account {
                         HStack(spacing: theme.spacing.s) {
-                            MoroAvatar(imageURL: account.avatarURL, initials: account.displayNameInitials, size: 40)
+                            MoroAvatar(imageURL: account.avatarURL, initials: account.displayNameInitials, seed: account.placeholderSeed, size: 40)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(account.displayName).font(theme.typography.subtitle)
                                 Text("@\(account.acct)").font(theme.typography.caption)

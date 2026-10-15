@@ -210,13 +210,17 @@ struct EditProfileView: View {
             } else if !model.isHeaderRemoved, let url = model.account?.profileHeaderURL {
                 MoroNetworkImage(url: url)
             } else {
-                VStack(spacing: 6) {
-                    Image(systemName: "photo.badge.plus")
-                        .moroScaledFont(size: 22, weight: .medium)
-                    Text(MoroL10n.EditProfile.mediaAddHeader)
-                        .font(theme.typography.caption)
-                }
-                .foregroundStyle(theme.colors.textTertiary)
+                // Exactly what the profile will show without a cover, plus the hint.
+                ProfileGeneratedHeader(
+                    avatarURL: model.isAvatarRemoved ? nil : model.account?.profileAvatarURL,
+                    avatarImage: model.avatarPreviewImage,
+                    seed: placeholderSeed)
+                Label(MoroL10n.EditProfile.mediaAddHeader, systemImage: "photo.badge.plus")
+                    .font(theme.typography.caption.weight(.medium))
+                    .foregroundStyle(theme.colors.textPrimary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(.ultraThinMaterial, in: Capsule())
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -233,17 +237,17 @@ struct EditProfileView: View {
                 .clipShape(Circle())
         } else if !model.isAvatarRemoved, let url = model.account?.profileAvatarURL {
             MoroAvatar(imageURL: url, staticImageURL: model.account?.avatarURL,
-                initials: model.account?.displayNameInitials ?? "ME", size: Metrics.avatarSize)
+                initials: model.account?.displayNameInitials ?? "ME", seed: placeholderSeed,
+                size: Metrics.avatarSize)
         } else {
-            Circle()
-                .fill(theme.colors.surfaceSubtle)
-                .frame(width: Metrics.avatarSize, height: Metrics.avatarSize)
-                .overlay {
-                    Image(systemName: "person.fill")
-                        .moroScaledFont(size: 30, weight: .medium)
-                        .foregroundStyle(theme.colors.textTertiary)
-                }
+            // What the profile will show without an avatar.
+            GeneratedAvatar(initials: model.account?.displayNameInitials ?? "ME",
+                seed: placeholderSeed, size: Metrics.avatarSize)
         }
+    }
+
+    private var placeholderSeed: String {
+        model.account?.placeholderSeed ?? appState.currentAccount?.placeholderSeed ?? ""
     }
 
     /// Sits on a photo, so it carries its own dark backing in both themes.

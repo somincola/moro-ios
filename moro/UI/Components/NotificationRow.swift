@@ -227,7 +227,7 @@ struct NotificationRow: View {
                 MoroAvatar(
                     imageURL: account.avatarAnimatedURL,
                     staticImageURL: account.avatarURL,
-                    initials: account.displayNameInitials,
+                    initials: account.displayNameInitials, seed: account.placeholderSeed,
                     size: Metrics.leadingSize
                 )
             }
@@ -245,7 +245,7 @@ struct NotificationRow: View {
                     MoroAvatar(
                         imageURL: account.avatarAnimatedURL,
                         staticImageURL: account.avatarURL,
-                        initials: account.displayNameInitials,
+                        initials: account.displayNameInitials, seed: account.placeholderSeed,
                         size: Metrics.actorAvatarSize
                     )
                     .overlay(

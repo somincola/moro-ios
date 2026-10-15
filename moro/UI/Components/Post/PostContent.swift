@@ -349,7 +349,7 @@ struct PostContent: View {
                 MoroAvatar(
                     imageURL: quote.account.avatarAnimatedURL,
                     staticImageURL: quote.account.avatarURL,
-                    initials: quote.account.displayNameInitials,
+                    initials: quote.account.displayNameInitials, seed: quote.account.placeholderSeed,
                     size: PostContentMetrics.quoteAvatarSize
                 )
 

@@ -67,7 +67,7 @@ struct PostHeader: View {
                         MoroAvatar(
                             imageURL: account.avatarAnimatedURL,
                             staticImageURL: account.avatarURL,
-                            initials: account.displayNameInitials,
+                            initials: account.displayNameInitials, seed: account.placeholderSeed,
                             size: Metrics.avatarSize
                         )
 
@@ -150,7 +150,7 @@ struct PostHeader: View {
                         MoroAvatar(
                             imageURL: account.avatarAnimatedURL,
                             staticImageURL: account.avatarURL,
-                            initials: account.displayNameInitials,
+                            initials: account.displayNameInitials, seed: account.placeholderSeed,
                             size: Metrics.avatarSize
                         )
 
