@@ -80,16 +80,24 @@ struct MediaGridView: View {
     private var videoLayout: some View {
         VStack(spacing: 8) {
             ForEach(Array(videoAttachments.enumerated()), id: \.element.id) { index, attachment in
-                VideoPlayerView(
-                    attachment: attachment,
-                    isSensitive: isSensitive,
-                    onTap: {
-                        // Open fullscreen video player
-                        openVideoPreview(attachment: attachment, index: index)
+                // Like a single image: the video's own shape, capped in height. A capped
+                // portrait video is shown whole with bars at the sides, never cropped.
+                Color.clear
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(MediaGridLayoutMetrics.singleImageAspectRatio(for: attachment), contentMode: .fit)
+                    .frame(minHeight: 64, maxHeight: maximumSingleImageHeight)
+                    .overlay {
+                        VideoPlayerView(
+                            attachment: attachment,
+                            isSensitive: isSensitive,
+                            contentMode: .fit,
+                            onTap: {
+                                // Open fullscreen video player
+                                openVideoPreview(attachment: attachment, index: index)
+                            }
+                        )
                     }
-                )
-                .frame(height: 280)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
         .fullScreenCover(item: $selectedVideoAttachment) { attachment in
