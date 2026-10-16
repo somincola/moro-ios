@@ -13,7 +13,9 @@ struct VideoFullscreenView: View {
     var onDismiss: (() -> Void)? = nil
     
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var playerObserver = VideoPlayerObserver()
+    // Continues the player the timeline row is already showing, so the video keeps its
+    // frame and position instead of loading again from the start.
+    @StateObject private var playerObserver = VideoPlayerObserver(pool: .shared, continuesExistingPlayer: true)
     @State private var showControls = true
     
     private var isGIF: Bool {
@@ -52,8 +54,14 @@ struct VideoFullscreenView: View {
         .statusBar(hidden: true) // Hide status bar in fullscreen
         .onAppear {
             setupPlayer()
+            // Opened on purpose, so it plays with sound.
+            playerObserver.setMuted(false)
+            VideoAudioSession.beginAudiblePlayback()
         }
         .onDisappear {
+            // Back in the timeline it plays silently again, and other audio resumes.
+            playerObserver.setMuted(true)
+            VideoAudioSession.endAudiblePlayback()
             playerObserver.tearDown()
         }
     }
