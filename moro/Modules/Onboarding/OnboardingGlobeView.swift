@@ -27,6 +27,9 @@ struct OnboardingGlobeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var story = StoryProgress()
     @State private var formed: Date?
+    /// Whether the words and the button are shown; set once the globe has mostly gathered.
+    @State private var revealed = false
+    @State private var hintRaised = false
     @State private var turn = GlobeTurn()
     @State private var dive: DiveState?
     @State private var dragging: DragKind?
@@ -57,15 +60,17 @@ struct OnboardingGlobeView: View {
                 .ignoresSafeArea()
                 .accessibilityHidden(true)
 
-                TimelineView(.animation(paused: reduceMotion && dive == nil)) { context in
-                    overlay(at: context.date)
-                }
+                overlay
             }
             .contentShape(Rectangle())
             .gesture(dragGesture(height: proxy.size.height))
             .onTapGesture { gather() }
+            // A tappable container would otherwise be read as one big button that
+            // swallows the controls inside it.
+            .accessibilityElement(children: .contain)
             .onAppear { sceneSize = fullSize }
             .onChange(of: fullSize) { _, size in sceneSize = size }
+            .overlay(alignment: .topTrailing) { skipButton }
         }
         .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: formed)
         .accessibilityAction(named: MoroL10n.Registration.continueButton) { gather() }
@@ -94,83 +99,94 @@ struct OnboardingGlobeView: View {
 
     // MARK: Overlay
 
-    private func overlay(at date: Date) -> some View {
-        let time = date.timeIntervalSince(sceneStart)
-        let r = reveal(at: date)
-        let title = smoothstep(0, 0.8, r)
-        let subtitle = smoothstep(0.45, 1.25, r)
-        let action = smoothstep(0.9, 1.7, r)
-        let hint = 1 - smoothstep(0, 0.3, progress(at: date))
-        let skip = 1 - action
+    /// The words and controls over the scene. Driven by state and SwiftUI animations,
+    /// not the scene's clock, so VoiceOver and UI automation see exactly what is shown.
+    private var overlay: some View {
         let exiting = dive != nil
+        let showWords = revealed && !exiting
         return ZStack {
-            VStack {
-                HStack {
-                    Spacer()
-                    Button(MoroL10n.Login.login) { finish(.login) }
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(theme.colors.textSecondary)
-                        .padding(.horizontal, 20)
-                        .frame(height: 44)
-                        .opacity(exiting ? 0 : skip)
-                        .allowsHitTesting(skip > 0.5 && !exiting)
-                        .accessibilityIdentifier("onboarding.skip")
-                }
-                Spacer()
-            }
 
             VStack(spacing: 0) {
                 Spacer()
                 VStack(spacing: 10) {
-                    Text(verbatim: "Moro")
-                        .font(.system(size: 60, weight: .bold))
-                        .tracking(-1.8)
-                        .foregroundStyle(theme.colors.textPrimary)
-                        .opacity(exiting ? 0 : title)
-                        .blur(radius: (1 - title) * 8)
-                        .offset(y: (1 - title) * 12)
-                    Text(verbatim: "FOR MASTODON")
-                        .font(.system(size: 12, weight: .semibold))
-                        .tracking(3)
-                        .foregroundStyle(theme.colors.textTertiary)
-                        .opacity(exiting ? 0 : subtitle)
-                        .blur(radius: (1 - subtitle) * 6)
-                        .offset(y: (1 - subtitle) * 8)
+                    if showWords {
+                        Text(verbatim: "Moro")
+                            .font(.system(size: 60, weight: .bold))
+                            .tracking(-1.8)
+                            .foregroundStyle(theme.colors.textPrimary)
+                            .transition(reveal(after: 0))
+                        Text(verbatim: "FOR MASTODON")
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(3)
+                            .foregroundStyle(theme.colors.textTertiary)
+                            .transition(reveal(after: 0.45))
+                    }
                 }
+                .frame(height: 96)
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isHeader)
-                .accessibilityHidden(title < 0.5)
+                .accessibilityHidden(!showWords)
 
                 Spacer().frame(height: 40)
 
                 ZStack {
-                    Button { finish(.login) } label: {
-                        Text(MoroL10n.Onboarding.getStarted)
-                            .moroScaledFont(size: 17, weight: .semibold, relativeTo: .body)
-                            .foregroundStyle(theme.colors.primaryForeground)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 54)
-                            .background(theme.colors.primary500, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    if showWords {
+                        Button { finish(.login) } label: {
+                            Text(MoroL10n.Onboarding.getStarted)
+                                .moroScaledFont(size: 17, weight: .semibold, relativeTo: .body)
+                                .foregroundStyle(theme.colors.primaryForeground)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 54)
+                                .background(theme.colors.primary500, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+                        .buttonStyle(GlobePressStyle())
+                        .transition(reveal(after: 0.9))
+                        .accessibilityIdentifier("onboarding.start")
                     }
-                    .buttonStyle(GlobePressStyle())
-                    .opacity(exiting ? 0 : action)
-                    .offset(y: (1 - action) * 12)
-                    .allowsHitTesting(action > 0.8 && !exiting)
-                    .accessibilityHidden(action < 0.5)
-                    .accessibilityIdentifier("onboarding.start")
 
-                    // Swipe hint for the wordless first moment.
-                    Image(systemName: "chevron.compact.up")
-                        .font(.system(size: 30, weight: .medium))
-                        .foregroundStyle(theme.colors.textSecondary)
-                        .offset(y: reduceMotion ? 0 : -5 * sin(time * 2))
-                        .opacity(hint * (0.55 + 0.35 * (0.5 + 0.5 * sin(time * 2))))
-                        .accessibilityHidden(true)
+                    if formed == nil {
+                        // Swipe hint for the wordless first moment.
+                        Image(systemName: "chevron.compact.up")
+                            .font(.system(size: 30, weight: .medium))
+                            .foregroundStyle(theme.colors.textSecondary)
+                            .offset(y: hintRaised && !reduceMotion ? -6 : 0)
+                            .opacity(hintRaised ? 0.9 : 0.55)
+                            .animation(reduceMotion ? nil : .easeInOut(duration: 1.4).repeatForever(), value: hintRaised)
+                            .onAppear { hintRaised = true }
+                            .transition(.opacity.animation(.easeOut(duration: 0.3)))
+                            .accessibilityHidden(true)
+                    }
                 }
+                .frame(height: 54)
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 12)
         }
+    }
+
+    /// Skips straight to login. Kept outside the scene's gestures so a tap on it is only
+    /// ever a tap on it.
+    @ViewBuilder private var skipButton: some View {
+        if formed == nil && dive == nil {
+            Button { finish(.login) } label: {
+                Text(MoroL10n.Login.login)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .padding(.horizontal, 20)
+                    .frame(height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("onboarding.skip")
+            .transition(.opacity.animation(.easeOut(duration: 0.4)))
+        }
+    }
+
+    /// Fades a piece of the title area in, a beat after the globe has gathered.
+    private func reveal(after delay: Double) -> AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return AnyTransition.opacity.combined(with: .offset(y: 12))
+            .animation(.easeOut(duration: 0.8).delay(delay))
     }
 
     // MARK: Interaction
@@ -224,6 +240,11 @@ struct OnboardingGlobeView: View {
         let now = Date.now
         story.settle(to: 1, now: now)
         formed = now
+        Task { @MainActor in
+            // Let the globe mostly gather before the words arrive.
+            if !reduceMotion { try? await Task.sleep(for: .milliseconds(550)) }
+            revealed = true
+        }
     }
 
     private func finish(_ completion: OnboardingCompletion) {
