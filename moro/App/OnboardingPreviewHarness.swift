@@ -40,7 +40,8 @@ struct OnboardingPreviewHarness: View {
     @ViewBuilder private var variantView: some View {
         switch variant {
         case "login":
-            LoginView(authService: AuthService()) { _, _, _ in }
+            LoginView(authService: AuthService(),
+                      initialDomain: ProcessInfo.processInfo.environment["UITEST_LOGIN_DOMAIN"] ?? "") { _, _, _ in }
         default:
             OnboardingGlobeView(onFinish: { result = $0 })
         }

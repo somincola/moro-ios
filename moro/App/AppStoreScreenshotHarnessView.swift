@@ -3,30 +3,68 @@ import SDWebImage
 import SwiftUI
 
 /// Store assets use the production shell and screens with fictional, offline data.
+///
+/// `STORE_SHOWCASE=1` switches to the richer showcase fixtures: content in the app's
+/// language, several signed-in accounts for the switcher, and the theme from settings.
+/// `STORE_SCENE` picks the screen: `main` (default), `display` or `editProfile`.
 struct AppStoreScreenshotHarnessView: View {
     @StateObject private var appState = AppState()
+    @ObservedObject private var settings = AppSettings.shared
+    @Environment(\.colorScheme) private var colorScheme
     @State private var ready = false
     private let client = AppStoreScreenshotProtocol.makeClient()
+
+    private var showcase: Bool { AppStoreScreenshotProtocol.showcase }
+    private var scene: String { ProcessInfo.processInfo.environment["STORE_SCENE"] ?? "main" }
 
     var body: some View {
         Group {
             if ready {
-                MainTabView(apiClient: client, onLogout: {}, accountSessions: [],
-                    activeSessionID: "app-store-screenshots", onSwitchAccount: { _ in },
-                    onRemoveAccount: { _ in }, onAccountAuthenticated: { _, _, _ in })
+                switch scene {
+                case "display":
+                    NavigationStack { DisplaySettingsView() }
+                case "editProfile":
+                    NavigationStack {
+                        EditProfileView(apiClient: client, currentAccount: appState.currentAccount)
+                    }
                     .environmentObject(appState)
+                default:
+                    MainTabView(apiClient: client, onLogout: {}, accountSessions: sessions,
+                        activeSessionID: showcase ? sessions.first?.id : "app-store-screenshots",
+                        onSwitchAccount: { _ in }, onRemoveAccount: { _ in },
+                        onAccountAuthenticated: { _, _, _ in })
+                        .environmentObject(appState)
+                }
             } else {
                 ProgressView().task {
                     await AppStoreScreenshotProtocol.cacheIllustrations()
-                    appState.currentAccount = try? JSONDecoder().decode(Account.self,
-                        from: JSONSerialization.data(withJSONObject: AppStoreScreenshotProtocol.account(0)))
+                    appState.currentAccount = AppStoreScreenshotProtocol.decodedAccount(0)
                     appState.isAuthenticated = true
                     AppSettings.shared.notificationPolicy = .anyone
+                    if let color = ProcessInfo.processInfo.environment["STORE_THEME_COLOR"]
+                        .flatMap(MoroThemeColor.init(rawValue:)) {
+                        settings.themeColor = color
+                    }
                     ready = true
                 }
             }
         }
-        .moroTheme(MoroTheme())
+        .moroTheme(showcase ? MoroTheme(colorScheme: colorScheme, accent: settings.accentStyle,
+                                        themeColor: settings.themeColor,
+                                        customThemeColor: settings.customThemeColor,
+                                        postFontSize: settings.postFontSize) : MoroTheme())
+    }
+
+    /// The signed-in accounts the switcher offers, each on its own server.
+    private var sessions: [StoredAccountSession] {
+        guard showcase else { return [] }
+        let hosts = ["moro.social", "m.cmx.im", "mastodon.social"]
+        return hosts.indices.compactMap { index in
+            guard let account = AppStoreScreenshotProtocol.decodedAccount(index) else { return nil }
+            return StoredAccountSession(id: "store-session-\(index)", account: account,
+                instanceURLString: "https://\(hosts[index])", tokenStorageKey: "store-token-\(index)",
+                lastUsedAt: Date(timeIntervalSince1970: 1_790_000_000 - Double(index) * 3600))
+        }
     }
 }
 
@@ -36,7 +74,24 @@ private final class AppStoreScreenshotToken: AuthTokenProvider {
 
 private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable {
     private static let base = "https://moro-screenshots.invalid"
-    private static let names = ["Alex Rivers", "Luna Park", "Sam Chen", "Mira Stone"]
+    static var showcase: Bool { ProcessInfo.processInfo.environment["STORE_SHOWCASE"] == "1" }
+    /// Showcase content follows the app's language; Chinese gets its own fixtures.
+    static var chinese: Bool { showcase && (Locale.preferredLanguages.first ?? "").hasPrefix("zh") }
+
+    private static var names: [String] {
+        chinese ? ["林知夏", "陈屿", "苏晚", "周默"] : ["Alex Rivers", "Luna Park", "Sam Chen", "Mira Stone"]
+    }
+    private static var tagNames: [String] {
+        chinese ? ["摄影", "插画", "自然", "读书"] : ["Photography", "Art", "Nature", "Books"]
+    }
+
+    static func decodedAccount(_ index: Int) -> Account? {
+        try? JSONDecoder().decode(Account.self, from: JSONSerialization.data(withJSONObject: account(index)))
+    }
+
+    private static func tagURL(_ name: String) -> String {
+        "\(base)/tags/\(name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name)"
+    }
     private static let handles = ["alex", "luna", "sam", "mira"]
     private static let emojiCharacters = Array("😀😄😁😆🥹😊🙂😉😍🥰😘😋😎🤩🥳🤗🤔😴😮😌🙃😇🫶💜🌿🌸🌻🌷🍀🌱🌈✨")
 
@@ -63,18 +118,33 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
 
     static func account(_ index: Int) -> [String: Any] {
         ["id": "store-\(index)", "username": handles[index], "acct": handles[index],
-         "display_name": names[index], "note": "<p>Small adventures, good conversations, and a little room to grow. 🌿</p>",
+         "display_name": names[index],
+         "note": chinese ? "<p>记录小小的冒险和好的对话，也给自己留一点生长的空间。🌿</p>"
+             : "<p>Small adventures, good conversations, and a little room to grow. 🌿</p>",
          "avatar": "\(base)/avatar-\(index).png", "avatar_static": "\(base)/avatar-\(index).png",
          "header": "\(base)/landscape.png", "header_static": "\(base)/landscape.png",
          "followers_count": 128, "following_count": 86, "statuses_count": 42,
          "url": "\(base)/@\(handles[index])", "show_media": true, "show_featured": true,
-         "fields": [["name": "About", "value": "Photographs & everyday discoveries"],
-                    ["name": "Community", "value": "The open social web"]],
-         "source": ["privacy": "public", "language": "en"]]
+         "fields": chinese
+             ? [["name": "关于", "value": "摄影与日常发现"], ["name": "社区", "value": "开放的社交网络"]]
+             : [["name": "About", "value": "Photographs & everyday discoveries"],
+                ["name": "Community", "value": "The open social web"]],
+         "source": ["privacy": "public", "language": chinese ? "zh" : "en",
+                    "note": chinese ? "记录小小的冒险和好的对话，也给自己留一点生长的空间。🌿"
+                        : "Small adventures, good conversations, and a little room to grow. 🌿",
+                    "fields": chinese
+                        ? [["name": "关于", "value": "摄影与日常发现"], ["name": "社区", "value": "开放的社交网络"]]
+                        : [["name": "About", "value": "Photographs & everyday discoveries"],
+                           ["name": "Community", "value": "The open social web"]]]]
     }
 
     private static func status(_ index: Int) -> [String: Any] {
-        let copy = [
+        let copy = chinese ? [
+            "<p>雨后的早晨，空气很新鲜。🌿</p><p>今天有什么让你笑了一下？ <a href='\(tagURL("摄影"))'>#摄影</a></p>",
+            "<p>给书、植物和咖啡收拾出了一个小角落。☕️</p><p>最好的发现，常常就在身边。</p>",
+            "<p>开放的网络像一场对话，一条一条认真地写。</p><p>很高兴在这里遇到同频的人。✨</p>",
+            "<p>傍晚散步时画的速写，给小事留一点空间。🎨</p>",
+        ] : [
             "<p>A little fresh air, a slower morning. 🌿</p><p>What made you smile today? <a href='\(base)/tags/Photography'>#Photography</a></p>",
             "<p>Made a small corner for books, plants, and good coffee. ☕️</p><p>Sometimes the best discoveries are close to home.</p>",
             "<p>The open web feels like a conversation, one thoughtful post at a time.</p><p>Happy to find my people here. ✨</p>",
@@ -82,14 +152,14 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
         ]
         let media: [[String: Any]] = index == 0 ? [[
             "id": "store-photo", "type": "image", "url": "\(base)/landscape.png",
-            "preview_url": "\(base)/landscape.png", "description": "An original illustration of a quiet landscape at sunrise.",
+            "preview_url": "\(base)/landscape.png", "description": chinese ? "日出时分安静山野的原创插画。" : "An original illustration of a quiet landscape at sunrise.",
             "meta": ["original": ["width": 1200, "height": 720]],
         ]] : []
         var result: [String: Any] = ["id": String(900 - index), "content": copy[index], "account": account(index),
                 "created_at": "2026-09-30T01:00:00.000Z", "media_attachments": media,
                 "visibility": "public", "sensitive": false, "spoiler_text": "",
                 "favourites_count": 24 - index * 4, "reblogs_count": 3, "replies_count": 5,
-                "bookmarked": index == 1, "language": "en"]
+                "bookmarked": index == 1, "language": chinese ? "zh" : "en"]
         if ProcessInfo.processInfo.arguments.contains("LOCALIZATION_AUDIT") {
             if index == 1 { result["spoiler_text"] = "Offline content warning" }
             if index == 2 {
@@ -126,8 +196,10 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
         } else if path.contains("/instance") {
             code = 404; payload = ["error": "Offline screenshot fixture"]
         } else if path.hasSuffix("/profile") {
-            payload = ["display_name": Self.names[0], "note": "Small adventures and good conversations.",
-                       "fields": [], "show_media": true, "show_featured": true]
+            let source = (Self.account(0)["source"] as? [String: Any]) ?? [:]
+            payload = ["id": "store-0", "display_name": Self.names[0],
+                       "note": source["note"] ?? "", "fields": source["fields"] ?? [],
+                       "show_media": true, "show_featured": true]
         } else if path.hasSuffix("/unread_count") {
             payload = ["count": 0]
         } else if path.hasSuffix("/notifications") {
@@ -138,8 +210,8 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
                  "status": Self.status(index)]
             }.filter { types.isEmpty || types.contains($0["type"] as? String ?? "") }
         } else if path.hasSuffix("/trends/tags") || path.hasSuffix("/featured_tags") || path.hasSuffix("/followed_tags") {
-            payload = ["Photography", "Art", "Nature", "Books"].map {
-                ["id": "tag-\($0)", "name": $0, "url": "\(Self.base)/tags/\($0)",
+            payload = Self.tagNames.map {
+                ["id": "tag-\($0)", "name": $0, "url": Self.tagURL($0),
                  "statuses_count": "12", "history": [["day": "1790726400", "uses": "128", "accounts": "42"]]] as [String: Any]
             }
         } else if path.hasSuffix("/directory") {

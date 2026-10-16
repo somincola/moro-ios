@@ -24,9 +24,11 @@ struct LoginView: View {
     init(
         authService: AuthService,
         startsInRegistration: Bool = false,
+        initialDomain: String = "",
         onAuthSuccess: @escaping (String, Account, URL) -> Void
     ) {
         _authService = ObservedObject(wrappedValue: authService)
+        _instanceDomain = State(initialValue: initialDomain)
         _showingRegistration = State(initialValue: startsInRegistration)
         self.onAuthSuccess = onAuthSuccess
     }
