@@ -97,6 +97,8 @@ struct PostContent: View {
                     emojis: status.emojis,
                     parsingOptions: .statusBody,
                     emojiSize: bodyFont.pointSize * 1.25,
+                    // Post text is not selectable; "Copy text" in the ⋯ menu copies it.
+                    isSelectable: false,
                     lineSpacing: lineSpacing,
                     fontOverride: Font(bodyFont),
                     uiFontOverride: bodyFont,

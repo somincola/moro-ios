@@ -732,3 +732,33 @@ extension ContentElement {
         }
     }
 }
+
+extension Array where Element == ContentElement {
+    /// Whether the custom emoji at `index` needs a space added before it so it doesn't touch
+    /// the text in front. Text that already ends with whitespace has one.
+    func emojiNeedsSpace(before index: Int) -> Bool {
+        guard index > 0 else { return false }
+        switch self[index - 1] {
+        case .lineBreak:
+            return false
+        case .text(let text):
+            return !(text.last?.isWhitespace ?? true)
+        default:
+            return true
+        }
+    }
+
+    /// Whether the custom emoji at `index` needs a space added after it. Text that already
+    /// starts with whitespace has one.
+    func emojiNeedsSpace(after index: Int) -> Bool {
+        guard index < count - 1 else { return false }
+        switch self[index + 1] {
+        case .lineBreak:
+            return false
+        case .text(let text):
+            return !(text.first?.isWhitespace ?? true)
+        default:
+            return true
+        }
+    }
+}

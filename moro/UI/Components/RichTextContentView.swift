@@ -252,7 +252,10 @@ struct RichTextContentView: View {
         }
 
         Group {
-            if hasEmojis || paragraphSpacing != nil {
+            // Bios with paragraph spacing keep the TextKit view (and its text selection).
+            // Everything else — post bodies included — stays plain SwiftUI `Text`, with
+            // custom emoji drawn inline.
+            if paragraphSpacing != nil {
                 MixedTextEmojiView(
                     elements: elements,
                     emojiSize: emojiSize,
@@ -270,6 +273,14 @@ struct RichTextContentView: View {
                     trailingSystemImageColor: UIColor(resolvedTrailingSystemImageColor),
                     trailingSystemImageSize: trailingSystemImageSize,
                     onOpenURL: handleURL
+                )
+            } else if hasEmojis {
+                InlineEmojiText(
+                    runs: InlineTextRunBuilder.runs(for: elements, style: inlineTextStyle),
+                    emojiSize: emojiSize,
+                    trailingSystemImage: trailingIcon,
+                    trailingSystemImageColor: resolvedTrailingSystemImageColor,
+                    trailingSystemImageSize: trailingSystemImageSize
                 )
             } else if let trailingIcon {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -343,78 +354,22 @@ struct RichTextContentView: View {
         return .byWordWrapping
     }
 
+    private var inlineTextStyle: InlineTextStyle {
+        InlineTextStyle(
+            textColor: resolvedTextColor,
+            linkColor: resolvedLinkColor,
+            codeBackgroundColor: theme.colors.surfaceSubtle,
+            codeFontSize: resolvedUIFont.pointSize,
+            underlinesLinks: underlinesLinks
+        )
+    }
+
     private func buildAttributedStringForTextOnly(
         elements: [ContentElement]
     ) -> AttributedString {
-        var result = AttributedString()
-        for (index, element) in elements.enumerated() {
-            switch element {
-            case .text(let text):
-                result += AttributedString(text)
-            case .link(let text, let url):
-                var linkAttr = AttributedString(text)
-                linkAttr.link = url
-                linkAttr.foregroundColor = resolvedLinkColor
-                if underlinesLinks {
-                    linkAttr.underlineStyle = .single
-                }
-                result += linkAttr
-            case .mention(let username, let url):
-                var mentionAttr = AttributedString(username)
-                mentionAttr.link = url
-                mentionAttr.foregroundColor = resolvedLinkColor
-                if underlinesLinks {
-                    mentionAttr.underlineStyle = .single
-                }
-                result += mentionAttr
-            case .hashtag(let tag, let url):
-                var tagAttr = AttributedString(tag)
-                tagAttr.link = url
-                tagAttr.foregroundColor = resolvedLinkColor
-                if underlinesLinks {
-                    tagAttr.underlineStyle = .single
-                }
-                result += tagAttr
-            case .emoji(let shortcode, _, _):
-                // Add space before emoji if previous element is not a space or line break
-                let previousElement = index > 0 ? elements[index - 1] : nil
-                let needsSpaceBefore = !(previousElement?.isSpaceOrLineBreak ?? true)
-                if needsSpaceBefore {
-                    result += AttributedString(" ")
-                }
-
-                // Add emoji shortcode (fallback for text-only mode)
-                result += AttributedString(":\(shortcode):")
-
-                // Add space after emoji if next element is not a space or line break
-                let nextElement = index < elements.count - 1 ? elements[index + 1] : nil
-                let needsSpaceAfter = !(nextElement?.isSpaceOrLineBreak ?? true)
-                if needsSpaceAfter {
-                    result += AttributedString(" ")
-                }
-            case .inlineCode(let code):
-                var codeAttr = AttributedString(code)
-                codeAttr.font = .system(
-                    size: resolvedUIFont.pointSize,
-                    weight: .regular,
-                    design: .monospaced
-                )
-                codeAttr.foregroundColor = resolvedTextColor
-                codeAttr.backgroundColor = theme.colors.surfaceSubtle
-                result += codeAttr
-            case .codeBlock(let code):
-                var codeAttr = AttributedString(code)
-                codeAttr.font = .system(
-                    size: resolvedUIFont.pointSize,
-                    weight: .regular,
-                    design: .monospaced
-                )
-                result += codeAttr
-            case .lineBreak:
-                result += AttributedString("\n")
-            }
-        }
-        return result
+        InlineTextRunBuilder.flattened(
+            InlineTextRunBuilder.runs(for: elements, style: inlineTextStyle)
+        )
     }
 
     private func handleURL(_ url: URL) {
@@ -517,7 +472,7 @@ extension UIColor {
     /// Resolved RGBA components for value-based equality. Two `UIColor(SwiftUI.Color)`
     /// instances are not reliably `isEqual:` even when visually identical, so any Equatable
     /// gate must compare resolved components rather than the instances themselves.
-    fileprivate var moroRGBAComponents: [CGFloat] {
+    var moroRGBAComponents: [CGFloat] {
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         guard getRed(&r, green: &g, blue: &b, alpha: &a) else { return [-1, -1, -1, -1] }
         return [r, g, b, a]
@@ -553,6 +508,19 @@ struct MixedTextEmojiView: UIViewRepresentable {
         }
     }
 
+    /// TextKit applies a truncating paragraph line-break mode to every line, which squeezes
+    /// a paragraph onto one line. When more than one line is allowed the paragraphs wrap,
+    /// and the text container (`lineBreakMode`, `maximumNumberOfLines`) truncates the last one.
+    var paragraphLineBreakMode: NSLineBreakMode {
+        guard lineLimit != 1 else { return lineBreakMode }
+        switch lineBreakMode {
+        case .byTruncatingHead, .byTruncatingMiddle, .byTruncatingTail:
+            return .byWordWrapping
+        default:
+            return lineBreakMode
+        }
+    }
+
     private var resolvedLinkTextAttributes: [NSAttributedString.Key: Any] {
         var attributes: [NSAttributedString.Key: Any] = [
             .foregroundColor: linkColor
@@ -567,10 +535,17 @@ struct MixedTextEmojiView: UIViewRepresentable {
         image: UIImage,
         emojiSize: CGFloat
     ) -> NSTextAttachment {
-        let attachment = NSTextAttachment()
-        attachment.image = image.aspectFittedCanvas(
-            size: CGSize(width: emojiSize, height: emojiSize)
+        makeEmojiAttachment(
+            displayImage: image.aspectFittedCanvas(size: CGSize(width: emojiSize, height: emojiSize)),
+            emojiSize: emojiSize
         )
+    }
+
+    /// `displayImage` is already drawn at `emojiSize` (a scaled emoji or a placeholder).
+    /// Both use the same bounds, so swapping one for the other never moves the text.
+    static func makeEmojiAttachment(displayImage: UIImage, emojiSize: CGFloat) -> NSTextAttachment {
+        let attachment = NSTextAttachment()
+        attachment.image = displayImage
         attachment.bounds = CGRect(
             x: 0,
             y: -emojiSize * 0.08,
@@ -666,6 +641,7 @@ struct MixedTextEmojiView: UIViewRepresentable {
 
         let render: ([URL: UIImage]) -> Void = { [
             weak textView,
+            weak coordinator = context.coordinator,
             textColor = self.textColor,
             linkColor = self.linkColor,
             codeBackgroundColor = self.codeBackgroundColor,
@@ -677,15 +653,25 @@ struct MixedTextEmojiView: UIViewRepresentable {
                 textColor: textColor,
                 linkColor: linkColor,
                 codeBackgroundColor: codeBackgroundColor,
-                underlinesLinks: underlinesLinks
+                underlinesLinks: underlinesLinks,
+                pendingEmojiURLs: coordinator?.pendingEmojiURLs ?? []
             )
             textView.attributedText = attributedString
 
             // Force layout to calculate the correct height
             textView.layoutIfNeeded()
 
-            // Invalidate intrinsic content size to trigger SwiftUI layout update
-            textView.invalidateIntrinsicContentSize()
+            // Ask SwiftUI to measure again. A finished emoji download replaces a same-size
+            // placeholder, so when the height is unchanged that relayout is skipped.
+            let measuringWidth = textView.bounds.width > 0 ? textView.bounds.width : width
+            let height = ceil(textView.sizeThatFits(
+                CGSize(width: measuringWidth, height: CGFloat.greatestFiniteMagnitude)
+            ).height)
+            let heightUnchanged = coordinator?.lastReportedHeight.map { abs($0 - height) < 0.5 } ?? false
+            coordinator?.lastReportedHeight = height
+            if !(coordinator?.isDeliveringLoadedEmoji == true && heightUnchanged) {
+                textView.invalidateIntrinsicContentSize()
+            }
 
             // Ensure the text container width matches the textView width
             DispatchQueue.main.async {
@@ -750,12 +736,6 @@ struct MixedTextEmojiView: UIViewRepresentable {
     class Coordinator: NSObject, UITextViewDelegate {
         typealias EmojiDataLoader = @Sendable (URL) async -> Data?
 
-        private static let sharedEmojiImageCache: NSCache<NSURL, UIImage> = {
-            let cache = NSCache<NSURL, UIImage>()
-            cache.countLimit = 240
-            return cache
-        }()
-
         var onOpenURL: ((URL) -> Void)?
         private let emojiDataLoader: EmojiDataLoader?
         private var emojiLoadTasks: [URL: Task<Data?, Never>] = [:]
@@ -763,6 +743,14 @@ struct MixedTextEmojiView: UIViewRepresentable {
         /// Inputs of the last attributed-string build, so updateUIView can skip the
         /// (expensive) rebuild + invalidate when nothing relevant changed.
         var lastBuildInputs: MixedTextEmojiView.BuildInputs?
+        /// Emoji still downloading. The renderer reserves their space with a placeholder.
+        private(set) var pendingEmojiURLs: Set<URL> = []
+        /// True only while a finished download is being applied — the one update that
+        /// happens outside SwiftUI's own layout pass.
+        private(set) var isDeliveringLoadedEmoji = false
+        /// Height last handed to SwiftUI, so a finished download that doesn't change the
+        /// height doesn't ask SwiftUI to lay the row out again.
+        var lastReportedHeight: CGFloat?
 
         override init() {
             self.onOpenURL = nil
@@ -802,6 +790,7 @@ struct MixedTextEmojiView: UIViewRepresentable {
             let generation = emojiLoadGeneration
             emojiLoadTasks.values.forEach { $0.cancel() }
             emojiLoadTasks.removeAll()
+            pendingEmojiURLs = []
 
             var seenURLs = Set<URL>()
             var emojiURLs: [URL] = []
@@ -825,7 +814,7 @@ struct MixedTextEmojiView: UIViewRepresentable {
             var assets: [URL: UIImage] = [:]
             var missingURLs: [URL] = []
             for emojiURL in emojiURLs {
-                if let cachedImage = Self.sharedEmojiImageCache.object(forKey: emojiURL as NSURL) {
+                if let cachedImage = InlineEmojiRendering.cachedImage(for: emojiURL) {
                     assets[emojiURL] = cachedImage
                 } else {
                     missingURLs.append(emojiURL)
@@ -837,8 +826,9 @@ struct MixedTextEmojiView: UIViewRepresentable {
                 return
             }
 
-            // Populate the UITextView synchronously using cached images and
-            // readable shortcodes. Completion replaces those once assets arrive.
+            // Populate the UITextView synchronously: cached images now, and a same-size
+            // placeholder for each emoji still loading. Completion swaps in the images.
+            pendingEmojiURLs = Set(missingURLs)
             initial?(assets)
 
             let emojiDataLoader = self.emojiDataLoader
@@ -865,7 +855,7 @@ struct MixedTextEmojiView: UIViewRepresentable {
                           let image = UIImage(data: data) else {
                         continue
                     }
-                    Self.sharedEmojiImageCache.setObject(image, forKey: emojiURL as NSURL)
+                    InlineEmojiRendering.store(image, for: emojiURL)
                     assets[emojiURL] = image
                 }
 
@@ -874,6 +864,9 @@ struct MixedTextEmojiView: UIViewRepresentable {
                 await MainActor.run {
                     guard generation == self.emojiLoadGeneration else { return }
                     self.emojiLoadTasks.removeAll()
+                    self.pendingEmojiURLs = []
+                    self.isDeliveringLoadedEmoji = true
+                    defer { self.isDeliveringLoadedEmoji = false }
                     completion(assets)
                 }
             }
@@ -913,12 +906,13 @@ struct MixedTextEmojiView: UIViewRepresentable {
         textColor: UIColor,
         linkColor: UIColor,
         codeBackgroundColor: UIColor,
-        underlinesLinks: Bool
+        underlinesLinks: Bool,
+        pendingEmojiURLs: Set<URL> = []
     ) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = lineSpacing
-        paragraphStyle.lineBreakMode = lineBreakMode
+        paragraphStyle.lineBreakMode = paragraphLineBreakMode
         let baseAttributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: textColor,
@@ -978,10 +972,8 @@ struct MixedTextEmojiView: UIViewRepresentable {
                 result.append(tagAttr)
 
             case .emoji(let shortcode, _, let staticURL):
-                // Add space before emoji if previous element is not a space or line break
-                let previousElement = index > 0 ? elements[index - 1] : nil
-                let needsSpaceBefore = !(previousElement?.isSpaceOrLineBreak ?? true)
-                if needsSpaceBefore {
+                // Keep one space between the emoji and the text in front of it.
+                if elements.emojiNeedsSpace(before: index) {
                     result.append(
                         NSAttributedString(
                             string: " ",
@@ -993,9 +985,19 @@ struct MixedTextEmojiView: UIViewRepresentable {
                 // Custom emoji render as static inline images (plain NSTextAttachment) — no
                 // per-emoji SDAnimatedImageView / CADisplayLink, which (unbounded by cell reuse
                 // in a SwiftUI list) saturated the main thread. Keyed on the static URL.
+                // A loaded emoji and a still-loading one take the same space; only an emoji
+                // that failed to load falls back to its readable shortcode.
+                let displayImage: UIImage?
                 if let image = emojiAssets[staticURL] {
-                    let plain = Self.makeStaticEmojiAttachment(
-                        image: image,
+                    displayImage = InlineEmojiRendering.scaled(image, for: staticURL, size: emojiSize)
+                } else if pendingEmojiURLs.contains(staticURL) {
+                    displayImage = InlineEmojiRendering.placeholder(size: emojiSize)
+                } else {
+                    displayImage = nil
+                }
+                if let displayImage {
+                    let plain = Self.makeEmojiAttachment(
+                        displayImage: displayImage,
                         emojiSize: emojiSize
                     )
                     let attachmentString = NSMutableAttributedString(attachment: plain)
@@ -1013,10 +1015,8 @@ struct MixedTextEmojiView: UIViewRepresentable {
                     )
                 }
 
-                // Add space after emoji if next element is not a space or line break
-                let nextElement = index < elements.count - 1 ? elements[index + 1] : nil
-                let needsSpaceAfter = !(nextElement?.isSpaceOrLineBreak ?? true)
-                if needsSpaceAfter {
+                // And after it.
+                if elements.emojiNeedsSpace(after: index) {
                     result.append(
                         NSAttributedString(
                             string: " ",
