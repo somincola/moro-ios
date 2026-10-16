@@ -121,6 +121,8 @@ final class ProfileExperienceUITests: XCTestCase {
         assertTabsMeetNavigationBar(app)
         attach(app, "profile-header-pinned-light")
 
+        // Edit Profile lives in the header, which is scrolled away by now.
+        for _ in 0..<3 { app.swipeDown() }
         openOverview(app)
         back(app)
         XCTAssertTrue(app.buttons["profile.moreButton"].waitForExistence(timeout: 5))

@@ -131,6 +131,7 @@ struct ThemeColorTests {
         let tabs = try #require(controller.children.first as? UITabBarController)
         let item = try #require(tabs.tabBar.items?[2])
         var previous = item.image
+        var previousScheme = MoroTheme().colorScheme
         for theme in [
             MoroTheme(themeColor: .pink),
             MoroTheme(colorScheme: .dark, themeColor: .green),
@@ -142,13 +143,17 @@ struct ThemeColorTests {
                 contentVersion: "theme-test", homeView: empty, exploreView: empty,
                 inboxView: empty, meView: empty, routeView: { _, _ in empty }
             )
-            // Unread is the bell's own red badge layer, drawn in this theme's colors,
-            // not a system badge; the count lives in the VoiceOver label.
+            // Unread is the bell's own red badge layer, not a system badge; the count
+            // lives in the VoiceOver label. The red dot is fixed, while the bell follows
+            // the tab's text colors, so a light/dark change must redraw it.
             #expect(item.badgeValue == nil)
             #expect(item.image?.renderingMode == .alwaysOriginal)
-            #expect(item.image !== previous, "The badged bell is redrawn for every theme")
+            if theme.colorScheme != previousScheme {
+                #expect(item.image !== previous, "The badged bell is redrawn when its colors change")
+            }
             #expect(item.accessibilityLabel == MoroL10n.Navigation.inboxUnread(3))
             previous = item.image
+            previousScheme = theme.colorScheme
         }
         controller.apply(
             theme: MoroTheme(), unreadInboxCount: 0, currentUserAvatarURL: nil,
