@@ -4,7 +4,7 @@ Please sign in using the demo account provided in App Review Information. Moro i
 
 First launch and sign-in (new in 1.1.0):
 • The first screen is a wordless animated welcome. Tap anywhere (or swipe up), then tap "Get started". You can also tap "Log in" at the top right to go straight to sign-in.
-• The server field on the sign-in screen is now empty by default. Enter the server domain of the demo account and tap "Log in". The server's own sign-in page then opens in a secure browser sheet.
+• The server field on the sign-in screen is now empty by default. Enter m.somincola.org (the server of the demo account) and tap "Log in". The server's own sign-in page then opens in a secure browser sheet, where the demo account email and password are entered.
 • Moro now supports several signed-in accounts. Long-press the "Me" tab to switch between them.
 ---
 User-Generated Content and Safety (Guideline 1.2)
