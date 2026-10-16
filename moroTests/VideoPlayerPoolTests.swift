@@ -6,8 +6,10 @@ import Testing
 
 @MainActor
 struct VideoPlayerPoolTests {
+    /// An address that never answers within a test, so the item stays loading. (A missing
+    /// local file fails within milliseconds, and a failed player is rightly never reused.)
     private func url(_ name: String) -> URL {
-        URL(fileURLWithPath: "/tmp/moro-pool-\(name)-\(UUID().uuidString).mp4")
+        URL(string: "https://10.255.255.1/moro-pool-\(name)-\(UUID().uuidString).mp4")!
     }
 
     @Test func scrollingBackToAVideoReusesItsPlayer() {

@@ -14,7 +14,6 @@ struct ConversationCompactMediaGrid: View {
     @Environment(\.moroTheme) private var theme
     @State private var selectedImageAttachment: Status.Attachment?
     @State private var selectedImageIndex = 0
-    @State private var selectedVideoAttachment: Status.Attachment?
     @State private var isSensitiveRevealed = false
     @Environment(\.moroMediaPrefs) private var mediaPrefs
     @Namespace private var mediaTransitionNamespace
@@ -77,12 +76,6 @@ struct ConversationCompactMediaGrid: View {
                     )
                     .navigationTransition(
                         .zoom(sourceID: attachment.id, in: mediaTransitionNamespace)
-                    )
-                }
-                .fullScreenCover(item: $selectedVideoAttachment) { attachment in
-                    VideoFullscreenView(
-                        attachment: attachment,
-                        onDismiss: { selectedVideoAttachment = nil }
                     )
                 }
         }
@@ -209,7 +202,7 @@ struct ConversationCompactMediaGrid: View {
             selectedImageIndex = index
             selectedImageAttachment = attachment
         } else {
-            selectedVideoAttachment = attachment
+            NativeVideoPlayer.present(url: attachment.url, isGIF: type == "gifv")
         }
     }
 

@@ -14,7 +14,8 @@
 //  • In the timeline videos play silently and never interrupt other audio; fullscreen
 //    plays the sound. Low Power Mode and the system "Auto-Play Video Previews" /
 //    "Auto-Play Animated Images" settings turn autoplay off.
-//  • Tapping the video opens it fullscreen; the play button plays it in place.
+//  • Tapping the video opens it in the system player; the play button plays it in place.
+//  • A video that fails to load shows a retry button instead of loading forever.
 //
 
 import SwiftUI
@@ -143,7 +144,15 @@ struct VideoPlayerView: View {
                 .allowsHitTesting(false)
             }
 
-            if isPlaying && !isFrameReady {
+            if playerObserver.didFail {
+                // Couldn't load (e.g. a timeout on a slow network): offer to try again
+                // instead of spinning forever.
+                Button(action: retry) {
+                    overlayButton(systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(MoroL10n.Timeline.retry))
+            } else if isPlaying && !isFrameReady {
                 ProgressView()
                     .tint(.white)
             } else if !isPlaying {
@@ -157,6 +166,13 @@ struct VideoPlayerView: View {
     }
 
     // MARK: - Playback
+
+    private func retry() {
+        // The failed player can't be reused; start a fresh one.
+        isFrameReady = false
+        playerObserver.tearDown()
+        playInPlace()
+    }
 
     private func playInPlace() {
         playRequested = true
@@ -208,15 +224,19 @@ struct VideoPlayerView: View {
     // MARK: - Play Button Overlay
     
     private var playButtonOverlay: some View {
+        overlayButton(systemImage: "play.fill", opticalOffset: 2)
+    }
+
+    private func overlayButton(systemImage: String, opticalOffset: CGFloat = 0) -> some View {
         ZStack {
             Circle()
                 .fill(Color.black.opacity(0.6))
                 .frame(width: 60, height: 60)
-            
-            Image(systemName: "play.fill")
+
+            Image(systemName: systemImage)
                 .moroScaledFont(size: 24)
                 .foregroundStyle(.white)
-                .offset(x: 2) // Optical center adjustment
+                .offset(x: opticalOffset) // Optical center adjustment
         }
     }
     

@@ -30,7 +30,6 @@ struct MediaGridView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedAttachment: Status.Attachment? = nil
     @State private var selectedIndex: Int = 0
-    @State private var selectedVideoAttachment: Status.Attachment? = nil
     @Namespace private var mediaTransitionNamespace
     
     // Filter to only image attachments (videos are not yet supported in grid view)
@@ -79,7 +78,7 @@ struct MediaGridView: View {
     @ViewBuilder
     private var videoLayout: some View {
         VStack(spacing: 8) {
-            ForEach(Array(videoAttachments.enumerated()), id: \.element.id) { index, attachment in
+            ForEach(videoAttachments, id: \.id) { attachment in
                 // Like a single image: the video's own shape, capped in height. A capped
                 // portrait video is shown whole with bars at the sides, never cropped.
                 Color.clear
@@ -92,19 +91,13 @@ struct MediaGridView: View {
                             isSensitive: isSensitive,
                             contentMode: .fit,
                             onTap: {
-                                // Open fullscreen video player
-                                openVideoPreview(attachment: attachment, index: index)
+                                // The system player, continuing this player.
+                                NativeVideoPlayer.present(url: attachment.url, isGIF: attachment.type == "gifv")
                             }
                         )
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-        }
-        .fullScreenCover(item: $selectedVideoAttachment) { attachment in
-            VideoFullscreenView(
-                attachment: attachment,
-                onDismiss: { selectedVideoAttachment = nil }
-            )
         }
     }
     
@@ -237,14 +230,7 @@ struct MediaGridView: View {
         selectedIndex = index
         selectedAttachment = imageAttachments[index]
     }
-    
-    private func openVideoPreview(attachment: Status.Attachment, index: Int) {
-        if let onImageTap {
-            onImageTap(attachment, index)
-        } else {
-            selectedVideoAttachment = attachment
-        }
-    }
+
 }
 
 // Make Attachment identifiable for fullScreenCover

@@ -194,6 +194,8 @@ final class TimelineVideoPlayerPool {
 @MainActor
 class VideoPlayerObserver: ObservableObject {
     @Published var playingState: AVPlayer.TimeControlStatus = .paused
+    /// The video couldn't be loaded (for example the request timed out).
+    @Published private(set) var didFail = false
     @Published var blurImage: UIImage?
 
     /// With a pool, the player is shared and parked there when no view holds it any more;
@@ -227,6 +229,7 @@ class VideoPlayerObserver: ObservableObject {
         let playerItem = entry.item
         self.entry = entry
         self.player = _player
+        didFail = false
         // Force UI update
         self.objectWillChange.send()
 
@@ -240,9 +243,12 @@ class VideoPlayerObserver: ObservableObject {
         // Observe player item status for error handling
         playerItemStatusSubscription = playerItem.publisher(for: \.status, options: [.initial, .new])
             .receive(on: DispatchQueue.main)
-            .sink { status in
+            .sink { [weak self] status in
                 switch status {
                 case .failed:
+                    // Stop waiting: the view shows a retry button instead of loading forever.
+                    self?.didFail = true
+                    self?.player?.pause()
                     if let error = playerItem.error {
                         AppLogger.warning(
                             "[VideoPlayerObserver] Player item failed: \(error.localizedDescription)"
@@ -308,10 +314,14 @@ class VideoPlayerObserver: ObservableObject {
     /// on `deinit` alone keeps decoders, KVO and player items alive unnecessarily.
     /// A shared player goes back to the pool instead, so scrolling back is instant.
     func tearDown() {
-        playerStatusSubscription?.cancel()
+        // Take the subscriptions out first and cancel them afterwards: cancelling can call
+        // back into this object, which must not happen while a property is being written.
+        let statusSubscription = playerStatusSubscription
+        let itemSubscription = playerItemStatusSubscription
         playerStatusSubscription = nil
-        playerItemStatusSubscription?.cancel()
         playerItemStatusSubscription = nil
+        statusSubscription?.cancel()
+        itemSubscription?.cancel()
 
         if let observer = notificationObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -332,6 +342,7 @@ class VideoPlayerObserver: ObservableObject {
         }
         entry = nil
         player = nil
+        didFail = false
         blurImage = nil
         playingState = .paused
     }
