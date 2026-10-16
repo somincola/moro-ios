@@ -401,8 +401,9 @@ private struct AccountDisplayNameLabelRepresentable: UIViewRepresentable {
         }
     }
 
-    fileprivate func attributedText(
-        using images: [URL: UIImage]
+    func attributedText(
+        using images: [URL: UIImage],
+        pendingEmojiURLs: Set<URL> = []
     ) -> NSAttributedString {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = lineBreakMode
@@ -420,11 +421,19 @@ private struct AccountDisplayNameLabelRepresentable: UIViewRepresentable {
             case .text(let text):
                 result.append(NSAttributedString(string: text, attributes: baseAttributes))
             case .emoji(let emoji):
+                // Loaded and still-loading emoji take the same space, so the name doesn't
+                // reflow when the image arrives; only a failed load shows the shortcode.
+                let displayImage: UIImage?
                 if let image = images[emoji.staticURL] {
+                    displayImage = InlineEmojiRendering.scaled(image, for: emoji.staticURL, size: emojiSize)
+                } else if pendingEmojiURLs.contains(emoji.staticURL) {
+                    displayImage = InlineEmojiRendering.placeholder(size: emojiSize)
+                } else {
+                    displayImage = nil
+                }
+                if let displayImage {
                     let attachment = NSTextAttachment()
-                    attachment.image = image.aspectFittedCanvas(
-                        size: CGSize(width: emojiSize, height: emojiSize)
-                    )
+                    attachment.image = displayImage
                     attachment.bounds = CGRect(
                         x: 0,
                         y: -emojiSize * 0.08,
@@ -452,8 +461,20 @@ private struct AccountDisplayNameLabelRepresentable: UIViewRepresentable {
     }
 
     final class Coordinator {
+        /// Everything that changes the rendered name. SwiftUI calls updateUIView far more
+        /// often than these change, and each render used to restart the emoji downloads.
+        private struct RenderKey: Equatable {
+            let content: AccountDisplayNameContent
+            let font: UIFont
+            let textColorRGBA: [CGFloat]
+            let lineBreakMode: NSLineBreakMode
+            let numberOfLines: Int
+            let emojiScale: CGFloat
+        }
+
         private var renderTask: Task<Void, Never>?
         private var generation: Int = 0
+        private var lastRenderKey: RenderKey?
 
         deinit {
             renderTask?.cancel()
@@ -467,6 +488,13 @@ private struct AccountDisplayNameLabelRepresentable: UIViewRepresentable {
             lineBreakMode: NSLineBreakMode,
             emojiScale: CGFloat
         ) {
+            let key = RenderKey(
+                content: content, font: font, textColorRGBA: textColor.moroRGBAComponents,
+                lineBreakMode: lineBreakMode, numberOfLines: label.numberOfLines, emojiScale: emojiScale
+            )
+            guard key != lastRenderKey else { return }
+            lastRenderKey = key
+
             generation += 1
             let currentGeneration = generation
             renderTask?.cancel()
@@ -489,26 +517,41 @@ private struct AccountDisplayNameLabelRepresentable: UIViewRepresentable {
                 }
             }
 
-            label.attributedText = renderer.attributedText(using: images)
-
             let missingURLs = content.emojiURLs.filter { images[$0] == nil }
+            // Emoji still downloading hold their final space, so the name doesn't reflow.
+            label.attributedText = renderer.attributedText(
+                using: images, pendingEmojiURLs: Set(missingURLs)
+            )
             guard !missingURLs.isEmpty else { return }
+            let cachedImages = images
 
-            renderTask = Task { [weak self] in
-                for url in missingURLs {
-                    guard !Task.isCancelled else { return }
-                    guard let image = await AccountDisplayNameEmojiLoader.loadImage(from: url) else {
-                        continue
+            // Download every missing emoji together and apply them in one update, instead
+            // of re-rendering (and re-measuring) once per emoji.
+            renderTask = Task { [weak self, weak label] in
+                let loaded = await withTaskGroup(of: (URL, UIImage?).self) { group in
+                    for url in missingURLs {
+                        group.addTask { (url, await AccountDisplayNameEmojiLoader.loadImage(from: url)) }
                     }
-                    images[url] = image
+                    var results: [URL: UIImage] = [:]
+                    for await (url, image) in group {
+                        if let image { results[url] = image }
+                    }
+                    return results
+                }
 
-                    // Coordinator gone (cell torn down) — drop the rest of the work
-                    // so we don't keep pinning the label/images until the next URLSession
-                    // timeout resolves.
-                    guard let self else { return }
-                    await MainActor.run {
-                        guard currentGeneration == self.generation else { return }
-                        label.attributedText = renderer.attributedText(using: images)
+                // Coordinator or label gone (cell torn down) — nothing to update.
+                guard !Task.isCancelled, let self, let label else { return }
+                await MainActor.run {
+                    guard currentGeneration == self.generation else { return }
+                    let images = cachedImages.merging(loaded) { current, _ in current }
+                    let width = label.preferredMaxLayoutWidth > 0
+                        ? label.preferredMaxLayoutWidth : label.bounds.width
+                    let fitting = CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+                    let previousHeight = ceil(label.sizeThatFits(fitting).height)
+                    label.attributedText = renderer.attributedText(using: images)
+                    // Placeholders match the emoji size, so only a failed emoji (now shown
+                    // as its shortcode) can change the height.
+                    if abs(ceil(label.sizeThatFits(fitting).height) - previousHeight) >= 0.5 {
                         label.invalidateIntrinsicContentSize()
                     }
                 }

@@ -866,18 +866,26 @@ struct SearchAccountNotePreviewView: View {
     var body: some View {
         let elements = account.noteContentElements
         if elements.containsCustomEmoji {
-            MixedTextEmojiView(
-                elements: elements,
-                emojiSize: 14,
-                textColor: UIColor(theme.colors.textSecondary),
-                linkColor: UIColor(theme.colors.textSecondary),
-                codeBackgroundColor: UIColor(theme.colors.surfaceSubtle),
-                font: theme.uiKitPalette.font(forTextStyle: .subheadline),
-                lineSpacing: 1,
-                lineLimit: 2,
-                lineBreakMode: .byTruncatingTail,
-                isSelectable: false
+            // Same SwiftUI text as the plain preview below, so both have the same font and
+            // line height. Links are plain text here: a tap opens the profile row.
+            InlineEmojiText(
+                runs: InlineTextRunBuilder.runs(
+                    for: elements,
+                    style: InlineTextStyle(
+                        textColor: theme.colors.textSecondary,
+                        linkColor: theme.colors.textSecondary,
+                        codeBackgroundColor: theme.colors.surfaceSubtle,
+                        codeFontSize: theme.uiKitPalette.font(forTextStyle: .subheadline).pointSize,
+                        linksAreInteractive: false
+                    )
+                ),
+                emojiSize: 14
             )
+            .font(theme.typography.body)
+            .foregroundStyle(theme.colors.textSecondary)
+            .lineLimit(2)
+            .truncationMode(.tail)
+            .lineSpacing(1)
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             Text(elements.plainTextValue)
