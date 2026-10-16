@@ -38,4 +38,15 @@ final class MastodonTextCounterTests: XCTestCase {
         // @alice (6) + space (1) + URL (23) = 30.
         XCTAssertEqual(MastodonTextCounter.count("@alice@host.tld https://x.io/y"), 30)
     }
+
+    func testContentWarningCountsTowardTheLimit() {
+        // "Spoilers" (8) + "Hello" (5).
+        XCTAssertEqual(MastodonTextCounter.count(text: "Hello", spoilerText: "Spoilers"), 13)
+        XCTAssertEqual(MastodonTextCounter.count(text: "Hello", spoilerText: ""), 5)
+        // The server gives no URL or mention concession inside the warning itself.
+        XCTAssertEqual(
+            MastodonTextCounter.count(text: "", spoilerText: "https://example.com/long/path"),
+            29
+        )
+    }
 }

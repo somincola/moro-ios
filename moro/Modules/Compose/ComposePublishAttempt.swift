@@ -23,6 +23,15 @@ enum ComposePublishFailure {
             switch error {
             case .timeout, .networkUnavailable, .cancelled, .decoding, .underlying:
                 return MoroL10n.Compose.publishUnconfirmed
+            case .serverError(let serverError):
+                // A rejected post (400/422) carries the server's own explanation, e.g.
+                // "Validation failed: Text character limit of 500 exceeded", in the
+                // account's language. That says what to fix; a bare "Unable to process
+                // request" does not.
+                if let code = serverError.httpCode, code == 400 || code == 422 {
+                    let message = serverError.error.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !message.isEmpty { return message }
+                }
             default: break
             }
         }
