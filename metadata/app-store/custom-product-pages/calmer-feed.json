@@ -1,0 +1,16 @@
+{
+  "slug": "calmer-feed",
+  "name": "Calmer Feed",
+  "audience": "从其他社交平台迁移、厌倦算法推荐的人",
+  "screenshots": [
+    "03",
+    "07",
+    "01",
+    "02",
+    "06"
+  ],
+  "promotionalText": {
+    "zh-Hans": "厌倦了算法推荐？Moro 的时间线按时间顺序呈现你关注的人，没有推荐、没有广告、不追踪。带上任意 Mastodon 服务器的账号，安静地读，好好地聊。",
+    "en-US": "Tired of algorithmic feeds? Moro shows the people you follow in time order, with no recommendations, no ads and no tracking. Bring an account from any Mastodon server."
+  }
+}
