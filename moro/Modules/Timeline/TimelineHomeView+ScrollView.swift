@@ -452,24 +452,23 @@ extension TimelineHomeView {
         ForEach(0..<6, id: \.self) { _ in
             HStack(alignment: .top, spacing: theme.spacing.m) {
                 Circle()
-                    .fill(theme.colors.surfaceSubtle)
+                    .fill(theme.colors.skeleton)
                     .frame(width: 36, height: 36)
 
                 VStack(alignment: .leading, spacing: theme.spacing.s) {
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(theme.colors.surfaceSubtle)
+                        .fill(theme.colors.skeleton)
                         .frame(width: 122, height: 12)
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(theme.colors.surfaceSubtle)
+                        .fill(theme.colors.skeleton)
                         .frame(height: 11)
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(theme.colors.surfaceSubtle)
+                        .fill(theme.colors.skeleton)
                         .frame(width: 190, height: 11)
                 }
             }
             .padding(.horizontal, theme.spacing.timelinePadding)
             .padding(.vertical, theme.spacing.timelineVertical)
-            .redacted(reason: .placeholder)
 
             MoroDivider()
                 .padding(.leading, theme.spacing.timelinePadding)

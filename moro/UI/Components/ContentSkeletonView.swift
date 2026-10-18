@@ -62,24 +62,23 @@ private struct TimelineRowSkeleton: View {
     var body: some View {
         HStack(alignment: .top, spacing: theme.spacing.m) {
             RoundedRectangle(cornerRadius: Metrics.avatarCornerRadius, style: .continuous)
-                .fill(theme.colors.surfaceSubtle)
+                .fill(theme.colors.skeleton)
                 .frame(width: Metrics.avatarSize, height: Metrics.avatarSize)
 
             VStack(alignment: .leading, spacing: theme.spacing.s) {
                 RoundedRectangle(cornerRadius: Metrics.lineCornerRadius, style: .continuous)
-                    .fill(theme.colors.surfaceSubtle)
+                    .fill(theme.colors.skeleton)
                     .frame(width: Metrics.titleWidth, height: Metrics.titleLineHeight)
                 RoundedRectangle(cornerRadius: Metrics.lineCornerRadius, style: .continuous)
-                    .fill(theme.colors.surfaceSubtle)
+                    .fill(theme.colors.skeleton)
                     .frame(height: Metrics.titleLineHeight)
                 RoundedRectangle(cornerRadius: Metrics.lineCornerRadius, style: .continuous)
-                    .fill(theme.colors.surfaceSubtle)
+                    .fill(theme.colors.skeleton)
                     .frame(width: Metrics.trailingLineWidth, height: Metrics.titleLineHeight)
             }
         }
         .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.vertical, theme.spacing.timelineVertical)
-        .redacted(reason: .placeholder)
     }
 }
 
@@ -99,15 +98,15 @@ private struct ListRowSkeleton: View {
     var body: some View {
         HStack(spacing: theme.spacing.m) {
             RoundedRectangle(cornerRadius: Metrics.avatarCornerRadius, style: .continuous)
-                .fill(theme.colors.surfaceSubtle)
+                .fill(theme.colors.skeleton)
                 .frame(width: Metrics.avatarSize, height: Metrics.avatarSize)
 
             VStack(alignment: .leading, spacing: theme.spacing.s) {
                 RoundedRectangle(cornerRadius: Metrics.lineCornerRadius, style: .continuous)
-                    .fill(theme.colors.surfaceSubtle)
+                    .fill(theme.colors.skeleton)
                     .frame(width: Metrics.titleWidth, height: Metrics.titleHeight)
                 RoundedRectangle(cornerRadius: Metrics.lineCornerRadius, style: .continuous)
-                    .fill(theme.colors.surfaceSubtle)
+                    .fill(theme.colors.skeleton)
                     .frame(width: Metrics.subtitleWidth, height: Metrics.subtitleHeight)
             }
 
@@ -115,7 +114,6 @@ private struct ListRowSkeleton: View {
         }
         .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.vertical, theme.spacing.m)
-        .redacted(reason: .placeholder)
     }
 }
 
@@ -138,24 +136,24 @@ private struct ProfileSkeleton: View {
     var body: some View {
         VStack(spacing: 0) {
             RoundedRectangle(cornerRadius: 0)
-                .fill(theme.colors.surfaceSubtle)
+                .fill(theme.colors.skeleton)
                 .frame(height: Metrics.headerHeight)
 
             VStack(alignment: .leading, spacing: theme.spacing.m) {
                 RoundedRectangle(cornerRadius: Metrics.avatarCornerRadius, style: .continuous)
-                    .fill(theme.colors.surfaceSubtle)
+                    .fill(theme.colors.skeleton)
                     .frame(width: Metrics.avatarSize, height: Metrics.avatarSize)
                     .padding(.top, Metrics.avatarTopOverlap)
 
                 RoundedRectangle(cornerRadius: Metrics.lineCornerRadius, style: .continuous)
-                    .fill(theme.colors.surfaceSubtle)
+                    .fill(theme.colors.skeleton)
                     .frame(width: Metrics.displayNameWidth, height: Metrics.displayNameHeight)
 
                 RoundedRectangle(cornerRadius: Metrics.lineCornerRadius, style: .continuous)
-                    .fill(theme.colors.surfaceSubtle)
+                    .fill(theme.colors.skeleton)
                     .frame(height: Metrics.lineHeight)
                 RoundedRectangle(cornerRadius: Metrics.lineCornerRadius, style: .continuous)
-                    .fill(theme.colors.surfaceSubtle)
+                    .fill(theme.colors.skeleton)
                     .frame(width: Metrics.shortLineWidth, height: Metrics.lineHeight)
             }
             .padding(.horizontal, theme.spacing.contentHorizontalInset)
@@ -165,6 +163,5 @@ private struct ProfileSkeleton: View {
                 MoroDivider()
             }
         }
-        .redacted(reason: .placeholder)
     }
 }
