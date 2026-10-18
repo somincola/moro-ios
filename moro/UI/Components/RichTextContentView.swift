@@ -593,9 +593,9 @@ struct MixedTextEmojiView: UIViewRepresentable {
 
         let width = textView.bounds.width
         // Use a fallback width when bounds aren't laid out yet so emoji loading isn't skipped;
-        // re-layouts below once the real width is known. Derive it from the view's own window
-        // scene — UIScreen.main is deprecated and reports the wrong screen under Split View.
-        let fallbackWidth = textView.window?.windowScene?.screen.bounds.width ?? 320
+        // re-layouts below once the real width is known. Derive it from the view's own window:
+        // under Split View and on iPhone Duo the window can be narrower than its screen.
+        let fallbackWidth = textView.window?.bounds.width ?? 320
         let effectiveWidth = width > 0 ? width : min(280, fallbackWidth - 32)
 
         // Only rebuild the attributed string when something that affects it actually

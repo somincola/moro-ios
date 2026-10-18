@@ -302,17 +302,7 @@ final class PostMenuActionCenter: ObservableObject {
     }
 
     private func topViewController() -> UIViewController? {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        let keyWindow = scenes
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow)
-
-        var topController = keyWindow?.rootViewController
-        while let presented = topController?.presentedViewController {
-            topController = presented
-        }
-
-        return topController
+        UIApplication.shared.moroTopViewController(skippingDismissing: false)
     }
 
     private func presentConfirmation(

@@ -410,9 +410,7 @@ struct ProfileView: View {
     }
 
     private static var activeKeyWindow: UIWindow? {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        let activeScene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
-        return activeScene?.windows.first { $0.isKeyWindow } ?? activeScene?.windows.first
+        UIApplication.shared.moroActiveKeyWindow
     }
 
     @ViewBuilder
@@ -532,11 +530,10 @@ struct ProfileView: View {
 
         let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
 
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-            let rootViewController = windowScene.windows.first?.rootViewController
-        {
-            rootViewController.present(activityVC, animated: true)
-        }
+        // Present from the top of the window the person is using: the first connected
+        // scene may be another Moro window on iPhone Duo, and the root controller may
+        // already be presenting a sheet.
+        UIApplication.shared.moroTopViewController()?.present(activityVC, animated: true)
     }
 
     private func copyUserLink() {
