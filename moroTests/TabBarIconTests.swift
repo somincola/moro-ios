@@ -14,7 +14,7 @@ final class TabBarIconTests: XCTestCase {
         let expected: [MainTab: (regular: String, selected: String)] = [
             .home: ("house", "house.fill"),
             .explore: ("magnifyingglass", "magnifyingglass"),
-            .inbox: ("tray", "tray.fill"),
+            .inbox: ("bell", "bell.fill"),
             .me: ("person", "person.fill"),
         ]
 
@@ -36,5 +36,8 @@ final class TabBarIconTests: XCTestCase {
             XCTAssertNotNil(UIImage(systemName: tab.defaultIcon), tab.defaultIcon)
             XCTAssertNotNil(UIImage(systemName: tab.defaultFilledIcon), tab.defaultFilledIcon)
         }
+        // The unread inbox swaps in the bell's badged variants.
+        XCTAssertNotNil(UIImage(systemName: "bell.badge"))
+        XCTAssertNotNil(UIImage(systemName: "bell.badge.fill"))
     }
 }

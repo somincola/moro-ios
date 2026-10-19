@@ -44,7 +44,7 @@ struct ComposeOriginalPostView: View {
                 MoroAvatar(
                     imageURL: summary.status.account.avatarAnimatedURL,
                     staticImageURL: summary.status.account.avatarURL,
-                    initials: summary.status.account.displayNameInitials,
+                    initials: summary.status.account.displayNameInitials, seed: summary.status.account.placeholderSeed,
                     size: 22
                 )
 

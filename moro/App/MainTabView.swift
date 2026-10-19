@@ -18,6 +18,7 @@ import SwiftUI
 /// app-root `AppCoordinatorView.effectiveTheme`; keep the two in sync.
 private struct SystemColorSchemeMoroTheme: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject private var settings = AppSettings.shared
 
@@ -27,15 +28,16 @@ private struct SystemColorSchemeMoroTheme: ViewModifier {
                 MoroTheme(
                     colorScheme: colorScheme,
                     accent: settings.accentStyle,
-                    fontScale: settings.typographyFontScale.factor,
+                    themeColor: settings.themeColor,
+                    customThemeColor: settings.customThemeColor,
+                    postFontSize: settings.postFontSize,
+                    colorSchemeContrast: colorSchemeContrast,
                     dynamicTypeSize: dynamicTypeSize
                 )
             )
             .environment(
                 \.moroMediaPrefs,
-                MoroMediaPreferences(
-                    autoplayGIFs: settings.autoplayGIFs
-                )
+                MoroMediaPreferences(settings: settings)
             )
     }
 }
@@ -92,6 +94,17 @@ struct MainTabView: View {
         activeSessionID ?? "no-active-session"
     }
 
+    /// Touch and hold the Me tab to switch accounts.
+    private var accountSwitcherConfiguration: AccountSwitcherConfiguration {
+        AccountSwitcherConfiguration(
+            sessions: accountSessions,
+            activeSessionID: activeSessionID,
+            onSwitch: onSwitchAccount,
+            onAddAccount: { coordinator.showAddAccountLogin = true },
+            onPresentationChange: { coordinator.isAccountSwitcherPresented = $0 }
+        )
+    }
+
     private var currentTabAvatarURL: URL? {
         appState.currentAccount?.avatarURL
             ?? accountSessions.first(where: { $0.id == activeSessionID })?.account.avatarURL
@@ -110,7 +123,8 @@ struct MainTabView: View {
                 exploreView: exploreRootView,
                 inboxView: inboxRootView,
                 meView: meRootView,
-                routeView: routeView(for:router:)
+                routeView: routeView(for:router:),
+                accountSwitcher: accountSwitcherConfiguration
             )
 
         }
@@ -233,6 +247,13 @@ struct MainTabView: View {
             },
             onRemoveAccount: { sessionID in
                 onRemoveAccount(sessionID)
+            },
+            onOpenAccount: { acct in
+                coordinator.dismissPresentedSheet()
+                // Push after the sheet starts dismissing so the profile lands on the visible stack.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    coordinator.navigate(to: .accountLookup(acct))
+                }
             }
         )
     }
@@ -453,6 +474,11 @@ private struct HomeTabRootView: View {
             composeButton
                 .padding(.trailing, theme.spacing.l)
                 .padding(.bottom, composeButtonTabBarSpacing)
+                // Steps aside for the account switcher, which floats in the same corner.
+                .scaleEffect(coordinator.isAccountSwitcherPresented ? 0.6 : 1)
+                .opacity(coordinator.isAccountSwitcherPresented ? 0 : 1)
+                .allowsHitTesting(!coordinator.isAccountSwitcherPresented)
+                .animation(.snappy(duration: 0.22), value: coordinator.isAccountSwitcherPresented)
         }
     }
 

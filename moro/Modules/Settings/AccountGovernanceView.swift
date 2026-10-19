@@ -21,7 +21,7 @@ struct AccountGovernanceView: View {
     }
 
     var body: some View {
-        List {
+        MoroSettingsList {
             if let transientErrorMessage = viewModel.transientErrorMessage {
                 Section {
                     HStack(alignment: .top, spacing: theme.spacing.s) {
@@ -113,20 +113,27 @@ struct AccountGovernanceView: View {
                         )
                     }
                     .disabled(viewModel.isMutating(accountID: account.id))
+                    .accessibilityIdentifier("governance.account.\(account.id)")
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button {
                             Task {
                                 await viewModel.release(account)
                             }
                         } label: {
-                            Label(viewModel.kind.releaseActionTitle, systemImage: "person.crop.circle.badge.minus")
+                            Label {
+                                Text(viewModel.kind.releaseActionTitle)
+                            } icon: {
+                                MoroMenuGlyph(systemImage: "person.crop.circle.badge.minus", tintColor: .white)
+                            }
+                            .labelStyle(.titleAndIcon)
                         }
-                        .tint(theme.colors.primary500)
+                        .tint(theme.colors.error)
                         .disabled(viewModel.isMutating(accountID: account.id))
+                        .accessibilityIdentifier("governance.release.\(account.id)")
                     }
                 }
             } header: {
-                Text(viewModel.kind.sectionTitle)
+                MoroSettingsSectionHeader(title: viewModel.kind.sectionTitle)
             } footer: {
                 Text(viewModel.kind.footerText)
             }
@@ -155,7 +162,7 @@ private struct AccountGovernanceRow: View {
             MoroAvatar(
                 imageURL: account.avatarAnimatedURL,
                 staticImageURL: account.avatarURL,
-                initials: account.displayNameInitials,
+                initials: account.displayNameInitials, seed: account.placeholderSeed,
                 size: 40
             )
 

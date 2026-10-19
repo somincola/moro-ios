@@ -33,7 +33,7 @@ struct MastodonClient: MastodonAPI {
 
     private let session: URLSession
     private let builder: MastodonRequestBuilder
-    private let authInterceptor: AuthInterceptor
+    private var authInterceptor: AuthInterceptor
     private let logger: NetworkLogger
     let instanceMetadataCacheKey: String?
 
@@ -74,6 +74,13 @@ struct MastodonClient: MastodonAPI {
         self.authInterceptor = authInterceptor
         self.logger = NetworkLogger(configuration: loggerConfig)
         self.instanceMetadataCacheKey = baseURL.absoluteString
+    }
+
+    /// Work that outlives a screen must keep its account's credentials after an account switch.
+    func sessionSnapshot() -> MastodonClient {
+        var client = self
+        client.authInterceptor = authInterceptor.snapshot()
+        return client
     }
 
     // MARK: - OAuth & Instance
@@ -612,6 +619,13 @@ struct MastodonClient: MastodonAPI {
         )
         let request = try authorizedRequest(for: endpoint)
         return try await perform(request)
+    }
+
+    func fetchSuggestedAccounts(limit: Int? = 10) async throws -> [Account] {
+        struct Suggestion: Decodable { let account: Account }
+        let request = try authorizedRequest(for: .suggestedAccounts(limit: limit))
+        let suggestions: [Suggestion] = try await perform(request)
+        return suggestions.map(\.account)
     }
 
     func fetchAnnouncements() async throws -> [Announcement] {

@@ -24,12 +24,13 @@ struct ComposePreviewSheet: View {
     @Environment(\.moroTheme) private var theme
 
     var body: some View {
+        let bodyFont = theme.postUIFont()
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: theme.spacing.m) {
                     if let account {
                         HStack(spacing: theme.spacing.s) {
-                            MoroAvatar(imageURL: account.avatarURL, initials: account.displayNameInitials, size: 40)
+                            MoroAvatar(imageURL: account.avatarURL, initials: account.displayNameInitials, seed: account.placeholderSeed, size: 40)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(account.displayName).font(theme.typography.subtitle)
                                 Text("@\(account.acct)").font(theme.typography.caption)
@@ -38,22 +39,29 @@ struct ComposePreviewSheet: View {
                         }
                     }
                     if viewModel.isContentWarningActive, !viewModel.contentWarning.isEmpty {
-                        Text(viewModel.contentWarning).font(theme.typography.subtitle)
+                        Text(viewModel.contentWarning).font(Font(theme.postUIFont(sizeAdjustment: -1, weight: .semibold)))
                             .accessibilityIdentifier("compose.previewCW")
                         MoroDivider()
                     }
-                    RichTextContentView(elements: ComposePreviewContent.elements(for: viewModel.content), onLinkTap: { action in
-                        switch action {
-                        case .link(let url), .mention(_, let url), .hashtag(_, let url): openURL(url)
+                    RichTextContentView(
+                        elements: ComposePreviewContent.elements(for: viewModel.content),
+                        emojiSize: bodyFont.pointSize * 1.25,
+                        fontOverride: Font(bodyFont),
+                        uiFontOverride: bodyFont,
+                        lineSpacing: 4 * bodyFont.pointSize / 16,
+                        onLinkTap: { action in
+                            switch action {
+                            case .link(let url), .mention(_, let url), .hashtag(_, let url): openURL(url)
+                            }
                         }
-                    })
-                        .accessibilityIdentifier("compose.previewBody")
+                    )
+                    .accessibilityIdentifier("compose.previewBody")
                     ComposeMediaGridView(attachments: viewModel.mediaAttachments,
                         onRemove: { _ in }, onEditAlt: { _ in }, onRetry: { _ in }, showsEditingControls: false)
                     if viewModel.isPollActive {
                         ForEach(Array(viewModel.pollOptions.enumerated()), id: \.offset) { _, option in
                             Label(option, systemImage: viewModel.pollMultiple ? "square" : "circle")
-                                .font(theme.typography.body)
+                                .font(Font(theme.postUIFont(sizeAdjustment: -3)))
                                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         }
                     }
@@ -83,7 +91,7 @@ struct ComposeMediaOrderSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            MoroSettingsList {
                 Section {
                     ForEach(Array(viewModel.mediaAttachments.enumerated()), id: \.element.id) { index, attachment in
                         HStack(spacing: theme.spacing.m) {

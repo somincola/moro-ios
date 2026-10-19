@@ -272,10 +272,16 @@ final class ComposeViewModel: ObservableObject {
             applyDraft(initialDraft)
         }
         
-        // Update character count when content changes — counted the way Mastodon does
-        // (URLs = 23 chars, remote-mention domains excluded) so we don't block valid posts.
-        $content
-            .map { MastodonTextCounter.count($0) }
+        // Count the way Mastodon does (URLs = 23 chars, remote-mention domains excluded)
+        // so we don't block valid posts. The server checks the content warning and the
+        // text together, so an active CW counts too — including one inherited by a reply.
+        Publishers.CombineLatest3($content, $contentWarning, $isContentWarningActive)
+            .map { content, contentWarning, isContentWarningActive in
+                MastodonTextCounter.count(
+                    text: content,
+                    spoilerText: isContentWarningActive ? contentWarning : ""
+                )
+            }
             .assign(to: &$characterCount)
     }
 

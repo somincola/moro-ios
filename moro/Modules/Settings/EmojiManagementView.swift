@@ -28,7 +28,7 @@ struct EmojiManagementView: View {
             } else {
                 ProgressView(MoroL10n.Emoji.loading)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(theme.colors.background)
+                    .moroSettingsPageChrome()
             }
         }
         .navigationTitle(MoroL10n.Emoji.navTitle)
@@ -39,7 +39,7 @@ struct EmojiManagementView: View {
     }
 
     private func emojiListView(_ emojiViewModel: CustomEmojiViewModel) -> some View {
-        List {
+        MoroSettingsList {
             Section {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(domain)
@@ -51,7 +51,7 @@ struct EmojiManagementView: View {
                 }
                 .padding(.vertical, 2)
             } header: {
-                Text(MoroL10n.Emoji.currentSite)
+                MoroSettingsSectionHeader(title: MoroL10n.Emoji.currentSite)
             }
 
             if orderedGroups.isEmpty {
@@ -71,7 +71,7 @@ struct EmojiManagementView: View {
                             .foregroundStyle(theme.colors.textSecondary)
                     }
                 } header: {
-                    Text(MoroL10n.Emoji.sort)
+                    MoroSettingsSectionHeader(title: MoroL10n.Emoji.sort)
                 }
             } else {
                 Section {
@@ -82,7 +82,7 @@ struct EmojiManagementView: View {
                         moveGroups(source: source, destination: destination, viewModel: emojiViewModel)
                     })
                 } header: {
-                    Text(MoroL10n.Emoji.groupSort)
+                    MoroSettingsSectionHeader(title: MoroL10n.Emoji.groupSort)
                 } footer: {
                     Text(MoroL10n.Emoji.groupSortHint)
                 }
@@ -113,7 +113,7 @@ struct EmojiManagementView: View {
                             .scaledToFit()
                     } placeholder: {
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(theme.colors.surfaceSubtle)
+                            .fill(theme.colors.groupedBackground)
                     }
                     .frame(width: 20, height: 20)
                 }
@@ -168,7 +168,8 @@ struct EmojiManagementUnavailableView: View {
             description: Text(MoroL10n.Emoji.noInstanceHint)
         )
         .foregroundStyle(theme.colors.textSecondary)
-        .background(theme.colors.background)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .moroSettingsPageChrome()
         .navigationTitle(MoroL10n.Emoji.navTitle)
         .navigationBarTitleDisplayMode(.inline)
     }

@@ -168,7 +168,7 @@ struct PostCard: View {
                     MoroAvatar(
                         imageURL: status.account.avatarAnimatedURL,
                         staticImageURL: status.account.avatarURL,
-                        initials: status.account.displayNameInitials,
+                        initials: status.account.displayNameInitials, seed: status.account.placeholderSeed,
                         size: avatarSize
                     )
                 }
@@ -215,6 +215,7 @@ struct PostCard: View {
                             isBlockingUser: actions.menu?.isBlockingUser,
                             onReply: actions.onReply,
                             onBoost: actions.onBoost,
+                            onQuote: actions.onQuote,
                             onLike: actions.onLike,
                             onBookmark: actions.onBookmark,
                             onShare: actions.menu?.onShare,

@@ -43,7 +43,7 @@ struct PostLanguagePickerView: View {
     }
 
     var body: some View {
-        List {
+        MoroSettingsList {
             Section {
                 languageRow(
                     title: PostLanguageCatalog.defaultOptionTitle(for: defaultBehavior),
@@ -96,10 +96,9 @@ struct PostLanguagePickerView: View {
 
                 Spacer()
 
+                // Long list: only the chosen language carries the shared selection mark.
                 if selectedLanguageCode == code {
-                    Image(systemName: "checkmark.circle.fill")
-                        .moroScaledFont(size: 15, weight: .semibold)
-                        .foregroundStyle(theme.colors.primary500)
+                    MoroSelectionIndicator(isSelected: true)
                 }
             }
             .contentShape(Rectangle())

@@ -5,7 +5,7 @@ struct StorageSettingsView: View {
     @State private var confirmsClear = false
 
     var body: some View {
-        List {
+        MoroSettingsList {
             Section {
                 usageRow(MoroL10n.AppSupport.images, bytes: store.usage?.images)
                 usageRow(MoroL10n.AppSupport.timelines, bytes: store.usage?.timelines)
@@ -33,7 +33,7 @@ struct StorageSettingsView: View {
             }
         }
         .moroSettingsListChrome()
-        .navigationTitle(MoroL10n.AppSupport.storage)
+        .navigationTitle(MoroL10n.Settings.storageData)
         .navigationBarTitleDisplayMode(.inline)
         .task { await store.refresh() }
         .confirmationDialog(MoroL10n.AppSupport.clearCache, isPresented: $confirmsClear, titleVisibility: .visible) {

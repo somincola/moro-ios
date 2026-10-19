@@ -24,6 +24,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
     let inboxView: AnyView
     let meView: AnyView
     let routeView: (Route, AppRouter) -> AnyView
+    var accountSwitcher = AccountSwitcherConfiguration()
 
     func makeUIViewController(context: Context) -> MainShellViewController {
         MainShellViewController(
@@ -36,7 +37,8 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             exploreView: exploreView,
             inboxView: inboxView,
             meView: meView,
-            routeView: routeView
+            routeView: routeView,
+            accountSwitcher: accountSwitcher
         )
     }
 
@@ -50,7 +52,8 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             exploreView: exploreView,
             inboxView: inboxView,
             meView: meView,
-            routeView: routeView
+            routeView: routeView,
+            accountSwitcher: accountSwitcher
         )
     }
 }
@@ -72,6 +75,12 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         private var appliedAvatarURL: URL?
         private var loadedAvatarImage: UIImage?
         private var avatarTask: Task<Void, Never>?
+        private var accountSwitcherConfiguration: AccountSwitcherConfiguration
+        private lazy var accountSwitcher = AccountSwitcherController(
+            container: self,
+            tabBarController: mainTabController,
+            theme: appliedTheme
+        )
 
         private lazy var homeNavigationController = makeNavigationController(
             tab: .home,
@@ -104,8 +113,10 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             exploreView: AnyView,
             inboxView: AnyView,
             meView: AnyView,
-            routeView: @escaping (Route, AppRouter) -> AnyView
+            routeView: @escaping (Route, AppRouter) -> AnyView,
+            accountSwitcher: AccountSwitcherConfiguration? = nil
         ) {
+            self.accountSwitcherConfiguration = accountSwitcher ?? AccountSwitcherConfiguration()
             self.coordinator = coordinator
             self.appliedTheme = theme
             self.appliedUnreadInboxCount = unreadInboxCount
@@ -133,14 +144,22 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             configureHierarchy()
             configureTabs()
             apply(theme: appliedTheme)
-            applyInboxBadge()
             updateAvatar(appliedAvatarURL, force: true)
             updateSelectedTab(coordinator.selectedTab)
+            accountSwitcher.install()
+            accountSwitcher.update(configuration: accountSwitcherConfiguration, theme: appliedTheme)
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            // A fresh shell after an account switch: reveal it.
+            AccountSwitchTransition.shared.contentDidAppear()
         }
 
         override func viewDidLayoutSubviews() {
             super.viewDidLayoutSubviews()
             publishTabBarHeight()
+            accountSwitcher.refreshAccessibilityActions()
         }
 
         override func viewSafeAreaInsetsDidChange() {
@@ -157,10 +176,13 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             exploreView: AnyView,
             inboxView: AnyView,
             meView: AnyView,
-            routeView: @escaping (Route, AppRouter) -> AnyView
+            routeView: @escaping (Route, AppRouter) -> AnyView,
+            accountSwitcher accountSwitcherConfiguration: AccountSwitcherConfiguration? = nil
         ) {
             self.routeView = routeView
             updateRouteViewBuilders()
+            self.accountSwitcherConfiguration = accountSwitcherConfiguration ?? AccountSwitcherConfiguration()
+            accountSwitcher.update(configuration: self.accountSwitcherConfiguration, theme: theme)
 
             if currentContentVersion != contentVersion {
                 currentContentVersion = contentVersion
@@ -175,8 +197,12 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             }
 
             if appliedTheme.colorScheme != theme.colorScheme
+                || appliedTheme.colorSchemeContrast != theme.colorSchemeContrast
                 || appliedTheme.accent != theme.accent
-                || appliedTheme.fontScale != theme.fontScale
+                || appliedTheme.themeColor != theme.themeColor
+                || appliedTheme.customThemeColor != theme.customThemeColor
+                || appliedTheme.postFontSize != theme.postFontSize
+                || appliedTheme.dynamicTypeSize != theme.dynamicTypeSize
             {
                 apply(theme: theme)
             }
@@ -220,15 +246,77 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         }
 
         private func configureTabBarItem(_ controller: UIViewController, for tab: MainTab) {
-            let normalConfiguration = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
-            let selectedConfiguration = UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
-            controller.tabBarItem = UITabBarItem(
-                title: tab.title,
-                image: UIImage(systemName: tab.icon, withConfiguration: normalConfiguration),
-                selectedImage: UIImage(systemName: tab.filledIcon, withConfiguration: selectedConfiguration)
+            // Icon-only: the four destinations are familiar enough that labels are noise.
+            // The names stay for VoiceOver and the large content viewer.
+            let item = UITabBarItem(
+                title: nil,
+                image: Self.tabGlyph(tab.icon, configuration: Self.glyphConfiguration),
+                selectedImage: Self.tabGlyph(tab.filledIcon, configuration: Self.selectedGlyphConfiguration)
             )
-            controller.tabBarItem.accessibilityLabel = tab.title
-            controller.tabBarItem.accessibilityIdentifier = "mainTab.\(tab.rawValue)"
+            item.accessibilityLabel = tab.title
+            item.accessibilityIdentifier = "mainTab.\(tab.rawValue)"
+            item.largeContentSizeImage = UIImage(systemName: tab.icon)
+            Self.centerImageWithoutTitle(item)
+            controller.tabBarItem = item
+        }
+
+        private static let glyphConfiguration = UIImage.SymbolConfiguration(pointSize: 21, weight: .regular)
+        private static let selectedGlyphConfiguration = UIImage.SymbolConfiguration(pointSize: 21, weight: .semibold)
+
+        /// The two-tone "unread" bell: the glyph in the tab's own state color, the badge
+        /// layer (the symbol's first palette slot) red. Drawn as-is, since a template
+        /// image would tint the badge along with the bell.
+        private static func badgedGlyph(
+            _ name: String, configuration: UIImage.SymbolConfiguration, glyph: UIColor, badge: UIColor
+        ) -> UIImage? {
+            let palette = configuration.applying(UIImage.SymbolConfiguration(paletteColors: [badge, glyph]))
+            guard let symbol = UIImage(systemName: name, withConfiguration: palette)?
+                .withRenderingMode(.alwaysOriginal)
+            else { return nil }
+            guard #unavailable(iOS 26.0) else { return symbol }
+            let side = MeTabAvatarMetrics.canvas
+            let format = UIGraphicsImageRendererFormat.preferred()
+            format.opaque = false
+            // Drawing a palette symbol straight into a context loses its palette (the glyph
+            // comes out in the default tint); an image view renders it faithfully.
+            let canvas = UIView(frame: CGRect(x: 0, y: 0, width: side, height: side))
+            let glyphView = UIImageView(image: symbol)
+            // The bell layer still follows the view's tint here; give it the state color.
+            glyphView.tintColor = glyph
+            glyphView.frame = CGRect(
+                x: (side - symbol.size.width) / 2, y: (side - symbol.size.height) / 2,
+                width: symbol.size.width, height: symbol.size.height
+            )
+            canvas.addSubview(glyphView)
+            return UIGraphicsImageRenderer(size: canvas.bounds.size, format: format).image { context in
+                canvas.layer.render(in: context.cgContext)
+            }
+            .withRenderingMode(.alwaysOriginal)
+        }
+
+        /// On the classic (pre-iOS 26) bar every item image shares one canvas — the Me
+        /// avatar's — so glyphs and the avatar are laid out identically and line up.
+        /// iOS 26 centers untitled items itself, so its glyphs stay native.
+        private static func tabGlyph(_ name: String, configuration: UIImage.SymbolConfiguration) -> UIImage? {
+            guard let symbol = UIImage(systemName: name, withConfiguration: configuration) else { return nil }
+            guard #unavailable(iOS 26.0) else { return symbol }
+            let side = MeTabAvatarMetrics.canvas
+            let format = UIGraphicsImageRendererFormat.preferred()
+            format.opaque = false
+            let padded = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { _ in
+                symbol.withTintColor(.black, renderingMode: .alwaysOriginal).draw(at: CGPoint(
+                    x: (side - symbol.size.width) / 2,
+                    y: (side - symbol.size.height) / 2
+                ))
+            }
+            return padded.withRenderingMode(.alwaysTemplate)
+        }
+
+        /// The classic bar keeps room for a title under the image; with no title, nudge the
+        /// (shared-size) images down onto the bar's center line.
+        private static func centerImageWithoutTitle(_ item: UITabBarItem) {
+            guard #unavailable(iOS 26.0) else { return }
+            item.imageInsets = UIEdgeInsets(top: 6, left: 0, bottom: -6, right: 0)
         }
 
         private func apply(theme: MoroTheme) {
@@ -263,6 +351,8 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             inboxNavigationController.apply(theme: theme)
             meNavigationController.apply(theme: theme)
 
+            applyInboxBadge()
+
             if loadedAvatarImage != nil {
                 applyAvatarImages()
             }
@@ -270,11 +360,28 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
         private func applyInboxBadge() {
             let count = appliedUnreadInboxCount
-            inboxNavigationController.tabBarItem.badgeValue = count == 0
-                ? nil
-                : (count > 99 ? "99+" : "\(count)")
-            inboxNavigationController.tabBarItem.badgeColor = .systemRed
-            inboxNavigationController.tabBarItem.accessibilityLabel = count > 0
+            let item: UITabBarItem = inboxNavigationController.tabBarItem
+            // Unread shows as the bell's own badge layer — a small red dot cut into the
+            // glyph — instead of the system's large count bubble. The count stays in the
+            // inbox and in the VoiceOver label.
+            item.badgeValue = nil
+            if count > 0 {
+                item.image = Self.badgedGlyph(
+                    "bell.badge", configuration: Self.glyphConfiguration,
+                    glyph: UIColor(appliedTheme.colors.textSecondary), badge: .systemRed
+                )
+                item.selectedImage = Self.badgedGlyph(
+                    "bell.badge.fill", configuration: Self.selectedGlyphConfiguration,
+                    glyph: UIColor(appliedTheme.colors.textPrimary), badge: .systemRed
+                )
+            } else {
+                item.image = Self.tabGlyph(MainTab.inbox.icon, configuration: Self.glyphConfiguration)
+                item.selectedImage = Self.tabGlyph(
+                    MainTab.inbox.filledIcon, configuration: Self.selectedGlyphConfiguration
+                )
+            }
+            Self.centerImageWithoutTitle(item)
+            item.accessibilityLabel = count > 0
                 ? MoroL10n.Navigation.inboxUnread(count)
                 : MainTab.inbox.title
         }
@@ -287,6 +394,13 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             configureTabBarItem(meNavigationController, for: .me)
 
             guard let avatarURL else { return }
+            // Already decoded (e.g. prefetched by the account switcher): show it on the
+            // first frame so a freshly switched shell never flashes the placeholder glyph.
+            if let cached = ImageCache.shared.image(for: avatarURL) {
+                loadedAvatarImage = cached
+                applyAvatarImages()
+                return
+            }
             avatarTask = Task { [weak self] in
                 guard let self else { return }
                 let image = await ImageCache.shared.load(from: avatarURL)
@@ -306,39 +420,46 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
                 image,
                 selected: true
             )
+            Self.centerImageWithoutTitle(meNavigationController.tabBarItem)
         }
 
         private func circularAvatarImage(_ image: UIImage, selected: Bool) -> UIImage {
-            let outputSize = CGSize(width: 25, height: 25)
+            let canvas = MeTabAvatarMetrics.canvas
             let format = UIGraphicsImageRendererFormat.preferred()
             format.opaque = false
-            let renderer = UIGraphicsImageRenderer(size: outputSize, format: format)
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvas, height: canvas), format: format)
 
             return renderer.image { context in
-                let inset: CGFloat = 1.5
-                let targetRect = CGRect(origin: .zero, size: outputSize).insetBy(dx: inset, dy: inset)
+                // The avatar keeps one size in both states; selection only adds an outer ring,
+                // the same ring the account switcher puts around the current account.
+                let bounds = CGRect(x: 0, y: 0, width: canvas, height: canvas)
+                let inset = (canvas - MeTabAvatarMetrics.avatar) / 2
+                let avatarRect = bounds.insetBy(dx: inset, dy: inset)
                 context.cgContext.saveGState()
-                context.cgContext.addEllipse(in: targetRect)
+                context.cgContext.addEllipse(in: avatarRect)
                 context.cgContext.clip()
-
-                let scale = max(targetRect.width / image.size.width, targetRect.height / image.size.height)
+                let scale = max(avatarRect.width / image.size.width, avatarRect.height / image.size.height)
                 let drawSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-                let drawRect = CGRect(
-                    x: targetRect.midX - drawSize.width / 2,
-                    y: targetRect.midY - drawSize.height / 2,
+                image.draw(in: CGRect(
+                    x: avatarRect.midX - drawSize.width / 2,
+                    y: avatarRect.midY - drawSize.height / 2,
                     width: drawSize.width,
                     height: drawSize.height
-                )
-                image.draw(in: drawRect)
+                ))
                 context.cgContext.restoreGState()
 
-                let ringColor = selected
-                    ? UIColor(appliedTheme.colors.textPrimary)
-                    : UIColor(appliedTheme.colors.borderSubtle)
-                ringColor.setStroke()
-                let ring = UIBezierPath(ovalIn: targetRect)
-                ring.lineWidth = selected ? 2 : 1
-                ring.stroke()
+                if selected {
+                    UIColor(appliedTheme.colors.textPrimary).setStroke()
+                    let ringWidth = MeTabAvatarMetrics.ringWidth
+                    let ring = UIBezierPath(ovalIn: bounds.insetBy(dx: ringWidth / 2, dy: ringWidth / 2))
+                    ring.lineWidth = ringWidth
+                    ring.stroke()
+                } else {
+                    UIColor(appliedTheme.colors.borderSubtle).setStroke()
+                    let hairline = UIBezierPath(ovalIn: avatarRect.insetBy(dx: 0.25, dy: 0.25))
+                    hairline.lineWidth = 0.5
+                    hairline.stroke()
+                }
             }
             .withRenderingMode(.alwaysOriginal)
         }
@@ -499,8 +620,12 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
         func apply(theme: MoroTheme) {
             let shouldUpdateRootView = appliedTheme.colorScheme != theme.colorScheme
+                || appliedTheme.colorSchemeContrast != theme.colorSchemeContrast
                 || appliedTheme.accent != theme.accent
-                || appliedTheme.fontScale != theme.fontScale
+                || appliedTheme.themeColor != theme.themeColor
+                || appliedTheme.customThemeColor != theme.customThemeColor
+                || appliedTheme.postFontSize != theme.postFontSize
+                || appliedTheme.dynamicTypeSize != theme.dynamicTypeSize
             appliedTheme = theme
             if shouldUpdateRootView {
                 rootView = Self.hostedRootView(
@@ -614,6 +739,29 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             popToRootViewController(animated: true)
         }
 
+        func replaceTop(with route: Route) {
+            let controller = MainShellHostingController(
+                rootView: routeView(route, router),
+                sceneDescriptor: route.sceneDescriptor,
+                theme: appliedTheme
+            )
+            guard viewControllers.count > 1 else {
+                pushViewController(controller, animated: false)
+                return
+            }
+            var stack = viewControllers
+            stack[stack.count - 1] = controller
+            setViewControllers(stack, animated: false)
+            // A non-animated swap may not round-trip through the delegate; sync the bar now.
+            let descriptor = route.sceneDescriptor
+            applyNavigationAppearance(for: descriptor)
+            onSceneChanged(descriptor)
+            setNavigationBarHidden(
+                shouldHideNavigationBar(isRoot: false, sceneDescriptor: descriptor),
+                animated: false
+            )
+        }
+
         func replace(with route: Route) {
             let root = viewControllers.first
                 ?? MainShellHostingController(
@@ -722,3 +870,13 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         }
     }
 #endif
+
+/// The Me tab's avatar image: a fixed-size avatar inside a canvas that leaves room for the
+/// selection ring (ring, a hairline gap, then the avatar). The account switcher lands its
+/// flying avatar on exactly this circle.
+enum MeTabAvatarMetrics {
+    static let avatar: CGFloat = 30
+    static let ringWidth: CGFloat = 1.75
+    static let ringGap: CGFloat = 1.75
+    static var canvas: CGFloat { avatar + (ringWidth + ringGap) * 2 }
+}

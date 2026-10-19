@@ -47,4 +47,12 @@ enum MastodonTextCounter {
 
         return transformed.count
     }
+
+    /// The count Mastodon validates against `max_characters`: the content warning
+    /// (spoiler text) plus the status text. The server takes the spoiler text as-is,
+    /// so URLs and mentions in it get no length concession. Pass an empty string
+    /// when the content warning is off, because that text is never sent.
+    static func count(text: String, spoilerText: String) -> Int {
+        spoilerText.count + count(text)
+    }
 }

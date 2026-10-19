@@ -206,6 +206,8 @@ protocol MastodonAPI {
         order: MastodonDirectoryOrder?,
         local: Bool?
     ) async throws -> [Account]
+    /// Accounts the server suggests following; available even where the profile directory is off.
+    func fetchSuggestedAccounts(limit: Int?) async throws -> [Account]
     func fetchAnnouncements() async throws -> [Announcement]
     func dismissAnnouncement(id: String) async throws
     func addAnnouncementReaction(id: String, name: String) async throws

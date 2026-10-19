@@ -118,6 +118,8 @@ struct PostInteractionHandlers {
             menu: menuHandlers,
             onLike: { handleLike(status) },
             onBoost: { handleBoost(status) },
+            onQuote: QuoteButtonInfo.forStatus(status, currentUserID: currentUserID).isEnabled
+                ? { actionSurface.startQuote(from: status) } : nil,
             onBookmark: { handleBookmark(status) },
             onReply: { handleReply(status) },
             onPollVote: onPollVote,

@@ -12,6 +12,7 @@ struct AppCoordinatorView: View {
     @ObservedObject private var feedbackCenter = AppFeedbackCenter.shared
     @ObservedObject private var settings = AppSettings.shared
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var revealsLoginUnderOnboarding = false
 
@@ -19,7 +20,10 @@ struct AppCoordinatorView: View {
         MoroTheme(
             colorScheme: colorScheme,
             accent: settings.accentStyle,
-            fontScale: settings.typographyFontScale.factor,
+            themeColor: settings.themeColor,
+            customThemeColor: settings.customThemeColor,
+            postFontSize: settings.postFontSize,
+            colorSchemeContrast: colorSchemeContrast,
             dynamicTypeSize: dynamicTypeSize
         )
     }
@@ -47,7 +51,7 @@ struct AppCoordinatorView: View {
                             .accessibilityHidden(true)
                         }
 
-                        OnboardingView(
+                        OnboardingGlobeView(
                             onExitStart: {
                                 revealsLoginUnderOnboarding = true
                             },
@@ -104,9 +108,7 @@ struct AppCoordinatorView: View {
         .moroTheme(effectiveTheme)
         .environment(
             \.moroMediaPrefs,
-            MoroMediaPreferences(
-                autoplayGIFs: settings.autoplayGIFs
-            )
+            MoroMediaPreferences(settings: settings)
         )
     }
 

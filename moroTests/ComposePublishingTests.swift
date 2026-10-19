@@ -105,6 +105,31 @@ struct ComposePublishingTests {
         #expect(ComposePublishFailure.message(for: ComposeError.characterLimitExceeded) == MoroL10n.Compose.errorCharacterLimitExceeded)
     }
 
+    @Test func rejectedPostShowsTheServersReason() {
+        let reason = "Validation failed: Text character limit of 500 exceeded"
+        let rejected = APIError.serverError(MastodonServerError(error: reason, httpCode: 422))
+        #expect(ComposePublishFailure.message(for: rejected) == reason)
+
+        let blank = APIError.serverError(MastodonServerError(error: "  ", httpCode: 422))
+        #expect(ComposePublishFailure.message(for: blank) == MoroL10n.AppError.http(422))
+    }
+
+    @Test func replyInheritingAContentWarningCountsItTowardTheLimit() throws {
+        let status = try makeStatus()
+        let model = ComposeViewModel(context: .reply(to: status), apiClient: MockMastodonAPI(), currentUserID: "me")
+        model.maxCharacters = 500
+        model.content = String(repeating: "a", count: 490)
+        model.contentWarning = String(repeating: "w", count: 20)
+        model.isContentWarningActive = true
+        #expect(model.characterCount == 510)
+        #expect(model.publishBlocker == .characterLimitExceeded)
+
+        // A warning that is switched off is not sent, so it no longer counts.
+        model.isContentWarningActive = false
+        #expect(model.characterCount == 490)
+        #expect(model.publishBlocker == nil)
+    }
+
     private func makeModel(_ api: MockMastodonAPI, context: ComposeViewModel.ComposeContext = .newPost,
         feed: FeedCoordinator? = nil) -> ComposeViewModel {
         let model = ComposeViewModel(context: context, apiClient: api, currentUserID: "me", feedCoordinator: feed ?? FeedCoordinator())

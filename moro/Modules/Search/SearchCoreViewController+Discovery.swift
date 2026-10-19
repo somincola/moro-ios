@@ -82,19 +82,20 @@ extension SearchCoreViewController {
             let fetchedAccounts: [Account]
 
             if resetAccounts {
-                async let tagsRequest = apiClient.fetchTrendingTags(limit: 10)
-                async let statusesRequest = apiClient.fetchTrendingStatuses(limit: 10)
-                async let accountsRequest = apiClient.fetchDirectoryAccounts(
-                    limit: directoryLimit,
-                    offset: 0,
-                    order: .active,
-                    local: nil
-                )
-                (fetchedTags, fetchedStatuses, fetchedAccounts) = try await (
-                    tagsRequest,
-                    statusesRequest,
-                    accountsRequest
-                )
+                // Each part loads on its own: servers can switch off trends or the
+                // profile directory, and one missing part shouldn't hide the rest.
+                async let tagsRequest = capture { try await self.apiClient.fetchTrendingTags(limit: 10) }
+                async let statusesRequest = capture { try await self.apiClient.fetchTrendingStatuses(limit: 10) }
+                async let accountsRequest = loadDiscoveryAccounts(limit: directoryLimit)
+                let (tags, statuses, accounts) = await (tagsRequest, statusesRequest, accountsRequest)
+                guard !Task.isCancelled, requestID == discoveryRequestID else { return }
+
+                let failures = [tags.error, statuses.error, accounts.result.error].compactMap { $0 }
+                if failures.count == 3, let first = failures.first { throw first }
+                fetchedTags = tags.value ?? []
+                fetchedStatuses = statuses.value ?? []
+                fetchedAccounts = accounts.result.value ?? []
+                discovery.accountsArePaged = accounts.paged
             } else {
                 fetchedTags = discovery.hashtags
                 fetchedStatuses = discovery.statuses
@@ -121,7 +122,8 @@ extension SearchCoreViewController {
 
             discovery.accounts = mergedAccounts
             discovery.nextAccountOffset = mergedAccounts.count
-            discovery.hasMoreAccounts = fetchedAccounts.count >= directoryLimit && appendedAccountCount > 0
+            discovery.hasMoreAccounts = discovery.accountsArePaged
+                && fetchedAccounts.count >= directoryLimit && appendedAccountCount > 0
             discovery.errorMessage = nil
             discovery.hasLoaded = true
         } catch {
@@ -140,6 +142,22 @@ extension SearchCoreViewController {
 
         endRefreshingIfNeeded()
         refreshViewState()
+    }
+
+    /// The profile directory, or — where a server has switched it off — the
+    /// accounts it suggests following, which come as a single page.
+    private func loadDiscoveryAccounts(limit: Int) async -> (result: DiscoveryResult<[Account]>, paged: Bool) {
+        let directory = await capture {
+            try await self.apiClient.fetchDirectoryAccounts(limit: limit, offset: 0, order: .active, local: nil)
+        }
+        guard directory.error != nil else { return (directory, true) }
+        let suggested = await capture { try await self.apiClient.fetchSuggestedAccounts(limit: min(limit, 40)) }
+        return (suggested.error == nil ? suggested : directory, false)
+    }
+
+    private func capture<T>(_ work: () async throws -> T) async -> DiscoveryResult<T> {
+        do { return DiscoveryResult(value: try await work(), error: nil) }
+        catch { return DiscoveryResult(value: nil, error: error) }
     }
 
     private func mergeAccounts(_ existing: [Account], _ incoming: [Account]) -> [Account] {

@@ -127,14 +127,50 @@ final class EditProfileViewModel: ObservableObject {
         !isHeaderRemoved && (headerPreviewImage != nil || hasExistingHeader)
     }
 
+    /// Half-filled fields. A row left completely blank is an unused slot, not an error.
     var invalidFieldIDs: Set<UUID> {
         Set(
             fields.compactMap { field in
                 let name = field.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 let value = field.value.trimmingCharacters(in: .whitespacesAndNewlines)
-                return name.isEmpty || value.isEmpty ? field.id : nil
+                return name.isEmpty != value.isEmpty ? field.id : nil
             }
         )
+    }
+
+    /// Fields whose edited part is over the server's limit. Text the server already
+    /// accepted stays valid even if the instance has since lowered its limits.
+    var overLimitFieldIDs: Set<UUID> {
+        Set(fields.compactMap { field in
+            let original = originalFieldValues[field.id]
+            let nameOver = field.name != original?.name && field.name.count > limits.fieldNameLength
+            let valueOver = field.value != original?.value && field.value.count > limits.fieldValueLength
+            return nameOver || valueOver ? field.id : nil
+        })
+    }
+
+    var hasPendingAvatarChange: Bool { avatarUpload != nil || isAvatarRemoved }
+    var hasPendingHeaderChange: Bool { headerUpload != nil || isHeaderRemoved }
+
+    /// Back to what the server has: drops a picked image and cancels a removal.
+    func revertAvatar() {
+        guard !isBusy else { return }
+        avatarUpload = nil
+        avatarPreviewImage = nil
+        isAvatarRemoved = false
+    }
+
+    func revertHeader() {
+        guard !isBusy else { return }
+        headerUpload = nil
+        headerPreviewImage = nil
+        isHeaderRemoved = false
+    }
+
+    func moveField(id: UUID, by offset: Int) {
+        guard let index = fields.firstIndex(where: { $0.id == id }),
+              fields.indices.contains(index + offset) else { return }
+        fields.swapAt(index, index + offset)
     }
 
     @discardableResult
@@ -440,8 +476,17 @@ final class EditProfileViewModel: ObservableObject {
         account?.profileHeaderURL != nil
     }
 
+    /// Fields with both parts blank are ignored: adding a row and leaving it empty
+    /// is not a change, and saving simply drops it.
+    private var meaningfulFields: [EditableField] {
+        fields.filter {
+            !($0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && $0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+    }
+
     private func normalizedFieldsForComparison() -> [FieldPair] {
-        fields.map { field in
+        meaningfulFields.map { field in
             let original = originalFieldValues[field.id]
             return FieldPair(
                 name: field.name == original?.name ? field.name : field.name.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -451,10 +496,11 @@ final class EditProfileViewModel: ObservableObject {
     }
 
     private func normalizedFieldsForSubmit() -> [AccountField]? {
+        let kept = meaningfulFields
         let pairs = normalizedFieldsForComparison()
         // Keep previously accepted fields even if the instance later lowers its limit.
-        guard fields.count <= max(limits.fieldCount, originalFields.count) else { return nil }
-        for (field, pair) in zip(fields, pairs) {
+        guard kept.count <= max(limits.fieldCount, originalFields.count) else { return nil }
+        for (field, pair) in zip(kept, pairs) {
             let original = originalFieldValues[field.id]
             if pair.name != original?.name && (pair.name.isEmpty || pair.name.count > limits.fieldNameLength) { return nil }
             if pair.value != original?.value && (pair.value.isEmpty || pair.value.count > limits.fieldValueLength) { return nil }

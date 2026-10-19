@@ -14,8 +14,8 @@ struct ConversationCompactMediaGrid: View {
     @Environment(\.moroTheme) private var theme
     @State private var selectedImageAttachment: Status.Attachment?
     @State private var selectedImageIndex = 0
-    @State private var selectedVideoAttachment: Status.Attachment?
-    @State private var isSensitiveRevealed: Bool
+    @State private var isSensitiveRevealed = false
+    @Environment(\.moroMediaPrefs) private var mediaPrefs
     @Namespace private var mediaTransitionNamespace
 
     private let gridWidth: CGFloat = 208
@@ -24,7 +24,10 @@ struct ConversationCompactMediaGrid: View {
     init(attachments: [Status.Attachment], isSensitive: Bool) {
         self.attachments = attachments
         self.isSensitive = isSensitive
-        _isSensitiveRevealed = State(initialValue: !isSensitive)
+    }
+
+    private var isConcealed: Bool {
+        mediaPrefs.concealsMedia(markedSensitive: isSensitive) && !isSensitiveRevealed
     }
 
     private var supportedAttachments: [Status.Attachment] {
@@ -73,12 +76,6 @@ struct ConversationCompactMediaGrid: View {
                     )
                     .navigationTransition(
                         .zoom(sourceID: attachment.id, in: mediaTransitionNamespace)
-                    )
-                }
-                .fullScreenCover(item: $selectedVideoAttachment) { attachment in
-                    VideoFullscreenView(
-                        attachment: attachment,
-                        onDismiss: { selectedVideoAttachment = nil }
                     )
                 }
         }
@@ -151,9 +148,9 @@ struct ConversationCompactMediaGrid: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
-            .blur(radius: isSensitive && !isSensitiveRevealed ? 22 : 0)
+            .blur(radius: isConcealed ? 22 : 0)
 
-            if isSensitive && !isSensitiveRevealed {
+            if isConcealed {
                 Color.black.opacity(0.5)
 
                 Image(systemName: "eye.slash.fill")
@@ -167,7 +164,7 @@ struct ConversationCompactMediaGrid: View {
                     .background(Circle().fill(Color.black.opacity(0.56)))
             }
 
-            if additionalCount > 0, isSensitiveRevealed {
+            if additionalCount > 0, !isConcealed {
                 Text("+\(additionalCount)")
                     .font(theme.typography.caption)
                     .fontWeight(.bold)
@@ -190,7 +187,7 @@ struct ConversationCompactMediaGrid: View {
     }
 
     private func handleTap(_ attachment: Status.Attachment) {
-        if isSensitive && !isSensitiveRevealed {
+        if isConcealed {
             withAnimation(.easeInOut(duration: 0.2)) {
                 isSensitiveRevealed = true
             }
@@ -205,12 +202,12 @@ struct ConversationCompactMediaGrid: View {
             selectedImageIndex = index
             selectedImageAttachment = attachment
         } else {
-            selectedVideoAttachment = attachment
+            NativeVideoPlayer.present(url: attachment.url, isGIF: type == "gifv")
         }
     }
 
     private func accessibilityLabel(for attachment: Status.Attachment) -> Text {
-        if isSensitive && !isSensitiveRevealed {
+        if isConcealed {
             return Text(MoroL10n.SensitiveMedia.title)
         }
 

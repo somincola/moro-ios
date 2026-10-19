@@ -67,8 +67,10 @@ final class PushRegistrationCenter: NSObject, ObservableObject {
     func requestAuthorizationAndRegister() async {
         lastErrorMessage = nil
         do {
-            let granted = try await UNUserNotificationCenter.current()
-                .requestAuthorization(options: [.alert, .badge, .sound])
+            let granted = try await PrivacyProtectionCenter.shared.whilePresentingSystemPrompt {
+                try await UNUserNotificationCenter.current()
+                    .requestAuthorization(options: [.alert, .badge, .sound])
+            }
             await refreshAuthorizationStatus()
             guard granted else {
                 lastErrorMessage = MoroL10n.Push.permissionDenied

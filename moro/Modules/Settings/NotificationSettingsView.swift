@@ -8,6 +8,8 @@
 import SwiftUI
 import UIKit
 
+/// One page for everything notification-related: this device's push alerts first,
+/// then the server-side intake rules. Reached from Settings and the Notifications tab.
 struct NotificationSettingsView: View {
     @Environment(\.activeAccountKey) private var activeAccountKey
 
@@ -30,51 +32,50 @@ private struct NotificationSettingsContentView: View {
     @Environment(\.moroTheme) private var theme
     @StateObject private var settings = AppSettings.shared
     @StateObject private var pushRegistration = PushRegistrationCenter.shared
+    @ObservedObject private var pushSync = PushSubscriptionCoordinator.shared
     @StateObject private var policyController: NotificationPolicyController
 
+    /// Live client for server intake rules.
     let apiClient: MastodonAPI?
-
-    @State private var isPushSaving = false
-    @State private var pushSubscription: PushSubscription?
-    @State private var pushSyncDebounce: Task<Void, Never>?
+    /// Push sync keeps a credential snapshot so a save that outlives this page (or an
+    /// account switch) still lands on the account that made the change.
+    let pushClient: MastodonAPI?
+    let accountKey: String
 
     init(apiClient: MastodonAPI?, accountKey: String) {
         self.apiClient = apiClient
+        self.pushClient = (apiClient as? MastodonClient)?.sessionSnapshot() ?? apiClient
+        self.accountKey = accountKey
         _policyController = StateObject(
             wrappedValue: NotificationPolicyController(accountKey: accountKey)
         )
     }
 
     var body: some View {
-        List {
-            notificationIntakeSection
+        MoroSettingsList {
             pushPreferencesSection
+            notificationIntakeSection
         }
         .moroSettingsSwitchStyle()
-        .moroSettingsListChrome()
+        .moroSettingsListChrome(separators: .visible)
+        .textCase(nil)
         .navigationTitle(MoroL10n.NotificationSettings.title)
         .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("notificationSettings.page")
         .task {
+            if let pushClient, PushRegistrationCenter.isPushCapabilityEnabled {
+                pushSync.resumeSettings(apiClient: pushClient, sessionKey: accountKey)
+                await pushRegistration.refreshAuthorizationStatus()
+            }
             guard let apiClient else {
                 policyController.markUnsupported()
                 return
             }
-            async let policyLoad: Void = policyController.refresh(using: apiClient)
-            if PushRegistrationCenter.isPushCapabilityEnabled {
-                await pushRegistration.refreshAuthorizationStatus()
-                await loadPushSubscription(apiClient: apiClient)
-            }
-            await policyLoad
-        }
-        .onDisappear {
-            pushSyncDebounce?.cancel()
+            await policyController.refresh(using: apiClient)
         }
         .onChange(of: pushRegistration.deviceTokenHex) { _, _ in
-            guard let apiClient else { return }
-            Task { await loadPushSubscription(apiClient: apiClient) }
-        }
-        .onChange(of: pushServerSyncKey) { _, _ in
-            schedulePushServerSync()
+            guard let pushClient else { return }
+            pushSync.resumeSettings(apiClient: pushClient, sessionKey: accountKey)
         }
     }
 
@@ -110,32 +111,38 @@ private struct NotificationSettingsContentView: View {
             case .loaded:
                 if let serverPolicy = policyController.policy {
                     policyRuleRow(
+                        id: "notFollowing",
                         title: MoroL10n.NotificationSettings.notFollowing,
                         detail: MoroL10n.NotificationSettings.notFollowingDetail,
                         selection: policyBinding(\.forNotFollowing)
                     )
                     policyRuleRow(
+                        id: "notFollowers",
                         title: MoroL10n.NotificationSettings.notFollowers,
                         detail: MoroL10n.NotificationSettings.notFollowersDetail,
                         selection: policyBinding(\.forNotFollowers)
                     )
                     policyRuleRow(
+                        id: "newAccounts",
                         title: MoroL10n.NotificationSettings.newAccounts,
                         detail: MoroL10n.NotificationSettings.newAccountsDetail,
                         selection: policyBinding(\.forNewAccounts)
                     )
                     policyRuleRow(
+                        id: "privateMentions",
                         title: MoroL10n.NotificationSettings.privateMentions,
                         detail: MoroL10n.NotificationSettings.privateMentionsDetail,
                         selection: policyBinding(\.forPrivateMentions)
                     )
                     policyRuleRow(
+                        id: "limitedAccounts",
                         title: MoroL10n.NotificationSettings.limitedAccounts,
                         detail: MoroL10n.NotificationSettings.limitedAccountsDetail,
                         selection: policyBinding(\.forLimitedAccounts)
                     )
                     if serverPolicy.forBots != nil {
                         policyRuleRow(
+                            id: "bots",
                             title: MoroL10n.NotificationSettings.bots,
                             detail: MoroL10n.NotificationSettings.botsDetail,
                             selection: botsPolicyBinding
@@ -190,7 +197,7 @@ private struct NotificationSettingsContentView: View {
             }
         } header: {
             HStack {
-                Text(MoroL10n.NotificationSettings.sectionIntake)
+                MoroSettingsSectionHeader(title: MoroL10n.NotificationSettings.sectionIntake)
                 Spacer()
                 if policyController.isRefreshing {
                     ProgressView()
@@ -207,31 +214,53 @@ private struct NotificationSettingsContentView: View {
     private var pushPreferencesSection: some View {
         Section {
             if PushRegistrationCenter.isPushCapabilityEnabled {
-                Picker(
-                    MoroL10n.NotificationSettings.receiveFrom,
-                    selection: $settings.notificationPolicy
-                ) {
-                    ForEach(AppSettings.NotificationPolicy.allCases, id: \.rawValue) { policy in
-                        Text(policy.localizedName).tag(policy)
+                NavigationLink {
+                    PushSourceChoiceView(pushClient: pushClient, accountKey: accountKey)
+                } label: {
+                    LabeledContent(MoroL10n.NotificationSettings.receiveFrom) {
+                        Text(settings.notificationPolicy.localizedName)
+                            .foregroundStyle(theme.colors.textSecondary)
                     }
                 }
+                .accessibilityIdentifier("notificationSettings.push.receiveFrom")
 
                 Toggle(
                     MoroL10n.NotificationSettings.typeMentions,
-                    isOn: $settings.receiveMentionsAndReplies)
-                Toggle(MoroL10n.NotificationSettings.typeBoosts, isOn: $settings.receiveBoosts)
+                    isOn: pushBinding(\.receiveMentionsAndReplies))
+                    .accessibilityIdentifier("notificationSettings.push.mentions")
+                Toggle(MoroL10n.NotificationSettings.typeBoosts, isOn: pushBinding(\.receiveBoosts))
+                    .accessibilityIdentifier("notificationSettings.push.boosts")
                 Toggle(
                     MoroL10n.NotificationSettings.typeFavourites,
-                    isOn: $settings.receiveFavourites)
+                    isOn: pushBinding(\.receiveFavourites))
+                    .accessibilityIdentifier("notificationSettings.push.favourites")
                 Toggle(
                     MoroL10n.NotificationSettings.typeNewFollowers,
-                    isOn: $settings.receiveNewFollowers)
+                    isOn: pushBinding(\.receiveNewFollowers))
+                    .accessibilityIdentifier("notificationSettings.push.followers")
 
-                if isPushSaving {
+                if pushSync.savingSettings.contains(accountKey) {
                     HStack(spacing: 8) {
                         ProgressView()
                         Text(MoroL10n.EditProfile.saving)
                             .foregroundStyle(theme.colors.textSecondary)
+                    }
+                    .accessibilityIdentifier("notificationSettings.push.saving")
+                } else if pushSync.failedSettings.contains(accountKey) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label(MoroL10n.NotificationSettings.pushSaveFailed, systemImage: "exclamationmark.circle")
+                            .font(theme.typography.caption)
+                            .foregroundStyle(theme.colors.error)
+                            .accessibilityIdentifier("notificationSettings.push.saveError")
+                        Button {
+                            guard let pushClient else { return }
+                            pushSync.resumeSettings(apiClient: pushClient, sessionKey: accountKey)
+                        } label: {
+                            Text(MoroL10n.Notifications.retryAction)
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .accessibilityIdentifier("notificationSettings.push.retry")
                     }
                 }
 
@@ -256,36 +285,48 @@ private struct NotificationSettingsContentView: View {
                 .foregroundStyle(theme.colors.textSecondary)
             }
         } header: {
-            Text(MoroL10n.NotificationSettings.sectionPush)
+            HStack {
+                MoroSettingsSectionHeader(title: MoroL10n.NotificationSettings.sectionPush)
+                Spacer()
+            }
         } footer: {
             Text(MoroL10n.NotificationSettings.pushFooter)
         }
     }
 
+    /// Rule summary row; the choice itself happens on a report-style page with
+    /// a sentence for what each disposition actually does.
     private func policyRuleRow(
+        id: String,
         title: String,
         detail: String,
         selection: Binding<ServerNotificationPolicy.Disposition>
     ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .foregroundStyle(theme.colors.textPrimary)
-                Text(detail)
-                    .font(theme.typography.caption)
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 8)
-            Picker(title, selection: selection) {
-                ForEach(ServerNotificationPolicy.Disposition.allCases) { disposition in
-                    Text(disposition.localizedName).tag(disposition)
+        NavigationLink {
+            PolicyRuleChoiceView(
+                controller: policyController,
+                title: title,
+                detail: detail,
+                selection: selection
+            )
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .foregroundStyle(theme.colors.textPrimary)
+                    Text(detail)
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                Spacer(minLength: 8)
+                Text(selection.wrappedValue.localizedName)
+                    .foregroundStyle(theme.colors.textSecondary)
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .disabled(policyController.isSaving)
+            .padding(.vertical, 4)
         }
+        .disabled(policyController.isSaving)
+        .accessibilityIdentifier("notificationSettings.rule.\(id)")
     }
 
     private func policyBinding(
@@ -310,69 +351,62 @@ private struct NotificationSettingsContentView: View {
         )
     }
 
-    // MARK: - Push server sync
-
-    private var pushServerSyncKey: String {
-        [
-            settings.notificationPolicy.rawValue,
-            String(settings.receiveMentionsAndReplies),
-            String(settings.receiveBoosts),
-            String(settings.receiveFavourites),
-            String(settings.receiveNewFollowers),
-        ].joined(separator: "|")
-    }
-
-    private func schedulePushServerSync() {
-        guard let apiClient, pushSubscription != nil else { return }
-        pushSyncDebounce?.cancel()
-        pushSyncDebounce = Task {
-            try? await Task.sleep(for: .milliseconds(600))
-            guard !Task.isCancelled else { return }
-            await syncPushSettings(apiClient: apiClient)
-        }
-    }
-
-    private var pushPolicyValue: String {
-        switch settings.notificationPolicy {
-        case .anyone: return "all"
-        case .followers: return "follower"
-        case .followed: return "following"
-        case .noone: return "none"
-        }
-    }
-
-    private var desiredPushAlerts: PushSubscription.Alerts {
-        PushSubscription.Alerts(
-            mention: settings.receiveMentionsAndReplies,
-            status: pushSubscription?.alerts.status ?? false,
-            reblog: settings.receiveBoosts,
-            follow: settings.receiveNewFollowers,
-            followRequest: settings.receiveNewFollowers,
-            favourite: settings.receiveFavourites,
-            poll: pushSubscription?.alerts.poll ?? false,
-            update: pushSubscription?.alerts.update ?? false,
-            adminSignUp: pushSubscription?.alerts.adminSignUp ?? false,
-            adminReport: pushSubscription?.alerts.adminReport ?? false
+    private func pushBinding<Value>(_ keyPath: ReferenceWritableKeyPath<AppSettings, Value>) -> Binding<Value> {
+        Binding(
+            get: { settings[keyPath: keyPath] },
+            set: { value in
+                settings[keyPath: keyPath] = value
+                guard let pushClient else { return }
+                pushSync.saveSettings(.init(settings: settings), apiClient: pushClient, accountKey: accountKey)
+            }
         )
     }
+}
 
-    @MainActor
-    private func loadPushSubscription(apiClient: MastodonAPI) async {
-        pushSubscription = try? await apiClient.fetchPushSubscription()
+private struct PolicyRuleChoiceView: View {
+    @ObservedObject var controller: NotificationPolicyController
+    let title: String
+    let detail: String
+    let selection: Binding<ServerNotificationPolicy.Disposition>
+
+    var body: some View {
+        MoroChoicePage(
+            heading: title,
+            hint: detail,
+            footnote: MoroL10n.NotificationSettings.intakeFooter,
+            errorMessage: controller.saveError,
+            options: ServerNotificationPolicy.Disposition.allCases.map {
+                MoroChoiceOption(value: $0, title: $0.localizedName, detail: $0.localizedDetail)
+            },
+            selection: selection.wrappedValue,
+            isBusy: controller.isSaving,
+            accessibilityPrefix: "notificationSettings.choice"
+        ) { selection.wrappedValue = $0 }
     }
+}
 
-    @MainActor
-    private func syncPushSettings(apiClient: MastodonAPI) async {
-        guard pushSubscription != nil, !isPushSaving else { return }
-        isPushSaving = true
-        defer { isPushSaving = false }
-        do {
-            pushSubscription = try await apiClient.updatePushSubscription(
-                alerts: desiredPushAlerts,
-                policy: pushPolicyValue
-            )
-        } catch {
-            AppLogger.error("[Push] alert sync failed: \(error)")
+private struct PushSourceChoiceView: View {
+    @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var pushSync = PushSubscriptionCoordinator.shared
+    let pushClient: MastodonAPI?
+    let accountKey: String
+
+    var body: some View {
+        MoroChoicePage(
+            heading: MoroL10n.NotificationSettings.receiveFrom,
+            hint: MoroL10n.NotificationSettings.receiveFromHint,
+            footnote: MoroL10n.NotificationSettings.pushFooter,
+            errorMessage: pushSync.failedSettings.contains(accountKey)
+                ? MoroL10n.NotificationSettings.pushSaveFailed : nil,
+            options: AppSettings.NotificationPolicy.allCases.map {
+                MoroChoiceOption(value: $0, title: $0.localizedName)
+            },
+            selection: settings.notificationPolicy,
+            accessibilityPrefix: "notificationSettings.push.source"
+        ) { policy in
+            settings.notificationPolicy = policy
+            guard let pushClient else { return }
+            pushSync.saveSettings(.init(settings: settings), apiClient: pushClient, accountKey: accountKey)
         }
     }
 }
@@ -383,6 +417,14 @@ private extension ServerNotificationPolicy.Disposition {
         case .accept: return MoroL10n.NotificationSettings.policyAccept
         case .filter: return MoroL10n.NotificationSettings.policyFilter
         case .drop: return MoroL10n.NotificationSettings.policyDrop
+        }
+    }
+
+    var localizedDetail: String {
+        switch self {
+        case .accept: return MoroL10n.NotificationSettings.policyAcceptDetail
+        case .filter: return MoroL10n.NotificationSettings.policyFilterDetail
+        case .drop: return MoroL10n.NotificationSettings.policyDropDetail
         }
     }
 }

@@ -6,15 +6,27 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct MoroColors {
     // Color scheme for dynamic color switching
     let colorScheme: ColorScheme
     let accent: MoroAccentStyle
+    let themeColor: MoroThemeColor
+    let customThemeColor: UInt32
+    let colorSchemeContrast: ColorSchemeContrast
     
-    init(colorScheme: ColorScheme = .light, accent: MoroAccentStyle = .monochrome) {
+    init(
+        colorScheme: ColorScheme = .light, accent: MoroAccentStyle = .monochrome,
+        themeColor: MoroThemeColor = .blue,
+        customThemeColor: UInt32 = MoroThemeColor.defaultCustomRGB,
+        colorSchemeContrast: ColorSchemeContrast = .standard
+    ) {
         self.colorScheme = colorScheme
         self.accent = accent
+        self.themeColor = themeColor
+        self.customThemeColor = customThemeColor
+        self.colorSchemeContrast = colorSchemeContrast
     }
     
     // MARK: - Primary Palette
@@ -146,6 +158,16 @@ struct MoroColors {
         }
     }
 
+    /// Use the system's darker base card color consistently inside the settings sheet.
+    var groupedSurface: Color {
+        let traits = UITraitCollection { traits in
+            traits.userInterfaceStyle = colorScheme == .dark ? .dark : .light
+            traits.userInterfaceLevel = .base
+            traits.accessibilityContrast = colorSchemeContrast == .increased ? .high : .normal
+        }
+        return Color(uiColor: UIColor.secondarySystemGroupedBackground.resolvedColor(with: traits))
+    }
+
     /// Surface Base - Primary page surface for cards/containers
     var surfaceBase: Color {
         switch colorScheme {
@@ -199,16 +221,87 @@ struct MoroColors {
         }
     }
 
-    /// Content Link - Mentions, hashtags and inline links rendered inside post/account rich text.
-    var contentLink: Color {
-        switch colorScheme {
-        case .light:
-            return Color(hex: 0x0A84FF)
-        case .dark:
-            return Color(hex: 0x4DA3FF)
-        @unknown default:
-            return Color(hex: 0x0A84FF)
+    /// Shared accent for content links, enabled settings switches and inbox badges.
+    var themeTint: Color { Color(hex: themeTintHex) }
+
+    var contentLink: Color { themeTint }
+
+    var themeTintForeground: Color {
+        let luminance = Self.luminance(themeTintHex)
+        return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? .black : .white
+    }
+
+    private var themeTintHex: UInt32 {
+        let increased = colorSchemeContrast == .increased
+        let shades: (light: UInt32, dark: UInt32)
+        switch themeColor {
+        case .blue:
+            shades = increased ? (0x004C99, 0x7DBAFF) : (0x0066CC, 0x4DA3FF)
+        case .yellow:
+            shades = increased ? (0x6B4B00, 0xFFE080) : (0x8A6400, 0xF2C94C)
+        case .pink:
+            shades = increased ? (0x9C1048, 0xFF98C1) : (0xC2185B, 0xFF70AB)
+        case .purple:
+            shades = increased ? (0x51318F, 0xCDBAFF) : (0x6F42C1, 0xB69CFF)
+        case .orange:
+            shades = increased ? (0x853B00, 0xFFC18F) : (0xB45100, 0xFFAA66)
+        case .green:
+            shades = increased ? (0x005C44, 0x8AE8C6) : (0x007F5F, 0x53D6A4)
+        case .custom:
+            return accessibleCustomTint
         }
+        return colorScheme == .dark ? shades.dark : shades.light
+    }
+
+    private var accessibleCustomTint: UInt32 {
+        let original = customThemeColor & 0xFFFFFF
+        let backgrounds: [UInt32] = colorScheme == .dark
+            ? [0x16181A, 0x1A1C1E, 0x1D1F22, 0x000000]
+            : [0xFFFFFF, 0xF8F9FA, 0xFCFCFC, 0xF4F5F7]
+        let minimumContrast = colorSchemeContrast == .increased ? 7.0 : 4.5
+        func isReadable(_ color: UInt32) -> Bool {
+            let foreground = Self.luminance(color)
+            return backgrounds.allSatisfy { background in
+                let luminance = Self.luminance(background)
+                return (max(foreground, luminance) + 0.05) / (min(foreground, luminance) + 0.05) >= minimumContrast
+            }
+        }
+        guard !isReadable(original) else { return original }
+
+        // Keep the chosen RGB value; adjust only its rendered shade for the active surfaces.
+        let destination = colorScheme == .dark ? 255.0 : 0.0
+        func shade(_ amount: Double) -> UInt32 {
+            var hex: UInt32 = 0
+            for shift in [16, 8, 0] {
+                let component = Double((original >> shift) & 0xFF)
+                hex |= UInt32((component + (destination - component) * amount).rounded()) << shift
+            }
+            return hex
+        }
+        var lower = 0.0
+        var upper = 1.0
+        for _ in 0..<12 {
+            let middle = (lower + upper) / 2
+            if isReadable(shade(middle)) {
+                upper = middle
+            } else {
+                lower = middle
+            }
+        }
+        return shade(upper)
+    }
+
+    private static func luminance(_ hex: UInt32) -> Double {
+        func linear(_ shift: Int) -> Double {
+            let component = Double((hex >> shift) & 0xFF) / 255
+            return component <= 0.04045 ? component / 12.92 : pow((component + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(16) + 0.7152 * linear(8) + 0.0722 * linear(0)
+    }
+
+    /// Unread indicators retain their status color independently of content preferences.
+    var unreadIndicator: Color {
+        Color(hex: colorScheme == .dark ? 0x4DA3FF : 0x0A84FF)
     }
     
     // MARK: - Semantic Colors

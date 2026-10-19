@@ -152,6 +152,7 @@ struct InstanceDetailsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .moroSettingsPageChrome()
         .navigationTitle(MoroL10n.Instance.navTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -176,9 +177,8 @@ struct InstanceDetailsView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .padding(.horizontal, theme.spacing.xl)
+            .padding(.horizontal, MoroSettingsMetrics.pageHorizontalInset)
             .padding(.vertical, theme.spacing.m)
-            .background(theme.colors.surfaceBase)
 
             if viewModel.section == .about {
                 aboutSection(details)
@@ -197,8 +197,13 @@ struct InstanceDetailsView: View {
 
     private func aboutSection(_ details: InstanceDetailsSnapshot) -> some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: theme.spacing.xl) {
+            LazyVStack(alignment: .leading, spacing: MoroSettingsMetrics.sectionSpacing) {
                 instanceCover(details.coverURL)
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: MoroSettingsMetrics.cardCornerRadius, style: .continuous)
+                    )
+                    .padding(.horizontal, MoroSettingsMetrics.pageHorizontalInset)
+                    .padding(.top, theme.spacing.xs)
 
                 VStack(alignment: .leading, spacing: theme.spacing.s) {
                     Text(details.title)
@@ -217,9 +222,10 @@ struct InstanceDetailsView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, theme.spacing.xl)
+                // Text lines up with section headers and card content.
+                .padding(.horizontal, MoroSettingsMetrics.pageHorizontalInset + theme.spacing.l)
 
-                instanceSection(title: MoroL10n.Instance.statement, icon: "info.circle") {
+                instanceSection(title: MoroL10n.Instance.statement) {
                     Text(details.statement)
                         .moroScaledFont(size: 14, weight: .regular)
                         .foregroundStyle(theme.colors.textSecondary)
@@ -227,13 +233,13 @@ struct InstanceDetailsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                instanceSection(title: MoroL10n.Instance.admins, icon: "person.crop.circle") {
+                instanceSection(title: MoroL10n.Instance.admins) {
                     if let admin = details.adminAccount {
                         HStack(spacing: theme.spacing.m) {
                             MoroAvatar(
                                 imageURL: admin.avatarAnimatedURL,
                                 staticImageURL: admin.avatarURL,
-                                initials: admin.displayNameInitials,
+                                initials: admin.displayNameInitials, seed: admin.placeholderSeed,
                                 size: 44
                             )
 
@@ -295,9 +301,8 @@ struct InstanceDetailsView: View {
                     }
                 }
             }
-            .padding(.bottom, theme.spacing.xl)
+            .padding(.bottom, theme.spacing.xxl)
         }
-        .background(theme.colors.surfaceBase)
     }
 
     private func rulesSection(_ details: InstanceDetailsSnapshot) -> some View {
@@ -319,6 +324,7 @@ struct InstanceDetailsView: View {
                         }
                     }
                 }
+                .padding(.horizontal, theme.spacing.l)
 
                 if details.rules.isEmpty {
                     Text(MoroL10n.Instance.noRulesHint)
@@ -327,7 +333,7 @@ struct InstanceDetailsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(theme.spacing.l)
-                        .moroCardSurface(cornerRadius: 8, tone: .base)
+                        .moroSettingsCard()
                 } else {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(details.rules.enumerated()), id: \.element.id) { index, rule in
@@ -340,7 +346,7 @@ struct InstanceDetailsView: View {
                         }
                     }
                     .padding(.horizontal, theme.spacing.l)
-                    .moroCardSurface(cornerRadius: 8, tone: .base)
+                    .moroSettingsCard()
                 }
 
                 if let rulesURL = details.rulesURL {
@@ -350,12 +356,13 @@ struct InstanceDetailsView: View {
                             .foregroundStyle(theme.colors.textPrimary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .padding(.horizontal, theme.spacing.l)
                 }
             }
-            .padding(theme.spacing.xl)
-            .padding(.bottom, theme.spacing.xl)
+            .padding(.horizontal, MoroSettingsMetrics.pageHorizontalInset)
+            .padding(.top, theme.spacing.s)
+            .padding(.bottom, theme.spacing.xxl)
         }
-        .background(theme.colors.surfaceBase)
     }
 
     @ViewBuilder
@@ -377,7 +384,7 @@ struct InstanceDetailsView: View {
 
     private var instanceCoverPlaceholder: some View {
         Rectangle()
-            .fill(theme.colors.surfaceSubtle)
+            .fill(theme.colors.groupedSurface)
             .overlay {
                 Image(systemName: "building.2")
                     .moroScaledFont(size: 24, weight: .regular)
@@ -385,43 +392,37 @@ struct InstanceDetailsView: View {
             }
     }
 
+    /// Same anatomy as a List section: a quiet header above one borderless card.
     private func instanceSection<Content: View>(
         title: String,
-        icon: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing.m) {
-            HStack(spacing: theme.spacing.s) {
-                Image(systemName: icon)
-                    .moroScaledFont(size: 14, weight: .semibold)
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .frame(width: 22)
+        VStack(alignment: .leading, spacing: theme.spacing.s) {
+            MoroSettingsSectionHeader(title: title)
+                .padding(.horizontal, theme.spacing.l)
 
-                Text(title)
-                    .font(theme.typography.bodyStrong)
-                    .foregroundStyle(theme.colors.textPrimary)
+            VStack(alignment: .leading, spacing: theme.spacing.m) {
+                content()
             }
-
-            content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(theme.spacing.l)
+            .moroSettingsCard()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(theme.spacing.l)
-        .moroCardSurface(cornerRadius: 8, tone: .base)
-        .padding(.horizontal, theme.spacing.xl)
+        .padding(.horizontal, MoroSettingsMetrics.pageHorizontalInset)
     }
 
     private func instanceLinkLabel(_ title: String, icon: String) -> some View {
-        HStack(spacing: theme.spacing.m) {
+        HStack(spacing: MoroSettingsMetrics.iconTitleSpacing) {
             Image(systemName: icon)
-                .moroScaledFont(size: 14, weight: .regular)
+                .moroScaledFont(size: MoroSettingsMetrics.iconPointSize, weight: .regular)
                 .foregroundStyle(theme.colors.textSecondary)
-                .frame(width: 22)
+                .frame(width: MoroSettingsMetrics.iconColumnWidth)
             Text(title)
                 .font(theme.typography.body)
                 .foregroundStyle(theme.colors.textPrimary)
             Spacer(minLength: 0)
             Image(systemName: "arrow.up.right")
-                .moroScaledFont(size: 11, weight: .semibold)
+                .moroScaledFont(size: 13, weight: .semibold)
                 .foregroundStyle(theme.colors.textTertiary)
         }
         .frame(minHeight: 44)
@@ -499,10 +500,7 @@ struct InstanceDetailsView: View {
             .foregroundStyle(theme.colors.textPrimary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Capsule().fill(theme.colors.surfaceSubtle))
-            .overlay {
-                Capsule().stroke(theme.colors.borderSubtle, lineWidth: 1)
-            }
+            .background(Capsule().fill(theme.colors.groupedSurface))
         }
     }
 

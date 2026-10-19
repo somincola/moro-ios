@@ -82,7 +82,8 @@ private final class ProfileFixtureToken: AuthTokenProvider {
     var authToken: String? { "profile-fixture-token" }
 }
 
-private final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
+final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
+    private var pushResponseTask: Task<Void, Never>?
     private static let lock = NSLock()
     private static let legacy = ProcessInfo.processInfo.environment["UITEST_PROFILE_LEGACY"] == "1"
     private static let compactInfo = ProcessInfo.processInfo.environment["UITEST_PROFILE_COMPACT_INFO"] == "1"
@@ -97,11 +98,32 @@ private final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             ["name": "Garden", "value": "A space for small, thoughtful things."],
         ],
         "show_media": true, "show_media_replies": true,
-        "show_featured": true, "hide_collections": false,
+        "show_featured": true,
+        "hide_collections": ProcessInfo.processInfo.environment["UITEST_PROFILE_HIDE_COLLECTIONS"] == "1",
     ]
     private static var tags: [[String: Any]] = ProcessInfo.processInfo.environment["UITEST_PROFILE_EMPTY_TAGS"] == "1" ? [] : [
         ["id": "tag-app", "name": "app", "statuses_count": "2"],
         ["id": "tag-daily", "name": "daily", "statuses_count": "1"],
+    ]
+    private static var pushSaveAttempts = 0
+    /// Visitor-mode relationship. Unset keeps the historical empty `/relationships` reply.
+    private static let relationshipMode = ProcessInfo.processInfo.environment["UITEST_PROFILE_RELATIONSHIP"]
+    private static var relationship: [String: Any] = [
+        "id": "fixture-profile", "following": relationshipMode == "following", "followed_by": false,
+        "blocking": false, "blocked_by": false, "muting": false, "muting_notifications": false,
+        "requested": false, "domain_blocking": false, "endorsed": false, "notifying": false,
+    ]
+    private static var pushSubscription: [String: Any] = [
+        "id": 1, "endpoint": "https://relay-fixture.invalid/push", "policy": "all",
+        "alerts": ["mention": true, "status": false, "reblog": true, "follow": true,
+            "follow_request": true, "favourite": true, "poll": true, "update": false,
+            "admin.sign_up": false, "admin.report": false],
+    ]
+    private static var notificationPolicy: [String: Any] = [
+        "for_not_following": "accept", "for_not_followers": "filter",
+        "for_new_accounts": "filter", "for_private_mentions": "drop",
+        "for_limited_accounts": "filter", "for_bots": "drop",
+        "summary": ["pending_requests_count": 0, "pending_notifications_count": 0],
     ]
 
     @MainActor static func makeClient() -> MastodonClient {
@@ -139,6 +161,15 @@ private final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             payload["followers_count"] = 70
         }
         if legacy { for key in ["show_media", "show_media_replies", "show_featured"] { payload.removeValue(forKey: key) } }
+        if let avatar = ProcessInfo.processInfo.environment["UITEST_PROFILE_AVATAR_URL"] {
+            payload["avatar"] = avatar
+            payload["avatar_static"] = avatar
+        }
+        if ProcessInfo.processInfo.environment["UITEST_PROFILE_MEDIA"] == "1" {
+            for (key, file) in [("avatar", "avatar"), ("avatar_static", "avatar"), ("header", "header"), ("header_static", "header")] {
+                payload[key] = "https://profile-fixture.invalid/\(file).png"
+            }
+        }
         return payload
     }
 
@@ -146,6 +177,28 @@ private final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        if request.url?.path.hasSuffix("/relationships") == true,
+           let delay = ProcessInfo.processInfo.environment["UITEST_PROFILE_RELATIONSHIP_DELAY"].flatMap(Double.init) {
+            pushResponseTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                self?.completeLoading()
+            }
+            return
+        }
+        if request.url?.path == "/api/v1/push/subscription", request.httpMethod == "GET",
+           ProcessInfo.processInfo.environment["UITEST_SETTINGS_PUSH_SYNC"] == "1" {
+            pushResponseTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
+                self?.completeLoading()
+            }
+            return
+        }
+        completeLoading()
+    }
+
+    private func completeLoading() {
         do {
             let (code, payload) = Self.lock.withLock { Self.response(request) }
             let data = try JSONSerialization.data(withJSONObject: payload)
@@ -157,7 +210,7 @@ private final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
         } catch { client?.urlProtocol(self, didFailWithError: error) }
     }
 
-    override func stopLoading() {}
+    override func stopLoading() { pushResponseTask?.cancel() }
 
     private static func response(_ request: URLRequest) -> (Int, Any) {
         let url = request.url!
@@ -165,6 +218,47 @@ private final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
         let method = request.httpMethod ?? "GET"
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         func parameter(_ name: String) -> String? { query.first { $0.name == name }?.value }
+        if path == "/api/v1/mutes" || path == "/api/v1/blocks" {
+            var managed = accountPayload()
+            managed.merge(["id": "fixture-governance", "username": "managed", "acct": "managed",
+                           "display_name": "Managed account"]) { _, new in new }
+            return (200, [managed])
+        }
+        if path.hasSuffix("/unmute") || path.hasSuffix("/unblock") {
+            let id = path.split(separator: "/").dropLast().last.map(String.init) ?? "fixture-governance"
+            return (200, ["id": id, "following": false, "followed_by": false,
+                          "blocking": false, "blocked_by": false, "muting": false,
+                          "muting_notifications": false, "requested": false,
+                          "domain_blocking": false, "endorsed": false, "notifying": false])
+        }
+        if path == "/api/v2/filters" {
+            return (200, [["id": "fixture-filter", "title": "Spoiler filter", "context": ["home"],
+                           "expires_at": NSNull(), "filter_action": "warn",
+                           "keywords": [["id": "fixture-keyword", "keyword": "spoiler", "whole_word": true]]]])
+        }
+        if path.hasPrefix("/api/v2/filters/"), method == "DELETE" { return (200, [:]) }
+        if path == "/api/v1/domain_blocks" {
+            return (200, method == "GET" ? ["blocked.example.invalid"] : [])
+        }
+        if path == "/api/v1/push/subscription" {
+            if method == "PUT" {
+                pushSaveAttempts += 1
+                if pushSaveAttempts == 1, ProcessInfo.processInfo.environment["UITEST_PUSH_SAVE_FAILS_ONCE"] == "1" {
+                    return (503, ["error": "Fixture sync failure"])
+                }
+                if let update = try? JSONSerialization.jsonObject(with: body(request)) as? [String: Any],
+                   let data = update["data"] as? [String: Any] {
+                    pushSubscription.merge(data) { _, new in new }
+                }
+            }
+            return (200, pushSubscription)
+        }
+        if path == "/api/v2/notifications/policy" {
+            if method == "PUT", let update = try? JSONSerialization.jsonObject(with: body(request)) as? [String: Any] {
+                notificationPolicy.merge(update) { _, new in new }
+            }
+            return (200, notificationPolicy)
+        }
         if path == "/api/v1/profile" {
             if legacy { return (404, ["error": "Not found"]) }
             if method == "PATCH", let update = try? JSONSerialization.jsonObject(with: body(request)) as? [String: Any] {
@@ -206,7 +300,26 @@ private final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             tags.removeAll { $0["id"] as? String == url.lastPathComponent }
             return (200, [:])
         }
-        if path.hasSuffix("/relationships") { return (200, []) }
+        if path.hasSuffix("/relationships") { return (200, relationshipMode == nil ? [] : [relationship]) }
+        if relationshipMode != nil, method == "POST", path.hasSuffix("/follow") {
+            let options = (try? JSONSerialization.jsonObject(with: body(request))) as? [String: Any] ?? [:]
+            relationship["following"] = true
+            if let notify = options["notify"] as? Bool { relationship["notifying"] = notify }
+            return (200, relationship)
+        }
+        if relationshipMode != nil, method == "POST", path.hasSuffix("/unfollow") {
+            relationship["following"] = false
+            relationship["notifying"] = false
+            return (200, relationship)
+        }
+        if path.hasSuffix("/followers") || path.hasSuffix("/following") {
+            var connection = accountPayload()
+            connection["id"] = "fixture-connection"
+            connection["username"] = "connection"
+            connection["acct"] = "connection"
+            connection["display_name"] = "Connection Tester"
+            return (200, [connection])
+        }
         if path.hasSuffix("/statuses") {
             if parameter("only_media") == "true" { return (200, []) }
             if parameter("exclude_replies") == "false", parameter("pinned") != "true" {

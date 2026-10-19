@@ -14,21 +14,165 @@ import Foundation
 import UserNotifications
 
 @MainActor
-final class PushSubscriptionCoordinator {
+final class PushSubscriptionCoordinator: ObservableObject {
+    nonisolated deinit {}
     static let shared = PushSubscriptionCoordinator()
+
+    struct Preferences: Codable, Equatable {
+        var policy: String
+        var mentions: Bool
+        var boosts: Bool
+        var favourites: Bool
+        var followers: Bool
+
+        init(settings: AppSettings) {
+            switch settings.notificationPolicy {
+            case .anyone: policy = "all"
+            case .followers: policy = "follower"
+            case .followed: policy = "following"
+            case .noone: policy = "none"
+            }
+            mentions = settings.receiveMentionsAndReplies
+            boosts = settings.receiveBoosts
+            favourites = settings.receiveFavourites
+            followers = settings.receiveNewFollowers
+        }
+
+        /// The choice a server subscription currently carries.
+        init(subscription: PushSubscription) {
+            policy = subscription.policy ?? "all"
+            mentions = subscription.alerts.mention
+            boosts = subscription.alerts.reblog
+            favourites = subscription.alerts.favourite
+            followers = subscription.alerts.follow
+        }
+
+        func applying(to alerts: PushSubscription.Alerts) -> PushSubscription.Alerts {
+            var alerts = alerts
+            alerts.mention = mentions
+            alerts.reblog = boosts
+            alerts.favourite = favourites
+            alerts.follow = followers
+            alerts.followRequest = followers
+            return alerts
+        }
+    }
+
+    @Published private(set) var savingSettings = Set<String>()
+    @Published private(set) var failedSettings = Set<String>()
+    private static let pendingSettingsKey = "push_pending_settings_v1"
+    /// Last choice confirmed by each account's server. Persisted so a subscription
+    /// recreated after relaunch (new token, expired record) keeps the user's choice.
+    private static let syncedSettingsKey = "push_synced_settings_v1"
+    private let userDefaults: UserDefaults
+    private var pendingSettings: [String: Preferences]
+    private var syncedSettings: [String: Preferences]
+    private var settingsTasks: [String: Task<Void, Never>] = [:]
+    private var settingsWorkIDs: [String: UUID] = [:]
 
     private var tokenCancellable: AnyCancellable?
     /// "sessionKey|deviceToken" pairs already verified against the server this
     /// launch, so repeated activations (tab switches, account switches back)
     /// don't re-hit /push/subscription.
     private var ensuredKeys = Set<String>()
-    private var isEnsuring = false
+    private var ensuringKeys = Set<String>()
 
-    private init() {}
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+        pendingSettings = Self.loadSettings(userDefaults, key: Self.pendingSettingsKey)
+        syncedSettings = Self.loadSettings(userDefaults, key: Self.syncedSettingsKey)
+    }
+
+    private static func loadSettings(_ userDefaults: UserDefaults, key: String) -> [String: Preferences] {
+        userDefaults.data(forKey: key)
+            .flatMap { try? JSONDecoder().decode([String: Preferences].self, from: $0) } ?? [:]
+    }
+
+    func saveSettings(_ preferences: Preferences, apiClient: MastodonAPI, accountKey: String) {
+        pendingSettings[accountKey] = preferences
+        persistPendingSettings()
+        failedSettings.remove(accountKey)
+        resumeSettings(apiClient: apiClient, sessionKey: accountKey)
+    }
+
+    func resumeSettings(apiClient: MastodonAPI, sessionKey: String?) {
+        guard let key = sessionKey, pendingSettings[key] != nil, settingsTasks[key] == nil else { return }
+        let client: MastodonAPI = (apiClient as? MastodonClient)?.sessionSnapshot() ?? apiClient
+        let workID = UUID()
+        settingsWorkIDs[key] = workID
+        savingSettings.insert(key)
+        failedSettings.remove(key)
+        // Owned by the coordinator, so popping Settings never cancels a pending save.
+        settingsTasks[key] = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if self.settingsWorkIDs[key] == workID {
+                    self.settingsTasks.removeValue(forKey: key)
+                    self.settingsWorkIDs.removeValue(forKey: key)
+                    self.savingSettings.remove(key)
+                }
+            }
+            do {
+                try await Task.sleep(for: .milliseconds(600))
+                while let preferences = self.pendingSettings[key] {
+                    let subscription = try await client.fetchPushSubscription()
+                    try Task.checkCancellation()
+                    _ = try await client.updatePushSubscription(
+                        alerts: preferences.applying(to: subscription.alerts), policy: preferences.policy)
+                    try Task.checkCancellation()
+                    self.recordSynced(preferences, for: key)
+                    if self.pendingSettings[key] == preferences {
+                        self.pendingSettings.removeValue(forKey: key)
+                        self.persistPendingSettings()
+                    }
+                }
+            } catch {
+                guard !Task.isCancelled, self.settingsWorkIDs[key] == workID else { return }
+                self.failedSettings.insert(key)
+                AppLogger.error("[Push] settings sync failed: \(error)")
+                AppFeedbackCenter.shared.showError(MoroL10n.NotificationSettings.pushSaveFailed)
+            }
+        }
+    }
+
+    func removeSettings(for accountKey: String) {
+        settingsWorkIDs.removeValue(forKey: accountKey)
+        settingsTasks.removeValue(forKey: accountKey)?.cancel()
+        pendingSettings.removeValue(forKey: accountKey)
+        syncedSettings.removeValue(forKey: accountKey)
+        savingSettings.remove(accountKey)
+        failedSettings.remove(accountKey)
+        persistPendingSettings()
+        persistSyncedSettings()
+    }
+
+    private func recordSynced(_ preferences: Preferences, for key: String) {
+        guard syncedSettings[key] != preferences else { return }
+        syncedSettings[key] = preferences
+        persistSyncedSettings()
+    }
+
+    private func persistPendingSettings() {
+        persist(pendingSettings, key: Self.pendingSettingsKey)
+    }
+
+    private func persistSyncedSettings() {
+        persist(syncedSettings, key: Self.syncedSettingsKey)
+    }
+
+    private func persist(_ settings: [String: Preferences], key: String) {
+        if settings.isEmpty {
+            userDefaults.removeObject(forKey: key)
+        } else if let data = try? JSONEncoder().encode(settings) {
+            userDefaults.set(data, forKey: key)
+        }
+    }
 
     /// Called whenever the app lands on the main UI for a session.
     func activate(apiClient: MastodonAPI, sessionKey: String?) {
         guard PushRegistrationCenter.isPushCapabilityEnabled else { return }
+        let apiClient: MastodonAPI = (apiClient as? MastodonClient)?.sessionSnapshot() ?? apiClient
+        resumeSettings(apiClient: apiClient, sessionKey: sessionKey)
         let registration = PushRegistrationCenter.shared
 
         // Re-arm the token observer against the session's client. The token
@@ -61,41 +205,67 @@ final class PushSubscriptionCoordinator {
         }
     }
 
-    private func ensureSubscription(
+    func ensureSubscription(
         apiClient: MastodonAPI, sessionKey: String?, deviceToken: String
     ) async {
         let key = "\(sessionKey ?? "-")|\(deviceToken)"
-        guard !ensuredKeys.contains(key), !isEnsuring else { return }
-        isEnsuring = true
-        defer { isEnsuring = false }
+        guard !ensuredKeys.contains(key), !ensuringKeys.contains(key) else { return }
+        ensuringKeys.insert(key)
+        defer { ensuringKeys.remove(key) }
 
         let expectedEndpoint = PushRegistrationCenter.relayEndpointURL(
             deviceTokenHex: deviceToken, sessionKey: sessionKey)
 
-        // Already bound to this device? Nothing to do.
-        if let existing = try? await apiClient.fetchPushSubscription(),
-            existing.endpoint == expectedEndpoint
-        {
+        let existing: PushSubscription?
+        do {
+            existing = try await apiClient.fetchPushSubscription()
+        } catch let error where Self.isMissingSubscription(error) {
+            existing = nil
+        } catch {
+            // Offline or a server hiccup says nothing about the subscription. Recreating
+            // here would reset the user's alerts to defaults; retry on the next activation.
+            AppLogger.error("[Push] subscription check failed: \(error)")
+            return
+        }
+
+        // Already bound to this device? Remember the server's choice and stop.
+        if let existing, existing.endpoint == expectedEndpoint {
+            if let sessionKey { recordSynced(Preferences(subscription: existing), for: sessionKey) }
             ensuredKeys.insert(key)
+            resumeSettings(apiClient: apiClient, sessionKey: sessionKey)
             return
         }
 
         // Missing, or pointing at a stale token/relay: (re)create. Mastodon's
-        // POST replaces any previous subscription for this token.
+        // POST replaces any previous subscription for this token. Carry the user's
+        // choice over: unsent edit, then last confirmed choice, then whatever the
+        // stale subscription still holds; defaults only for a brand-new account.
         do {
+            let preferences = sessionKey.flatMap { pendingSettings[$0] ?? syncedSettings[$0] }
+                ?? existing.map(Preferences.init(subscription:))
+            let baseAlerts = existing?.alerts ?? .standardDefaults
             _ = try await apiClient.createPushSubscription(
                 endpoint: expectedEndpoint,
                 p256dh: try WebPushKeyStore.publicKeyBase64URL(),
                 auth: try WebPushKeyStore.authSecretBase64URL(),
-                alerts: .standardDefaults,
-                policy: "all"
+                alerts: preferences?.applying(to: baseAlerts) ?? baseAlerts,
+                policy: preferences?.policy ?? "all"
             )
             ensuredKeys.insert(key)
+            // Recreating a subscription can finish after a settings PUT; reapply the latest choice.
+            if let sessionKey, let latest = pendingSettings[sessionKey] ?? syncedSettings[sessionKey] {
+                saveSettings(latest, apiClient: apiClient, accountKey: sessionKey)
+            }
         } catch {
             // Quietly retried on next launch/activation; the diagnostics page
             // surfaces the state for manual repair.
             AppLogger.error("[Push] automatic subscription failed: \(error)")
         }
+    }
+
+    /// Mastodon answers 404 when the token has no Web Push subscription yet.
+    private static func isMissingSubscription(_ error: Error) -> Bool {
+        (error as? APIError)?.httpStatusCode == 404
     }
 }
 

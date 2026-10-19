@@ -16,6 +16,11 @@ struct SensitiveImageView: View {
     
     @State private var isRevealed: Bool = false
     @Environment(\.moroTheme) private var theme
+    @Environment(\.moroMediaPrefs) private var mediaPrefs
+
+    private var isConcealed: Bool {
+        mediaPrefs.concealsMedia(markedSensitive: isSensitive) && !isRevealed
+    }
     
     init(imageURL: URL?, previewURL: URL?, isSensitive: Bool, maxHeight: CGFloat = 400, onTap: (() -> Void)? = nil) {
         self.imageURL = imageURL
@@ -23,8 +28,6 @@ struct SensitiveImageView: View {
         self.isSensitive = isSensitive
         self.maxHeight = maxHeight
         self.onTap = onTap
-        // If not sensitive, show immediately
-        _isRevealed = State(initialValue: !isSensitive)
     }
     
     var body: some View {
@@ -33,7 +36,7 @@ struct SensitiveImageView: View {
                 image
                     .resizable()
                     .scaledToFill()
-                    .blur(radius: (isSensitive && !isRevealed) ? 25 : 0)
+                    .blur(radius: isConcealed ? 25 : 0)
                     .clipped()
             } placeholder: {
                 Rectangle()
@@ -41,7 +44,7 @@ struct SensitiveImageView: View {
             }
             
             // Overlay for sensitive content
-            if isSensitive && !isRevealed {
+            if isConcealed {
                 VStack(spacing: 12) {
                     Image(systemName: "eye.slash.fill")
                         .moroScaledFont(size: 36, weight: .medium)
@@ -49,7 +52,7 @@ struct SensitiveImageView: View {
                         .shadow(color: .black.opacity(0.3), radius: 2)
                     
                     VStack(spacing: 4) {
-                        Text(MoroL10n.SensitiveMedia.title)
+                        Text(mediaPrefs.concealLabel(markedSensitive: isSensitive))
                             .font(theme.typography.subtitle)
                             .fontWeight(.semibold)
                             .foregroundStyle(.white)
@@ -71,22 +74,15 @@ struct SensitiveImageView: View {
         .clipped()
         .contentShape(Rectangle())
         .onTapGesture {
-            if isSensitive {
-                if !isRevealed {
-                    // Reveal sensitive content
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        isRevealed = true
-                    }
-                    UIAccessibility.post(
-                        notification: .announcement,
-                        argument: MoroL10n.SensitiveMedia.valueRevealed
-                    )
-                } else {
-                    // Already revealed, trigger image tap
-                    onTap?()
+            if isConcealed {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    isRevealed = true
                 }
+                UIAccessibility.post(
+                    notification: .announcement,
+                    argument: MoroL10n.SensitiveMedia.valueRevealed
+                )
             } else {
-                // Not sensitive, trigger image tap directly
                 onTap?()
             }
         }
@@ -94,10 +90,10 @@ struct SensitiveImageView: View {
         // announces "Sensitive content, hidden, button" instead of reading the
         // overlay's eye-slash icon and labels separately.
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(MoroL10n.SensitiveMedia.title))
-        .accessibilityValue(Text(isRevealed ? MoroL10n.SensitiveMedia.valueRevealed
-                                            : MoroL10n.SensitiveMedia.valueHidden))
-        .accessibilityHint(isSensitive && !isRevealed
+        .accessibilityLabel(Text(mediaPrefs.concealLabel(markedSensitive: isSensitive)))
+        .accessibilityValue(Text(isConcealed ? MoroL10n.SensitiveMedia.valueHidden
+                                             : MoroL10n.SensitiveMedia.valueRevealed))
+        .accessibilityHint(isConcealed
                            ? Text(MoroL10n.SensitiveMedia.revealHint)
                            : Text(""))
         .accessibilityAddTraits(.isButton)

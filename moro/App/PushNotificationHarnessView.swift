@@ -1,6 +1,18 @@
 #if DEBUG
 import SwiftUI
+import UIKit
 import UserNotifications
+
+/// Themes the harness from the effective color scheme, as the app root does, so the
+/// UIKit shell (tab bar, account switcher) matches the SwiftUI content in dark mode.
+struct PushNotificationHarnessRoot: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        PushNotificationHarnessView()
+            .moroTheme(MoroTheme(colorScheme: colorScheme, accent: .monochrome))
+    }
+}
 
 /// Runs notification opening through the production shell with an isolated transport.
 struct PushNotificationHarnessView: View {
@@ -21,6 +33,10 @@ struct PushNotificationHarnessView: View {
             NotificationSnapshotStore.shared.removeSession("push-b")
         }
         state.currentAccount = PushNotificationFixtureProtocol.viewer
+        if isSwitcherScenario {
+            seedSwitcherAvatars()
+            state.currentAccount = switcherSessions.first?.account
+        }
         let scenario = ProcessInfo.processInfo.environment["UITEST_PUSH_SCENARIO"] ?? "post"
         if scenario == "inbox" {
             AppSettings.shared.notificationPolicy = .anyone
@@ -48,7 +64,12 @@ struct PushNotificationHarnessView: View {
         MainTabView(
             apiClient: activeSessionID == "push-a" ? clientA : clientB,
             onLogout: {}, accountSessions: sessions, activeSessionID: activeSessionID,
-            onSwitchAccount: { activeSessionID = $0 }, onRemoveAccount: { _ in },
+            onSwitchAccount: { id in
+                activeSessionID = id
+                if Self.isSwitcherScenario {
+                    appState.currentAccount = Self.switcherSessions.first { $0.id == id }?.account
+                }
+            }, onRemoveAccount: { _ in },
             onAccountAuthenticated: { _, _, _ in }
         )
         .id(activeSessionID)
@@ -92,9 +113,62 @@ struct PushNotificationHarnessView: View {
     }
 
     private var sessions: [StoredAccountSession] {
-        ["push-a", "push-b"].map {
+        // The account switcher tests need distinguishable accounts.
+        if Self.isSwitcherScenario { return Self.switcherSessions }
+        return ["push-a", "push-b"].map {
             StoredAccountSession(id: $0, account: PushNotificationFixtureProtocol.viewer,
                 instanceURLString: "https://\($0).push-fixture.invalid", tokenStorageKey: "unused-push-test-key", lastUsedAt: Date())
+        }
+    }
+}
+
+extension PushNotificationHarnessView {
+    static var isSwitcherScenario: Bool {
+        ProcessInfo.processInfo.environment["UITEST_SWITCHER_ACCOUNTS"] == "1"
+    }
+
+    private static let switcherAccounts: [(id: String, username: String, name: String, hue: CGFloat)] = [
+        ("push-a", "viewer", "Viewer", 0.58), ("push-b", "sora", "Sora", 0.93), ("push-c", "kai", "Kai Lin", 0.36),
+    ]
+
+    private static func switcherAvatarURL(_ id: String) -> URL {
+        URL(string: "https://avatars.push-fixture.invalid/\(id).png")!
+    }
+
+    static var switcherSessions: [StoredAccountSession] {
+        switcherAccounts.enumerated().map { index, item in
+            let avatar = switcherAvatarURL(item.id).absoluteString
+            let account = Account(id: "switcher-\(item.id)", username: item.username, acct: item.username,
+                displayName: item.name, note: "", avatar: avatar, avatarStatic: avatar, header: "", headerStatic: "",
+                followersCount: 0, followingCount: 0, statusesCount: 0)
+            return StoredAccountSession(id: item.id, account: account,
+                instanceURLString: "https://\(item.id).push-fixture.invalid", tokenStorageKey: "unused-push-test-key",
+                lastUsedAt: Date(timeIntervalSince1970: 1_700_000_000 + Double(index) * 60))
+        }
+    }
+
+    /// Distinct, offline avatars (a tinted disc with an initial) so animations can be judged.
+    static func seedSwitcherAvatars() {
+        let size = CGSize(width: 160, height: 160)
+        for item in switcherAccounts {
+            let image = UIGraphicsImageRenderer(size: size).image { context in
+                let colors = [
+                    UIColor(hue: item.hue, saturation: 0.55, brightness: 0.95, alpha: 1).cgColor,
+                    UIColor(hue: item.hue, saturation: 0.75, brightness: 0.7, alpha: 1).cgColor,
+                ] as CFArray
+                if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) {
+                    context.cgContext.drawLinearGradient(gradient, start: .zero,
+                        end: CGPoint(x: size.width, y: size.height), options: [])
+                }
+                let initial = String(item.name.prefix(1)) as NSString
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 76, weight: .bold), .foregroundColor: UIColor.white,
+                ]
+                let textSize = initial.size(withAttributes: attributes)
+                initial.draw(at: CGPoint(x: (size.width - textSize.width) / 2, y: (size.height - textSize.height) / 2),
+                    withAttributes: attributes)
+            }
+            ImageCache.shared.setImage(image, for: switcherAvatarURL(item.id))
         }
     }
 }

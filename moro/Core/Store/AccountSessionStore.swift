@@ -264,6 +264,7 @@ final class AccountSessionStore {
     }
 
     func removeSession(id: String) throws {
+        PushSubscriptionCoordinator.shared.removeSettings(for: id)
         notificationSnapshots.removeSession(id)
         notificationPolicySnapshots.removeSession(id)
         var sessions = loadSessions()
@@ -289,6 +290,7 @@ final class AccountSessionStore {
     func clearAllSessions() {
         let sessions = loadSessions()
         for session in sessions {
+            PushSubscriptionCoordinator.shared.removeSettings(for: session.id)
             notificationSnapshots.removeSession(session.id)
             notificationPolicySnapshots.removeSession(session.id)
             try? keychain.delete(forKey: session.tokenStorageKey)

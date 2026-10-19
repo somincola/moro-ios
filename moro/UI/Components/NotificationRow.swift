@@ -227,7 +227,7 @@ struct NotificationRow: View {
                 MoroAvatar(
                     imageURL: account.avatarAnimatedURL,
                     staticImageURL: account.avatarURL,
-                    initials: account.displayNameInitials,
+                    initials: account.displayNameInitials, seed: account.placeholderSeed,
                     size: Metrics.leadingSize
                 )
             }
@@ -245,7 +245,7 @@ struct NotificationRow: View {
                     MoroAvatar(
                         imageURL: account.avatarAnimatedURL,
                         staticImageURL: account.avatarURL,
-                        initials: account.displayNameInitials,
+                        initials: account.displayNameInitials, seed: account.placeholderSeed,
                         size: Metrics.actorAvatarSize
                     )
                     .overlay(
@@ -289,7 +289,7 @@ struct NotificationRow: View {
 
                     metaTime
                 }
-                .frame(minHeight: normalizedIdentityLineHeight, alignment: .center)
+                .frame(minHeight: identityLineHeight, alignment: .center)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
@@ -313,7 +313,7 @@ struct NotificationRow: View {
                         postActionAndTimeText(usesIntrinsicWidth: true)
                     }
                     .fixedSize(horizontal: true, vertical: false)
-                    .frame(minHeight: normalizedIdentityLineHeight, alignment: .center)
+                    .frame(minHeight: identityLineHeight, alignment: .center)
 
                     VStack(alignment: .leading, spacing: 2) {
                         actorDisplayName(account)
@@ -341,7 +341,7 @@ struct NotificationRow: View {
             minimumScaleFactor: 0.9,
             allowsTightening: true
         )
-        .frame(minHeight: normalizedIdentityLineHeight, alignment: .center)
+        .frame(minHeight: identityLineHeight, alignment: .center)
 
         if usesIntrinsicWidth {
             name.fixedSize(horizontal: true, vertical: false)
@@ -404,10 +404,6 @@ struct NotificationRow: View {
         .moroScaledFont(size: 13)
         .foregroundStyle(subtleMetaColor)
         .fixedSize()
-    }
-
-    private var normalizedIdentityLineHeight: CGFloat {
-        identityLineHeight * theme.fontScale
     }
 
     private func actorTapAction() {

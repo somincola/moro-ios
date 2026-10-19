@@ -9,7 +9,6 @@ import SwiftUI
 
 struct PrivacySafetySettingsView: View {
     @Environment(\.moroTheme) private var theme
-    @Environment(\.activeAccountKey) private var activeAccountKey
     @EnvironmentObject private var appState: AppState
     @StateObject private var settings = AppSettings.shared
     
@@ -24,77 +23,39 @@ struct PrivacySafetySettingsView: View {
     }
     
     var body: some View {
-        List {
-            // Privacy Presets Section
+        MoroSettingsList {
+            Section {
+                Toggle(MoroL10n.PrivacySafety.toggleApproveFollows, isOn: privacyBoolBinding(\.manuallyApproveFollowRequests))
+                    .accessibilityIdentifier("settings.privacy.approveFollows")
+                if apiClient == nil {
+                    Toggle(MoroL10n.PrivacySafety.toggleShowFollowCounts, isOn: privacyBoolBinding(\.showFollowersAndFollowing))
+                }
+                Toggle(MoroL10n.PrivacySafety.toggleSuggestAccount, isOn: privacyBoolBinding(\.suggestMyAccountToOthers))
+                Toggle(MoroL10n.PrivacySafety.toggleSearchEngine, isOn: privacyBoolBinding(\.appearInSearchEngines))
+            } header: {
+                MoroSettingsSectionHeader(title: MoroL10n.PrivacySafety.sectionOptions)
+            }
+            
             Section {
                 privacyPresetButton(
                     title: MoroL10n.PrivacySafety.presetOpenTitle,
                     description: MoroL10n.PrivacySafety.presetOpenDescription,
                     preset: .openPublic
                 )
-                
                 privacyPresetButton(
                     title: MoroL10n.PrivacySafety.presetPrivateTitle,
                     description: MoroL10n.PrivacySafety.presetPrivateDescription,
                     preset: .privateRestricted
                 )
             } header: {
-                Text(MoroL10n.PrivacySafety.sectionPresets)
-        }
-            
-            Section {
-                Toggle(MoroL10n.PrivacySafety.toggleApproveFollows, isOn: privacyBoolBinding(\.manuallyApproveFollowRequests))
-                if let apiClient {
-                    NavigationLink(MoroL10n.ProfileEditing.displaySettings) {
-                        ProfileDisplaySettingsView(apiClient: apiClient, accountKey: activeAccountKey)
-                    }
-                } else {
-                    Toggle(MoroL10n.PrivacySafety.toggleShowFollowCounts, isOn: privacyBoolBinding(\.showFollowersAndFollowing))
-                }
-                Toggle(MoroL10n.PrivacySafety.toggleSuggestAccount, isOn: privacyBoolBinding(\.suggestMyAccountToOthers))
-                Toggle(MoroL10n.PrivacySafety.toggleSearchEngine, isOn: privacyBoolBinding(\.appearInSearchEngines))
-            } header: {
-                Text(MoroL10n.PrivacySafety.sectionOptions)
-        }
-
-            if let apiClient {
-                Section {
-                    NavigationLink {
-                        AccountGovernanceView(kind: .muted, apiClient: apiClient)
-                    } label: {
-                        Label(MoroL10n.PrivacySafety.governanceMuted, systemImage: "speaker.slash")
-                    }
-
-                    NavigationLink {
-                        AccountGovernanceView(kind: .blocked, apiClient: apiClient)
-                    } label: {
-                        Label(MoroL10n.PrivacySafety.governanceBlocked, systemImage: "hand.raised")
-                    }
-
-                    NavigationLink {
-                        FiltersSettingsView(apiClient: apiClient)
-                    } label: {
-                        Label(MoroL10n.PrivacySafety.governanceFilters, systemImage: "line.3.horizontal.decrease.circle")
-                    }
-                } header: {
-                    Text(MoroL10n.PrivacySafety.sectionGovernance)
-        }
-            }
-            
-            Section {
-                Picker(MoroL10n.PrivacySafety.defaultVisibility, selection: privacyVisibilityBinding) {
-                    ForEach(AppSettings.PostVisibility.allCases, id: \.rawValue) { visibility in
-                        Text(visibility.localizedName).tag(visibility)
-                    }
-                }
-            } header: {
-                Text(MoroL10n.PrivacySafety.sectionDefaults)
+                MoroSettingsSectionHeader(title: MoroL10n.PrivacySafety.sectionPresets)
             }
         }
         .disabled(isSaving)
         .moroSettingsSwitchStyle()
-        .moroSettingsListChrome()
-        .navigationTitle(MoroL10n.PrivacySafety.title)
+        .moroSettingsListChrome(separators: .visible)
+        .textCase(nil)
+        .navigationTitle(MoroL10n.Settings.privacyVisibility)
         .navigationBarTitleDisplayMode(.inline)
         .alert(MoroL10n.PrivacySafety.saveFailed, isPresented: $showSaveError) {
             Button(MoroL10n.PrivacySafety.confirm, role: .cancel) { }
@@ -144,49 +105,17 @@ struct PrivacySafetySettingsView: View {
         }
     }
     
-    @ViewBuilder
+    /// Presets read like the choice pages: title + detail with the shared selection mark.
     private func privacyPresetButton(title: String, description: String, preset: PrivacyPreset) -> some View {
-        Button(action: {
+        MoroChoiceRow(
+            title: title,
+            detail: description,
+            isSelected: preset.matches(settings: settings)
+        ) {
             applyPrivacyMutation { settings in
                 preset.apply(to: settings)
             }
-        }) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(theme.typography.body)
-                        .fontWeight(.medium)
-                        .foregroundStyle(theme.colors.textPrimary)
-                    
-                    Text(description)
-                        .font(theme.typography.caption)
-                        .foregroundStyle(theme.colors.textSecondary)
-                }
-                
-                Spacer()
-                
-                if preset.matches(settings: settings) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(theme.colors.primary500)
-                } else {
-                    Image(systemName: "circle")
-                        .foregroundStyle(theme.colors.textTertiary)
-                }
-            }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-    }
-
-    private var privacyVisibilityBinding: Binding<AppSettings.PostVisibility> {
-        Binding(
-            get: { settings.defaultPostVisibility },
-            set: { newValue in
-                applyPrivacyMutation { settings in
-                    settings.defaultPostVisibility = newValue
-                }
-            }
-        )
     }
 
     private func privacyBoolBinding(
@@ -225,14 +154,7 @@ struct PrivacySafetySettingsView: View {
         saveError = nil
 
         do {
-            let updatedAccount = try await apiClient.updateAccountCredentials(
-                discoverable: settings.suggestMyAccountToOthers,
-                locked: settings.manuallyApproveFollowRequests,
-                indexable: settings.appearInSearchEngines,
-                hideCollections: !settings.showFollowersAndFollowing,
-                privacy: settings.defaultPostVisibility.sourcePrivacyValue
-            )
-            appState.currentAccount = updatedAccount
+            appState.currentAccount = try await PrivacySettingsSync.push(settings, using: apiClient)
         } catch {
             previousSnapshot.apply(to: settings)
             saveError = error
@@ -241,6 +163,58 @@ struct PrivacySafetySettingsView: View {
         }
 
         isSaving = false
+    }
+}
+
+/// Account-level privacy fields share one update_credentials call, whichever page edits them
+/// (Privacy edits the switches; Posting edits the default visibility).
+@MainActor
+enum PrivacySettingsSync {
+    static func push(_ settings: AppSettings, using apiClient: MastodonAPI) async throws -> Account {
+        try await apiClient.updateAccountCredentials(
+            discoverable: settings.suggestMyAccountToOthers,
+            locked: settings.manuallyApproveFollowRequests,
+            indexable: settings.appearInSearchEngines,
+            hideCollections: !settings.showFollowersAndFollowing,
+            privacy: settings.defaultPostVisibility.sourcePrivacyValue
+        )
+    }
+}
+
+struct ContentSafetySettingsView: View {
+    let apiClient: MastodonAPI
+
+    var body: some View {
+        MoroSettingsList {
+            Section {
+                NavigationLink {
+                    AccountGovernanceView(kind: .muted, apiClient: apiClient)
+                } label: {
+                    Label(MoroL10n.PrivacySafety.governanceMuted, systemImage: "speaker.slash")
+                }
+                .accessibilityIdentifier("settings.muted")
+
+                NavigationLink {
+                    AccountGovernanceView(kind: .blocked, apiClient: apiClient)
+                } label: {
+                    Label(MoroL10n.PrivacySafety.governanceBlocked, systemImage: "hand.raised")
+                }
+                .accessibilityIdentifier("settings.blocked")
+
+                NavigationLink {
+                    FiltersSettingsView(apiClient: apiClient)
+                } label: {
+                    Label(MoroL10n.PrivacySafety.governanceFilters, systemImage: "line.3.horizontal.decrease.circle")
+                }
+                .accessibilityIdentifier("settings.filters")
+            } footer: {
+                Text(MoroL10n.Settings.serverScope)
+            }
+        }
+        .moroSettingsListChrome(separators: .visible)
+        .textCase(nil)
+        .navigationTitle(MoroL10n.Settings.contentSafety)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

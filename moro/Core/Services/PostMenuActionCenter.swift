@@ -33,9 +33,20 @@ final class PostMenuActionCenter: ObservableObject {
     private var relationshipAccessOrder: [String] = []
     private var loadingAccountIDs: Set<String> = []
 
-    init(apiClient: MastodonAPI, relationshipCacheLimit: Int = 200, feedCoordinator: FeedCoordinator = .shared) {
+    /// The app-wide last-known relationships, so a profile opened from a post menu
+    /// that already checked the author starts on the right Follow state.
+    private let sharedRelationships: RelationshipStore
+    private let relationshipScope: String
+
+    init(
+        apiClient: MastodonAPI, relationshipCacheLimit: Int = 200, feedCoordinator: FeedCoordinator = .shared,
+        relationshipStore: RelationshipStore? = nil
+    ) {
         self.apiClient = apiClient
         self.relationshipCacheLimit = max(1, relationshipCacheLimit)
+        let store = relationshipStore ?? .shared
+        self.sharedRelationships = store
+        self.relationshipScope = store.activeScope
         relationshipSubscription = feedCoordinator.updates.sink { [weak self] update in
             guard case .relationship(let relationship) = update else { return }
             self?.storeRelationship(relationship)
@@ -263,7 +274,9 @@ final class PostMenuActionCenter: ObservableObject {
     }
 
     private func cachedRelationship(for accountID: String) -> Relationship? {
-        guard let relationship = relationshipCache[accountID] else { return nil }
+        guard let relationship = relationshipCache[accountID] else {
+            return sharedRelationships.relationship(for: accountID, scope: relationshipScope)
+        }
         markRelationshipAsRecentlyUsed(accountID)
         return relationship
     }
@@ -279,6 +292,7 @@ final class PostMenuActionCenter: ObservableObject {
         }
 
         relationshipCache = updatedCache
+        sharedRelationships.store(relationship, scope: relationshipScope)
     }
 
     private func markRelationshipAsRecentlyUsed(_ accountID: String) {

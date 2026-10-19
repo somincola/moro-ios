@@ -28,7 +28,21 @@ final class ContentConcealViewModel: ObservableObject {
     @Published private(set) var spoilerText: String?
     @Published private(set) var filterWarningText: String?
     @Published private(set) var isFilterRevealed: Bool
-    @Published private(set) var isContentRevealed: Bool
+    /// The reader's explicit choice for the content warning; nil follows the
+    /// "always expand content warnings" preference.
+    @Published private(set) var contentRevealChoice: Bool?
+
+    /// Revealed state with auto-expand off (the default reading behaviour).
+    var isContentRevealed: Bool { isContentRevealed(autoExpand: false) }
+
+    /// Content is visible once any filter warning is passed and the CW is open,
+    /// either by choice or because the reader expands content warnings by default.
+    /// Auto-expand never bypasses a server filter warning.
+    func isContentRevealed(autoExpand: Bool) -> Bool {
+        guard isFilterRevealed else { return false }
+        guard hasContentWarning else { return true }
+        return contentRevealChoice ?? autoExpand
+    }
 
     init(
         statusID: String,
@@ -43,7 +57,7 @@ final class ContentConcealViewModel: ObservableObject {
         self.spoilerText = spoilerText
         self.filterWarningText = filterWarningText
         self.isFilterRevealed = !hasFilterWarning
-        self.isContentRevealed = !hasContentWarning && !hasFilterWarning
+        self.contentRevealChoice = nil
     }
 
     func sync(
@@ -61,7 +75,7 @@ final class ContentConcealViewModel: ObservableObject {
             self.spoilerText = spoilerText
             self.filterWarningText = filterWarningText
             self.isFilterRevealed = !hasFilterWarning
-            self.isContentRevealed = !hasContentWarning && !hasFilterWarning
+            self.contentRevealChoice = nil
             return
         }
 
@@ -81,23 +95,18 @@ final class ContentConcealViewModel: ObservableObject {
             isFilterRevealed = false
         }
 
-        if !hasContentWarning && !hasFilterWarning {
-            isContentRevealed = true
-        } else if hasContentWarning && !previousHasContentWarning {
-            // Newly applied CW starts concealed.
-            isContentRevealed = false
-        }
-    }
-    
-    func revealFilteredContent() {
-        isFilterRevealed = true
-        if !hasContentWarning {
-            isContentRevealed = true
+        if hasContentWarning && !previousHasContentWarning {
+            // Newly applied CW starts from the reader's default again.
+            contentRevealChoice = nil
         }
     }
 
-    func toggleContentWarning() {
-        isContentRevealed.toggle()
+    func revealFilteredContent() {
+        isFilterRevealed = true
+    }
+
+    func toggleContentWarning(autoExpand: Bool = false) {
+        contentRevealChoice = !isContentRevealed(autoExpand: autoExpand)
     }
 }
 
@@ -106,7 +115,12 @@ struct ContentConcealView<Content: View>: View {
     let content: () -> Content
     
     @Environment(\.moroTheme) private var theme
-    
+    @Environment(\.moroMediaPrefs) private var mediaPrefs
+
+    private var isContentRevealed: Bool {
+        viewModel.isContentRevealed(autoExpand: mediaPrefs.expandContentWarnings)
+    }
+
     var body: some View {
         Group {
             if viewModel.hasFilterWarning && !viewModel.isFilterRevealed {
@@ -150,7 +164,7 @@ struct ContentConcealView<Content: View>: View {
             // Fixed title - always visible with bold font (weight 600)
             if let spoilerText = viewModel.spoilerText, !spoilerText.isEmpty {
                 Text(spoilerText)
-                    .font(theme.typography.body)
+                    .font(Font(theme.postUIFont(sizeAdjustment: -1)))
                     .fontWeight(.semibold) // SwiftUI semibold is approximately 600
                     .foregroundStyle(theme.colors.textPrimary)
             } else {
@@ -163,21 +177,21 @@ struct ContentConcealView<Content: View>: View {
             // Fixed toggle button - always in same position
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.25)) {
-                    viewModel.toggleContentWarning()
+                    viewModel.toggleContentWarning(autoExpand: mediaPrefs.expandContentWarnings)
                 }
             }) {
                 HStack(spacing: ContentConcealMetrics.toggleInlineSpacing) {
-                    Text(viewModel.isContentRevealed ? MoroL10n.SensitiveMedia.showLess : MoroL10n.SensitiveMedia.showMore)
+                    Text(isContentRevealed ? MoroL10n.SensitiveMedia.showLess : MoroL10n.SensitiveMedia.showMore)
                         .font(theme.typography.caption)
                         .fontWeight(.medium)
-                    Image(systemName: viewModel.isContentRevealed ? "chevron.up" : "chevron.down")
+                    Image(systemName: isContentRevealed ? "chevron.up" : "chevron.down")
                         .moroScaledFont(size: ContentConcealMetrics.chevronSize, weight: .medium)
                 }
                 .foregroundStyle(theme.colors.primary500)
             }
 
             // Content area - animated reveal/conceal
-            if viewModel.isContentRevealed {
+            if isContentRevealed {
                 content()
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .transition(.opacity)
@@ -185,6 +199,6 @@ struct ContentConcealView<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipped()
-        .animation(.easeInOut(duration: 0.2), value: viewModel.isContentRevealed)
+        .animation(.easeInOut(duration: 0.2), value: isContentRevealed)
     }
 }

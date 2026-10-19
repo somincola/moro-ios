@@ -23,7 +23,7 @@ xcuserdata/
 *.dSYM.zip
 *.mobileprovision
 *.provisionprofile
-
+.asc/
 # Swift Package Manager
 .build/
 .swiftpm/

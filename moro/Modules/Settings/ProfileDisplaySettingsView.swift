@@ -1,24 +1,28 @@
 import SwiftUI
 
 struct ProfileDisplaySettingsView: View {
+    enum Scope { case local, server }
+
     @Environment(\.moroTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appState: AppState
     @StateObject private var model: ProfileDisplayViewModel
+    let scope: Scope
 
-    init(apiClient: MastodonAPI, accountKey: String) {
+    init(apiClient: MastodonAPI, accountKey: String, scope: Scope = .server) {
         _model = StateObject(wrappedValue: ProfileDisplayViewModel(apiClient: apiClient, accountKey: accountKey))
+        self.scope = scope
     }
 
     var body: some View {
-        List {
-            Section {
-                Toggle(MoroL10n.ProfileEditing.showTags, isOn: $model.showTags)
-                    .accessibilityIdentifier("profile.display.featuredTags")
-            } header: {
-                Text(verbatim: "Moro")
-            } footer: {
-                Text(MoroL10n.ProfileEditing.showTagsHint)
+        MoroSettingsList {
+            if scope == .local {
+                Section {
+                    Toggle(MoroL10n.ProfileEditing.showTags, isOn: $model.showTags)
+                        .accessibilityIdentifier("profile.display.featuredTags")
+                } footer: {
+                    Text("\(MoroL10n.Settings.profileLocalScope)\n\n\(MoroL10n.ProfileEditing.showTagsHint)")
+                }
             }
 
             if let error = model.error {
@@ -29,7 +33,7 @@ struct ProfileDisplaySettingsView: View {
                     }
                 }
             }
-            if model.hasLoaded {
+            if scope == .server, model.hasLoaded {
                 Section {
                     Toggle(MoroL10n.ProfileEditing.showMedia, isOn: $model.showMedia)
                         .disabled(!model.supportsMedia)
@@ -37,6 +41,8 @@ struct ProfileDisplaySettingsView: View {
                     Toggle(MoroL10n.ProfileEditing.showMediaReplies, isOn: $model.showMediaReplies)
                         .disabled(!model.supportsMediaReplies || !model.showMedia)
                         .accessibilityIdentifier("profile.display.mediaReplies")
+                } header: {
+                    MoroSettingsSectionHeader(title: MoroL10n.ProfileEditing.media)
                 } footer: {
                     if !model.supportsMedia || !model.supportsMediaReplies {
                         Text(MoroL10n.ProfileEditing.unsupported)
@@ -61,7 +67,7 @@ struct ProfileDisplaySettingsView: View {
         }
         .moroSettingsSwitchStyle()
         .profileEditorChrome()
-        .navigationTitle(MoroL10n.ProfileEditing.displaySettings)
+        .navigationTitle(scope == .local ? MoroL10n.Settings.profileReading : MoroL10n.Settings.profilePublic)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -77,7 +83,7 @@ struct ProfileDisplaySettingsView: View {
         }
         .disabled(model.isSaving)
         .profileEditorExitGuard(hasChanges: model.hasChanges, isSaving: model.isSaving)
-        .task { await model.load() }
+        .task { if scope == .server { await model.load() } }
         .accessibilityIdentifier("profile.display.editor")
     }
 }

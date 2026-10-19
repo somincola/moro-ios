@@ -46,7 +46,7 @@ enum MoroMenuItemTone {
     }
 }
 
-private struct MoroMenuGlyph: View {
+struct MoroMenuGlyph: View {
     let systemImage: String
     let tintColor: UIColor
 
@@ -213,6 +213,7 @@ struct StatusMoreButton: View {
     let onCopyLink: (() -> Void)?
     let onCopyText: (() -> Void)?
     let onOpenInBrowser: (() -> Void)?
+    let onQuote: (() -> Void)?
     let onEdit: (() -> Void)?
     
     // Other user actions
@@ -236,6 +237,7 @@ struct StatusMoreButton: View {
         onCopyLink: (() -> Void)? = nil,
         onCopyText: (() -> Void)? = nil,
         onOpenInBrowser: (() -> Void)? = nil,
+        onQuote: (() -> Void)? = nil,
         onEdit: (() -> Void)? = nil,
         onMuteUser: (() -> Void)? = nil,
         onBlockUser: (() -> Void)? = nil,
@@ -254,6 +256,7 @@ struct StatusMoreButton: View {
         self.onCopyLink = onCopyLink
         self.onCopyText = onCopyText
         self.onOpenInBrowser = onOpenInBrowser
+        self.onQuote = onQuote
         self.onEdit = onEdit
         self.onMuteUser = onMuteUser
         self.onBlockUser = onBlockUser
@@ -268,6 +271,13 @@ struct StatusMoreButton: View {
     var body: some View {
         let visibility = menuVisibility
         Menu {
+            if let onQuote {
+                Button { performAction(onQuote) } label: {
+                    MoroMenuItemLabel(title: MoroL10n.BoostDialog.quote, systemImage: "pencil.line")
+                }
+                .accessibilityIdentifier("post.quote.\(status.id)")
+            }
+
             if visibility.showShare, let onShare {
                 Button(action: {
                     performAction(onShare)
@@ -301,7 +311,7 @@ struct StatusMoreButton: View {
             }
             
             if isOwnPost {
-                if visibility.hasCommonActions && visibility.hasOwnActions {
+                if (visibility.hasCommonActions || onQuote != nil) && visibility.hasOwnActions {
                     Divider()
                 }
 
@@ -351,7 +361,7 @@ struct StatusMoreButton: View {
                     }
                 }
             } else {
-                if visibility.hasCommonActions && visibility.hasOtherActions {
+                if (visibility.hasCommonActions || onQuote != nil) && visibility.hasOtherActions {
                     Divider()
                 }
 
@@ -414,6 +424,7 @@ struct StatusMoreButton: View {
         } label: {
             MoroMoreMenuTriggerLabel(iconSize: iconSize)
         }
+        .accessibilityIdentifier("post.more.\(status.id)")
         .buttonStyle(.plain)
         .transaction { transaction in
             transaction.disablesAnimations = true

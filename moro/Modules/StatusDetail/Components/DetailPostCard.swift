@@ -20,14 +20,6 @@ struct DetailPostCard: View {
     @Environment(\.openURL) private var openURL
     @StateObject private var translationViewModel = StatusTranslationViewModel()
 
-    private var detailBodyFont: Font {
-        .system(size: 20, weight: .regular)
-    }
-
-    private var detailBodyUIFont: UIFont {
-        .moroScaled(ofSize: 20, weight: .regular, relativeTo: .title3)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: theme.spacing.s) {
             HStack(alignment: .top, spacing: theme.spacing.m) {
@@ -35,7 +27,7 @@ struct DetailPostCard: View {
                     MoroAvatar(
                         imageURL: status.account.avatarAnimatedURL,
                         staticImageURL: status.account.avatarURL,
-                        initials: status.account.displayNameInitials,
+                        initials: status.account.displayNameInitials, seed: status.account.placeholderSeed,
                         size: 48
                     )
                 }
@@ -62,8 +54,7 @@ struct DetailPostCard: View {
                 onPollVote: actions.onPollVote,
                 onQuotedStatusTap: actions.navigation?.onQuotedStatusTap,
                 onImageTap: actions.navigation?.onImageTap,
-                textFont: detailBodyFont,
-                uiTextFont: detailBodyUIFont,
+                isFocused: true,
                 quoteStyle: .card
             )
 
@@ -80,6 +71,7 @@ struct DetailPostCard: View {
                 isBlockingUser: actions.menu?.isBlockingUser,
                 onReply: actions.onReply,
                 onBoost: actions.onBoost,
+                onQuote: actions.onQuote,
                 onLike: actions.onLike,
                 onBookmark: actions.onBookmark,
                 onShare: actions.menu?.onShare,

@@ -43,13 +43,13 @@ struct ReportSelectionIndicator: View {
             if isSelected {
                 Circle().fill(theme.colors.primary500)
                 Image(systemName: "checkmark")
-                    .font(.system(size: diameter * theme.fontScale * 0.5, weight: .bold))
+                    .font(.system(size: diameter * 0.5, weight: .bold))
                     .foregroundStyle(theme.colors.primaryForeground)
             } else {
                 Circle().strokeBorder(theme.colors.textSecondary, lineWidth: 1)
             }
         }
-        .frame(width: diameter * theme.fontScale, height: diameter * theme.fontScale)
+        .frame(width: diameter, height: diameter)
         .accessibilityHidden(true)
     }
 }

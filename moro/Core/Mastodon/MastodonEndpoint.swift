@@ -58,6 +58,7 @@ enum MastodonEndpoint {
     case trendsTags(limit: Int?)
     case trendsStatuses(limit: Int?)
     case directory(limit: Int?, offset: Int?, order: String?, local: Bool?)
+    case suggestedAccounts(limit: Int?)
     case announcements
     case dismissAnnouncement(id: String)
     case addAnnouncementReaction(id: String, name: String)
@@ -260,6 +261,8 @@ enum MastodonEndpoint {
             return "/api/v1/trends/statuses"
         case .directory:
             return "/api/v1/directory"
+        case .suggestedAccounts:
+            return "/api/v2/suggestions"
         case .announcements:
             return "/api/v1/announcements"
         case .dismissAnnouncement(let id):
@@ -408,6 +411,10 @@ enum MastodonEndpoint {
                 limit.map { URLQueryItem(name: "limit", value: "\($0)") }
             ].compactMap { $0 }
         case .trendsStatuses(let limit):
+            return [
+                limit.map { URLQueryItem(name: "limit", value: "\($0)") }
+            ].compactMap { $0 }
+        case .suggestedAccounts(let limit):
             return [
                 limit.map { URLQueryItem(name: "limit", value: "\($0)") }
             ].compactMap { $0 }

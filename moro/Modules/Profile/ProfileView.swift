@@ -9,44 +9,6 @@ import SwiftUI
 
 // MARK: - Profile View
 
-private struct ProfileHeaderPlaceholder: View {
-    let backgroundColor: Color
-    let lineColor: Color
-
-    var body: some View {
-        Canvas { context, size in
-            context.fill(
-                Path(CGRect(origin: .zero, size: size)),
-                with: .color(backgroundColor)
-            )
-
-            let spacing: CGFloat = 28
-            var fineLines = Path()
-            for originX in stride(
-                from: -size.height,
-                through: size.width + size.height,
-                by: spacing
-            ) {
-                fineLines.move(to: CGPoint(x: originX, y: 0))
-                fineLines.addLine(to: CGPoint(x: originX + size.height, y: size.height))
-            }
-            context.stroke(fineLines, with: .color(lineColor), lineWidth: 0.7)
-
-            var broadLines = Path()
-            for originX in stride(
-                from: -size.height,
-                through: size.width + size.height,
-                by: spacing * 3
-            ) {
-                broadLines.move(to: CGPoint(x: originX, y: size.height))
-                broadLines.addLine(to: CGPoint(x: originX + size.height, y: 0))
-            }
-            context.stroke(broadLines, with: .color(lineColor.opacity(0.55)), lineWidth: 0.6)
-        }
-        .accessibilityHidden(true)
-    }
-}
-
 private struct ProfileStatButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -93,6 +55,16 @@ struct ProfileView: View {
             bannerHeight: profileBannerBaseHeight,
             navigationBarHeight: navigationBarHeight
         )
+    }
+
+    /// The bar reads as solid once the collapsing chrome is mostly opaque.
+    private var isNavigationChromeSolid: Bool { profileChromeProgress >= 0.55 }
+
+    /// Bar controls: white over the banner, the theme's text color on the solid bar.
+    /// Set explicitly because iOS 18 keeps the shell's white tint (invisible on a light
+    /// bar) and resolves a plain menu label to the system accent in dark mode.
+    private var navigationForeground: Color {
+        isNavigationChromeSolid ? theme.colors.textPrimary : .white
     }
 
     private var navChromeVisible: Bool {
@@ -231,7 +203,7 @@ struct ProfileView: View {
         .ignoresSafeArea(.container, edges: .top)
         .background(sceneCanvasColor)
         .background {
-            ProfileNavigationBarHeightReader { navigationBarHeight = $0 }
+            ProfileNavigationBarHeightReader(tint: UIColor(navigationForeground)) { navigationBarHeight = $0 }
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
@@ -245,7 +217,7 @@ struct ProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(
-            profileChromeProgress >= 0.55 ? colorScheme : .dark,
+            isNavigationChromeSolid ? colorScheme : .dark,
             for: .navigationBar
         )
         .toolbar {
@@ -368,8 +340,8 @@ struct ProfileView: View {
             ProfileMoreButton(
                 account: viewModel.account ?? account,
                 relationship: nil,
+                iconColor: navigationForeground,
                 onShare: shareUser,
-                onEditProfile: { router.navigate(to: .editProfile) },
                 onSettings: presentSettings,
                 onBookmarks: { router.navigate(to: .bookmarks) },
                 onFavourites: { router.navigate(to: .favourites) },
@@ -481,6 +453,7 @@ struct ProfileView: View {
         ProfileMoreButton(
             account: viewModel.account ?? account,
             relationship: viewModel.relationship,
+            iconColor: navigationForeground,
             onShare: shareUser,
             onCopyLink: copyUserLink,
             onOpenInBrowser: openUserInBrowser,
@@ -610,16 +583,20 @@ struct ProfileView: View {
         let visibleHeight = totalHeight + pullDistance
 
         ZStack(alignment: .bottom) {
-            ProfileHeaderPlaceholder(
-                backgroundColor: theme.colors.surfaceSubtle,
-                lineColor: theme.colors.textMuted.opacity(0.16)
-            )
-
             if let headerURL = acc?.profileHeaderURL {
                 MoroNetworkImage(url: headerURL)
                     .frame(maxWidth: .infinity)
                     .frame(height: visibleHeight + 2)
                     .clipped()
+            } else if let acc {
+                // No cover: the avatar blurred into a wash, or the account's own tone.
+                ProfileGeneratedHeader(avatarURL: acc.profileAvatarURL, seed: acc.placeholderSeed)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: visibleHeight + 2)
+                    .clipped()
+            } else {
+                // Account still loading: stay neutral rather than flash a guessed tone.
+                theme.colors.surfaceSubtle
             }
 
             LinearGradient(
@@ -635,13 +612,8 @@ struct ProfileView: View {
         }
         .frame(height: visibleHeight)
         .frame(maxWidth: .infinity)
+        // No bottom rule: the gradient alone fades the banner into the page.
         .offset(y: -max(scrollOffset, 0))
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(theme.colors.borderSubtle)
-                .frame(height: 0.5)
-                .allowsHitTesting(false)
-        }
         .overlay(alignment: .top) {
             LinearGradient(
                 colors: [.black.opacity(0.28), .clear],
@@ -667,6 +639,7 @@ struct ProfileView: View {
                 imageURL: acc?.avatarAnimatedURL,
                 staticImageURL: acc?.avatarURL,
                 initials: acc?.displayNameInitials ?? "?",
+                seed: acc?.placeholderSeed,
                 size: avatarSize
             )
             .overlay(
@@ -677,7 +650,9 @@ struct ProfileView: View {
 
             Spacer()
 
-            if !isCurrentUser {
+            if isCurrentUser {
+                editProfileButton
+            } else {
                 actionButtons
             }
         }
@@ -756,10 +731,32 @@ struct ProfileView: View {
     // MARK: - Action Buttons
 
     @ViewBuilder
+    /// Own-profile counterpart of the Follow button: same footprint, secondary surface,
+    /// so the header keeps its geometry and "my profile" reads differently at a glance.
+    private var editProfileButton: some View {
+        Button {
+            router.navigate(to: .editProfile)
+        } label: {
+            Text(MoroL10n.Profile.editProfileButton)
+                .font(theme.typography.body)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .foregroundStyle(theme.colors.textPrimary)
+                .padding(.horizontal, 20)
+                .frame(height: 36)
+                .moroRelationshipControlSurface(.secondary, theme: theme)
+        }
+        .buttonStyle(.plain)
+        // Wait for the profile to load so the editor never opens on empty data.
+        .disabled(viewModel.account == nil)
+        .accessibilityIdentifier("profile.editButton")
+    }
+
     private var actionButtons: some View {
         HStack(spacing: theme.spacing.m) {
             FollowButton(
                 relationship: viewModel.relationship,
+                isResolved: viewModel.isRelationshipResolved,
                 isLoading: viewModel.isUpdatingRelationship,
                 isInteractionDisabled: viewModel.isUpdatingNotification,
                 onFollow: toggleFollow,
@@ -852,7 +849,7 @@ struct ProfileView: View {
         value: String,
         label: String
     ) -> some View {
-        let collectionsAreHidden = account.hideCollections == true
+        let collectionsAreHidden = account.hideCollections == true && !isCurrentUser
 
         return Button {
             if collectionsAreHidden {

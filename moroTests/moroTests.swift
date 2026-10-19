@@ -494,6 +494,39 @@ struct moroTests {
         #expect(hidden == true)
     }
 
+    @Test @MainActor func localProfileDisplaySavesWithoutContactingTheServer() async throws {
+        let suite = "profile-local-display-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = ProfilePresentationPreferences(defaults: defaults)
+        let api = MockMastodonAPI()
+        var contactedServer = false
+        api.fetchEditableProfileHandler = {
+            contactedServer = true
+            throw MockMastodonAPI.MockError.forcedFailure
+        }
+        api.profileDisplayUpdateHandler = { _ in
+            contactedServer = true
+            throw MockMastodonAPI.MockError.forcedFailure
+        }
+        api.credentialsUpdateHandler = { _ in
+            contactedServer = true
+            throw MockMastodonAPI.MockError.forcedFailure
+        }
+        let state = AppState()
+        state.currentAccount = makeAccount()
+        let originalAccountID = state.currentAccount?.id
+        let model = ProfileDisplayViewModel(apiClient: api, accountKey: "A", preferences: preferences)
+        model.showTags = false
+        #expect(model.serverUpdate == nil)
+        #expect(await model.save(to: state))
+        #expect(!contactedServer)
+        #expect(!preferences.showsFeaturedTags(accountKey: "A"))
+        #expect(preferences.showsFeaturedTags(accountKey: "B"))
+        #expect(state.currentAccount?.id == originalAccountID)
+        #expect(!model.hasChanges)
+    }
+
     @Test @MainActor func mediaPreferenceChangesDiscardAnOldRequestAndHideTheTab() async {
         let api = MockMastodonAPI()
         let started = AsyncStream<Void>.makeStream()
@@ -1971,7 +2004,6 @@ struct moroTests {
     }
 
     @Test @MainActor func hiddenAppearanceControlsUseStandardDefaults() async throws {
-        #expect(AppSettings.defaultTypographyFontScale == .standard)
         #expect(AppSettings.defaultTimelineDensity == .comfortable)
         #expect(AppSettings.defaultNavigationAppearance == .standard)
         #expect(AppSettings.defaultNavigationAppearance.tabIconTheme == .standard)
@@ -2791,6 +2823,71 @@ struct moroTests {
                 currentUserID: me.id
             ) == false
         )
+    }
+
+    @Test @MainActor func boostConfirmationDefaultsOnAndPreservesSavedChoice() throws {
+        let suite = "BoostPreferenceTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let settings = AppSettings(userDefaults: defaults)
+        #expect(settings.askBeforeBoostingAPost)
+        settings.askBeforeBoostingAPost = false
+        #expect(!AppSettings(userDefaults: defaults).askBeforeBoostingAPost)
+        settings.askBeforeBoostingAPost = true
+        #expect(AppSettings(userDefaults: defaults).askBeforeBoostingAPost)
+    }
+
+    @Test @MainActor func quoteActionRemainsAvailableWithBoostConfirmationOff() throws {
+        let settings = AppSettings.shared
+        let previous = settings.askBeforeBoostingAPost
+        let savedValue = UserDefaults.standard.object(forKey: "askBeforeBoostingAPost")
+        defer {
+            settings.askBeforeBoostingAPost = previous
+            if let savedValue { UserDefaults.standard.set(savedValue, forKey: "askBeforeBoostingAPost") }
+            else { UserDefaults.standard.removeObject(forKey: "askBeforeBoostingAPost") }
+        }
+        settings.askBeforeBoostingAPost = false
+        let api = MockMastodonAPI()
+        let surface = PostActionSurfaceCenter()
+        let status = makeStatus(id: "quote-without-confirmation", visibility: "public")
+        var toggledDirectly = false
+        surface.presentBoostOrToggle(for: status, currentUserID: "me") { toggledDirectly = true }
+        #expect(toggledDirectly)
+        #expect(surface.boostDialogStatus == nil)
+        let handlers = PostInteractionHandlers(
+            interactionService: PostInteractionService(apiClient: api), actionSurface: surface,
+            postMenuActionCenter: PostMenuActionCenter(apiClient: api), apiClient: api,
+            currentUserID: "me", router: AppRouter(), onRemoveStatus: nil
+        )
+        let quote = try #require(handlers.buildPostActions(for: status).onQuote)
+        quote()
+        let context = try #require(surface.composeContext?.context)
+        guard case .quote(let original) = context else { Issue.record("Expected quote composer"); return }
+        #expect(original?.id == status.id)
+    }
+
+    @Test(arguments: ["public", "unlisted", "private", "direct"])
+    @MainActor func quoteMenuUsesOriginalPostVisibility(_ visibility: String) throws {
+        let api = MockMastodonAPI()
+        let surface = PostActionSurfaceCenter()
+        let original = makeStatus(id: "original-to-quote", visibility: visibility)
+        let wrapper = makeStatus(id: "boost-wrapper", reblog: Indirect(original))
+        let handlers = PostInteractionHandlers(
+            interactionService: PostInteractionService(apiClient: api), actionSurface: surface,
+            postMenuActionCenter: PostMenuActionCenter(apiClient: api), apiClient: api,
+            currentUserID: "me", router: AppRouter(), onRemoveStatus: nil
+        )
+        for status in [original, wrapper] {
+            let quote = handlers.buildPostActions(for: status).onQuote
+            #expect((quote != nil) == ["public", "unlisted"].contains(visibility))
+            if let quote {
+                quote()
+                let context = try #require(surface.composeContext?.context)
+                guard case .quote(let quoted) = context else { Issue.record("Expected quote composer"); return }
+                #expect(quoted?.id == original.id)
+            }
+        }
     }
 
     @Test @MainActor func deleteAndRedraftMenuActionRequestsConfirmationBeforeDeleting() throws {
@@ -4062,6 +4159,14 @@ struct moroTests {
         #expect(endpoint.method == "GET")
         #expect(endpoint.path == "/api/v1/trends/tags")
         #expect(limitItem?.value == "10")
+    }
+
+    @Test @MainActor func suggestedAccountsEndpointUsesV2SuggestionsWithLimit() async throws {
+        let endpoint = MastodonEndpoint.suggestedAccounts(limit: 20)
+
+        #expect(endpoint.method == "GET")
+        #expect(endpoint.path == "/api/v2/suggestions")
+        #expect(endpoint.queryItems?.first(where: { $0.name == "limit" })?.value == "20")
     }
 
     @Test @MainActor func notificationUnreadCountEndpointUsesMastodon43Path() async throws {
@@ -7729,7 +7834,10 @@ private extension moroTests {
         api.fetchRelationshipsHandler = { ids in
             ids.map { self.makeRelationship(id: $0) }
         }
-        let center = PostMenuActionCenter(apiClient: api, relationshipCacheLimit: 2)
+        // The app-wide store would otherwise answer for evicted entries; keep it to
+        // one entry so this exercises the menu's own LRU.
+        let shared = RelationshipStore(limit: 1, updates: PassthroughSubject<UpdatedElement, Never>())
+        let center = PostMenuActionCenter(apiClient: api, relationshipCacheLimit: 2, relationshipStore: shared)
         let alice = makeStatus(id: "alice-status", account: makeAccount(id: "alice"))
         let bob = makeStatus(id: "bob-status", account: makeAccount(id: "bob"))
         let charlie = makeStatus(id: "charlie-status", account: makeAccount(id: "charlie"))
@@ -8428,6 +8536,9 @@ final class MockMastodonAPI: MastodonAPI {
     ) async throws -> [Account] {
         throw MockError.unimplemented
     }
+    func fetchSuggestedAccounts(limit: Int?) async throws -> [Account] {
+        throw MockError.unimplemented
+    }
     func fetchAnnouncements() async throws -> [Announcement] {
         throw MockError.unimplemented
     }
@@ -8633,18 +8744,24 @@ final class MockMastodonAPI: MastodonAPI {
         throw MockError.unimplemented
     }
     func fetchPushSubscription() async throws -> PushSubscription {
-        throw MockError.unimplemented
+        guard let fetchPushSubscriptionHandler else { throw MockError.unimplemented }
+        return try await fetchPushSubscriptionHandler()
     }
+    var fetchPushSubscriptionHandler: (() async throws -> PushSubscription)?
+    var updatePushSubscriptionHandler: ((PushSubscription.Alerts, String?) async throws -> PushSubscription)?
+    var createPushSubscriptionHandler: ((PushSubscription.Alerts, String?) async throws -> PushSubscription)?
     func createPushSubscription(
         endpoint: String, p256dh: String, auth: String,
         alerts: PushSubscription.Alerts, policy: String?
     ) async throws -> PushSubscription {
-        throw MockError.unimplemented
+        guard let createPushSubscriptionHandler else { throw MockError.unimplemented }
+        return try await createPushSubscriptionHandler(alerts, policy)
     }
     func updatePushSubscription(alerts: PushSubscription.Alerts, policy: String?) async throws
         -> PushSubscription
     {
-        throw MockError.unimplemented
+        guard let updatePushSubscriptionHandler else { throw MockError.unimplemented }
+        return try await updatePushSubscriptionHandler(alerts, policy)
     }
     func deletePushSubscription() async throws { throw MockError.unimplemented }
     func fetchFilters() async throws -> [ServerFilter] { throw MockError.unimplemented }

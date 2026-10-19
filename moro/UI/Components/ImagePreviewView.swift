@@ -11,6 +11,10 @@ struct ImagePreviewView: View {
     @State private var altPresentation: AltPresentation?
     @State private var showsControls = true
     @State private var viewportHeight: CGFloat = 0
+    @State private var actionTarget: Status.Attachment?
+    @State private var isExporting = false
+    @State private var exportNotice: String?
+    @State private var noticeTask: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -54,7 +58,8 @@ struct ImagePreviewView: View {
                                 altText: Self.descriptionText(attachment.description),
                                 onSingleTap: toggleControls,
                                 onInteractionBegan: hideControls,
-                                onDismiss: closePreview
+                                onDismiss: closePreview,
+                                onLongPress: { actionTarget = attachment }
                             )
                             .tag(index)
                         }
@@ -93,13 +98,56 @@ struct ImagePreviewView: View {
                             .accessibilityLabel(MoroL10n.ImagePreview.altAccessibility)
                             .accessibilityIdentifier("imagePreview.alt")
                         }
+                        if let currentAttachment {
+                            Button {
+                                run(.share, on: currentAttachment)
+                            } label: {
+                                ZStack {
+                                    FloatingNavIconLabel(systemName: "square.and.arrow.up")
+                                        .opacity(isExporting ? 0 : 1)
+                                    if isExporting {
+                                        ProgressView()
+                                            .tint(.white)
+                                            .frame(width: 34, height: 34)
+                                            .background(Circle().fill(.black.opacity(0.4)))
+                                    }
+                                }
+                                .frame(minWidth: 44, minHeight: 44)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isExporting)
+                            .accessibilityLabel(MoroL10n.ImagePreview.shareAccessibility)
+                            .accessibilityIdentifier("imagePreview.share")
+                        }
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
                     Spacer()
                 }
             }
+
+            // Transient result; sits above the home indicator and fades, so it
+            // never parks over the image the way a fixed bottom bar would.
+            if let exportNotice {
+                VStack {
+                    Spacer()
+                    Text(exportNotice)
+                        .moroScaledFont(size: 15, weight: .medium)
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(.black.opacity(0.7), in: Capsule())
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 24)
+                        .accessibilityIdentifier("imagePreview.notice")
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity)
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: exportNotice)
         .statusBar(hidden: true)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
         .onReceive(NotificationCenter.default.publisher(for: UIAccessibility.voiceOverStatusDidChangeNotification)) { _ in
@@ -112,12 +160,48 @@ struct ImagePreviewView: View {
         .onChange(of: currentIndex) { _, _ in
             showsControls = true
         }
+        .confirmationDialog(
+            "",
+            isPresented: Binding(get: { actionTarget != nil }, set: { if !$0 { actionTarget = nil } }),
+            titleVisibility: .hidden,
+            presenting: actionTarget
+        ) { attachment in
+            ForEach(MediaExportAction.allCases, id: \.self) { action in
+                Button(action.title) { run(action, on: attachment) }
+            }
+            Button(MoroL10n.Common.cancel, role: .cancel) {}
+        }
         .sheet(item: $altPresentation) { presentation in
             AltTextOverlay(
                 altText: presentation.text,
                 maximumInitialHeight: max(180, viewportHeight * 0.6)
             )
             .environment(\.dynamicTypeSize, dynamicTypeSize)
+        }
+    }
+
+    private func run(_ action: MediaExportAction, on attachment: Status.Attachment) {
+        guard !isExporting else { return }
+        isExporting = true
+        Task {
+            do {
+                if let message = try await action.perform(on: attachment.url) { showNotice(message) }
+            } catch {
+                showNotice(MediaExportService.message(for: error))
+            }
+            isExporting = false
+        }
+    }
+
+    /// Feedback stays inside the viewer: the app-wide toast lives under this cover.
+    private func showNotice(_ message: String) {
+        noticeTask?.cancel()
+        exportNotice = message
+        UIAccessibility.post(notification: .announcement, argument: message)
+        noticeTask = Task {
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            exportNotice = nil
         }
     }
 

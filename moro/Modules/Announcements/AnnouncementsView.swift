@@ -245,7 +245,7 @@ struct AnnouncementDetailView: View {
                     isSelectable: true,
                     fontOverride: theme.typography.body,
                     textColorOverride: theme.colors.textPrimary,
-                    linkColorOverride: theme.colors.primary500,
+                    linkColorOverride: theme.colors.contentLink,
                     lineSpacing: 5
                 )
                 .fixedSize(horizontal: false, vertical: true)

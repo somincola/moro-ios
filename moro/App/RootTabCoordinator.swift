@@ -18,7 +18,7 @@ enum MainTab: String, Hashable, CaseIterable {
         switch self {
         case .home: return "house"
         case .explore: return "magnifyingglass"
-        case .inbox: return "tray"
+        case .inbox: return "bell"
         case .me: return "person"
         }
     }
@@ -27,7 +27,7 @@ enum MainTab: String, Hashable, CaseIterable {
         switch self {
         case .home: return "house.fill"
         case .explore: return "magnifyingglass"
-        case .inbox: return "tray.fill"
+        case .inbox: return "bell.fill"
         case .me: return "person.fill"
         }
     }
@@ -36,7 +36,7 @@ enum MainTab: String, Hashable, CaseIterable {
         switch self {
         case .home: return "rectangle.stack"
         case .explore: return "safari"
-        case .inbox: return "tray"
+        case .inbox: return "bell"
         case .me: return "person.crop.circle"
         }
     }
@@ -45,7 +45,7 @@ enum MainTab: String, Hashable, CaseIterable {
         switch self {
         case .home: return "rectangle.stack.fill"
         case .explore: return "safari.fill"
-        case .inbox: return "tray.fill"
+        case .inbox: return "bell.fill"
         case .me: return "person.crop.circle.fill"
         }
     }
@@ -84,6 +84,8 @@ final class RootTabCoordinator: ObservableObject {
     @Published var composeContext: ComposeContextWrapper?
     @Published var presentedSheet: RootSheetDestination?
     @Published var showAddAccountLogin = false
+    /// The Me tab's account switcher is up; floating controls make room for it.
+    @Published var isAccountSwitcherPresented = false
     @Published var selectedTabScrollToTop = -1
     @Published var timelineSelection: TimelineType = .home
     @Published var tabBarHeight: CGFloat = 78

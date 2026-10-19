@@ -14,10 +14,6 @@ import UIKit
 
 private struct ScaledSystemFont: ViewModifier {
     @ScaledMetric private var size: CGFloat
-    // The in-app font scale rides on the theme (both theme injection points
-    // observe AppSettings and rebuild on change), so the ~200 call sites of
-    // this modifier no longer each attach an AppSettings observer.
-    @Environment(\.moroTheme) private var theme
     private let weight: Font.Weight
     private let design: Font.Design
 
@@ -30,7 +26,7 @@ private struct ScaledSystemFont: ViewModifier {
     func body(content: Content) -> some View {
         content.font(
             .system(
-                size: size * theme.fontScale,
+                size: size,
                 weight: weight,
                 design: design
             )
@@ -55,8 +51,7 @@ extension View {
 extension UIFont {
     /// A system font of `size`/`weight` that scales with Dynamic Type relative to
     /// `textStyle`. For UIKit text (UILabel/UITextView paths) that can't use
-    /// `@ScaledMetric`. Scaled for the current content size category at call time,
-    /// after applying the in-app font scale (`AppSettings.typographyFontScale`).
+    /// `@ScaledMetric`. Scaled for the current content size category at call time.
     @MainActor
     static func moroScaled(
         ofSize size: CGFloat,
@@ -66,7 +61,7 @@ extension UIFont {
         UIFontMetrics(forTextStyle: textStyle)
             .scaledFont(
                 for: .systemFont(
-                    ofSize: size * AppSettings.shared.typographyFontScale.factor,
+                    ofSize: size,
                     weight: weight
                 )
             )

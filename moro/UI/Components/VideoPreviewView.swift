@@ -16,6 +16,11 @@ struct VideoPreviewView: View {
     
     @Environment(\.moroTheme) private var theme
     @State private var isRevealed = false
+    @Environment(\.moroMediaPrefs) private var mediaPrefs
+
+    private var isConcealed: Bool {
+        mediaPrefs.concealsMedia(markedSensitive: isSensitive) && !isRevealed
+    }
     
     var body: some View {
         GeometryReader { geometry in
@@ -23,13 +28,13 @@ struct VideoPreviewView: View {
                 // Preview image (blurhash or preview URL)
                 previewImage
                     .frame(width: geometry.size.width, height: geometry.size.height)
-                    .blur(radius: (isSensitive && !isRevealed) ? 25 : 0)
+                    .blur(radius: isConcealed ? 25 : 0)
                 
                 // Play button overlay (always visible for video/GIF)
                 playButtonOverlay
                 
                 // Sensitive content overlay
-                if isSensitive && !isRevealed {
+                if isConcealed {
                     sensitiveOverlay
                 }
             }
@@ -37,7 +42,7 @@ struct VideoPreviewView: View {
             .clipped()
             .contentShape(Rectangle())
             .onTapGesture {
-                if isSensitive && !isRevealed {
+                if isConcealed {
                     isRevealed = true
                 } else {
                     onTap?()
@@ -97,7 +102,7 @@ struct VideoPreviewView: View {
                 .moroScaledFont(size: 32)
                 .foregroundStyle(.white)
             
-            Text(MoroL10n.SensitiveMedia.title)
+            Text(mediaPrefs.concealLabel(markedSensitive: isSensitive))
                 .font(theme.typography.subtitle)
                 .foregroundStyle(.white)
             

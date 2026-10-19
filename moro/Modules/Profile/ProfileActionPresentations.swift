@@ -147,16 +147,6 @@ private struct ProfileActionPresentationsModifier: ViewModifier {
             },
             onDismiss: actionSurface.dismissBoostDialog
         )
-        .moroSheetSurface(
-            detents: [
-                .height(
-                    BoostOrQuoteDialog.preferredDetentHeight(
-                        quoteButtonTitle: quoteInfo.title,
-                        quoteButtonSubtitle: quoteInfo.subtitle
-                    )
-                )
-            ]
-        )
     }
 
     private func toggleBoost(_ status: Status) -> () -> Void {

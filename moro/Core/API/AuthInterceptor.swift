@@ -26,9 +26,22 @@ final class AuthInterceptor {
         self.tokenProvider = tokenProvider
     }
 
+    func snapshot() -> AuthInterceptor {
+        AuthInterceptor(tokenProvider: TokenSnapshot(authToken: tokenProvider?.authToken))
+    }
+
     func apply(to request: inout URLRequest) {
         guard let token = tokenProvider?.authToken else { return }
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+}
+
+private final class TokenSnapshot: AuthTokenProvider {
+    nonisolated deinit {}
+    let authToken: String?
+
+    init(authToken: String?) {
+        self.authToken = authToken
     }
 }
 

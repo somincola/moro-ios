@@ -133,13 +133,17 @@ final class moroUITests: XCTestCase {
     }
 
     @MainActor
-    func testAccountDeletionEntryIsVisibleAtBottomAndDirect() throws {
+    func testAccountDeletionEntryIsVisibleInListAndDirect() throws {
         let app = XCUIApplication()
         app.terminate()
-        app.launchArguments = ["UITEST_ACCOUNT_DELETION", "UITEST_DISABLE_ANIMATIONS"]
+        app.launchArguments = [
+            "UITEST_ACCOUNT_DELETION", "UITEST_DISABLE_ANIMATIONS",
+            "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+        ]
         app.launchEnvironment["UITEST_ACCOUNT_DELETION"] = "1"
         app.launchEnvironment["UITEST_DISABLE_ANIMATIONS"] = "1"
         app.launch()
+        defer { app.terminate() }
 
         let deletionEntry = app.buttons["accountManagement.serverAccountSettings"]
         XCTAssertTrue(
@@ -147,12 +151,18 @@ final class moroUITests: XCTestCase {
             "The direct server deletion entry should stay visible without a swipe or menu"
         )
         XCTAssertTrue(deletionEntry.isHittable)
-        XCTAssertEqual(deletionEntry.label, "Delete Account on Server")
-        XCTAssertGreaterThan(
+        XCTAssertEqual(deletionEntry.label, "Delete Account")
+        XCTAssertGreaterThanOrEqual(deletionEntry.frame.height, 44)
+        XCTAssertLessThanOrEqual(deletionEntry.frame.height, 56)
+        XCTAssertLessThan(
             deletionEntry.frame.midY,
-            app.windows.firstMatch.frame.height * 0.75,
-            "The lightweight deletion entry should remain anchored near the bottom"
+            app.windows.firstMatch.frame.height * 0.5,
+            "The deletion entry and its explanation should stay together at the top"
         )
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "settings-delete-account"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 
     @MainActor

@@ -11,8 +11,11 @@
 
     struct MoroUIKitThemePalette {
         let colorScheme: ColorScheme
+        let colorSchemeContrast: ColorSchemeContrast
         let accent: MoroAccentStyle
-        let fontScale: CGFloat
+        let themeColor: MoroThemeColor
+        let customThemeColor: UInt32
+        let postFontSize: MoroPostFontSize
         let dynamicTypeSize: DynamicTypeSize
 
         let canvasBackground: UIColor
@@ -31,8 +34,11 @@
 
         init(theme: MoroTheme) {
             colorScheme = theme.colorScheme
+            colorSchemeContrast = theme.colorSchemeContrast
             accent = theme.accent
-            fontScale = theme.fontScale
+            themeColor = theme.themeColor
+            customThemeColor = theme.customThemeColor
+            postFontSize = theme.postFontSize
             dynamicTypeSize = theme.dynamicTypeSize
             canvasBackground = UIColor(theme.colors.surfaceBase)
             groupedBackground = UIColor(theme.colors.groupedBackground)
@@ -60,15 +66,18 @@
             let traits = UITraitCollection(preferredContentSizeCategory: dynamicTypeSize.uiContentSizeCategory)
             let preferredPointSize = UIFont.preferredFont(forTextStyle: textStyle, compatibleWith: traits).pointSize
             return UIFont.systemFont(
-                ofSize: max(preferredPointSize * fontScale, 1),
+                ofSize: preferredPointSize,
                 weight: weight
             )
         }
 
         func matches(_ theme: MoroTheme) -> Bool {
             colorScheme == theme.colorScheme
+                && colorSchemeContrast == theme.colorSchemeContrast
                 && accent == theme.accent
-                && fontScale == theme.fontScale
+                && themeColor == theme.themeColor
+                && customThemeColor == theme.customThemeColor
+                && postFontSize == theme.postFontSize
                 && dynamicTypeSize == theme.dynamicTypeSize
         }
     }

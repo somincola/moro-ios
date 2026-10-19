@@ -12,8 +12,10 @@ struct AltTextOverlay: View {
     @State private var contentHeight: CGFloat = 0
 
     private var detents: Set<PresentationDetent> {
+        // The floor only keeps a one-word description from becoming a sliver; above it,
+        // the sheet hugs its text so short descriptions don't leave empty space below.
         let limit = max(140, maximumInitialHeight)
-        let fittedHeight = ceil(max(140, headerHeight + contentHeight))
+        let fittedHeight = ceil(max(120, headerHeight + contentHeight))
         if fittedHeight > limit {
             return [.height(limit), .large]
         }

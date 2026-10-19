@@ -12,6 +12,7 @@ struct PostActions {
     var menu: PostMenuActionCenter.Handlers?
     var onLike: (() -> Void)?
     var onBoost: (() -> Void)?
+    var onQuote: (() -> Void)?
     var onBookmark: (() -> Void)?
     var onReply: (() -> Void)?
     var onPollVote: ((String, [Int]) async -> Bool)?

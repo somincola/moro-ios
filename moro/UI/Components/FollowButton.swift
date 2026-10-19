@@ -46,6 +46,9 @@ extension View {
 
 struct FollowButton: View {
     let relationship: Relationship?
+    /// False while the relationship is still unknown: show a quiet placeholder rather
+    /// than "Follow", which would then visibly flip to "Following".
+    var isResolved = true
     let isLoading: Bool
     let isInteractionDisabled: Bool
     var onFollow: () -> Void
@@ -61,6 +64,35 @@ struct FollowButton: View {
     }
     
     var body: some View {
+        ZStack {
+            if relationship == nil && !isResolved {
+                placeholder
+                    .transition(.opacity)
+            } else {
+                button
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: isResolved)
+        .animation(.easeOut(duration: 0.2), value: buttonState)
+    }
+
+    /// Same height and capsule as the real control, sized to the "Follow" label, so
+    /// nothing around it moves when the state arrives.
+    private var placeholder: some View {
+        Text(MoroL10n.Profile.follow)
+            .font(theme.typography.body)
+            .fontWeight(.semibold)
+            .hidden()
+            .padding(.horizontal, 20)
+            .frame(height: 36)
+            .background(Capsule().fill(theme.colors.textTertiary.opacity(0.14)))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(MoroL10n.Profile.followChecking)
+            .accessibilityIdentifier("profile.follow.placeholder")
+    }
+
+    private var button: some View {
         Button(action: {
             switch buttonState {
             case .notFollowing:
@@ -101,6 +133,7 @@ struct FollowButton: View {
         }
         .disabled(buttonState == .domainBlocked || isLoading || isInteractionDisabled)
         .accessibilityLabel(buttonState.title)
+        .accessibilityIdentifier("profile.follow")
         .confirmationDialog(
             MoroL10n.Profile.followRequested,
             isPresented: $showCancelRequestConfirmation,

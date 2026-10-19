@@ -79,7 +79,16 @@ final class ProfileViewModel: ObservableObject {
     )
     @Published private(set) var loadingMoreTabs: Set<Tab> = []
     @Published private(set) var loadMoreFailedTabs: Set<Tab> = []
-    @Published var relationship: Relationship?
+    @Published var relationship: Relationship? {
+        didSet {
+            // Every change — fetched, followed, muted, blocked — becomes the last-known
+            // state other screens open with.
+            if let relationship { relationshipStore.store(relationship, scope: relationshipScope) }
+        }
+    }
+    /// False until the relationship is known (from the store or the server), so the
+    /// profile shows a neutral placeholder instead of guessing "Follow".
+    @Published private(set) var isRelationshipResolved = false
     @Published var isLoadingRelationship = false
     @Published var isUpdatingRelationship = false
     @Published var isUpdatingNotification = false
@@ -143,6 +152,8 @@ final class ProfileViewModel: ObservableObject {
     private let accountID: String
     private let accountCache: AccountCache
     private let feedCoordinator: FeedCoordinator
+    private let relationshipStore: RelationshipStore
+    private let relationshipScope: String
     private var cancellables = Set<AnyCancellable>()
     var currentAccountID: String? // Allow updating from ProfileView
     
@@ -240,13 +251,22 @@ final class ProfileViewModel: ObservableObject {
         accountID: String,
         currentAccountID: String? = nil,
         accountCache: AccountCache? = nil,
-        feedCoordinator: FeedCoordinator? = nil
+        feedCoordinator: FeedCoordinator? = nil,
+        relationshipStore: RelationshipStore? = nil
     ) {
         self.apiClient = apiClient
         self.accountID = accountID
         self.currentAccountID = currentAccountID
         self.accountCache = accountCache ?? CacheManager.shared.accountCache
         self.feedCoordinator = feedCoordinator ?? .shared
+        let store = relationshipStore ?? .shared
+        self.relationshipStore = store
+        self.relationshipScope = store.activeScope
+        // Open on the last-known relationship; loading revalidates it in the background.
+        if !accountID.isEmpty, let known = store.relationship(for: accountID, scope: store.activeScope) {
+            relationship = known
+            isRelationshipResolved = true
+        }
         
         // Listen to feed coordinator updates for real-time state sync
         self.feedCoordinator.$mostRecentUpdate
@@ -272,6 +292,10 @@ final class ProfileViewModel: ObservableObject {
         loadingState = .loading
         
         do {
+            // With the ID already known, ask for the relationship alongside the account
+            // instead of after it, so the Follow state settles sooner.
+            let earlyRelationship = accountID.isEmpty ? nil : Task { await self.loadRelationship() }
+
             // Load account details if not already set
             if account == nil {
                 let fetchedAccount = try await fetchLatestProfileAccount()
@@ -280,7 +304,11 @@ final class ProfileViewModel: ObservableObject {
             }
             
             // Load relationship if this is not the current user
-            await loadRelationship()
+            if let earlyRelationship {
+                await earlyRelationship.value
+            } else {
+                await loadRelationship()
+            }
             
             // Fetch pinned statuses
             await fetchPinnedStatuses()
@@ -572,19 +600,30 @@ final class ProfileViewModel: ObservableObject {
         guard let currentID = currentAccountID,
               targetAccountID != currentID else {
             relationship = nil
+            isRelationshipResolved = true
             return
         }
         guard !targetAccountID.isEmpty else {
             relationship = nil
+            isRelationshipResolved = true
             return
         }
         
         isLoadingRelationship = true
-        defer { isLoadingRelationship = false }
+        defer {
+            isLoadingRelationship = false
+            // Even a failed check settles the button (falling back to the last-known or
+            // default state) rather than leaving the placeholder up.
+            isRelationshipResolved = true
+        }
         
         do {
             let relationships = try await apiClient.fetchRelationships(accountIDs: [targetAccountID])
-            relationship = relationships.first
+            if let fetched = relationships.first {
+                relationship = fetched
+            } else {
+                relationship = nil
+            }
         } catch {
             AppLogger.error("Failed to load relationship: \(error)")
         }

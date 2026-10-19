@@ -253,11 +253,11 @@ final class StatusTranslationViewModel: ObservableObject {
 }
 
 struct PostTranslationSection: View {
-    private static let translatedEmojiSize: CGFloat = 20
-
     let status: Status
     let apiClient: MastodonAPI?
     @ObservedObject var viewModel: StatusTranslationViewModel
+    let bodyFont: UIFont
+    let lineSpacing: CGFloat
     var onMentionTap: ((String, URL) -> Bool)? = nil
     var onHashtagTap: ((String, URL) -> Void)? = nil
     var onLinkTap: ((URL) -> Void)? = nil
@@ -289,7 +289,12 @@ struct PostTranslationSection: View {
                         tags: status.tags,
                         emojis: status.emojis,
                         parsingOptions: .statusBody,
-                        emojiSize: Self.translatedEmojiSize,
+                        emojiSize: bodyFont.pointSize * 1.25,
+                        // Post text is not selectable; "Copy text" in the ⋯ menu copies it.
+                        isSelectable: false,
+                        lineSpacing: lineSpacing,
+                        fontOverride: Font(bodyFont),
+                        uiFontOverride: bodyFont,
                         onMentionTap: onMentionTap,
                         onHashtagTap: onHashtagTap,
                         onLinkTap: onLinkTap

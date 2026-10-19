@@ -47,13 +47,15 @@ struct NotificationRequestsView: View {
                 requestsList
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .moroSettingsPageChrome()
         .navigationTitle(MoroL10n.NotificationSettings.requestsTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task { await load(reset: true) }
     }
 
     private var requestsList: some View {
-        List {
+        MoroSettingsList {
             ForEach(requests) { request in
                 requestRow(request)
             }
@@ -75,7 +77,7 @@ struct NotificationRequestsView: View {
                 .accessibilityHint(loadError)
             }
         }
-        .listStyle(.insetGrouped)
+        .moroSettingsListChrome()
         .refreshable { await load(reset: true) }
     }
 
@@ -85,7 +87,7 @@ struct NotificationRequestsView: View {
                 MoroAvatar(
                     imageURL: request.account.avatarAnimatedURL,
                     staticImageURL: request.account.avatarURL,
-                    initials: request.account.displayNameInitials,
+                    initials: request.account.displayNameInitials, seed: request.account.placeholderSeed,
                     size: 44
                 )
                 VStack(alignment: .leading, spacing: 2) {
@@ -137,6 +139,7 @@ struct NotificationRequestsView: View {
                 }
                 .buttonStyle(.bordered)
             }
+            .labelStyle(.titleAndIcon)
             .disabled(resolvingIDs.contains(request.id))
             .overlay {
                 if resolvingIDs.contains(request.id) {

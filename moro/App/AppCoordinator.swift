@@ -23,7 +23,9 @@ final class AppCoordinator: ObservableObject {
 
     @Published private(set) var destination: Destination
     @Published private(set) var accountSessions: [StoredAccountSession] = []
-    @Published private(set) var activeSessionID: String?
+    @Published private(set) var activeSessionID: String? {
+        didSet { RelationshipStore.shared.activeScope = activeSessionID ?? "" }
+    }
     @Published private(set) var opensRegistrationAfterOnboarding = false
     let appState: AppState
     @Published private(set) var apiClient: MastodonAPI
@@ -159,6 +161,7 @@ final class AppCoordinator: ObservableObject {
             startupSessionValidationTask?.cancel()
             do {
                 guard let session = try await authService.switchToSession(id: sessionID) else {
+                    AccountSwitchTransition.shared.cancel()
                     AppFeedbackCenter.shared.showError(MoroL10n.AppCoord.switchFailed)
                     return
                 }
@@ -171,6 +174,7 @@ final class AppCoordinator: ObservableObject {
                 )
                 AppFeedbackCenter.shared.showSuccess(MoroL10n.AppCoord.switchedTo(session.account.acct))
             } catch {
+                AccountSwitchTransition.shared.cancel()
                 AppFeedbackCenter.shared.showError(MoroL10n.AppCoord.switchFailed)
                 reloadSessions()
             }

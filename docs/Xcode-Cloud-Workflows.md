@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | 用途 | 编译并运行单元测试，不分发 | 运行单元测试并生成可用于 TestFlight / App Store 的归档 |
 | 自动触发 | `dev` / `main` 提交、PR 更新 | 无 |
-| 手动触发 | `workflow_dispatch`，选择分支 | `main`、前缀为 `codex/release-` 的发布分支 |
+| 手动触发 | `workflow_dispatch`，选择分支 | `main`、前缀为 `release/` 的发布分支 |
 | 测试 | 显式选择 `Moro-UnitTests`，失败则 CI 失败 | `Moro-UnitTests`，Required to Pass |
 | 归档 | 无 | `moro` Scheme，Release 配置，App Store Connect |
 | Clean | 每次使用 GitHub 托管 runner | 开启 |
@@ -76,10 +76,14 @@ xcodebuild -project moro.xcodeproj -scheme moro \
 gh workflow run ci.yml --repo somincola/moro-ios --ref main
 ```
 
+发布分支统一命名为 `release/<版本号>`（如 `release/1.1.0`），从 `dev` 切出，
+完成版本号、商店资料和发布记录后推送，在该分支上手动运行 Cloud Release，
+再以 PR 合并到 `main`。1.1.0 起不再使用 `codex/release-` 前缀，旧分支保留为历史记录。
+
 准备发布候选包时，手动运行 Cloud Release：
 
 ```sh
-asc xcode-cloud run --app 6776115614 --workflow "Moro - Release" --branch main
+asc xcode-cloud run --app 6776115614 --workflow "Moro - Release" --branch release/1.1.0
 ```
 
 `asc xcode archive` 调用本机 Xcode，不是 Xcode Cloud。

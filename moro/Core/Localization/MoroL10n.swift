@@ -191,8 +191,54 @@ public enum MoroL10n {
         }
     }
 
+    public enum Display {
+        public static var title: String { text("display.title") }
+        public static var fontSize: String { text("display.fontSize") }
+        public static var fontSizeHint: String { text("display.fontSize.hint") }
+        public static var fontSmall: String { text("display.fontSize.small") }
+        public static var fontStandard: String { text("display.fontSize.standard") }
+        public static var fontLarge: String { text("display.fontSize.large") }
+        public static var fontExtraLarge: String { text("display.fontSize.extraLarge") }
+        public static var themeColor: String { text("display.themeColor") }
+        public static var themeColorHint: String { text("display.themeColor.hint") }
+        public static var customColor: String { text("display.color.custom") }
+        public static var customColorHint: String { text("display.color.custom.hint") }
+        public static var footer: String { text("display.footer") }
+        public static var previewLead: String { text("display.preview.lead") }
+        public static var previewMiddle: String { text("display.preview.middle") }
+        public static var previewTail: String { text("display.preview.tail") }
+        public static var blue: String { text("display.color.blue") }
+        public static var yellow: String { text("display.color.yellow") }
+        public static var pink: String { text("display.color.pink") }
+        public static var purple: String { text("display.color.purple") }
+        public static var orange: String { text("display.color.orange") }
+        public static var green: String { text("display.color.green") }
+    }
+
     public enum Settings {
         public static var title: String { text("settings.title") }
+        public static var loginManagement: String { text("settings.row.loginManagement") }
+        public static var account: String { text("settings.row.account") }
+        public static var sensitiveSection: String { text("settings.sensitive.section") }
+        public static var sensitiveMediaDisplay: String { text("settings.sensitive.mediaDisplay") }
+        public static var sensitiveMediaDisplayHint: String { text("settings.sensitive.mediaDisplay.hint") }
+        public static var expandContentWarnings: String { text("settings.sensitive.expandWarnings") }
+        public static var sensitiveFooter: String { text("settings.sensitive.footer") }
+        public static var appearanceDisplay: String { text("settings.row.appearanceDisplay") }
+        public static var readingMedia: String { text("settings.row.readingMedia") }
+        public static var postingInteractions: String { text("settings.row.postingInteractions") }
+        public static var storageData: String { text("settings.row.storageData") }
+        public static var profile: String { text("settings.row.profile") }
+        public static var privacyVisibility: String { text("settings.row.privacyVisibility") }
+        public static var contentSafety: String { text("settings.row.contentSafety") }
+        public static var notificationRules: String { text("settings.row.notificationRules") }
+        public static var profileReading: String { text("settings.row.profileReading") }
+        public static var profilePublic: String { text("settings.row.profilePublic") }
+        public static var currentAccountSection: String { text("settings.section.currentAccount") }
+        public static var localScope: String { text("settings.footer.localScope") }
+        public static var serverScope: String { text("settings.footer.serverScope") }
+        public static var profileLocalScope: String { text("settings.footer.profileLocalScope") }
+        public static var pushScope: String { text("settings.footer.pushScope") }
         public static var accountPrivacySection: String { text("settings.section.accountPrivacy") }
         public static var accountServerSection: String { text("settings.section.accountServer") }
         public static var appSection: String { text("settings.section.app") }
@@ -298,19 +344,6 @@ public enum MoroL10n {
         }
         public static var postVisibilityMentionedOnly: String {
             text("appsettings.postVisibility.mentionedOnly")
-        }
-        public static var typographySection: String { text("appsettings.typography.section") }
-        public static var typographyFooter: String { text("appsettings.typography.footer") }
-        public static var typographyScaleExtraSmall: String {
-            text("appsettings.typography.scale.extraSmall")
-        }
-        public static var typographyScaleSmall: String { text("appsettings.typography.scale.small") }
-        public static var typographyScaleStandard: String {
-            text("appsettings.typography.scale.standard")
-        }
-        public static var typographyScaleLarge: String { text("appsettings.typography.scale.large") }
-        public static var typographyScaleExtraLarge: String {
-            text("appsettings.typography.scale.extraLarge")
         }
         public static var densitySection: String { text("appsettings.density.section") }
         public static var densityComfortable: String { text("appsettings.density.comfortable") }
@@ -432,6 +465,9 @@ public enum MoroL10n {
         // Media toolbar
         public static var mediaPhotoLibrary: String { text("compose.media.photoLibrary") }
         public static var mediaTakePhotoOrVideo: String { text("compose.media.takePhotoOrVideo") }
+        public static var cameraAccessTitle: String { text("compose.camera.accessTitle") }
+        public static var cameraAccessMessage: String { text("compose.camera.accessMessage") }
+        public static var cameraAccessOpenSettings: String { text("compose.camera.openSettings") }
         public static var mediaBrowseFiles: String { text("compose.media.browseFiles") }
 
         // Visibility
@@ -693,6 +729,7 @@ public enum MoroL10n {
     public enum Profile {
         // Menu actions
         public static var share: String { text("profile.action.share") }
+        public static var editProfileButton: String { text("profile.action.editProfile") }
         public static var copyLink: String { text("profile.action.copyLink") }
         public static var openInBrowser: String { text("profile.action.openInBrowser") }
         public static var addToList: String { text("profile.action.addToList") }
@@ -714,6 +751,7 @@ public enum MoroL10n {
         public static var follow: String { text("profile.follow.follow") }
         public static var following: String { text("profile.follow.following") }
         public static var followRequested: String { text("profile.follow.requested") }
+        public static var followChecking: String { text("profile.follow.checking") }
         public static var cancelFollowRequest: String { text("profile.follow.cancelRequest") }
         public static var blocked: String { text("profile.follow.blocked") }
 
@@ -965,16 +1003,6 @@ public enum MoroL10n {
     }
 
     public enum Onboarding {
-        public static var tagline: String { text("onboarding.tagline") }
-        public static var previewTimelineTitle: String { text("onboarding.preview.timelineTitle") }
-        public static var previewTimelineBody: String { text("onboarding.preview.timelineBody") }
-        public static var previewComposeTitle: String { text("onboarding.preview.composeTitle") }
-        public static var previewComposeBody: String { text("onboarding.preview.composeBody") }
-        public static var previewSyncTitle: String { text("onboarding.preview.syncTitle") }
-        public static var previewSyncBody: String { text("onboarding.preview.syncBody") }
-        public static var pillarLight: String { text("onboarding.pillar.light") }
-        public static var pillarSimple: String { text("onboarding.pillar.simple") }
-        public static var pillarFriendly: String { text("onboarding.pillar.friendly") }
         public static var getStarted: String { text("onboarding.getStarted") }
     }
 
@@ -1093,6 +1121,11 @@ public enum MoroL10n {
         public static var governanceFilters: String { text("privacy.governance.filters") }
         public static var sectionGovernance: String { text("privacy.section.governance") }
         public static var defaultVisibility: String { text("privacy.defaultVisibility") }
+        public static var visibilityHint: String { text("privacy.defaultVisibility.hint") }
+        public static var visibilityPublicDetail: String { text("privacy.defaultVisibility.public.detail") }
+        public static var visibilityUnlistedDetail: String { text("privacy.defaultVisibility.unlisted.detail") }
+        public static var visibilityFollowersDetail: String { text("privacy.defaultVisibility.followers.detail") }
+        public static var visibilityMentionedDetail: String { text("privacy.defaultVisibility.mentioned.detail") }
         public static var sectionDefaults: String { text("privacy.section.defaults") }
         public static var saveFailed: String { text("privacy.saveFailed") }
         public static var confirm: String { text("privacy.confirm") }
@@ -1184,6 +1217,7 @@ public enum MoroL10n {
         public static var sectionLinks: String { text("about.sectionLinks") }
         public static var githubRepo: String { text("about.githubRepo") }
         public static var website: String { text("about.website") }
+        public static var followAuthor: String { text("about.followAuthor") }
         public static var versionHistory: String { text("about.versionHistory") }
         public static var openSourceLicenses: String { text("about.openSourceLicenses") }
         public static var feedbackEmail: String { text("about.feedbackEmail") }
@@ -1331,6 +1365,15 @@ public enum MoroL10n {
         public static var mediaAvatar: String { text("editProfile.media.avatar") }
         public static var mediaHeader: String { text("editProfile.media.header") }
         public static var mediaChange: String { text("editProfile.media.change") }
+        public static var mediaChoosePhoto: String { text("editProfile.media.choosePhoto") }
+        public static var mediaRevert: String { text("editProfile.media.revert") }
+        public static var mediaRemoveAvatar: String { text("editProfile.media.removeAvatar") }
+        public static var mediaRemoveHeader: String { text("editProfile.media.removeHeader") }
+        public static var mediaAddHeader: String { text("editProfile.media.addHeader") }
+        public static var fieldsFooter: String { text("editProfile.fields.footer") }
+        public static var fieldOptions: String { text("editProfile.field.options") }
+        public static var sectionProfileSettings: String { text("editProfile.section.profileSettings") }
+        public static var clearText: String { text("editProfile.clearText") }
         public static var noDisplayName: String { text("editProfile.noDisplayName") }
         public static var sectionBasicInfo: String { text("editProfile.section.basicInfo") }
         public static var fieldDisplayName: String { text("editProfile.field.displayName") }
@@ -1366,6 +1409,7 @@ public enum MoroL10n {
     public enum NotificationSettings {
         public static var title: String { text("notifSettings.title") }
         public static var receiveFrom: String { text("notifSettings.inApp.receiveFrom") }
+        public static var receiveFromHint: String { text("notifSettings.push.receiveFrom.hint") }
         public static var sectionIntake: String { text("notifSettings.section.intake") }
         public static var intakeFooter: String { text("notifSettings.intake.footer") }
         public static var notFollowing: String { text("notifSettings.intake.notFollowing") }
@@ -1391,6 +1435,9 @@ public enum MoroL10n {
         public static var bots: String { text("notifSettings.intake.bots") }
         public static var botsDetail: String { text("notifSettings.intake.bots.detail") }
         public static var policyAccept: String { text("notifSettings.policy.accept") }
+        public static var policyAcceptDetail: String { text("notifSettings.policy.accept.detail") }
+        public static var policyFilterDetail: String { text("notifSettings.policy.filter.detail") }
+        public static var policyDropDetail: String { text("notifSettings.policy.drop.detail") }
         public static var policyFilter: String { text("notifSettings.policy.filter") }
         public static var policyDrop: String { text("notifSettings.policy.drop") }
         public static var policyUnsupported: String { text("notifSettings.policy.unsupported") }
@@ -1404,6 +1451,7 @@ public enum MoroL10n {
         public static var typeNewFollowers: String { text("notifSettings.type.newFollowers") }
         public static var sectionPush: String { text("notifSettings.section.push") }
         public static var pushFooter: String { text("notifSettings.push.footer") }
+        public static var pushSaveFailed: String { text("notifSettings.push.saveFailed") }
         public static var pushUnavailable: String { text("notifSettings.push.unavailable") }
         public static var openSystemSettings: String { text("notifSettings.push.openSystemSettings") }
     }
@@ -1769,6 +1817,10 @@ public enum MoroL10n {
         }
     }
 
+    public enum AccountSwitcher {
+        public static func switchTo(_ acct: String) -> String { format("accountSwitcher.switchTo", acct) }
+    }
+
     public enum NewConversation {
         public static var searchFailed: String { text("newConversation.searchFailed") }
         public static var navTitle: String { text("newConversation.navTitle") }
@@ -2026,6 +2078,13 @@ public enum MoroL10n {
         public static var tapToView: String { text("sensitiveMedia.tapToView") }
         public static var showAnyway: String { text("sensitiveMedia.showAnyway") }
         public static var contentWarning: String { text("sensitiveMedia.contentWarning") }
+        public static var hiddenMedia: String { text("sensitiveMedia.hiddenMedia") }
+        public static var displayHideAll: String { text("sensitiveMedia.display.hideAll") }
+        public static var displayHideAllDetail: String { text("sensitiveMedia.display.hideAll.detail") }
+        public static var displayDefault: String { text("sensitiveMedia.display.default") }
+        public static var displayDefaultDetail: String { text("sensitiveMedia.display.default.detail") }
+        public static var displayShowAll: String { text("sensitiveMedia.display.showAll") }
+        public static var displayShowAllDetail: String { text("sensitiveMedia.display.showAll.detail") }
         // A11y: spoken state ("revealed"/"hidden") and the reveal hint
         public static var valueRevealed: String { text("sensitiveMedia.value.revealed") }
         public static var valueHidden: String { text("sensitiveMedia.value.hidden") }
@@ -2096,6 +2155,17 @@ public enum MoroL10n {
         public static var off: String { text("settings.switchOff") }
     }
 
+    public enum MediaExport {
+        public static var saveToPhotos: String { text("mediaExport.saveToPhotos") }
+        public static var share: String { text("mediaExport.share") }
+        public static var copy: String { text("mediaExport.copy") }
+        public static var saved: String { text("mediaExport.saved") }
+        public static var copied: String { text("mediaExport.copied") }
+        public static var downloadFailed: String { text("mediaExport.downloadFailed") }
+        public static var saveFailed: String { text("mediaExport.saveFailed") }
+        public static var photoAccessDenied: String { text("mediaExport.photoAccessDenied") }
+    }
+
     public enum ImagePreview {
         public static var zoomAction: String { text("imagePreview.zoomAction") }
         public static var altBadge: String { text("imagePreview.altBadge") }
@@ -2103,6 +2173,7 @@ public enum MoroL10n {
         public static var emptyState: String { text("imagePreview.emptyState") }
         public static var noAltDescription: String { text("imagePreview.noAltDescription") }
         public static var loadFailed: String { text("imagePreview.loadFailed") }
+        public static var shareAccessibility: String { text("imagePreview.shareAccessibility") }
     }
 
     public enum EmojiPicker {

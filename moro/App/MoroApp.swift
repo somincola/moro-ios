@@ -67,6 +67,8 @@ struct MoroApp: App {
                     composeReplyHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseTopicsHarness {
                     topicsHarness.preferredColorScheme(colorScheme)
+                } else if shouldUseOnboardingPreview {
+                    onboardingPreview.preferredColorScheme(colorScheme)
                 } else if shouldUseProfileExperienceHarness {
                     profileExperienceHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseSearchFlowHarness {
@@ -101,6 +103,8 @@ struct MoroApp: App {
                                 Task { await CacheManager.shared.timelineCache.flushPendingWrites() }
                             }
                             guard newPhase == .active else { return }
+                            PushSubscriptionCoordinator.shared.resumeSettings(
+                                apiClient: coordinator.apiClient, sessionKey: coordinator.activeSessionID)
                             Task {
                                 await coordinator.refreshCurrentAccountIfNeeded()
                             }
@@ -182,8 +186,7 @@ struct MoroApp: App {
 
     @ViewBuilder private var pushHarness: some View {
         #if DEBUG
-        PushNotificationHarnessView()
-            .moroTheme(MoroTheme(accent: .monochrome))
+        PushNotificationHarnessRoot()
         #endif
     }
 
@@ -316,6 +319,20 @@ struct MoroApp: App {
     @ViewBuilder private var topicsHarness: some View {
         #if DEBUG
         TopicsHarnessView()
+        #endif
+    }
+
+    private var shouldUseOnboardingPreview: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_ONBOARDING_PREVIEW")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var onboardingPreview: some View {
+        #if DEBUG
+        OnboardingPreviewHarness()
         #endif
     }
 
