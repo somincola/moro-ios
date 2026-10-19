@@ -1163,31 +1163,44 @@ extension TimelineViewModel {
         return network + cached.filter { !networkIDs.contains($0.id) }
     }
 
+    /// Every cache write goes through this one chain, in call order. A plain-list write that
+    /// landed after a live snapshot would otherwise reset that snapshot's gaps and anchor.
+    /// Live snapshots are dropped once the data generation changes; plain-list writes keep
+    /// their previous fire-and-forget semantics.
+    private func enqueueCacheWrite(
+        dropsWhenDataChanges: Bool,
+        _ write: @escaping (TimelineCache, String, TimelineFilter) async -> Void
+    ) {
+        guard let filter = timelineCacheFilter else { return }
+        let client = cacheClientID
+        let cache = timelineCache
+        let previous = cacheWriteTask
+        let generation = dataGeneration
+        cacheWriteTask = Task { [weak self] in
+            await previous?.value
+            if dropsWhenDataChanges {
+                guard !Task.isCancelled, self?.dataGeneration == generation else { return }
+            }
+            await write(cache, client, filter)
+        }
+    }
+
     fileprivate func persistCurrentStatusesToCache() {
-        guard let snapshotFilter = timelineCacheFilter else { return }
         if let liveTimeline {
             let snapshot = liveTimeline
-            let client = cacheClientID
-            let cache = timelineCache
-            let previous = cacheWriteTask
-            let generation = dataGeneration
-            cacheWriteTask = Task { [weak self] in
-                await previous?.value
-                guard !Task.isCancelled, self?.dataGeneration == generation else { return }
+            enqueueCacheWrite(dropsWhenDataChanges: true) { cache, client, filter in
                 await cache.setLiveSnapshot(statuses: snapshot.statuses, live: snapshot.metadata,
-                    for: client, filter: snapshotFilter)
+                    for: client, filter: filter)
             }
             return
         }
         let statusesSnapshot = statuses
-        let snapshotClientID = self.cacheClientID
-        let timelineCache = self.timelineCache
         let preservesUnrenderedTail = !deferredInitialStatusIDs.isEmpty
-        Task(priority: .utility) {
+        enqueueCacheWrite(dropsWhenDataChanges: false) { cache, client, filter in
             if preservesUnrenderedTail {
-                await timelineCache.prepend(statuses: statusesSnapshot, for: snapshotClientID, filter: snapshotFilter)
+                await cache.prepend(statuses: statusesSnapshot, for: client, filter: filter)
             } else {
-                await timelineCache.set(statuses: statusesSnapshot, for: snapshotClientID, filter: snapshotFilter)
+                await cache.set(statuses: statusesSnapshot, for: client, filter: filter)
             }
         }
     }
@@ -1200,15 +1213,8 @@ extension TimelineViewModel {
 
     fileprivate func appendStatusesToCache(_ newStatuses: [Status]) {
         guard !newStatuses.isEmpty else { return }
-        guard let snapshotFilter = timelineCacheFilter else { return }
-        let snapshotClientID = self.cacheClientID
-        let timelineCache = self.timelineCache
-        Task(priority: .utility) {
-            await timelineCache.append(
-                statuses: newStatuses,
-                for: snapshotClientID,
-                filter: snapshotFilter
-            )
+        enqueueCacheWrite(dropsWhenDataChanges: false) { cache, client, filter in
+            await cache.append(statuses: newStatuses, for: client, filter: filter)
         }
     }
 
@@ -1271,28 +1277,4 @@ extension TimelineViewModel {
         }
     }
 
-    fileprivate func persistSingleStatusUpdateToCache(_ status: Status) {
-        guard let cacheFilter = timelineCacheFilter else { return }
-        Task { [weak self] in
-            guard let self else { return }
-            await timelineCache.updateStatus(
-                status,
-                for: cacheClientID,
-                filter: cacheFilter
-            )
-        }
-    }
-
-    fileprivate func removeStatusFromCache(id: String) {
-        if deferredInitialStatusIDs.contains(id) { deferredDeletedStatusIDs.insert(id) }
-        guard let cacheFilter = timelineCacheFilter else { return }
-        Task { [weak self] in
-            guard let self else { return }
-            await timelineCache.removeStatus(
-                id: id,
-                for: cacheClientID,
-                filter: cacheFilter
-            )
-        }
-    }
 }

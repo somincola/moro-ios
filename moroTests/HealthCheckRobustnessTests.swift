@@ -202,3 +202,68 @@ struct StreamWatcherRecoveryTests {
         #expect(watcher.connectionState == .disconnected)
     }
 }
+
+@MainActor
+struct TimelineCacheDurabilityTests {
+    private func directory() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("timeline-cache-health-\(UUID().uuidString)")
+    }
+    private func post(_ id: String) -> Status { ThreadReadingFixtures.status(id) }
+
+    private func liveState() -> TimelineLiveUpdates {
+        var state = TimelineLiveUpdates(statuses: [post("100"), post("99")])
+        state.receiveHead(TimelinePage(statuses: [post("104")]), sinceID: "100", currentAccountID: nil)
+        state.setReadingAnchor(.init(statusID: "99", viewportOffset: -120))
+        return state
+    }
+
+    @Test func singlePostEditsKeepGapsAndReadingAnchor() async throws {
+        let directory = directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = TimelineCache(directory: directory)
+        let state = liveState()
+        await cache.setLiveSnapshot(statuses: state.statuses, live: state.metadata, for: "a", filter: .home)
+
+        await cache.updateStatus(post("99"), for: "a", filter: .home)
+        await cache.flushPendingWrites()
+
+        let metadata = try #require(await TimelineCache(directory: directory).getLiveMetadata(for: "a", filter: .home))
+        #expect(metadata.gaps.count == 1)
+        #expect(metadata.readingAnchor?.statusID == "99")
+    }
+
+    /// Content a reader just loaded must survive a foreground kill (the list offline-cache
+    /// UI test relaunches right after loading), so new posts never wait for the delay.
+    @Test func newPostsAreWrittenWithoutWaitingForTheDelay() async throws {
+        let directory = directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = TimelineCache(directory: directory, persistenceDelay: .seconds(30))
+        await cache.set(statuses: [post("1"), post("2")], for: "a", filter: .home)
+
+        var onDisk: [String]?
+        for _ in 0..<100 {
+            onDisk = await TimelineCache(directory: directory).getStatuses(for: "a", filter: .home)?.map(\.id)
+            if onDisk != nil { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(onDisk == ["1", "2"])
+    }
+
+    /// The reading anchor changes on every scroll stop; it waits for the delay or a flush.
+    @Test func readingStateChangesWaitForTheDelayOrAFlush() async throws {
+        let directory = directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = TimelineCache(directory: directory, persistenceDelay: .seconds(30))
+        let statuses = [post("2"), post("1")]
+        await cache.set(statuses: statuses, for: "a", filter: .home)
+        await cache.flushPendingWrites()
+
+        var live = TimelineLiveMetadata(checkpointID: "2", fetchedHeadID: "2")
+        live.readingAnchor = TimelineReadingAnchor(statusID: "1", viewportOffset: -40)
+        await cache.setLiveSnapshot(statuses: statuses, live: live, for: "a", filter: .home)
+        #expect(await TimelineCache(directory: directory).getLiveMetadata(for: "a", filter: .home)?.readingAnchor == nil)
+
+        await cache.flushPendingWrites()
+        #expect(await TimelineCache(directory: directory).getLiveMetadata(for: "a", filter: .home)?.readingAnchor?.statusID == "1")
+    }
+}

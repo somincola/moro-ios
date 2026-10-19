@@ -43,9 +43,20 @@ actor TimelineCache {
     private var dirtyKeys: Set<String> = []
     private var dirtyMetadataKeys: Set<String> = []
     private var persistenceTask: Task<Void, Never>?
+    private var persistenceTaskIsDelayed = false
+    /// Bumped by every schedule and flush; a scheduled write that is no longer current
+    /// does nothing, so an explicit flush always supersedes what was queued before it.
+    private var persistenceGeneration = 0
+    /// Coalesces bursts that only move state around existing posts (the reading anchor
+    /// saved on every scroll stop, read markers, edits to a cached post) into one encode of
+    /// the whole timeline. New or removed posts are written right away, so content a
+    /// reader has just loaded survives even if the app is killed in the foreground.
+    /// Backgrounding, memory pressure and explicit flushes always write immediately.
+    private let persistenceDelay: Duration
 
-    init(maxCachedStatuses: Int = 800, directory: URL? = nil) {
+    init(maxCachedStatuses: Int = 800, directory: URL? = nil, persistenceDelay: Duration = .seconds(2)) {
         self.maxCachedStatuses = max(1, maxCachedStatuses)
+        self.persistenceDelay = persistenceDelay
         cacheDirectory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("TimelineCache", isDirectory: true)
         try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
@@ -101,16 +112,30 @@ actor TimelineCache {
         assign((items(for: key)?.map(\.status) ?? []) + statuses, key: key)
     }
 
+    /// Single-post edits keep the live state (gaps, reading anchor, new IDs): only a full
+    /// replacement (`set`, `setLiveSnapshot`) decides what that state is.
     func updateStatus(_ status: Status, for client: String, filter: TimelineFilter) {
         let key = cacheKey(client: client, filter: filter)
         guard let existing = items(for: key), existing.contains(where: { $0.status.id == status.id }) else { return }
+        let live = liveMetadata[key]
         assign(existing.map { $0.status.id == status.id ? status : $0.status }, key: key)
+        restoreLiveMetadata(live, key: key)
     }
 
     func removeStatus(id: String, for client: String, filter: TimelineFilter) {
         let key = cacheKey(client: client, filter: filter)
         guard let existing = items(for: key) else { return }
+        let live = liveMetadata[key]
         assign(existing.map(\.status).filter { $0.id != id }, key: key)
+        restoreLiveMetadata(live, key: key)
+    }
+
+    private func restoreLiveMetadata(_ live: TimelineLiveMetadata?, key: String) {
+        guard var state = live else { return }
+        let retained = Set(memoryCache[key, default: []].map { $0.status.id })
+        state.newIDs = state.newIDs.filter { retained.contains($0.key) }
+        state.gaps.removeAll { !retained.contains($0.afterID) || !retained.contains($0.beforeID) }
+        liveMetadata[key] = state
     }
 
     func clearCache(for client: String, filter: TimelineFilter) {
@@ -200,6 +225,13 @@ actor TimelineCache {
 
     /// Also provides an explicit durability boundary for backgrounding and tests.
     func flushPendingWrites() {
+        persistenceGeneration &+= 1
+        persistenceTask?.cancel()
+        persistenceTask = nil
+        writeDirtyEntries()
+    }
+
+    private func writeDirtyEntries() {
         for key in dirtyKeys {
             guard let items = memoryCache[key] else { continue }
             do {
@@ -225,11 +257,13 @@ actor TimelineCache {
         let unique = statuses.filter { seen.insert($0.id).inserted }.prefix(maxCachedStatuses)
         let now = Date()
         let lastSeen = metadataForKey(key)?.lastSeenStatusIds ?? []
+        // Unknown previous content (never loaded this session) counts as changed.
+        let contentChanged = memoryCache[key].map { $0.map(\.status.id) != unique.map(\.id) } ?? true
         memoryCache[key] = unique.map { CachedItem(status: $0, cachedAt: now) }
         metadata[key] = CacheMetadata(lastUpdated: now, itemCount: unique.count, lastSeenStatusIds: lastSeen)
         dirtyKeys.insert(key)
         dirtyMetadataKeys.insert(key)
-        schedulePersistence()
+        schedulePersistence(immediately: contentChanged)
     }
 
     private func items(for key: String) -> [CachedItem]? {
@@ -264,16 +298,30 @@ actor TimelineCache {
         return meta
     }
 
-    private func schedulePersistence() {
-        guard persistenceTask == nil else { return }
+    private func schedulePersistence(immediately: Bool = false) {
+        if let persistenceTask {
+            // A pending immediate write already covers this change; a delayed one is
+            // replaced when the new change must not wait.
+            guard immediately, persistenceTaskIsDelayed else { return }
+            persistenceTask.cancel()
+        }
+        let delay: Duration? = immediately ? nil : persistenceDelay
+        persistenceTaskIsDelayed = delay != nil
+        persistenceGeneration &+= 1
+        let generation = persistenceGeneration
         persistenceTask = Task.detached(priority: .background) { [weak self] in
-            await self?.persistScheduledWrites()
+            if let delay {
+                do { try await Task.sleep(for: delay) } catch { return }
+            }
+            guard !Task.isCancelled else { return }
+            await self?.persistScheduledWrites(generation: generation)
         }
     }
 
-    private func persistScheduledWrites() {
-        flushPendingWrites()
+    private func persistScheduledWrites(generation: Int) {
+        guard generation == persistenceGeneration else { return }
         persistenceTask = nil
+        writeDirtyEntries()
     }
 
     private func clear(key: String) {
