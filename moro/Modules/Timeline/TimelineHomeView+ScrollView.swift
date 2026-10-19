@@ -287,8 +287,13 @@ extension TimelineHomeView {
         -> some View
     {
         let pageSession = pageSessionStore.session(for: timelineType)
+        // Grouped once per pass instead of filtering every gap for every row.
+        let retryGapsByAfterID = Dictionary(
+            grouping: viewModel.gaps.filter { viewModel.failedGapIDs.contains($0.id) },
+            by: \.afterID
+        )
 
-        ForEach(Array(viewModel.statuses.enumerated()), id: \.element.id) { index, status in
+        ForEach(viewModel.statuses.indexed(), id: \.element.id) { index, status in
             let context = threadContext(for: status)
             let prefetchWindowSize = 2
             let canRunPrefetch = hasFinishedInitialLoad(for: timelineType)
@@ -363,7 +368,7 @@ extension TimelineHomeView {
 
             // Unverified intervals are resolved quietly. Only a failed request
             // needs an action in the timeline; its appearance is anchor-preserved.
-            ForEach(viewModel.gaps.filter { $0.afterID == status.id && viewModel.failedGapIDs.contains($0.id) }) { gap in
+            ForEach(retryGapsByAfterID[status.id] ?? []) { gap in
                 Button {
                     Task { await viewModel.loadGap(id: gap.id) }
                 } label: {

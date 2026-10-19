@@ -245,7 +245,7 @@ struct StatusDetailView: View {
                 if viewModel.threadModel == nil {
                     threadLoadingState
                 } else {
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    ForEach(rows.indexed(), id: \.element.id) { index, row in
                         let isLast = index == rows.count - 1
                         let endsGroup = isLast || rows[index + 1].item.replyGroup != row.item.replyGroup
                         ThreadDiscussionRow(

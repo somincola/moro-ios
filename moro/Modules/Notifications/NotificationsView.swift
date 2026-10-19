@@ -254,7 +254,7 @@ private struct NotificationFeedView: View {
                             .accessibilityIdentifier("notifications.loadOlderEmptyState")
                         }
 
-                        ForEach(Array(filteredNotifications.enumerated()), id: \.element.id) {
+                        ForEach(filteredNotifications.indexed(), id: \.element.id) {
                             index, notification in
                             let isNearBottom = filteredNotifications.count - index <= 3
 

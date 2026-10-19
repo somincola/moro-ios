@@ -208,7 +208,7 @@ struct DirectMessagesView: View {
                     .padding(.vertical, theme.spacing.s)
                 }
 
-                ForEach(Array(viewModel.conversations.enumerated()), id: \.element.id) {
+                ForEach(viewModel.conversations.indexed(), id: \.element.id) {
                     index,
                     conversation in
                     let isNearBottom = viewModel.conversations.count - index <= loadMoreThreshold

@@ -167,7 +167,7 @@ struct ConversationDetailView: View {
                 Section {
                     let replyMessages = viewModel.replyMessages
 
-                    ForEach(Array(replyMessages.enumerated()), id: \.element.id) { index, status in
+                    ForEach(replyMessages.indexed(), id: \.element.id) { index, status in
                         let previousStatus = index > 0 ? replyMessages[index - 1] : nil
                         let nextStatus =
                             index + 1 < replyMessages.count ? replyMessages[index + 1] : nil

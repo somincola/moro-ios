@@ -69,7 +69,7 @@ struct ProfileContentStream: View, Equatable {
 
     @ViewBuilder
     private var loadedRows: some View {
-        ForEach(Array(viewModel.currentStatuses.enumerated()), id: \.element.id) {
+        ForEach(viewModel.currentStatuses.indexed(), id: \.element.id) {
             index, status in
             let prefetchWindowSize = 2
             let isNearBottom = viewModel.currentStatuses.count - index <= 3
