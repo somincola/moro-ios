@@ -547,6 +547,10 @@ private struct MeTabRootView: View {
                     onLogout: {},
                     apiClient: apiClient
                 )
+                // The page's view models are created once per identity. While switching,
+                // `currentAccount` can resolve to a fallback first; without this the real
+                // account would then render with the fallback's loaded profile and posts.
+                .id(account.id)
             } else {
                 EmptyStateView(
                     spec: EmptyStateSpec(

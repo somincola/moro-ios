@@ -86,20 +86,16 @@ struct ProfileView: View {
         account: Account?,
         accountID: String? = nil,
         onLogout: @escaping () -> Void,
-        apiClient: MastodonAPI? = nil
+        apiClient: MastodonAPI
     ) {
         self.account = account
         self.accountID = accountID
         self.onLogout = onLogout
 
         let resolvedAccountID = accountID ?? account?.id ?? ""
-        let resolvedClient =
-            apiClient
-            ?? {
-                let state = AppState()
-                let interceptor = AuthInterceptor(tokenProvider: state)
-                return MastodonClient(authInterceptor: interceptor)
-            }()
+        // Required: a fallback client built here had no token, so every request on the
+        // page failed silently.
+        let resolvedClient = apiClient
 
         self.apiClient = resolvedClient
         _postMenuActionCenter = StateObject(
@@ -1150,7 +1146,11 @@ struct ProfileView: View {
     let state = AppState()
     state.currentAccount = sampleAccount
 
-    return ProfileView(account: sampleAccount, onLogout: {})
+    return ProfileView(
+        account: sampleAccount,
+        onLogout: {},
+        apiClient: MastodonClient(authInterceptor: AuthInterceptor(tokenProvider: state))
+    )
         .environmentObject(state)
         .moroTheme(MoroTheme())
 }
