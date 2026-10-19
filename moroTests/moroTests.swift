@@ -443,7 +443,7 @@ struct moroTests {
         model.account = makeAccount(showMedia: true, showMediaReplies: true)
         await model.loadTabIfNeeded(.media)
         pending?.resume(throwing: MockMastodonAPI.MockError.forcedFailure)
-        await refresh.value
+        _ = await refresh.value
         #expect(model.tabLoadState(for: .media) == .loaded)
         #expect(model.media.map(\.id) == ["current-media"])
     }

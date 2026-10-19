@@ -7,13 +7,13 @@
 
 import Foundation
 
-struct StatusTranslationPayload: Codable, Equatable, Sendable {
+nonisolated struct StatusTranslationPayload: Codable, Equatable, Sendable {
     let content: String?
     let detectedSourceLanguage: String?
     let provider: String?
     let spoilerText: String?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case content
         case detectedSourceLanguage = "detected_source_language"
         case provider

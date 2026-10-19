@@ -10,7 +10,7 @@ import Foundation
 import SwiftUI
 
 /// Preserve the parser's link semantics through navigation.
-enum LinkAction: Equatable {
+nonisolated enum LinkAction: Equatable {
     case mention(username: String, url: URL)
     case hashtag(tag: String, url: URL)
     case link(url: URL)
@@ -24,7 +24,7 @@ enum LinkAction: Equatable {
 }
 
 /// Content element types for rendering
-enum ContentElement: Equatable {
+nonisolated enum ContentElement: Equatable {
     case text(String)
     case link(text: String, url: URL)
     case mention(username: String, url: URL)
@@ -35,7 +35,7 @@ enum ContentElement: Equatable {
     case lineBreak
 }
 
-struct ContentParsingOptions: OptionSet {
+nonisolated struct ContentParsingOptions: OptionSet {
     let rawValue: Int
 
     static let preserveInlineImageAltText = ContentParsingOptions(rawValue: 1 << 0)
@@ -64,7 +64,7 @@ struct ContentParsingOptions: OptionSet {
     ]
 }
 
-extension Array where Element == ContentElement {
+nonisolated extension Array where Element == ContentElement {
     var containsCustomEmoji: Bool {
         contains {
             if case .emoji = $0 { return true }
@@ -111,7 +111,7 @@ extension Array where Element == ContentElement {
 }
 
 /// Parser for Mastodon HTML content
-struct ContentParser {
+nonisolated struct ContentParser {
     private final class CachedElementsBox {
         // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
         nonisolated deinit {}
@@ -277,7 +277,7 @@ struct ContentParser {
         return result
     }
     
-    private enum InlineTokenMatch {
+    nonisolated private enum InlineTokenMatch {
         case url(Range<String.Index>)
         case remoteMention(Range<String.Index>, username: String, domain: String)
         case hashtag(Range<String.Index>, tag: String)
@@ -720,7 +720,7 @@ struct ContentParser {
 
 // MARK: - ContentElement Extension
 
-extension ContentElement {
+nonisolated extension ContentElement {
     var isSpaceOrLineBreak: Bool {
         switch self {
         case .text(let text):
@@ -733,7 +733,7 @@ extension ContentElement {
     }
 }
 
-extension Array where Element == ContentElement {
+nonisolated extension Array where Element == ContentElement {
     /// Whether the custom emoji at `index` needs a space added before it so it doesn't touch
     /// the text in front. Text that already ends with whitespace has one.
     func emojiNeedsSpace(before index: Int) -> Bool {

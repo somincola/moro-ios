@@ -7,7 +7,7 @@
 
 import Foundation
 
-private struct LossyDecodable<Value: Decodable>: Decodable {
+nonisolated private struct LossyDecodable<Value: Decodable>: Decodable {
     let value: Value?
 
     init(from decoder: Decoder) throws {
@@ -15,12 +15,12 @@ private struct LossyDecodable<Value: Decodable>: Decodable {
     }
 }
 
-enum ComposeDraftCategory: String, Codable, Equatable {
+nonisolated enum ComposeDraftCategory: String, Codable, Equatable {
     case auto
     case manual
 }
 
-struct ComposeDraftAttachment: Codable, Equatable, Identifiable {
+nonisolated struct ComposeDraftAttachment: Codable, Equatable, Identifiable {
     let id: String
     let url: URL
     let previewURL: URL?
@@ -68,8 +68,8 @@ struct ComposeDraftAttachment: Codable, Equatable, Identifiable {
     }
 }
 
-struct ComposeDraftTarget: Codable, Equatable, Hashable {
-    enum Kind: String, Codable {
+nonisolated struct ComposeDraftTarget: Codable, Equatable, Hashable {
+    nonisolated enum Kind: String, Codable {
         case newPost
         case reply
         case quote
@@ -115,7 +115,7 @@ struct ComposeDraftTarget: Codable, Equatable, Hashable {
     }
 }
 
-struct ComposeDraftPayload: Codable, Equatable {
+nonisolated struct ComposeDraftPayload: Codable, Equatable {
     let content: String
     let contentWarning: String
     let isContentWarningActive: Bool
@@ -165,8 +165,8 @@ struct ComposeDraftPayload: Codable, Equatable {
     }
 }
 
-extension ComposeDraftPayload {
-    private enum CodingKeys: String, CodingKey {
+nonisolated extension ComposeDraftPayload {
+    nonisolated private enum CodingKeys: String, CodingKey {
         case content
         case contentWarning
         case isContentWarningActive
@@ -203,7 +203,7 @@ extension ComposeDraftPayload {
     }
 }
 
-struct ComposeDraft: Identifiable, Codable, Equatable {
+nonisolated struct ComposeDraft: Identifiable, Codable, Equatable {
     let id: String
     let accountID: String?
     var category: ComposeDraftCategory
@@ -290,7 +290,7 @@ struct ComposeDraft: Identifiable, Codable, Equatable {
     }
 }
 
-struct SharedComposeDraftAttachmentInput {
+nonisolated struct SharedComposeDraftAttachmentInput {
     let sourceURL: URL
     let fileName: String
     let mimeType: String
@@ -309,14 +309,14 @@ struct SharedComposeDraftAttachmentInput {
     }
 }
 
-struct SharedComposeDraftAttachmentReference: Codable, Equatable, Identifiable {
+nonisolated struct SharedComposeDraftAttachmentReference: Codable, Equatable, Identifiable {
     let id: String
     let fileName: String
     let mimeType: String
     let relativePath: String
 }
 
-struct SharedComposeDraftStagingItem: Codable, Equatable, Identifiable {
+nonisolated struct SharedComposeDraftStagingItem: Codable, Equatable, Identifiable {
     let id: String
     let accountID: String?
     let sourceApplication: String?
@@ -351,12 +351,12 @@ final class SharedComposeDraftStagingStore {
         baseDirectoryURL: MoroSharedContainer.composeDraftStagingDirectoryURL()
     )
 
-    private enum Keys {
+    nonisolated private enum Keys {
         static let items = "shared_compose_draft_staging_items_v1"
         static let corruptBackup = "shared_compose_draft_staging_items_v1_corrupt_backup"
     }
 
-    private enum PersistenceError: Error {
+    nonisolated private enum PersistenceError: Error {
         case writeVerificationFailed
     }
 
@@ -635,7 +635,7 @@ final class ComposeDraftStore {
 
     static let shared = ComposeDraftStore.makeSharedStore()
 
-    private enum Keys {
+    nonisolated private enum Keys {
         static let drafts = "compose_drafts_v1"
         static let corruptBackup = "compose_drafts_v1_corrupt_backup"
     }

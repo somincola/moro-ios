@@ -7,8 +7,8 @@
 
 import Foundation
 
-struct PushSubscription: Codable {
-    struct Alerts: Codable, Equatable {
+nonisolated struct PushSubscription: Codable {
+    nonisolated struct Alerts: Codable, Equatable {
         var mention: Bool
         var status: Bool
         var reblog: Bool
@@ -20,7 +20,7 @@ struct PushSubscription: Codable {
         var adminSignUp: Bool
         var adminReport: Bool
 
-        enum CodingKeys: String, CodingKey {
+        nonisolated enum CodingKeys: String, CodingKey {
             case mention
             case status
             case reblog
@@ -64,7 +64,7 @@ struct PushSubscription: Codable {
     var alerts: Alerts
     var policy: String?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case id
         case endpoint
         case serverKey = "server_key"

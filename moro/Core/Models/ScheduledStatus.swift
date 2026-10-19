@@ -7,14 +7,14 @@
 
 import Foundation
 
-struct ScheduledStatus: Identifiable, Codable {
-    struct Parameters: Codable {
+nonisolated struct ScheduledStatus: Identifiable, Codable {
+    nonisolated struct Parameters: Codable {
         let text: String?
         let spoilerText: String?
         let visibility: MastodonVisibility?
         let inReplyToID: String?
 
-        enum CodingKeys: String, CodingKey {
+        nonisolated enum CodingKeys: String, CodingKey {
             case text
             case spoilerText = "spoiler_text"
             case visibility
@@ -27,7 +27,7 @@ struct ScheduledStatus: Identifiable, Codable {
     let params: Parameters?
     let mediaAttachments: [Status.Attachment]
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case id
         case scheduledAt = "scheduled_at"
         case params

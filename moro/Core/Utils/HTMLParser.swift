@@ -8,7 +8,7 @@
 
 import Foundation
 
-struct HTMLParser {
+nonisolated struct HTMLParser {
     private static let inlineImageAltRegex = try? NSRegularExpression(
         pattern: #"<img\b[^>]*\balt=(?:"([^"]*)"|'([^']*)')[^>]*>"#,
         options: [.caseInsensitive]

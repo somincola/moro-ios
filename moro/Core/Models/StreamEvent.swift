@@ -10,7 +10,7 @@ import Foundation
 // MARK: - Raw Stream Event
 
 /// Raw event received from the WebSocket connection
-struct RawStreamEvent: Decodable, Sendable {
+nonisolated struct RawStreamEvent: Decodable, Sendable {
     let event: String
     let stream: [String]?
     let payload: String?
@@ -18,7 +18,7 @@ struct RawStreamEvent: Decodable, Sendable {
 
 /// Preserve multiplexed stream provenance for timeline insertion. Edits and
 /// deletions can update existing rows, but only user-stream additions enter Home.
-struct SourcedStreamEvent {
+nonisolated struct SourcedStreamEvent {
     let event: StreamEvent
     let streams: [String]
 
@@ -28,7 +28,7 @@ struct SourcedStreamEvent {
 // MARK: - Stream Event Enum
 
 /// Unified stream event enum for type-safe event handling
-enum StreamEvent: Identifiable, Sendable {
+nonisolated enum StreamEvent: Identifiable, Sendable {
     case update(status: Status)
     case statusUpdate(status: Status)
     case delete(statusId: String)
@@ -86,7 +86,7 @@ enum StreamEvent: Identifiable, Sendable {
 // MARK: - Stream Message
 
 /// Message sent to subscribe/unsubscribe from streams
-struct StreamMessage: Encodable, Sendable {
+nonisolated struct StreamMessage: Encodable, Sendable {
     let type: String
     let stream: String
 
@@ -99,12 +99,12 @@ struct StreamMessage: Encodable, Sendable {
 // MARK: - Conversation Model (for streaming)
 
 /// Simplified conversation model for streaming events
-struct StreamConversation: Codable, Sendable {
+nonisolated struct StreamConversation: Codable, Sendable {
     let id: String
     let unread: Bool
     let lastStatus: Status?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case id
         case unread
         case lastStatus = "last_status"

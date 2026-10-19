@@ -39,7 +39,7 @@ final class PostMenuActionCenter: ObservableObject {
     private let relationshipScope: String
 
     init(
-        apiClient: MastodonAPI, relationshipCacheLimit: Int = 200, feedCoordinator: FeedCoordinator = .shared,
+        apiClient: MastodonAPI, relationshipCacheLimit: Int = 200, feedCoordinator: FeedCoordinator? = nil,
         relationshipStore: RelationshipStore? = nil
     ) {
         self.apiClient = apiClient
@@ -47,7 +47,8 @@ final class PostMenuActionCenter: ObservableObject {
         let store = relationshipStore ?? .shared
         self.sharedRelationships = store
         self.relationshipScope = store.activeScope
-        relationshipSubscription = feedCoordinator.updates.sink { [weak self] update in
+        // Resolved here: a `.shared` default argument is evaluated off the main actor.
+        relationshipSubscription = (feedCoordinator ?? .shared).updates.sink { [weak self] update in
             guard case .relationship(let relationship) = update else { return }
             self?.storeRelationship(relationship)
         }
