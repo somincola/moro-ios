@@ -262,7 +262,9 @@ struct PostTranslationSection: View {
     var onHashtagTap: ((String, URL) -> Void)? = nil
     var onLinkTap: ((URL) -> Void)? = nil
 
-    @StateObject private var settings = AppSettings.shared
+    /// Only the translation mode matters here. Observing all of AppSettings re-rendered
+    /// every visible post on any unrelated setting change.
+    @State private var translationMode = AppSettings.shared.contentTranslationMode
     @Environment(\.moroTheme) private var theme
     @Environment(\.mastodonAPIClient) private var environmentAPIClient
 
@@ -327,7 +329,7 @@ struct PostTranslationSection: View {
                     .foregroundStyle(theme.colors.textSecondary)
             } else if viewModel.translatedResult == nil,
                 let availabilityReason = viewModel.availabilityReason,
-                settings.contentTranslationMode == .remote,
+                translationMode == .remote,
                 availabilityReason == MoroL10n.Translation.unavailableOnInstance
             {
                 Text(availabilityReason)
@@ -342,7 +344,7 @@ struct PostTranslationSection: View {
         .task {
             // Resolve the instance's supported pairs once per session, then
             // re-run configure so pair gating applies to this post.
-            guard let resolvedAPIClient, settings.contentTranslationMode == .remote else { return }
+            guard let resolvedAPIClient, translationMode == .remote else { return }
             await TranslationLanguagesStore.shared.loadIfNeeded(apiClient: resolvedAPIClient)
             configureTranslation()
         }
@@ -355,7 +357,9 @@ struct PostTranslationSection: View {
         .onChange(of: status.language) { _, _ in
             configureTranslation()
         }
-        .onChange(of: settings.contentTranslationMode) { _, _ in
+        .onReceive(AppSettings.shared.$contentTranslationMode.removeDuplicates()) { mode in
+            guard mode != translationMode else { return }
+            translationMode = mode
             configureTranslation()
         }
     }
@@ -412,7 +416,7 @@ struct PostTranslationSection: View {
         viewModel.configure(
             status: status,
             apiClient: resolvedAPIClient,
-            mode: settings.contentTranslationMode,
+            mode: translationMode,
             targetLanguageCode: MoroAppLanguage.current
         )
     }

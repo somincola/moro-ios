@@ -114,6 +114,7 @@ public struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             return
         }
 
+        let configuration = configuration
         loadTask = Task {
             // Disk-cache read + decode OFF the main thread. This used to run synchronously
             // in `.onAppear` (Data(contentsOf:) + UIImage(data:)), stalling the main thread
@@ -122,67 +123,37 @@ public struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             let diskImage = await Task.detached(priority: .userInitiated) {
                 ImageCache.shared.imageFromDisk(for: url)
             }.value
-
             if let diskImage {
-                if !Task.isCancelled {
-                    await MainActor.run { phase = .success(Image(uiImage: diskImage)) }
-                }
+                if !Task.isCancelled { phase = .success(Image(uiImage: diskImage)) }
                 return
             }
 
-            do {
-                let image = try await downloadImage(from: url)
-
-                if !Task.isCancelled {
-                    await MainActor.run {
-                        withAnimation(.easeIn(duration: 0.2)) {
-                            phase = .success(Image(uiImage: image))
-                        }
+            // Network: the shared loader de-duplicates concurrent requests for one URL and
+            // decodes off the main thread. Retries live inside this task, so they stop when
+            // the view goes away or its URL changes.
+            var attempt = 0
+            while !Task.isCancelled {
+                if let image = await ImageCache.shared.load(from: url) {
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeIn(duration: 0.2)) {
+                        phase = .success(Image(uiImage: image))
                     }
+                    return
                 }
-            } catch {
-                if !Task.isCancelled {
-                    await MainActor.run {
-                        if configuration.retryOnFailure
-                            && retryCount < configuration.maxRetryAttempts
-                        {
-                            retryCount += 1
-                            // Schedule retry
-                            Task {
-                                try? await Task.sleep(
-                                    nanoseconds: UInt64(configuration.retryDelay * 1_000_000_000))
-                                loadImage()
-                            }
-                        } else {
-                            phase = .failure(error)
-                        }
-                    }
+                guard !Task.isCancelled else { return }
+                guard configuration.retryOnFailure, attempt < configuration.maxRetryAttempts else {
+                    phase = .failure(URLError(.cannotLoadFromNetwork))
+                    return
+                }
+                attempt += 1
+                retryCount = attempt
+                do {
+                    try await Task.sleep(for: .seconds(configuration.retryDelay))
+                } catch {
+                    return
                 }
             }
         }
-    }
-
-    private func downloadImage(from url: URL) async throws -> UIImage {
-        let generation = ImageCache.shared.writeGeneration
-        var request = URLRequest(url: url)
-        request.cachePolicy = .returnCacheDataElseLoad
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse,
-            200..<300 ~= httpResponse.statusCode
-        else {
-            throw URLError(.badServerResponse)
-        }
-
-        guard let image = UIImage(data: data) else {
-            throw URLError(.cannotDecodeContentData)
-        }
-
-        // Cache the image
-        ImageCache.shared.setImage(image, for: url, data: data, generation: generation)
-
-        return image
     }
 }
 
@@ -255,7 +226,10 @@ nonisolated public final class ImageCache: @unchecked Sendable {
     }
 
     public func imageFromDisk(for url: URL) -> UIImage? {
-        guard let data = disk.data(for: url), let image = UIImage(data: data) else { return nil }
+        guard let data = disk.data(for: url), let decoded = UIImage(data: data) else { return nil }
+        // Decode the bitmap here (callers run this off the main thread) instead of lazily
+        // at first draw, which would land on the main thread.
+        let image = decoded.preparingForDisplay() ?? decoded
 
         // Also add to memory cache
         memoryCache.setObject(image, forKey: url as NSURL, cost: Self.memoryCost(of: image))
@@ -276,21 +250,43 @@ nonisolated public final class ImageCache: @unchecked Sendable {
         if let data { disk.store(data, for: url, generation: expected) }
     }
 
-    /// Memory -> disk -> network load for callers that aren't SwiftUI views
-    /// (e.g. UIKit cells). Mirrors CachedAsyncImage's own load path so everything
-    /// shares one cache.
+    private let inflightLock = NSLock()
+    private var inflightLoads: [URL: Task<UIImage?, Never>] = [:]
+
+    /// Memory -> disk -> network, shared by SwiftUI (`CachedAsyncImage`) and UIKit callers
+    /// so everything uses one cache. Concurrent requests for the same URL (one avatar in
+    /// twenty notification rows) share a single download, and the disk read and bitmap
+    /// decode always run off the caller's thread.
     public func load(from url: URL) async -> UIImage? {
-        let generation = writeGeneration
         if let cached = image(for: url) { return cached }
-        if let disk = imageFromDisk(for: url) { return disk }
+
+        let task: Task<UIImage?, Never> = inflightLock.withLock {
+            if let existing = inflightLoads[url] { return existing }
+            let task = Task.detached(priority: .userInitiated) { [self] in
+                await self.fetchAndDecode(url)
+            }
+            inflightLoads[url] = task
+            return task
+        }
+        let image = await task.value
+        inflightLock.withLock {
+            if inflightLoads[url] == task { inflightLoads[url] = nil }
+        }
+        return image
+    }
+
+    private func fetchAndDecode(_ url: URL) async -> UIImage? {
+        let generation = writeGeneration
+        if let onDisk = imageFromDisk(for: url) { return onDisk }
 
         var request = URLRequest(url: url)
         request.cachePolicy = .returnCacheDataElseLoad
         guard let (data, response) = try? await URLSession.shared.data(for: request),
             let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode,
-            let image = UIImage(data: data)
+            let decoded = UIImage(data: data)
         else { return nil }
 
+        let image = decoded.preparingForDisplay() ?? decoded
         setImage(image, for: url, data: data, generation: generation)
         return image
     }
