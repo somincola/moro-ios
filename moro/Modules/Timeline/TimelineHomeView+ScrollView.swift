@@ -67,7 +67,7 @@ extension TimelineHomeView {
                     isSelected: timelineType == selectedTimeline
                 )
                 if crossedThreshold {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    MoroRefreshFeedback.armed()
                 }
                 handleScrollOffset(-offsetY, for: timelineType)
             }
@@ -100,9 +100,7 @@ extension TimelineHomeView {
     }
 
     func didReleasePull(oldPhase: ScrollPhase, newPhase: ScrollPhase) -> Bool {
-        let wasTouching = oldPhase == .tracking || oldPhase == .interacting
-        let isTouching = newPhase == .tracking || newPhase == .interacting
-        return wasTouching && !isTouching
+        ScrollPhase.releasedTouch(from: oldPhase, to: newPhase)
     }
 
     @MainActor
@@ -141,12 +139,11 @@ extension TimelineHomeView {
                 detectionManager.resolve(detectionSnapshot)
             }
             syncDetectionTopID(for: timelineType)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            MoroRefreshFeedback.deliver(.succeeded)
         case .failure:
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            AppFeedbackCenter.shared.showError(MoroL10n.Timeline.loadFailed)
+            MoroRefreshFeedback.deliver(.failed)
         case .cancelled:
-            break
+            MoroRefreshFeedback.deliver(.cancelled)
         }
 
         let elapsed = Date().timeIntervalSince(indicatorStart)
@@ -239,52 +236,16 @@ extension TimelineHomeView {
 
         @ViewBuilder
         private var indicator: some View {
-            TimelinePetalProgress(
+            MoroPetalSpinner(
                 progress: progress,
                 isAnimating: state.isRefreshing,
-                activeColor: theme.colors.textSecondary,
-                inactiveColor: theme.colors.borderSubtle
+                style: .timeline,
+                tint: .twoTone(active: theme.colors.textSecondary, inactive: theme.colors.borderSubtle)
             )
             .opacity(iconOpacity)
             .scaleEffect(0.78 + 0.22 * entryProgress)
             .frame(width: 28, height: 28)
-        }
-    }
-
-    private struct TimelinePetalProgress: View {
-        let progress: CGFloat
-        let isAnimating: Bool
-        let activeColor: Color
-        let inactiveColor: Color
-
-        private let petalCount = 12
-
-        var body: some View {
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimating)) { context in
-                let rotation = isAnimating
-                    ? context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.9) / 0.9 * 360
-                    : 0
-
-                ZStack {
-                    ForEach(0..<petalCount, id: \.self) { index in
-                        Capsule(style: .continuous)
-                            .fill(color(for: index))
-                            .frame(width: 2.4, height: 6.5)
-                            .offset(y: -8.5)
-                            .rotationEffect(.degrees(Double(index) * 360 / Double(petalCount)))
-                    }
-                }
-                .rotationEffect(.degrees(rotation))
-            }
             .accessibilityHidden(true)
-        }
-
-        private func color(for index: Int) -> Color {
-            if isAnimating {
-                return activeColor.opacity(0.28 + Double(index + 1) / Double(petalCount) * 0.72)
-            }
-            let visiblePetals = Int(ceil(min(max(progress, 0), 1) * CGFloat(petalCount)))
-            return index < visiblePetals ? activeColor : inactiveColor.opacity(0.45)
         }
     }
 

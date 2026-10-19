@@ -91,6 +91,9 @@ private struct NotificationFeedView: View {
     @State private var actorsSheet: NotificationActorsSheetState?
     @State private var scrollPositionID: String?
     @State private var paginationFooterVisible = false
+    @State private var isScrolledToTop = true
+
+    private static let topAnchorID = "notifications.top"
 
     var body: some View {
         Group {
@@ -211,129 +214,154 @@ private struct NotificationFeedView: View {
 
     @ViewBuilder
     private var notificationsList: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                if viewModel.refreshFailed {
-                    HStack {
-                        Label(MoroL10n.Notifications.loadFailed, systemImage: "wifi.exclamationmark")
-                            .font(theme.typography.caption)
-                            .foregroundStyle(theme.colors.textSecondary)
-                        Spacer()
-                        Button(MoroL10n.Notifications.retryAction) {
-                            Task { await refreshAndMarkRead() }
-                        }
-                        .frame(minHeight: 44)
-                    }
-                    .padding(.horizontal, theme.spacing.m)
-                    .accessibilityIdentifier("notifications.refreshRetry")
-                }
+        ScrollViewReader { proxy in
+            ScrollView {
+                // The top marker sits outside the scroll-target layout, so `scrollPositionID`
+                // keeps tracking real rows (refresh still holds the reader's row in place).
+                VStack(spacing: 0) {
+                    Color.clear
+                        .frame(height: 0)
+                        .id(Self.topAnchorID)
 
-                if filteredNotifications.isEmpty, viewModel.hasMore {
-                    EmptyStateView(spec: EmptyStateSpec(
-                        icon: "line.3.horizontal.decrease.circle",
-                        title: MoroL10n.Notifications.filteredEmptyTitle,
-                        message: MoroL10n.Notifications.moreAvailable,
-                        actionTitle: viewModel.loadMoreFailed
-                            ? MoroL10n.Notifications.retryAction
-                            : MoroL10n.Notifications.loadMore,
-                        action: { Task { await viewModel.loadMore() } }
-                    ))
-                    .disabled(isLoadingMore)
-                    .padding(.vertical, theme.spacing.xl)
-                    .accessibilityIdentifier("notifications.loadOlderEmptyState")
-                }
-
-                ForEach(Array(filteredNotifications.enumerated()), id: \.element.id) {
-                    index, notification in
-                    let isNearBottom = filteredNotifications.count - index <= 3
-
-                    VStack(spacing: 0) {
-                        NotificationRow(
-                            notification: notification,
-                            onAvatarTap: {
-                                if let account = notification.presentationAccount {
-                                    router.navigate(to: .userProfile(account))
+                    LazyVStack(spacing: 0) {
+                        if viewModel.refreshFailed {
+                            HStack {
+                                Label(MoroL10n.Notifications.loadFailed, systemImage: "wifi.exclamationmark")
+                                    .font(theme.typography.caption)
+                                    .foregroundStyle(theme.colors.textSecondary)
+                                Spacer()
+                                Button(MoroL10n.Notifications.retryAction) {
+                                    Task { await refreshAndMarkRead() }
                                 }
-                            },
-                            onStatusTap: { status in
-                                let targetStatus = status.displayStatus
-                                Task {
-                                    await viewModel.traceAndWarmStatusDetailOpen(
-                                        for: targetStatus,
-                                        source: notification.kind == .quotedUpdate
-                                            ? "notification-quoted-update"
-                                            : "notification-main"
-                                    )
-                                }
-                                router.navigate(to: .statusDetail(targetStatus))
-                            },
-                            onAccountTap: {
-                                if let account = notification.presentationAccount {
-                                    router.navigate(to: .userProfile(account))
-                                }
-                            },
-                            onActorsTap: {
-                                actorsSheet = NotificationActorsSheetState(
-                                    id: notification.id,
-                                    title: actorsSheetTitle(for: notification),
-                                    accounts: notification.accounts
-                                )
-                            },
-                            onAcceptFollowRequest: {
-                                Task { await viewModel.acceptFollowRequest(notification) }
-                            },
-                            onRejectFollowRequest: {
-                                Task { await viewModel.rejectFollowRequest(notification) }
-                            },
-                            isAcceptingFollowRequest: viewModel.isAcceptingFollowRequest(id: notification.id),
-                            isRejectingFollowRequest: viewModel.isRejectingFollowRequest(id: notification.id)
-                        )
-                        .onAppear {
-                            let prefetchWindowSize = 8
-                            guard index < prefetchWindowSize else { return }
-                            guard let status = notification.status else { return }
-                            Task {
-                                await viewModel.prefetchStatusAndQuoteIfNeeded(for: status.displayStatus)
+                                .frame(minHeight: 44)
                             }
+                            .padding(.horizontal, theme.spacing.m)
+                            .accessibilityIdentifier("notifications.refreshRetry")
                         }
 
-                        if index < filteredNotifications.count - 1 {
-                            Rectangle()
-                                .fill(theme.colors.borderSubtle)
-                                .frame(height: 1)
+                        if filteredNotifications.isEmpty, viewModel.hasMore {
+                            EmptyStateView(spec: EmptyStateSpec(
+                                icon: "line.3.horizontal.decrease.circle",
+                                title: MoroL10n.Notifications.filteredEmptyTitle,
+                                message: MoroL10n.Notifications.moreAvailable,
+                                actionTitle: viewModel.loadMoreFailed
+                                    ? MoroL10n.Notifications.retryAction
+                                    : MoroL10n.Notifications.loadMore,
+                                action: { Task { await viewModel.loadMore() } }
+                            ))
+                            .disabled(isLoadingMore)
+                            .padding(.vertical, theme.spacing.xl)
+                            .accessibilityIdentifier("notifications.loadOlderEmptyState")
                         }
 
-                        if isNearBottom {
-                            Color.clear
-                                .frame(height: 1)
+                        ForEach(Array(filteredNotifications.enumerated()), id: \.element.id) {
+                            index, notification in
+                            let isNearBottom = filteredNotifications.count - index <= 3
+
+                            VStack(spacing: 0) {
+                                NotificationRow(
+                                    notification: notification,
+                                    onAvatarTap: {
+                                        if let account = notification.presentationAccount {
+                                            router.navigate(to: .userProfile(account))
+                                        }
+                                    },
+                                    onStatusTap: { status in
+                                        let targetStatus = status.displayStatus
+                                        Task {
+                                            await viewModel.traceAndWarmStatusDetailOpen(
+                                                for: targetStatus,
+                                                source: notification.kind == .quotedUpdate
+                                                    ? "notification-quoted-update"
+                                                    : "notification-main"
+                                            )
+                                        }
+                                        router.navigate(to: .statusDetail(targetStatus))
+                                    },
+                                    onAccountTap: {
+                                        if let account = notification.presentationAccount {
+                                            router.navigate(to: .userProfile(account))
+                                        }
+                                    },
+                                    onActorsTap: {
+                                        actorsSheet = NotificationActorsSheetState(
+                                            id: notification.id,
+                                            title: actorsSheetTitle(for: notification),
+                                            accounts: notification.accounts
+                                        )
+                                    },
+                                    onAcceptFollowRequest: {
+                                        Task { await viewModel.acceptFollowRequest(notification) }
+                                    },
+                                    onRejectFollowRequest: {
+                                        Task { await viewModel.rejectFollowRequest(notification) }
+                                    },
+                                    isAcceptingFollowRequest: viewModel.isAcceptingFollowRequest(id: notification.id),
+                                    isRejectingFollowRequest: viewModel.isRejectingFollowRequest(id: notification.id)
+                                )
                                 .onAppear {
-                                    Task { await viewModel.loadMore() }
+                                    let prefetchWindowSize = 8
+                                    guard index < prefetchWindowSize else { return }
+                                    guard let status = notification.status else { return }
+                                    Task {
+                                        await viewModel.prefetchStatusAndQuoteIfNeeded(for: status.displayStatus)
+                                    }
                                 }
-                        }
-                    }
-                    .id(notification.id)
-                }
 
-                PaginationFooter(
-                    isLoadingMore: isLoadingMore,
-                    didFail: viewModel.loadMoreFailed,
-                    onRetry: { Task { await viewModel.loadMore() } }
-                )
-                // Restored/grouped rows can already fill less than one screen
-                // while refresh is running. Resume when ready even if the tail
-                // never disappeared and therefore will not get another onAppear.
-                Color.clear.frame(height: 1)
-                    .onAppear {
-                        paginationFooterVisible = true
-                        loadMoreFromVisibleFooter()
+                                if index < filteredNotifications.count - 1 {
+                                    Rectangle()
+                                        .fill(theme.colors.borderSubtle)
+                                        .frame(height: 1)
+                                }
+
+                                if isNearBottom {
+                                    Color.clear
+                                        .frame(height: 1)
+                                        .onAppear {
+                                            Task { await viewModel.loadMore() }
+                                        }
+                                }
+                            }
+                            .id(notification.id)
+                        }
+
+                        PaginationFooter(
+                            isLoadingMore: isLoadingMore,
+                            didFail: viewModel.loadMoreFailed,
+                            onRetry: { Task { await viewModel.loadMore() } }
+                        )
+                        // Restored/grouped rows can already fill less than one screen
+                        // while refresh is running. Resume when ready even if the tail
+                        // never disappeared and therefore will not get another onAppear.
+                        Color.clear.frame(height: 1)
+                            .onAppear {
+                                paginationFooterVisible = true
+                                loadMoreFromVisibleFooter()
+                            }
+                            .onDisappear { paginationFooterVisible = false }
                     }
-                    .onDisappear { paginationFooterVisible = false }
+                    .scrollTargetLayout()
+                }
             }
-            .scrollTargetLayout()
-        }
-        .scrollPosition(id: $scrollPositionID, anchor: .top)
-        .refreshable {
-            await refreshAndMarkRead()
+            .scrollPosition(id: $scrollPositionID, anchor: .top)
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top <= 1
+            } action: { _, atTop in
+                isScrolledToTop = atTop
+            }
+            .refreshable {
+                await refreshAndMarkRead()
+            }
+            // Same as Home: re-tapping Inbox scrolls up, and at the top it refreshes.
+            .onTabReselect(.inbox) {
+                guard isActive else { return }
+                if !isScrolledToTop {
+                    withAnimation(.snappy) { proxy.scrollTo(Self.topAnchorID, anchor: .top) }
+                } else {
+                    MoroRefreshFeedback.armed()
+                    Task { await refreshAndMarkRead() }
+                }
+            }
         }
     }
 

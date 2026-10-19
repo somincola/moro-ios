@@ -23,7 +23,6 @@ struct TimelineHomeView: View {
     @Environment(\.moroSceneDescriptor) var sceneDescriptor
     @Environment(\.cacheManager) var cacheManager
     @Environment(\.appRouter) var router
-    @Environment(\.selectedTabScrollToTop) var selectedTabScrollToTop
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject var appState: AppState
     @StateObject var actionSurface = PostActionSurfaceCenter()
@@ -411,10 +410,7 @@ struct TimelineHomeView: View {
             pageSessionStore.prunePinnedSessions(keeping: validIDs)
             loadedPinnedTimelineIDs.formIntersection(validIDs)
         }
-        .onChange(of: selectedTabScrollToTop) { _, newValue in
-            // Handle tab tap scroll-to-top event
-            guard newValue == MainTab.home.hashValue else { return }
-
+        .onTabReselect(.home) {
             // Check if current timeline is at top
             let isAtTop = scrollBridge.isAtTop(selectedTimeline)
 

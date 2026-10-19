@@ -322,36 +322,61 @@ final class ProfileViewModel: ObservableObject {
         }
     }
     
-    func refresh() async {
+    /// Pull-to-refresh. Returns false when the refresh failed, so the page can say so.
+    ///
+    /// Relationship and pinned posts don't depend on the fresh account, so they load while
+    /// the account does; the tab page waits for the account (it decides which tabs exist).
+    @discardableResult
+    func refresh() async -> Bool {
         var refreshedTab = selectedTab
         var mediaRevision = mediaPreferenceRevision
         let generation = queryGeneration
         let tag = selectedFeaturedTag
         loadingState = .loading
+        // A newer query (tab, featured tag, media setting) owns the content from here on;
+        // the refresh itself still finished, so never leave the state stuck in `.loading`.
+        let finishSuperseded = { [weak self] in
+            guard let self, self.loadingState == .loading else { return }
+            self.loadingState = .loaded
+        }
         do {
+            async let relationshipLoad: Void = loadRelationship()
+            async let pinnedLoad: Void = fetchPinnedStatuses()
             let refreshedAccount = try await fetchLatestProfileAccount()
-            guard generation == queryGeneration else { return }
+            guard generation == queryGeneration else {
+                _ = await (relationshipLoad, pinnedLoad)
+                finishSuperseded()
+                return true
+            }
             account = refreshedAccount
             accountCache.set(refreshedAccount)
             if !availableTabs.contains(refreshedTab) { refreshedTab = .posts }
             mediaRevision = mediaPreferenceRevision
-            await loadRelationship()
-            guard generation == queryGeneration else { return }
-            await fetchPinnedStatuses()
             let page = try await fetchPage(for: refreshedTab, maxID: nil, tag: tag)
-            guard generation == queryGeneration else { return }
-            guard refreshedTab != .media || mediaRevision == mediaPreferenceRevision else { return }
+            _ = await (relationshipLoad, pinnedLoad)
+            guard generation == queryGeneration,
+                refreshedTab != .media || mediaRevision == mediaPreferenceRevision
+            else {
+                finishSuperseded()
+                return true
+            }
             replaceContent(with: page, for: refreshedTab)
             tabLoadStates[refreshedTab] = .loaded
             loadMoreFailedTabs.remove(refreshedTab)
             loadingState = .loaded
             await loadFeaturedTags()
+            return true
         } catch {
-            guard acceptsResponse(generation: generation, tab: refreshedTab, mediaRevision: mediaRevision) else { return }
+            guard acceptsResponse(generation: generation, tab: refreshedTab, mediaRevision: mediaRevision) else {
+                finishSuperseded()
+                return true
+            }
             if statuses(for: refreshedTab).isEmpty {
                 tabLoadStates[refreshedTab] = .error(error.localizedDescription)
             }
             loadingState = .error(error.localizedDescription)
+            // A cancelled request is not a failure the reader needs to hear about.
+            return (error as? APIError)?.shouldShowToUser == false
         }
     }
 

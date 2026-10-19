@@ -7,7 +7,14 @@
 
 import SwiftUI
 
-struct ProfileContentStream: View {
+/// Equatable on the view model only: the profile re-renders on every scroll frame (header
+/// stretch, sticky tabs), and without this the closure input made every row list re-diff
+/// per frame. Content changes still arrive through `@ObservedObject` and the environment.
+struct ProfileContentStream: View, Equatable {
+    nonisolated static func == (lhs: ProfileContentStream, rhs: ProfileContentStream) -> Bool {
+        MainActor.assumeIsolated { lhs.viewModel === rhs.viewModel }
+    }
+
     @Environment(\.moroTheme) private var theme
     @Environment(\.cacheManager) private var cacheManager
 

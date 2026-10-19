@@ -101,6 +101,8 @@ final class SearchCoreViewController: UIViewController {
     private let scopeMenuButton = SearchScopeMenuButton(type: .system)
     let tableView = UITableView(frame: .zero, style: .plain)
     let refreshControl = UIRefreshControl()
+    /// Highest Explore re-tap already handled; earlier events are never replayed.
+    private var handledTabReselection = 0
     private var scopeHeightConstraint: NSLayoutConstraint!
     let entryHost = UIHostingController(rootView: AnyView(EmptyView()))
 
@@ -1169,6 +1171,31 @@ final class SearchCoreViewController: UIViewController {
             loadDiscoveryIfNeeded(forceRefresh: true)
         } else {
             startSearch(reset: true)
+        }
+    }
+
+    // MARK: - Tab re-tap
+
+    func markTabReselectionSeen(_ event: TabReselection?) {
+        handledTabReselection = max(handledTabReselection, event?.sequence ?? 0)
+    }
+
+    /// Same as the other root tabs: away from the top, scroll up; at the top, refresh with
+    /// the visible system indicator. Ignored while the search field owns the screen.
+    func handleTabReselection(_ event: TabReselection?) {
+        guard let event, event.sequence > handledTabReselection else { return }
+        handledTabReselection = event.sequence
+        guard event.tab == .explore, interaction.page != .entry, viewIfLoaded?.window != nil else { return }
+
+        let topOffset = -tableView.adjustedContentInset.top
+        if tableView.contentOffset.y > topOffset + 1 {
+            tableView.setContentOffset(CGPoint(x: 0, y: topOffset), animated: true)
+        } else if !refreshControl.isRefreshing {
+            MoroRefreshFeedback.armed()
+            refreshControl.beginRefreshing()
+            tableView.setContentOffset(
+                CGPoint(x: 0, y: topOffset - refreshControl.frame.height), animated: true)
+            handlePullToRefresh()
         }
     }
 }
