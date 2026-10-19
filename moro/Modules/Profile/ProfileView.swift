@@ -50,6 +50,8 @@ struct ProfileView: View {
     private let pullRefreshIndicatorSize: CGFloat = 34
     // Used only before the native navigation bar has completed its first layout.
     @State private var navigationBarHeight: CGFloat = 44
+    /// The native bar's bottom edge in window coordinates, once measured.
+    @State private var navigationBarBottom: CGFloat?
 
     private var profileChromeProgress: CGFloat {
         chromeState.headerProgress(
@@ -202,7 +204,10 @@ struct ProfileView: View {
         .ignoresSafeArea(.container, edges: .top)
         .background(sceneCanvasColor)
         .background {
-            ProfileNavigationBarHeightReader(tint: UIColor(navigationForeground)) { navigationBarHeight = $0 }
+            ProfileNavigationBarHeightReader(tint: UIColor(navigationForeground)) { metrics in
+                navigationBarHeight = metrics.height
+                navigationBarBottom = metrics.bottom
+            }
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
@@ -377,8 +382,12 @@ struct ProfileView: View {
         max(geometryTopSafeInset, Self.activeKeyWindow?.safeAreaInsets.top ?? 0)
     }
 
+    /// Where the solid bar background, its hairline and the pinned tabs end: the native bar's
+    /// measured bottom. Safe area + bar height is only the first-layout fallback; on Dynamic
+    /// Island iPhones the bar starts above the safe-area top, so that sum left a strip below
+    /// the real bar (about 6 pt on iPhone 16 Pro).
     private func navigationChromeHeight(topSafeInset: CGFloat) -> CGFloat {
-        topSafeInset + navigationBarHeight
+        navigationBarBottom ?? (topSafeInset + navigationBarHeight)
     }
 
     @ViewBuilder

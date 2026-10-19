@@ -236,7 +236,9 @@ final class TimelineLiveUITests: XCTestCase {
     @MainActor private func launch(scheme: String, disableAnimations: Bool = true, testsGaps: Bool = false) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["UITEST_TIMELINE_LIVE", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = ["UITEST_TIMELINE_LIVE", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+            // A settings test that stops midway can leave the banner switched off on the device.
+            "-timelineInAppNewPostBannerEnabled", "YES"]
         if testsGaps { app.launchArguments.append("UITEST_TIMELINE_GAPS") }
         if disableAnimations { app.launchArguments.append("UITEST_DISABLE_ANIMATIONS") }
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"

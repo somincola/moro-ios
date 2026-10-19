@@ -28,7 +28,7 @@ final class ProfileExperienceUITests: XCTestCase {
             reveal(stat, in: app)
             XCTAssertEqual(stat.value as? String, "List hidden")
             stat.tap()
-            XCTAssertTrue(app.buttons["profile.moreButton"].isHittable)
+            XCTAssertTrue(app.buttons["profile.moreButton"].isReachable(in: app))
             XCTAssertFalse(app.navigationBars[title].exists)
             XCTAssertFalse(app.staticTexts["Connection Tester"].exists)
         }
@@ -159,7 +159,7 @@ final class ProfileExperienceUITests: XCTestCase {
         let sectionTop = posts.frame.minY - 22
         XCTAssertEqual(sectionTop, navigationBar.frame.maxY, accuracy: 1,
             "Pinned tabs must meet the native navigation bar without overlap or a gap.", file: file, line: line)
-        XCTAssertTrue(app.buttons["profile.moreButton"].isHittable, file: file, line: line)
+        XCTAssertTrue(app.buttons["profile.moreButton"].isReachable(in: app), file: file, line: line)
     }
 
     private func assertNavigationBackgroundIsOpaque(_ app: XCUIApplication,

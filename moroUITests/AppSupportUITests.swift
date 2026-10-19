@@ -36,7 +36,9 @@ final class AppSupportUITests: XCTestCase {
         expectation(for: enabled, evaluatedWith: clear)
         waitForExpectations(timeout: 10)
         attach(app, "storage-after-clear")
-        app.navigationBars.buttons["BackButton"].firstMatch.tap()
+        // The system back button no longer carries the "BackButton" identifier (its label is the
+        // previous page's title here); it is the bar's first button.
+        app.navigationBars.buttons.firstMatch.tap()
         XCTAssertTrue(app.buttons["settings.feedback"].exists)
     }
 
@@ -44,7 +46,7 @@ final class AppSupportUITests: XCTestCase {
         let app = launch(chinese: true, dark: true, large: true)
         defer { app.terminate() }
         app.swipeUp()
-        XCTAssertTrue(app.buttons["profile.moreButton"].isHittable)
+        XCTAssertTrue(app.buttons["profile.moreButton"].isReachable(in: app))
         XCTAssertFalse(app.buttons["profile.settingsAvatar"].exists)
         openSettings(app)
         let feedback = reveal("settings.feedback", in: app)

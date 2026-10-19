@@ -152,7 +152,9 @@ final class TimelineSwitchingUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_TIMELINE_LIVE", "UITEST_TIMELINE_SWITCHING",
-            "UITEST_DISABLE_ANIMATIONS", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+            "UITEST_DISABLE_ANIMATIONS", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+            // A settings test that stops midway can leave the banner switched off on the device.
+            "-timelineInAppNewPostBannerEnabled", "YES"]
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_DISABLE_ANIMATIONS"] = "1"
         app.launchEnvironment["UITEST_TIMELINE_CONTROL_SOURCE"] = controlSource
