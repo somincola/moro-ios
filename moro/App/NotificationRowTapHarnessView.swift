@@ -5,6 +5,7 @@
 //  Dedicated UI test harness for effective notification status routing.
 //
 
+#if DEBUG
 import SwiftUI
 
 struct NotificationRowTapHarnessView: View {
@@ -161,3 +162,4 @@ struct NotificationRowTapHarnessView: View {
         )
     }
 }
+#endif
