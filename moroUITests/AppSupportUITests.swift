@@ -63,7 +63,7 @@ final class AppSupportUITests: XCTestCase {
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = dark ? "dark" : "light"
         if large { app.launchEnvironment["UITEST_DYNAMIC_TYPE_SIZE"] = "accessibilityXXXL" }
-        app.launch()
+        app.launch(isolatedFor: self)
         XCTAssertTrue(app.buttons["profile.moreButton"].waitForExistence(timeout: 12))
         return app
     }

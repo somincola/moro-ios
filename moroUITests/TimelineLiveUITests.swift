@@ -243,7 +243,7 @@ final class TimelineLiveUITests: XCTestCase {
         if disableAnimations { app.launchArguments.append("UITEST_DISABLE_ANIMATIONS") }
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = scheme
-        app.launch()
+        app.launch(isolatedFor: self)
         return app
     }
 

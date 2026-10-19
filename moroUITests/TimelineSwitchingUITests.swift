@@ -158,7 +158,7 @@ final class TimelineSwitchingUITests: XCTestCase {
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_DISABLE_ANIMATIONS"] = "1"
         app.launchEnvironment["UITEST_TIMELINE_CONTROL_SOURCE"] = controlSource
-        app.launch()
+        app.launch(isolatedFor: self)
         XCTAssertTrue(post(1060, in: app).waitForExistence(timeout: 15))
         return app
     }

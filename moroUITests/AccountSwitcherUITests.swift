@@ -87,7 +87,7 @@ final class AccountSwitcherUITests: XCTestCase {
         app.launchEnvironment["UITEST_PUSH_SCENARIO"] = "inbox"
         app.launchEnvironment["UITEST_SWITCHER_ACCOUNTS"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = dark ? "dark" : "light"
-        app.launch()
+        app.launch(isolatedFor: self)
         return app
     }
 

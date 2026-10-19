@@ -10,7 +10,7 @@ final class ComposeReadingUITests: XCTestCase {
         app.launchArguments = ["UITEST_COMPOSE_READING", "UITEST_DISABLE_ANIMATIONS", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = scheme
-        app.launch()
+        app.launch(isolatedFor: self)
         defer { app.terminate() }
         let editor = app.textViews["compose.textInput"]
         XCTAssertTrue(editor.waitForExistence(timeout: 10))

@@ -15,7 +15,7 @@ final class OnboardingUITests: XCTestCase {
             "UITEST_ONBOARDING_VARIANT": variant,
             "UITEST_COLOR_SCHEME": "dark",
         ]) { $1 }
-        app.launch()
+        app.launch(isolatedFor: self)
         return app
     }
 

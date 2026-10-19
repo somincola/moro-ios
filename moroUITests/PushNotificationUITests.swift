@@ -116,7 +116,7 @@ final class PushNotificationUITests: XCTestCase {
 
         app.launchEnvironment["UITEST_PRESERVE_NOTIFICATION_SNAPSHOT"] = "1"
         app.launchEnvironment["UITEST_NOTIFICATIONS_OFFLINE"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
         app.buttons["mainTab.inbox"].tap()
         XCTAssertTrue(text("Recent activity 330", in: app).waitForExistence(timeout: 5),
             "A cold offline launch must restore notification content after clearing disposable caches")
@@ -128,7 +128,7 @@ final class PushNotificationUITests: XCTestCase {
 
         app.launchEnvironment.removeValue(forKey: "UITEST_NOTIFICATIONS_OFFLINE")
         app.launchEnvironment["UITEST_NOTIFICATIONS_UPDATED"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
         app.buttons["mainTab.inbox"].tap()
         XCTAssertTrue(text("New activity after restart", in: app).waitForExistence(timeout: 5),
             "Restoring a snapshot must also trigger one automatic network refresh")
@@ -191,7 +191,7 @@ final class PushNotificationUITests: XCTestCase {
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_PUSH_SCENARIO"] = scenario
         app.launchEnvironment.merge(environment) { _, new in new }
-        app.launch()
+        app.launch(isolatedFor: self)
         return app
     }
 

@@ -9,7 +9,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
             let app = XCUIApplication()
             app.launchArguments = ["APP_STORE_SCREENSHOTS", "LOCALIZATION_AUDIT", "UITEST_DISABLE_ANIMATIONS", "-AppleLanguages", "(\(locale))"]
             app.launchEnvironment = ["UITEST_USE_FULL_APP": "1", "UITEST_COLOR_SCHEME": "light"]
-            app.launch()
+            app.launch(isolatedFor: self)
             XCTAssertTrue(app.buttons["home.composeButton"].waitForExistence(timeout: 20))
             let expand = app.buttons[chinese ? "展开内容" : "Show more"].firstMatch
             if !expand.isHittable { app.swipeUp() }
@@ -37,14 +37,14 @@ final class AppStoreScreenshotUITests: XCTestCase {
             let app = XCUIApplication()
             app.launchArguments = ["APP_STORE_SCREENSHOTS", "UITEST_DISABLE_ANIMATIONS", "-AppleLanguages", "(\(locale))"]
             app.launchEnvironment = ["UITEST_USE_FULL_APP": "1", "UITEST_COLOR_SCHEME": "light"]
-            app.launch()
+            app.launch(isolatedFor: self)
             XCTAssertTrue(app.buttons["home.composeButton"].waitForExistence(timeout: 20))
             let more = app.buttons.matching(identifier: chinese ? "更多" : "More")
             XCTAssertTrue(more.firstMatch.waitForExistence(timeout: 10))
             for index in 0...1 {
                 if index == 1 {
                     app.terminate()
-                    app.launch()
+                    app.launch(isolatedFor: self)
                     XCTAssertTrue(app.buttons["home.composeButton"].waitForExistence(timeout: 20))
                 }
                 let trigger = app.buttons.matching(NSPredicate(
@@ -82,7 +82,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
             let app = XCUIApplication()
             app.launchArguments = ["APP_STORE_SCREENSHOTS", "UITEST_DISABLE_ANIMATIONS", "-AppleLanguages", "(\(locale))", "-AppleLocale", locale.replacingOccurrences(of: "-", with: "_")]
             app.launchEnvironment = ["UITEST_USE_FULL_APP": "1", "UITEST_COLOR_SCHEME": "light"]
-            app.launch()
+            app.launch(isolatedFor: self)
             XCTAssertTrue(app.buttons["home.composeButton"].waitForExistence(timeout: 20))
             XCTAssertTrue(app.staticTexts["Alex Rivers"].firstMatch.waitForExistence(timeout: 10))
             if ProcessInfo.processInfo.environment["SCREENSHOT_COMPOSE_ONLY"] == "1" {
@@ -111,7 +111,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
             app.terminate()
 
             app.launchEnvironment["UITEST_COLOR_SCHEME"] = "dark"
-            app.launch()
+            app.launch(isolatedFor: self)
             XCTAssertTrue(app.buttons["home.composeButton"].waitForExistence(timeout: 20))
             XCTAssertTrue(app.staticTexts["Alex Rivers"].firstMatch.waitForExistence(timeout: 10))
             capture(app, locale, "06-dark")

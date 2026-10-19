@@ -11,7 +11,7 @@ final class BookmarkReadingUITests: XCTestCase {
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = scheme
         app.launchEnvironment["UITEST_BOOKMARK_RESET"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
         defer { app.terminate() }
         let first = app.buttons["bookmarks.actions.b1"]
         XCTAssertTrue(first.waitForExistence(timeout: 10), app.debugDescription)
@@ -49,7 +49,7 @@ final class BookmarkReadingUITests: XCTestCase {
         app.terminate()
         app.launchEnvironment["UITEST_BOOKMARK_RESET"] = "0"
         app.launchEnvironment["UITEST_BOOKMARK_OFFLINE"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
         XCTAssertTrue(app.buttons["bookmarks.retry"].waitForExistence(timeout: 10))
         filter("read", app: app)
         XCTAssertTrue(first.waitForExistence(timeout: 5))
