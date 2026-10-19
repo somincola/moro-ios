@@ -173,6 +173,18 @@ extension APIError {
         }
     }
 
+    /// 403 from the server: the account state blocks the request, the token is still valid.
+    var isAccountStateRestriction: Bool {
+        switch self {
+        case .http(let statusCode, _):
+            return statusCode == 403
+        case .serverError(let serverError):
+            return serverError.isAccountStateRestriction
+        default:
+            return false
+        }
+    }
+
     /// Whether this error should be shown to the user
     var shouldShowToUser: Bool {
         switch self {
@@ -190,6 +202,10 @@ extension APIError {
             return statusCode
         case .serverError(let serverError):
             return serverError.httpCode
+        case .authenticationRequired:
+            return 401
+        case .rateLimited:
+            return 429
         default:
             return nil
         }

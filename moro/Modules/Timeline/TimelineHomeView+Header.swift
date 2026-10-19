@@ -136,10 +136,7 @@ extension TimelineHomeView {
             // Stage 1: Bootstrap stream after first paint cooldown.
             try? await Task.sleep(nanoseconds: startupStreamDelayNanoseconds)
             guard !Task.isCancelled, scenePhase == .active else { return }
-            if let token = appState.authToken {
-                streamWatcher.configure(baseURL: AppEnvironment.apiBaseURL, accessToken: token)
-                streamWatcher.addStream(.user)
-            }
+            streamWatcher.ensureUserSession(accessToken: appState.authToken)
 
             // Stage 2: Sync marker later; if user is actively scrolling, back off once more.
             try? await Task.sleep(nanoseconds: startupMarkerDelayAfterStreamNanoseconds)

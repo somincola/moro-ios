@@ -432,13 +432,7 @@ struct TimelineHomeView: View {
                 guard hasLoadedHome else { return }
                 refreshAnnouncementBadge(initialDelay: false)
                 detectionManager.startDetection()
-                if let token = appState.authToken {
-                    streamWatcher.configure(
-                        baseURL: AppEnvironment.apiBaseURL,
-                        accessToken: token
-                    )
-                    streamWatcher.addStream(.user)
-                }
+                streamWatcher.ensureUserSession(accessToken: appState.authToken)
 
                 let inactiveAt = lastInactiveAt
                 lastInactiveAt = nil

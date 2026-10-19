@@ -186,6 +186,8 @@ struct MainTabView: View {
             consumePendingWidgetHandoffIfNeeded()
             consumePendingSharedDraftIfNeeded()
             ensureInboxStreamSubscription()
+            // The socket may have died or given up while suspended; don't wait out a backoff.
+            StreamWatcher.shared.ensureConnected(skipBackoff: true)
             Task {
                 async let instanceMetadataRefresh: Void = refreshInstanceMetadataIfNeeded()
                 async let notificationRefresh: Void = notificationUnreadStore.reconcileActiveCount()
@@ -425,11 +427,7 @@ struct MainTabView: View {
     }
 
     private func ensureInboxStreamSubscription() {
-        guard let token = appState.authToken else { return }
-        let streamWatcher = StreamWatcher.shared
-        streamWatcher.configure(baseURL: AppEnvironment.apiBaseURL, accessToken: token)
-        streamWatcher.addStream(.user)
-        streamWatcher.addStream(.direct)
+        StreamWatcher.shared.ensureUserSession(accessToken: appState.authToken)
     }
 
 }

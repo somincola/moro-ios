@@ -122,9 +122,10 @@ final class StreamWatcher {
 
     // Reconnection configuration
     private var reconnectAttempts = 0
-    private let maxReconnectAttempts = 5
-    private let baseReconnectDelay: TimeInterval = 2.0
+    private let maxReconnectAttempts: Int
+    private let baseReconnectDelay: TimeInterval
     private var reconnectTask: Task<Void, Never>?
+    @ObservationIgnored private var networkSubscription: AnyCancellable?
 
     // Keep-alive ping
     private var pingTask: Task<Void, Never>?
@@ -140,7 +141,42 @@ final class StreamWatcher {
 
     // MARK: - Initialization
 
-    private init() {}
+    init(
+        maxReconnectAttempts: Int = 5,
+        baseReconnectDelay: TimeInterval = 2.0,
+        observesNetworkRecovery: Bool = true
+    ) {
+        self.maxReconnectAttempts = maxReconnectAttempts
+        self.baseReconnectDelay = baseReconnectDelay
+        guard observesNetworkRecovery else { return }
+        // Backoff gives up after ~1 minute offline. When the path comes back, revive the
+        // socket right away instead of waiting for the next screen to ask for a stream.
+        networkSubscription = NetworkMonitor.shared.$isConnected
+            .removeDuplicates()
+            .dropFirst()
+            .filter { $0 }
+            .sink { [weak self] _ in
+                self?.ensureConnected(skipBackoff: true)
+            }
+    }
+
+    /// Brings a watched socket back after it gave up (`.failed`) or was dropped.
+    ///
+    /// Cheap and idempotent: a connected or connecting socket is left alone. A socket waiting
+    /// out its backoff is reconnected now only with `skipBackoff` (foreground, network back).
+    func ensureConnected(skipBackoff: Bool = false) {
+        guard !watchedStreams.isEmpty, baseURL != nil, accessToken != nil else { return }
+        switch connectionState {
+        case .connected, .connecting:
+            return
+        case .reconnecting:
+            guard skipBackoff else { return }
+        case .disconnected, .failed:
+            break
+        }
+        reconnectAttempts = 0
+        connect()
+    }
 
     // MARK: - Public Methods
 
@@ -204,7 +240,12 @@ final class StreamWatcher {
     /// - Parameter stream: Stream to add
     func addStream(_ stream: Stream) {
         let inserted = watchedStreams.insert(stream).inserted
-        guard inserted else { return }
+        guard inserted else {
+            // Already wanted: asking again means "make sure it is live". Without this a socket
+            // that exhausted its retries stayed `.failed` until the app restarted.
+            ensureConnected()
+            return
+        }
 
         switch connectionState {
         case .connected:
@@ -735,9 +776,14 @@ final class StreamWatcher {
 
 extension StreamWatcher {
     /// Quick setup for typical user session (user stream + direct messages)
-    func startUserSession(baseURL: URL, accessToken: String) {
-        configure(baseURL: baseURL, accessToken: accessToken)
-        watch(streams: [.user, .direct])
+    /// The account-wide streams every signed-in screen relies on: home updates and
+    /// notifications (`user`) plus direct messages. The single entry point for screens,
+    /// so none of them configures its own subset or replaces another screen's streams.
+    func ensureUserSession(accessToken: String?) {
+        guard let accessToken else { return }
+        configure(baseURL: AppEnvironment.apiBaseURL, accessToken: accessToken)
+        addStream(.user)
+        addStream(.direct)
     }
 
     /// Add timeline stream based on filter

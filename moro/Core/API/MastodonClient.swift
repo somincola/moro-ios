@@ -17,7 +17,9 @@ struct MastodonClient: MastodonAPI {
         qos: .userInitiated,
         attributes: .concurrent
     )
-    private static let heavyDecodePayloadThreshold = 64 * 1024  // 64 KB
+    /// Above this size a response decodes off the main thread. Profile pages, thread
+    /// contexts and notification pages routinely land between 16 and 64 KB.
+    private static let heavyDecodePayloadThreshold = 16 * 1024  // 16 KB
     private static let apiDateDecodingStrategy: JSONDecoder.DateDecodingStrategy = .custom {
         decoder in
         let container = try decoder.singleValueContainer()
@@ -1487,34 +1489,17 @@ struct MastodonClient: MastodonAPI {
                 duration: Date().timeIntervalSince(startTime))
 
             guard 200..<300 ~= httpResponse.statusCode else {
-                // Try to parse server error response
-                if let serverError = try? parseServerError(
-                    from: data, httpCode: httpResponse.statusCode)
-                {
-                    throw APIError.serverError(serverError)
-                }
-
-                // Check for specific HTTP status codes
-                switch httpResponse.statusCode {
-                case 401:
-                    throw APIError.authenticationRequired
-                case 429:
-                    let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After")
-                        .flatMap { TimeInterval($0) }
-                    throw APIError.rateLimited(retryAfter: retryAfter)
-                default:
-                    #if DEBUG
-                        if logger.configuration.logDiagnostics,
-                            let responseString = String(data: data, encoding: .utf8)
-                        {
-                            AppLogger.debug(
-                                "API Error Response (\(httpResponse.statusCode)): \(responseString)",
-                                enabled: logger.configuration.logDiagnostics
-                            )
-                        }
-                    #endif
-                    throw APIError.http(statusCode: httpResponse.statusCode, data: data)
-                }
+                #if DEBUG
+                    if logger.configuration.logDiagnostics,
+                        let responseString = String(data: data, encoding: .utf8)
+                    {
+                        AppLogger.debug(
+                            "API Error Response (\(httpResponse.statusCode)): \(responseString)",
+                            enabled: logger.configuration.logDiagnostics
+                        )
+                    }
+                #endif
+                throw Self.httpFailure(for: httpResponse, data: data)
             }
 
             do {
@@ -1580,23 +1565,64 @@ struct MastodonClient: MastodonAPI {
                 #endif
                 throw APIError.decoding(decodingError)
             }
-        } catch let error as APIError {
-            throw error
-        } catch let error as URLError {
-            // Classify URLSession errors
-            switch error.code {
-            case .cancelled:
-                throw APIError.cancelled
-            case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
-                throw APIError.networkUnavailable
-            case .timedOut:
-                throw APIError.timeout
-            default:
-                throw APIError.underlying(error)
-            }
         } catch {
-            throw APIError.underlying(error)
+            throw Self.transportFailure(error)
         }
+    }
+
+    // MARK: - Error classification (shared by every request path)
+
+    /// Status first, then the server's own wording: 429 always carries its retry delay, a
+    /// JSON body keeps the server message (with `httpCode`), and a bare 401 still reads as an
+    /// authentication failure.
+    static func httpFailure(for response: HTTPURLResponse, data: Data) -> APIError {
+        let statusCode = response.statusCode
+        if statusCode == 429 {
+            return .rateLimited(retryAfter: retryDelay(from: response))
+        }
+        if let serverError = parseServerError(from: data, httpCode: statusCode) {
+            return .serverError(serverError)
+        }
+        if statusCode == 401 {
+            return .authenticationRequired
+        }
+        return .http(statusCode: statusCode, data: data)
+    }
+
+    static func transportFailure(_ error: Error) -> APIError {
+        if let apiError = error as? APIError { return apiError }
+        if error is CancellationError { return .cancelled }
+        guard let urlError = error as? URLError else { return .underlying(error) }
+        switch urlError.code {
+        case .cancelled:
+            return .cancelled
+        case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
+            return .networkUnavailable
+        case .timedOut:
+            return .timeout
+        default:
+            return .underlying(urlError)
+        }
+    }
+
+    /// `Retry-After` (seconds or HTTP date), else Mastodon's `X-RateLimit-Reset` (ISO 8601).
+    static func retryDelay(from response: HTTPURLResponse, now: Date = Date()) -> TimeInterval? {
+        if let value = response.value(forHTTPHeaderField: "Retry-After")?
+            .trimmingCharacters(in: .whitespaces)
+        {
+            if let seconds = TimeInterval(value) { return max(0, seconds) }
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(identifier: "GMT")
+            formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+            if let date = formatter.date(from: value) { return max(0, date.timeIntervalSince(now)) }
+        }
+        if let reset = response.value(forHTTPHeaderField: "X-RateLimit-Reset"),
+            let date = DateFormatting.parseISO8601(reset)
+        {
+            return max(0, date.timeIntervalSince(now))
+        }
+        return nil
     }
 
     private func shouldDecodeOffMain(for request: URLRequest, payloadSize: Int) -> Bool {
@@ -1631,17 +1657,21 @@ struct MastodonClient: MastodonAPI {
         }
     }
 
-    /// Parse server error from response data
-    private func parseServerError(from data: Data, httpCode: Int) throws -> MastodonServerError {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        var serverError = try decoder.decode(MastodonServerError.self, from: data)
+    /// Mastodon's `{"error": "...", "error_description": "..."}` body, or nil for any other body.
+    private static func parseServerError(from data: Data, httpCode: Int) -> MastodonServerError? {
+        // MastodonServerError maps `error_description` explicitly; a snake-case strategy would
+        // rename the key first and silently drop the description.
+        guard var serverError = try? JSONDecoder().decode(MastodonServerError.self, from: data) else {
+            return nil
+        }
         serverError.httpCode = httpCode
         return serverError
     }
 
     /// Perform a request and ignore the response body (for delete operations)
     private func performIgnoringResponse(_ request: URLRequest) async throws {
+        logger.logRequest(request)
+        let startTime = Date()
         do {
             let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
@@ -1650,15 +1680,16 @@ struct MastodonClient: MastodonAPI {
                         domain: "MastodonClient", code: -1,
                         userInfo: [NSLocalizedDescriptionKey: MoroL10n.AppError.decoding]))
             }
+            logger.logResponse(
+                httpResponse, data: data, for: request,
+                duration: Date().timeIntervalSince(startTime))
 
             guard (200..<300).contains(httpResponse.statusCode) else {
-                throw APIError.http(statusCode: httpResponse.statusCode, data: data)
+                throw Self.httpFailure(for: httpResponse, data: data)
             }
             // Success - ignore response body
-        } catch let error as APIError {
-            throw error
         } catch {
-            throw APIError.underlying(error)
+            throw Self.transportFailure(error)
         }
     }
 }

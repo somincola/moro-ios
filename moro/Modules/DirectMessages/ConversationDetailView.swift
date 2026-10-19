@@ -404,14 +404,7 @@ struct ConversationDetailView: View {
     }
 
     private func ensureDirectStreamSubscription() {
-        if streamWatcher.hasActiveConnection {
-            streamWatcher.addStream(.direct)
-            return
-        }
-
-        guard let token = appState.authToken else { return }
-        streamWatcher.configure(baseURL: AppEnvironment.apiBaseURL, accessToken: token)
-        streamWatcher.watch(streams: [.user, .direct])
+        streamWatcher.ensureUserSession(accessToken: appState.authToken)
     }
 
     private func sendDraftMessage(proxy: ScrollViewProxy, retryFailed: Bool) {
