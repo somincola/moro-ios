@@ -22,15 +22,15 @@ final class StorageManagementStore: ObservableObject {
         SDImageCache.shared.config.maxDiskSize = 256 * 1_024 * 1_024
         SDImageCache.shared.config.maxDiskAge = 7 * 86_400
         SDImageCache.shared.deleteOldFiles { }
+        ImageCache.removeLegacyDiskCache()
     }
 
     func refresh() async {
-        let images = await ImageCache.shared.diskSize()
         let media: UInt = await withCheckedContinuation { continuation in
             SDImageCache.shared.calculateSize { _, size in continuation.resume(returning: size) }
         }
         let timelines = await CacheManager.shared.timelineCache.contentDiskSize()
-        usage = Usage(images: images + Int64(media), timelines: timelines, responses: Int64(URLCache.shared.currentDiskUsage))
+        usage = Usage(images: Int64(media), timelines: timelines, responses: Int64(URLCache.shared.currentDiskUsage))
     }
 
     func clear() async {
@@ -47,7 +47,6 @@ final class StorageManagementStore: ObservableObject {
         await withCheckedContinuation { continuation in
             SDImageCache.shared.clearDisk { continuation.resume() }
         }
-        do { try await ImageCache.shared.clearAllAndWait() } catch { failed = true }
         do { try await CacheManager.shared.timelineCache.clearContentCache() } catch { failed = true }
         URLCache.shared.removeAllCachedResponses()
         await refresh()

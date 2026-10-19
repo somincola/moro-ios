@@ -5,6 +5,7 @@
 //  Deterministic UI-test harness for attachment identity and repeated deletion.
 //
 
+#if DEBUG
 import SwiftUI
 
 struct ComposeMediaGridHarnessView: View {
@@ -54,3 +55,4 @@ struct ComposeMediaGridHarnessView: View {
         }
     }
 }
+#endif

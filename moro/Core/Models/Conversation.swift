@@ -7,14 +7,14 @@
 
 import Foundation
 
-struct Conversation: Identifiable, Codable, Hashable {
+nonisolated struct Conversation: Identifiable, Codable, Hashable {
     let id: String
     let unread: Bool
     let accounts: [Account]
     let lastStatus: Status?
     let updatedAt: Date?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case id
         case unread
         case accounts
@@ -52,13 +52,13 @@ struct Conversation: Identifiable, Codable, Hashable {
     }
 }
 
-struct ConversationsPage {
+nonisolated struct ConversationsPage {
     let conversations: [Conversation]
     /// Opaque cursor from the response Link header. Conversation entity IDs are not pagination cursors.
     let nextMaxID: String?
 }
 
-extension Conversation {
+nonisolated extension Conversation {
     var isDraft: Bool {
         id.hasPrefix("draft:")
     }

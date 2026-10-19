@@ -243,6 +243,7 @@ final class AccountSessionStore {
 
         try keychain.save(token, forKey: Keys.legacyAccessToken)
         try keychain.save(instanceURL.absoluteString, forKey: Keys.legacyInstanceURL)
+        AppEnvironment.invalidateInstanceURL()
 
         bootstrapStore.save(
             payload: ActiveAccountSessionPayload(
@@ -283,6 +284,7 @@ final class AccountSessionStore {
             userDefaults.removeObject(forKey: Keys.activeSessionID)
             try? keychain.delete(forKey: Keys.legacyAccessToken)
             try? keychain.delete(forKey: Keys.legacyInstanceURL)
+            AppEnvironment.invalidateInstanceURL()
             bootstrapStore.clear()
         }
     }
@@ -299,6 +301,7 @@ final class AccountSessionStore {
         userDefaults.removeObject(forKey: Keys.activeSessionID)
         try? keychain.delete(forKey: Keys.legacyAccessToken)
         try? keychain.delete(forKey: Keys.legacyInstanceURL)
+        AppEnvironment.invalidateInstanceURL()
         bootstrapStore.clear()
     }
 

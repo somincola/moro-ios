@@ -40,6 +40,7 @@ struct ProfileView: View {
     @StateObject private var postMenuActionCenter: PostMenuActionCenter
 
     @State private var chromeState = ProfileChromeState()
+    @State private var scrollPosition = ScrollPosition(edge: .top)
     @State private var actionPresentation = ProfileActionPresentationState()
     @StateObject private var actionSurface = PostActionSurfaceCenter()
 
@@ -85,20 +86,16 @@ struct ProfileView: View {
         account: Account?,
         accountID: String? = nil,
         onLogout: @escaping () -> Void,
-        apiClient: MastodonAPI? = nil
+        apiClient: MastodonAPI
     ) {
         self.account = account
         self.accountID = accountID
         self.onLogout = onLogout
 
         let resolvedAccountID = accountID ?? account?.id ?? ""
-        let resolvedClient =
-            apiClient
-            ?? {
-                let state = AppState()
-                let interceptor = AuthInterceptor(tokenProvider: state)
-                return MastodonClient(authInterceptor: interceptor)
-            }()
+        // Required: a fallback client built here had no token, so every request on the
+        // page failed silently.
+        let resolvedClient = apiClient
 
         self.apiClient = resolvedClient
         _postMenuActionCenter = StateObject(
@@ -157,10 +154,12 @@ struct ProfileView: View {
                             apiClient: apiClient,
                             postActions: postActions
                         )
+                            .equatable()
                             .frame(minHeight: chromeLayout.pinnedContentHeight, alignment: .top)
                             .background(theme.colors.surfaceBase)
                     }
                 }
+                .scrollPosition($scrollPosition)
                 .scrollIndicators(.hidden)
                 .scrollBounceBehavior(.always, axes: .vertical)
                 .ignoresSafeArea(.container, edges: .top)
@@ -248,6 +247,15 @@ struct ProfileView: View {
         .onChange(of: currentAccountSyncKey) { _, _ in
             syncCurrentUserProfileFromAppState()
         }
+        // Only the Me tab's root profile receives re-tap events (pushed profiles don't).
+        .onTabReselect(.me) {
+            if chromeState.scrollOffset > 1 {
+                withAnimation(.snappy) { scrollPosition.scrollTo(edge: .top) }
+            } else if chromeState.beginRefresh() {
+                MoroRefreshFeedback.armed()
+                runRefresh()
+            }
+        }
         .profileActionPresentations(
             presentation: $actionPresentation,
             actionSurface: actionSurface,
@@ -294,8 +302,13 @@ struct ProfileView: View {
     }
 
     private func refreshProfileData() async {
-        await viewModel.refresh()
+        _ = await refreshProfileDataReportingResult()
+    }
+
+    private func refreshProfileDataReportingResult() async -> Bool {
+        let succeeded = await viewModel.refresh()
         syncAppStateFromCurrentProfileIfNeeded()
+        return succeeded
     }
 
     private func updateScrollState(_ scrolled: CGFloat) {
@@ -304,18 +317,23 @@ struct ProfileView: View {
             pullRefreshThreshold: pullRefreshVisualThreshold
         )
         if didArm {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            MoroRefreshFeedback.armed(.light)
         }
     }
 
     private func startPullRefreshIfNeeded() {
         guard chromeState.beginRefreshIfArmed() else { return }
+        MoroRefreshFeedback.armed()
+        runRefresh()
+    }
 
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-
+    /// Shared by pull and tab re-tap: same result feedback as Home, then the spinner stays
+    /// up for at least `refreshFeedbackMinimumDuration` so a fast answer doesn't flicker.
+    private func runRefresh() {
         Task { @MainActor in
             let started = Date()
-            await refreshProfileData()
+            let succeeded = await refreshProfileDataReportingResult()
+            MoroRefreshFeedback.deliver(succeeded ? .succeeded : .failed)
 
             let remaining = refreshFeedbackMinimumDuration - Date().timeIntervalSince(started)
             if remaining > 0 {
@@ -398,10 +416,11 @@ struct ProfileView: View {
         )
 
         if chromeState.pullDistance > 6 || chromeState.isRefreshing {
-            ProfilePullRefreshSpinner(
+            MoroPetalSpinner(
                 progress: chromeState.isRefreshing ? 1 : progress,
-                isRefreshing: chromeState.isRefreshing,
-                color: .white
+                isAnimating: chromeState.isRefreshing,
+                style: .profile,
+                tint: .fading(.white)
             )
                 .frame(width: pullRefreshIndicatorSize, height: pullRefreshIndicatorSize)
                 .background(.black.opacity(0.12), in: Circle())
@@ -1127,7 +1146,11 @@ struct ProfileView: View {
     let state = AppState()
     state.currentAccount = sampleAccount
 
-    return ProfileView(account: sampleAccount, onLogout: {})
+    return ProfileView(
+        account: sampleAccount,
+        onLogout: {},
+        apiClient: MastodonClient(authInterceptor: AuthInterceptor(tokenProvider: state))
+    )
         .environmentObject(state)
         .moroTheme(MoroTheme())
 }

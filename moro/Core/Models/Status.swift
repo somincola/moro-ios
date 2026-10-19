@@ -11,7 +11,7 @@ import Foundation
 // Modeled as an `indirect enum` rather than a `final class`: the class form crashes the
 // Swift -O optimizer (EarlyPerfInliner on the generic deinit, Xcode 26.5) during the Release
 // archive. `.value` is only ever read here, so value semantics is equivalent.
-enum Indirect<T> {
+nonisolated enum Indirect<T> {
     indirect case wrapped(T)
 
     nonisolated init(_ value: T) {
@@ -30,7 +30,7 @@ enum Indirect<T> {
     }
 }
 
-extension Indirect: Codable where T: Codable {
+nonisolated extension Indirect: Codable where T: Codable {
     init(from decoder: Decoder) throws {
         self.init(try T(from: decoder))
     }
@@ -40,16 +40,16 @@ extension Indirect: Codable where T: Codable {
     }
 }
 
-extension Indirect: Equatable where T: Equatable {
+nonisolated extension Indirect: Equatable where T: Equatable {
     static func == (lhs: Indirect<T>, rhs: Indirect<T>) -> Bool {
         return lhs.value == rhs.value
     }
 }
 
-struct Status: Identifiable, Codable, Hashable {
+nonisolated struct Status: Identifiable, Codable, Hashable {
     /// Authorization state for a Mastodon quote placeholder.
     /// Unknown server values are intentionally treated as unauthorized.
-    enum QuoteState: String, Codable {
+    nonisolated enum QuoteState: String, Codable {
         case pending
         case accepted
         case rejected
@@ -73,7 +73,7 @@ struct Status: Identifiable, Codable, Hashable {
 
     /// Mastodon 4.4+ quote entity. A status is displayable only after consent
     /// has been accepted, even when a server happens to include it otherwise.
-    struct Quote: Codable {
+    nonisolated struct Quote: Codable {
         let state: QuoteState
         private let wrappedStatus: Indirect<Status>?
 
@@ -91,7 +91,7 @@ struct Status: Identifiable, Codable, Hashable {
             wrappedStatus = quotedStatus.map(Indirect.init)
         }
 
-        private enum CodingKeys: String, CodingKey {
+        nonisolated private enum CodingKeys: String, CodingKey {
             case state
             case quotedStatus = "quoted_status"
         }
@@ -130,7 +130,7 @@ struct Status: Identifiable, Codable, Hashable {
         hasher.combine(id)
     }
     
-    struct Attachment: Identifiable, Codable {
+    nonisolated struct Attachment: Identifiable, Codable {
         let id: String
         let type: String
         let url: URL
@@ -139,18 +139,18 @@ struct Status: Identifiable, Codable, Hashable {
         let blurhash: String?
         let meta: AttachmentMeta?
         
-        struct AttachmentMeta: Codable {
+        nonisolated struct AttachmentMeta: Codable {
             let original: MediaSize?
             let small: MediaSize?
             
-            struct MediaSize: Codable {
+            nonisolated struct MediaSize: Codable {
                 let width: Int?
                 let height: Int?
                 let aspect: Double?
             }
         }
 
-        enum CodingKeys: String, CodingKey {
+        nonisolated enum CodingKeys: String, CodingKey {
             case id
             case type
             case url
@@ -217,32 +217,32 @@ struct Status: Identifiable, Codable, Hashable {
         }
     }
     
-    struct Mention: Codable, Hashable {
+    nonisolated struct Mention: Codable, Hashable {
         let id: String
         let username: String
         let url: URL
         let acct: String
     }
     
-    struct Tag: Codable {
+    nonisolated struct Tag: Codable {
         let name: String
         let url: URL
     }
     
-    struct Emoji: Codable {
+    nonisolated struct Emoji: Codable {
         let shortcode: String
         let url: URL
         let staticURL: URL
         
-        enum CodingKeys: String, CodingKey {
+        nonisolated enum CodingKeys: String, CodingKey {
             case shortcode
             case url
             case staticURL = "static_url"
         }
     }
 
-    struct FilterResult: Codable, Hashable {
-        struct Filter: Codable, Hashable {
+    nonisolated struct FilterResult: Codable, Hashable {
+        nonisolated struct Filter: Codable, Hashable {
             let title: String?
 
             init(title: String?) {
@@ -256,7 +256,7 @@ struct Status: Identifiable, Codable, Hashable {
         let statusMatches: [String]?
         let expiresAt: Date?
 
-        enum CodingKeys: String, CodingKey {
+        nonisolated enum CodingKeys: String, CodingKey {
             case filter
             case title
             case keywordMatches = "keyword_matches"
@@ -298,7 +298,7 @@ struct Status: Identifiable, Codable, Hashable {
     }
     
     /// Link Preview Card (OpenGraph/oEmbed data)
-    struct PreviewCard: Codable {
+    nonisolated struct PreviewCard: Codable {
         let url: URL
         let title: String
         let description: String
@@ -316,12 +316,12 @@ struct Status: Identifiable, Codable, Hashable {
         let authors: [CardAuthor]?
         let publishedAt: Date?
         
-        struct CardAuthor: Codable {
+        nonisolated struct CardAuthor: Codable {
             let name: String?
             let url: URL?
             let account: Account?
             
-            enum CodingKeys: String, CodingKey {
+            nonisolated enum CodingKeys: String, CodingKey {
                 case name
                 case url
                 case account
@@ -342,7 +342,7 @@ struct Status: Identifiable, Codable, Hashable {
             }
         }
         
-        enum CardType: String, Codable {
+        nonisolated enum CardType: String, Codable {
             case link
             case photo
             case video
@@ -356,7 +356,7 @@ struct Status: Identifiable, Codable, Hashable {
             }
         }
         
-        enum CodingKeys: String, CodingKey {
+        nonisolated enum CodingKeys: String, CodingKey {
             case url
             case title
             case description
@@ -503,7 +503,7 @@ struct Status: Identifiable, Codable, Hashable {
     let editedAt: Date?
     
     /// Poll structure (for future implementation)
-    struct Poll: Codable {
+    nonisolated struct Poll: Codable {
         let id: String
         let expiresAt: Date?
         let expired: Bool
@@ -514,17 +514,17 @@ struct Status: Identifiable, Codable, Hashable {
         let voted: Bool?
         let ownVotes: [Int]?
         
-        struct PollOption: Codable {
+        nonisolated struct PollOption: Codable {
             let title: String
             let votesCount: Int?
             
-            enum CodingKeys: String, CodingKey {
+            nonisolated enum CodingKeys: String, CodingKey {
                 case title
                 case votesCount = "votes_count"
             }
         }
         
-        enum CodingKeys: String, CodingKey {
+        nonisolated enum CodingKeys: String, CodingKey {
             case id
             case expiresAt = "expires_at"
             case expired
@@ -570,7 +570,7 @@ struct Status: Identifiable, Codable, Hashable {
         }
     }
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case id
         case content
         case createdAt = "created_at"
@@ -829,7 +829,7 @@ struct Status: Identifiable, Codable, Hashable {
     }
     
     /// Determine attachment type for display priority
-    enum AttachmentType {
+    nonisolated enum AttachmentType {
         case media      // Images, videos, audio
         case poll       // Poll
         case card       // Link preview card
@@ -850,14 +850,14 @@ struct Status: Identifiable, Codable, Hashable {
     }
 }
 
-enum StatusType {
+nonisolated enum StatusType {
     case normal
     case reblog
     case quote
     case reply
 }
 
-extension Status {
+nonisolated extension Status {
     var allowsReblogAction: Bool {
         let visibility = displayStatus.visibility ?? visibility ?? "public"
         return displayStatus.reblogged || visibility == "public" || visibility == "unlisted"
@@ -1035,7 +1035,7 @@ extension Status {
     }
 }
 
-extension Status {
+nonisolated extension Status {
     var effectiveFilterResults: [FilterResult] {
         let status = displayStatus
         return status.filtered ?? []

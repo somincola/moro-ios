@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct StatusEditHistoryItem: Codable, Identifiable {
+nonisolated struct StatusEditHistoryItem: Codable, Identifiable {
     let content: String
     let spoilerText: String?
     let createdAt: Date?
@@ -19,7 +19,7 @@ struct StatusEditHistoryItem: Codable, Identifiable {
         return "\(timePart)-\(content.hashValue)"
     }
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case content
         case spoilerText = "spoiler_text"
         case createdAt = "created_at"

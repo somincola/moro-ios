@@ -443,7 +443,7 @@ struct moroTests {
         model.account = makeAccount(showMedia: true, showMediaReplies: true)
         await model.loadTabIfNeeded(.media)
         pending?.resume(throwing: MockMastodonAPI.MockError.forcedFailure)
-        await refresh.value
+        _ = await refresh.value
         #expect(model.tabLoadState(for: .media) == .loaded)
         #expect(model.media.map(\.id) == ["current-media"])
     }
@@ -3317,24 +3317,24 @@ struct moroTests {
         let state = RootTabCoordinator(selectedTab: .home)
         state.timelineSelection = .federated
 
-        // triggerScrollToTopEvent sets selectedTabScrollToTop to the tab's
-        // hashValue, then auto-resets it to -1 after ~50ms, so the token is only
-        // briefly observable. Record every assignment via a Combine sink so a
-        // poll that overshoots the window on a slow CI machine cannot miss the
-        // transient (which made this test flaky on CI while passing locally).
-        var observed: [Int] = []
-        let cancellable = state.$selectedTabScrollToTop.sink { observed.append($0) }
-        defer { cancellable.cancel() }
-
         state.selectTab(.home)
         // Re-tap must keep the current sub-timeline (not force back to Following)…
         #expect(state.timelineSelection == .federated)
 
-        // …and still fire the scroll-to-top token for the timeline tab.
-        for _ in 0..<200 where !observed.contains(MainTab.home.hashValue) {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(observed.contains(MainTab.home.hashValue))
+        // …and publish a re-tap event synchronously; it stays until the next re-tap,
+        // so there is no transient window to miss.
+        #expect(state.tabReselection == TabReselection(tab: .home, sequence: 1))
+
+        state.selectTab(.home)
+        #expect(state.tabReselection == TabReselection(tab: .home, sequence: 2))
+    }
+
+    @Test @MainActor func tabReselectionOnlyFiresForTheSelectedRootTab() async throws {
+        let state = RootTabCoordinator(selectedTab: .inbox)
+        state.selectTab(.explore)  // switching tabs is not a re-tap
+        #expect(state.tabReselection == nil)
+        state.selectTab(.explore)
+        #expect(state.tabReselection?.tab == .explore)
     }
 
     @Test @MainActor func profileTabTransitionsBetweenBottomNaturalAndTopAnchors() async throws {

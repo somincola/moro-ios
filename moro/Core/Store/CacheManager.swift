@@ -58,7 +58,7 @@ final class CacheManager: ObservableObject {
     /// `accountCache` are plain-dictionary LRUs, so — unlike `NSCache` — they never
     /// auto-evict; without this they stay resident and can get the app jetsam-killed
     /// during a long, media-heavy scroll session. On `.warning` we drop the soft caches
-    /// (thread + account) and the 50 MB image memory cache; on `.critical` we also drop
+    /// (thread + account) and the image memory cache; on `.critical` we also drop
     /// the in-memory timeline while retaining its offline copy on disk.
     func handleMemoryPressure(critical: Bool) {
         threadCache.invalidateAll()

@@ -142,7 +142,7 @@ struct MainTabView: View {
             ) { _ in }
             .environmentObject(appState)
         }
-        .sheet(item: $coordinator.presentedSheet) { destination in
+        .sheet(item: $coordinator.presentedSheet, onDismiss: coordinator.runActionsAfterSheetDismiss) { destination in
             switch destination {
             case .settings:
                 SettingsSheetView(apiClient: apiClient)
@@ -186,6 +186,8 @@ struct MainTabView: View {
             consumePendingWidgetHandoffIfNeeded()
             consumePendingSharedDraftIfNeeded()
             ensureInboxStreamSubscription()
+            // The socket may have died or given up while suspended; don't wait out a backoff.
+            StreamWatcher.shared.ensureConnected(skipBackoff: true)
             Task {
                 async let instanceMetadataRefresh: Void = refreshInstanceMetadataIfNeeded()
                 async let notificationRefresh: Void = notificationUnreadStore.reconcileActiveCount()
@@ -232,28 +234,19 @@ struct MainTabView: View {
             accountSessions: accountSessions,
             activeSessionID: activeSessionID,
             onSwitchAccount: { sessionID in
-                coordinator.dismissPresentedSheet()
                 coordinator.popAllToRoot()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    onSwitchAccount(sessionID)
-                }
+                coordinator.dismissPresentedSheet { onSwitchAccount(sessionID) }
             },
             onAddAccount: {
-                coordinator.dismissPresentedSheet()
                 coordinator.popAllToRoot()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    coordinator.showAddAccountLogin = true
-                }
+                coordinator.dismissPresentedSheet { coordinator.showAddAccountLogin = true }
             },
             onRemoveAccount: { sessionID in
                 onRemoveAccount(sessionID)
             },
             onOpenAccount: { acct in
-                coordinator.dismissPresentedSheet()
-                // Push after the sheet starts dismissing so the profile lands on the visible stack.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    coordinator.navigate(to: .accountLookup(acct))
-                }
+                // Push once the sheet is gone so the profile lands on the visible stack.
+                coordinator.dismissPresentedSheet { coordinator.navigate(to: .accountLookup(acct)) }
             }
         )
     }
@@ -289,6 +282,7 @@ struct MainTabView: View {
         routedView(
             AnyView(
                 MeTabRootView(
+                    coordinator: coordinator,
                     apiClient: apiClient,
                     accountSessions: accountSessions,
                     activeSessionID: activeSessionID
@@ -425,11 +419,7 @@ struct MainTabView: View {
     }
 
     private func ensureInboxStreamSubscription() {
-        guard let token = appState.authToken else { return }
-        let streamWatcher = StreamWatcher.shared
-        streamWatcher.configure(baseURL: AppEnvironment.apiBaseURL, accessToken: token)
-        streamWatcher.addStream(.user)
-        streamWatcher.addStream(.direct)
+        StreamWatcher.shared.ensureUserSession(accessToken: appState.authToken)
     }
 
 }
@@ -469,7 +459,7 @@ private struct HomeTabRootView: View {
                 && !coordinator.showAddAccountLogin,
             bottomContentInset: coordinator.tabBarHeight + composeButtonClearance
         )
-        .environment(\.selectedTabScrollToTop, coordinator.selectedTabScrollToTop)
+        .environment(\.tabReselection, coordinator.tabReselection)
         .overlay(alignment: .bottomTrailing) {
             composeButton
                 .padding(.trailing, theme.spacing.l)
@@ -514,16 +504,33 @@ private struct ExploreTabRootView: View {
 
     var body: some View {
         SearchView(apiClient: apiClient, onEntryStateChanged: coordinator.setExploreSearchEntryActive)
-            .environment(\.selectedTabScrollToTop, coordinator.selectedTabScrollToTop)
+            .environment(\.tabReselection, coordinator.tabReselection)
     }
 }
 
 private struct MeTabRootView: View {
+    /// Not observed: the profile only needs re-tap events, not every shell change.
+    let coordinator: RootTabCoordinator
+    @State private var tabReselection: TabReselection?
     @EnvironmentObject private var appState: AppState
 
     let apiClient: MastodonAPI
     let accountSessions: [StoredAccountSession]
     let activeSessionID: String?
+
+    init(
+        coordinator: RootTabCoordinator,
+        apiClient: MastodonAPI,
+        accountSessions: [StoredAccountSession],
+        activeSessionID: String?
+    ) {
+        self.coordinator = coordinator
+        self.apiClient = apiClient
+        self.accountSessions = accountSessions
+        self.activeSessionID = activeSessionID
+        // Start from the current event so an earlier re-tap is not mistaken for a new one.
+        _tabReselection = State(initialValue: coordinator.tabReselection)
+    }
 
     private var currentAccount: Account? {
         appState.currentAccount
@@ -540,6 +547,10 @@ private struct MeTabRootView: View {
                     onLogout: {},
                     apiClient: apiClient
                 )
+                // The page's view models are created once per identity. While switching,
+                // `currentAccount` can resolve to a fallback first; without this the real
+                // account would then render with the fallback's loaded profile and posts.
+                .id(account.id)
             } else {
                 EmptyStateView(
                     spec: EmptyStateSpec(
@@ -550,6 +561,8 @@ private struct MeTabRootView: View {
                 )
             }
         }
+        .environment(\.tabReselection, tabReselection)
+        .onReceive(coordinator.$tabReselection.removeDuplicates()) { tabReselection = $0 }
     }
 }
 

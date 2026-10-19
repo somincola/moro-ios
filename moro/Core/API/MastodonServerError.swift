@@ -67,9 +67,21 @@ extension MastodonServerError: LocalizedError {
 // MARK: - Common Server Errors
 
 extension MastodonServerError {
-    /// Check if this is an authentication error
+    /// `error` and `error_description` together, for keyword checks that must see both.
+    var combinedMessage: String {
+        guard let serverDescription, !serverDescription.isEmpty else { return error }
+        return "\(error) \(serverDescription)"
+    }
+
+    /// The token itself was rejected. Only this makes a stored session unusable.
     var isAuthenticationError: Bool {
-        httpCode == 401 || httpCode == 403
+        httpCode == 401
+    }
+
+    /// 403: the token is valid but the account may not act (disabled, pending approval,
+    /// unconfirmed e-mail, or the action is forbidden). Never a reason to drop a session.
+    var isAccountStateRestriction: Bool {
+        httpCode == 403
     }
 
     /// Check if this is a rate limit error

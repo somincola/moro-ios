@@ -7,6 +7,7 @@
 //  test stays deterministic without depending on keyboard input.
 //
 
+#if DEBUG
 import SwiftUI
 
 struct ComposeCounterHarnessView: View {
@@ -54,3 +55,4 @@ struct ComposeCounterHarnessView: View {
         .background(Color(.systemBackground))
     }
 }
+#endif

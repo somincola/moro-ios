@@ -90,7 +90,7 @@ struct FavouritesView: View {
                     .padding(.vertical, theme.spacing.s)
                 }
 
-                ForEach(Array(viewModel.statuses.enumerated()), id: \.element.id) { index, status in
+                ForEach(viewModel.statuses.indexed(), id: \.element.id) { index, status in
                     FavouriteStatusRow(
                         status: status,
                         isOwnPost: PostMoreMenuPolicy.isOwnPost(status, currentUserID: appState.currentAccount?.id),

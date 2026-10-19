@@ -1,67 +1,11 @@
 //
-//  MediaAttachmentView.swift
+//  AltTextEditorView.swift
 //  moro
 //
-//  Media attachment view with alt text editing support.
+//  Alt text editor sheet used by Compose for media attachments.
 //
 
 import SwiftUI
-
-struct MediaAttachmentView: View {
-    let attachment: MediaAttachment
-    let onRemove: () -> Void
-    let onEditAlt: () -> Void
-    
-    @Environment(\.moroTheme) private var theme
-    
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            CachedAsyncImage(url: attachment.previewURL ?? attachment.url) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-            } placeholder: {
-                Rectangle()
-                    .fill(theme.colors.surfaceSubtle)
-            }
-            .frame(width: 100, height: 100)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            
-            // Remove button
-            Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.white)
-                    .background(Circle().fill(.black.opacity(0.5)))
-            }
-            .padding(4)
-            
-            // Edit/Alt button overlay
-            VStack {
-                Spacer()
-                HStack {
-                    Button(action: onEditAlt) {
-                        HStack(spacing: 4) {
-                            Image(systemName: attachment.description?.isEmpty == false ? "text.bubble.fill" : "text.bubble")
-                            Text(attachment.description?.isEmpty == false ? MoroL10n.ImagePreview.altBadge : MoroL10n.Media.addAlt)
-                                .font(.caption2)
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(.black.opacity(0.6))
-                        )
-                    }
-                    Spacer()
-                }
-                .padding(4)
-            }
-        }
-    }
-}
-
-// MARK: - Alt Text Editor View
 
 struct AltTextEditorView: View {
     @Binding var altText: String

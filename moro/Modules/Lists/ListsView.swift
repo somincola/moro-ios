@@ -433,7 +433,7 @@ struct ListTimelineView: View {
                     TimelineCachedContentNotice { Task { await viewModel.refresh() } }
                 }
 
-                ForEach(Array(viewModel.statuses.enumerated()), id: \.element.id) { index, status in
+                ForEach(viewModel.statuses.indexed(), id: \.element.id) { index, status in
                     ListTimelineStatusRow(
                         status: status,
                         isOwnPost: PostMoreMenuPolicy.isOwnPost(status, currentUserID: appState.currentAccount?.id),

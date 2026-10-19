@@ -11,7 +11,7 @@
 
 import Foundation
 
-extension Account {
+nonisolated extension Account {
     func withCacheBustedMedia(avatar: Bool = true, header: Bool = true) -> Account {
         guard avatar || header else { return self }
         let token = String(Int(Date().timeIntervalSince1970))

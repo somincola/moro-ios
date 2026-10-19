@@ -1,0 +1,16 @@
+{
+  "slug": "newcomers",
+  "name": "Mastodon Newcomers",
+  "audience": "第一次用长毛象的人：分享给朋友、教程文章、入门帖",
+  "screenshots": [
+    "02",
+    "01",
+    "03",
+    "07",
+    "05"
+  ],
+  "promotionalText": {
+    "zh-Hans": "第一次用长毛象？在 Moro 输入服务器域名，点亮属于你的那颗星，再在服务器自己的页面安全登录。时间线清爽好读，没有广告，也不追踪你。",
+    "en-US": "New to Mastodon? Type your server's domain, watch its star light up, and sign in safely on your server's own page. A clean timeline with no ads and no tracking."
+  }
+}

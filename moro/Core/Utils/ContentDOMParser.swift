@@ -3,8 +3,8 @@ import SwiftSoup
 
 /// Converts HTML into the existing native rendering vocabulary. HTML entities are
 /// decoded once by SwiftSoup; no HTML rewriting or synthetic text placeholders occur.
-enum ContentDOMParser {
-    private struct Token {
+nonisolated enum ContentDOMParser {
+    nonisolated private struct Token {
         let element: ContentElement?
         var isKnownTag = false
     }

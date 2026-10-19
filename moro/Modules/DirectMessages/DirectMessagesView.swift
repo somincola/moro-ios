@@ -208,7 +208,7 @@ struct DirectMessagesView: View {
                     .padding(.vertical, theme.spacing.s)
                 }
 
-                ForEach(Array(viewModel.conversations.enumerated()), id: \.element.id) {
+                ForEach(viewModel.conversations.indexed(), id: \.element.id) {
                     index,
                     conversation in
                     let isNearBottom = viewModel.conversations.count - index <= loadMoreThreshold
@@ -267,14 +267,7 @@ struct DirectMessagesView: View {
     }
 
     private func ensureDirectStreamSubscription() {
-        if streamWatcher.hasActiveConnection {
-            streamWatcher.addStream(.direct)
-            return
-        }
-
-        guard let token = appState.authToken else { return }
-        streamWatcher.configure(baseURL: AppEnvironment.apiBaseURL, accessToken: token)
-        streamWatcher.watch(streams: [.user, .direct])
+        streamWatcher.ensureUserSession(accessToken: appState.authToken)
     }
 
     private func openConversation(with account: Account) {

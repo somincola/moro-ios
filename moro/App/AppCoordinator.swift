@@ -72,13 +72,7 @@ final class AppCoordinator: ObservableObject {
         }
 
         if let session = try? await authService.restoreSession() {
-            applyAuthenticatedState(
-                token: session.token,
-                account: session.account,
-                instanceURL: session.instanceURL,
-                persistSession: false,
-                identityValidated: true
-            )
+            applyRestoredSession(session)
         } else {
             let hasOnboarded = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
             destination = hasOnboarded ? .login : .onboarding
@@ -97,6 +91,23 @@ final class AppCoordinator: ObservableObject {
         )
         // Release the login-screen AuthService; a later return to .login builds a fresh one.
         authServiceForLogin = nil
+    }
+
+    /// Enters a session picked by `AuthService.restoreSession()`. An unverified session (the
+    /// server could not be reached) is used with its stored identity and checked again later.
+    private func applyRestoredSession(_ restored: AuthService.RestoredSession) {
+        startupSessionValidationTask?.cancel()
+        applyAuthenticatedState(
+            token: restored.token,
+            account: restored.account,
+            instanceURL: restored.instanceURL,
+            persistSession: false,
+            identityValidated: restored.isVerified
+        )
+        authServiceForLogin = nil
+        if !restored.isVerified, let sessionID = authService.activeStoredSessionID() {
+            scheduleStartupSessionValidation(seedToken: restored.token, sessionID: sessionID)
+        }
     }
 
     func refreshCurrentAccountIfNeeded(force: Bool = false) async {
@@ -198,11 +209,7 @@ final class AppCoordinator: ObservableObject {
             CacheManager.shared.clearAll()
 
             if let restored = try? await authService.restoreSession() {
-                handleLoginSuccess(
-                    token: restored.token,
-                    account: restored.account,
-                    instanceURL: restored.instanceURL
-                )
+                applyRestoredSession(restored)
                 AppFeedbackCenter.shared.showInfo(MoroL10n.AppCoord.switchedToNext)
             } else {
                 appState.reset()
@@ -233,11 +240,7 @@ final class AppCoordinator: ObservableObject {
             CacheManager.shared.clearAll()
 
             if let restored = try? await authService.restoreSession() {
-                handleLoginSuccess(
-                    token: restored.token,
-                    account: restored.account,
-                    instanceURL: restored.instanceURL
-                )
+                applyRestoredSession(restored)
                 AppFeedbackCenter.shared.showInfo(MoroL10n.AppCoord.currentLoggedOut)
             } else {
                 appState.reset()
@@ -333,6 +336,10 @@ final class AppCoordinator: ObservableObject {
             guard appState.authToken == seedToken else { return }
             if let apiError = error as? APIError, apiError.requiresReauthentication {
                 await handleStartupAuthenticationInvalidation()
+            } else if let apiError = error as? APIError, apiError.isAccountStateRestriction {
+                // 403: the account is disabled, pending or unconfirmed. The token stays valid,
+                // so keep the session and surface the server's reason instead of logging out.
+                AppFeedbackCenter.shared.showError(apiError.failureReason ?? apiError.localizedDescription)
             }
             // Keep cached account state for transient network errors.
         }
@@ -354,13 +361,7 @@ final class AppCoordinator: ObservableObject {
         }
 
         if let restored = try? await authService.restoreSession() {
-            applyAuthenticatedState(
-                token: restored.token,
-                account: restored.account,
-                instanceURL: restored.instanceURL,
-                persistSession: false,
-                identityValidated: true
-            )
+            applyRestoredSession(restored)
             return
         }
 

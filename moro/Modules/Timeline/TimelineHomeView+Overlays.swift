@@ -25,7 +25,7 @@ extension TimelineHomeView {
     func refreshCurrentTimelineFromTab() {
         let timeline = selectedTimeline
         let target = viewModel
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        MoroRefreshFeedback.armed()
         Task { @MainActor in
             let result = await target.refresh(trigger: .tabRetap)
             guard selectedTimeline == timeline else { return }
@@ -33,7 +33,7 @@ extension TimelineHomeView {
                 processLiveUpdates(for: timeline, viewModel: target)
                 syncDetectionTopID(for: timeline)
             } else if case .failure = result {
-                AppFeedbackCenter.shared.showError(MoroL10n.Timeline.loadFailed)
+                MoroRefreshFeedback.deliver(.failed)
             }
         }
     }

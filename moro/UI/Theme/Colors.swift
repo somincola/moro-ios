@@ -158,6 +158,20 @@ struct MoroColors {
         }
     }
 
+    /// Skeleton - Loading placeholder blocks (avatar, text lines, profile header).
+    /// One soft step above the page surface, so loading reads as quiet structure rather than
+    /// content. Defined explicitly instead of relying on `.redacted(reason: .placeholder)`,
+    /// whose primary-tinted fill turns near-white on the dark surface.
+    var skeleton: Color {
+        let isIncreased = colorSchemeContrast == .increased
+        switch colorScheme {
+        case .dark:
+            return Color(hex: isIncreased ? 0x303236 : 0x24262A)
+        default:
+            return Color(hex: isIncreased ? 0xDCDEE1 : 0xEBECEE)
+        }
+    }
+
     /// Use the system's darker base card color consistently inside the settings sheet.
     var groupedSurface: Color {
         let traits = UITraitCollection { traits in

@@ -30,8 +30,10 @@ struct VideoPlayerView: View {
 
     @Environment(\.moroTheme) private var theme
     @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var settings = AppSettings.shared
-    @StateObject private var networkMonitor = NetworkMonitor.shared
+    // Read on demand in `shouldAutoplay` (visibility, scene and tap events), not observed:
+    // observing re-rendered every visible player on each unrelated setting or network tick.
+    private var settings: AppSettings { .shared }
+    private var networkMonitor: NetworkMonitor { .shared }
     // Parks the player when the row scrolls away, so coming back is instant.
     @StateObject private var playerObserver = VideoPlayerObserver(pool: .shared)
     /// True once the player layer has a frame. Until then the poster stays on top, so a

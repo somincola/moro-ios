@@ -2,7 +2,7 @@
 //  MoroAvatar.swift
 //  moro
 //
-//  Circular avatar with CachedAsyncImage caching and fallback initials.
+//  Circular avatar (SDWebImage, decoded at on-screen size) with fallback initials.
 //
 
 import SwiftUI

@@ -32,7 +32,7 @@ struct InboxView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             inboxChrome
         }
-        .environment(\.selectedTabScrollToTop, coordinator.selectedTabScrollToTop)
+        .environment(\.tabReselection, coordinator.tabReselection)
     }
 
     private var inboxChrome: some View {
