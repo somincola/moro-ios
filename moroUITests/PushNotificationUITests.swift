@@ -7,7 +7,7 @@ final class PushNotificationUITests: XCTestCase {
         defer { app.terminate() }
         assertPost(in: app, session: "push-a")
         attach(app, "push-post-detail")
-        app.navigationBars.buttons["BackButton"].firstMatch.tap()
+        backButton(in: app).tap()
         expectation(for: NSPredicate(format: "exists == false"),
             evaluatedWith: targetPost(in: app, session: "push-a"))
         waitForExpectations(timeout: 5)
@@ -152,7 +152,7 @@ final class PushNotificationUITests: XCTestCase {
         let body = app.descendants(matching: .any)["conversation.body.push-post"].firstMatch
         assertRemainsVisible(body, seconds: 3)
         attach(app, "push-message-detail-stable")
-        app.navigationBars.buttons["BackButton"].firstMatch.tap()
+        backButton(in: app).tap()
         let mentions = app.buttons["inbox.filter.mentions"]
         XCTAssertTrue(mentions.waitForExistence(timeout: 5))
         XCTAssertTrue(mentions.isSelected)
@@ -195,6 +195,12 @@ final class PushNotificationUITests: XCTestCase {
         return app
     }
 
+    /// The system back button no longer carries the "BackButton" identifier; match its label too.
+    private func backButton(in app: XCUIApplication) -> XCUIElement {
+        app.navigationBars.buttons.matching(
+            NSPredicate(format: "identifier == 'BackButton' OR label == 'Back'")).firstMatch
+    }
+
     private func targetPost(in app: XCUIApplication, session: String) -> XCUIElement {
         app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@",
             "Push target post on \(session).push-fixture.invalid")).firstMatch
@@ -202,7 +208,7 @@ final class PushNotificationUITests: XCTestCase {
 
     private func assertPost(in app: XCUIApplication, session: String) {
         XCTAssertTrue(targetPost(in: app, session: session).waitForExistence(timeout: 12))
-        XCTAssertTrue(app.navigationBars.buttons["BackButton"].firstMatch.exists)
+        XCTAssertTrue(backButton(in: app).exists)
     }
 
     private func assertInbox(in app: XCUIApplication) {

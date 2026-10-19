@@ -59,8 +59,9 @@ final class DisplaySettingsUITests: XCTestCase {
             let button = app.buttons["display.color.\(name)"]
             XCTAssertTrue(button.exists)
             XCTAssertTrue(button.isSelected)
-            XCTAssertGreaterThanOrEqual(button.frame.width, 44)
-            XCTAssertGreaterThanOrEqual(button.frame.height, 44)
+            // Layout rounding reports 44 pt as 43.99999999999997.
+            XCTAssertGreaterThanOrEqual(button.frame.width, 44 - 0.01)
+            XCTAssertGreaterThanOrEqual(button.frame.height, 44 - 0.01)
             XCTAssertGreaterThanOrEqual(button.frame.minX, app.windows.firstMatch.frame.minX)
             XCTAssertLessThanOrEqual(button.frame.maxX, app.windows.firstMatch.frame.maxX)
         }
@@ -109,8 +110,8 @@ final class DisplaySettingsUITests: XCTestCase {
         XCTAssertTrue(close.waitForExistence(timeout: 5))
         close.tap()
         let custom = app.descendants(matching: .any)["display.color.custom"]
-        XCTAssertGreaterThanOrEqual(custom.frame.width, 44)
-        XCTAssertGreaterThanOrEqual(custom.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(custom.frame.width, 44 - 0.01)
+        XCTAssertGreaterThanOrEqual(custom.frame.height, 44 - 0.01)
         XCTAssertTrue(custom.isSelected)
         let selectedColorDescription = custom.value as? String
         attach(app, name: "display-custom-color")

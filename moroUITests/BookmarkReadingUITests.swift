@@ -62,8 +62,8 @@ final class BookmarkReadingUITests: XCTestCase {
         app.buttons["bookmarks.filter.\(value)"].tap()
     }
     @MainActor private func reveal(_ element: XCUIElement, app: XCUIApplication) {
-        for _ in 0..<5 where !element.isHittable { app.collectionViews.firstMatch.swipeUp() }
-        XCTAssertTrue(element.isHittable, app.debugDescription)
+        for _ in 0..<5 where !element.isReachable(in: app) { app.collectionViews.firstMatch.swipeUp() }
+        XCTAssertTrue(element.isReachable(in: app), app.debugDescription)
     }
     @MainActor private func attach(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())

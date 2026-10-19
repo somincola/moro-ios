@@ -176,9 +176,9 @@ final class moroUITests: XCTestCase {
 
         let settingsNavigationBar = app.navigationBars["Settings"]
         XCTAssertTrue(settingsNavigationBar.waitForExistence(timeout: 12))
-        XCTAssertFalse(
-            app.buttons["settings.sheet.close"].exists,
-            "The large Settings sheet should rely on its grabber instead of a duplicate close button"
+        XCTAssertTrue(
+            settingsNavigationBar.buttons["Close"].exists,
+            "Settings offers an explicit Close button next to the grabber"
         )
 
         let window = app.windows.firstMatch
@@ -188,13 +188,11 @@ final class moroUITests: XCTestCase {
             "Settings should open at the large sheet detent"
         )
 
-        let grabberY = max(
-            0.02,
-            (settingsNavigationBar.frame.minY - 12) / window.frame.height
-        )
-        let grabber = window.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.5, dy: grabberY)
-        )
+        // Drag the grabber itself rather than a point derived from the bar position, which
+        // moved when the sheet's top inset changed.
+        let grabberElement = app.buttons["Sheet Grabber"]
+        XCTAssertTrue(grabberElement.waitForExistence(timeout: 5))
+        let grabber = grabberElement.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         let dismissTarget = window.coordinate(
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)
         )
