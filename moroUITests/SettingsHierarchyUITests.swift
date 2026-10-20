@@ -167,7 +167,7 @@ final class SettingsHierarchyUITests: XCTestCase {
         attach(app, "settings-reading-english-dark")
 
         app.terminate()
-        app.launch()
+        app.launch(isolatedFor: self)
         tap("settings.reading", in: app)
         XCTAssertEqual(banner.value as? String, changed)
         banner.tap()
@@ -398,7 +398,7 @@ final class SettingsHierarchyUITests: XCTestCase {
         if pushSync { app.launchEnvironment["UITEST_SETTINGS_PUSH_SYNC"] = "1" }
         if pushFailure { app.launchEnvironment["UITEST_PUSH_SAVE_FAILS_ONCE"] = "1" }
         if large { app.launchEnvironment["UITEST_DYNAMIC_TYPE_SIZE"] = "accessibilityXXXL" }
-        app.launch()
+        app.launch(isolatedFor: self)
         return app
     }
 

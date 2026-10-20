@@ -169,7 +169,7 @@ final class ComposeEditorUITests: XCTestCase {
             app.launchEnvironment["UITEST_DYNAMIC_TYPE_SIZE"] = "accessibilityXXXL"
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
-        app.launch()
+        app.launch(isolatedFor: self)
         XCTAssertTrue(app.buttons["replyHarness.open"].waitForExistence(timeout: 6))
         app.buttons["replyHarness.open"].tap()
         return app

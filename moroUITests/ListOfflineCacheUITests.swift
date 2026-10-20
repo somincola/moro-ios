@@ -11,7 +11,7 @@ final class ListOfflineCacheUITests: XCTestCase {
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = scheme
         app.launchEnvironment["UITEST_LIST_RESET"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
         defer { app.terminate() }
         for (id, name, other) in [("alpha", "甲", "乙"), ("beta", "乙", "甲")] {
             open(id, app: app)
@@ -22,7 +22,7 @@ final class ListOfflineCacheUITests: XCTestCase {
         app.terminate()
         app.launchEnvironment["UITEST_LIST_RESET"] = "0"
         app.launchEnvironment["UITEST_LIST_OFFLINE"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
         for (id, name, other) in [("alpha", "甲", "乙"), ("beta", "乙", "甲")] {
             open(id, app: app)
             XCTAssertTrue(app.buttons["timeline.cacheRetry"].waitForExistence(timeout: 10), app.debugDescription)

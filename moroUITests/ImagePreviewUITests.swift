@@ -253,7 +253,7 @@ final class ImagePreviewUITests: XCTestCase {
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = "light"
         app.launchEnvironment["UITEST_ALT_TEXT"] = altText
         app.launchEnvironment.merge(environment) { _, override in override }
-        app.launch()
+        app.launch(isolatedFor: self)
         XCTAssertTrue(app.buttons["imagePreview.close"].waitForExistence(timeout: 12))
         XCTAssertTrue(app.images["imagePreview.image"].firstMatch.waitForExistence(timeout: 10))
         return app

@@ -104,7 +104,7 @@ final class AppStoreShowcaseUITests: XCTestCase {
                                            "-AppleLocale", locale.replacingOccurrences(of: "-", with: "_")]
         app.launchEnvironment = environment.merging(["UITEST_USE_FULL_APP": "1",
                                                      "UITEST_COLOR_SCHEME": scheme]) { $1 }
-        app.launch()
+        app.launch(isolatedFor: self)
         return app
     }
 

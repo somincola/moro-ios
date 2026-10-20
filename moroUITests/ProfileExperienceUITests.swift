@@ -551,7 +551,7 @@ final class ProfileExperienceUITests: XCTestCase {
             app.launchEnvironment["UITEST_DISABLE_ANIMATIONS"] = "1"
         }
         app.launchEnvironment.merge(extra) { _, new in new }
-        app.launch()
+        app.launch(isolatedFor: self)
         XCTAssertTrue(app.buttons["profile.moreButton"].waitForExistence(timeout: 10))
         return app
     }

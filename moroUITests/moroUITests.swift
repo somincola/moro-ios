@@ -29,7 +29,7 @@ final class moroUITests: XCTestCase {
         app.launchArguments = ["UITEST_NOTIFICATION_ROW_TAPS", "UITEST_DISABLE_ANIMATIONS"]
         app.launchEnvironment["UITEST_NOTIFICATION_ROW_TAPS"] = "1"
         app.launchEnvironment["UITEST_DISABLE_ANIMATIONS"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
 
         let result = app.staticTexts["notification.tapResult"]
         XCTAssertTrue(result.waitForExistence(timeout: 12))
@@ -62,7 +62,7 @@ final class moroUITests: XCTestCase {
         app.launchArguments = ["UITEST_COMPOSE_COUNTER", "UITEST_DISABLE_ANIMATIONS"]
         app.launchEnvironment["UITEST_COMPOSE_COUNTER"] = "1"
         app.launchEnvironment["UITEST_DISABLE_ANIMATIONS"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
 
         let count = app.staticTexts["compose.charCount"]
         let post = app.buttons["compose.postButton"]
@@ -102,7 +102,7 @@ final class moroUITests: XCTestCase {
         app.terminate()
         app.launchArguments = ["UITEST_COMPOSE_MEDIA"]
         app.launchEnvironment["UITEST_COMPOSE_MEDIA"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
 
         let ids = app.staticTexts["compose.media.ids"]
         XCTAssertTrue(ids.waitForExistence(timeout: 12))
@@ -142,7 +142,7 @@ final class moroUITests: XCTestCase {
         ]
         app.launchEnvironment["UITEST_ACCOUNT_DELETION"] = "1"
         app.launchEnvironment["UITEST_DISABLE_ANIMATIONS"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
         defer { app.terminate() }
 
         let deletionEntry = app.buttons["accountManagement.serverAccountSettings"]
@@ -172,7 +172,7 @@ final class moroUITests: XCTestCase {
         app.launchArguments = ["UITEST_SETTINGS_SHEET", "UITEST_DISABLE_ANIMATIONS"]
         app.launchEnvironment["UITEST_SETTINGS_SHEET"] = "1"
         app.launchEnvironment["UITEST_DISABLE_ANIMATIONS"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
 
         let settingsNavigationBar = app.navigationBars["Settings"]
         XCTAssertTrue(settingsNavigationBar.waitForExistence(timeout: 12))
@@ -243,7 +243,7 @@ final class moroUITests: XCTestCase {
             if let dynamicTypeSize = configuration.dynamicTypeSize {
                 app.launchEnvironment["UITEST_DYNAMIC_TYPE_SIZE"] = dynamicTypeSize
             }
-            app.launch()
+            app.launch(isolatedFor: self)
 
             try assertProductionLayoutContracts(
                 app: app,
@@ -261,7 +261,7 @@ final class moroUITests: XCTestCase {
             "UITEST_USE_FULL_APP": "1",
             "UITEST_DISABLE_ANIMATIONS": "1",
         ]
-        app.launch()
+        app.launch(isolatedFor: self)
 
         let composeButton = app.buttons["home.composeButton"]
         guard composeButton.waitForExistence(timeout: 15) else {
@@ -320,7 +320,7 @@ final class moroUITests: XCTestCase {
             "UITEST_USE_FULL_APP": "1",
             "UITEST_DISABLE_ANIMATIONS": "1",
         ]
-        app.launch()
+        app.launch(isolatedFor: self)
 
         let composeButton = app.buttons["home.composeButton"]
         guard composeButton.waitForExistence(timeout: 15) else {
@@ -370,7 +370,7 @@ final class moroUITests: XCTestCase {
             "UITEST_USE_FULL_APP": "1",
             "UITEST_DISABLE_ANIMATIONS": "1",
         ]
-        app.launch()
+        app.launch(isolatedFor: self)
 
         let composeButton = app.buttons["home.composeButton"]
         guard composeButton.waitForExistence(timeout: 15) else {

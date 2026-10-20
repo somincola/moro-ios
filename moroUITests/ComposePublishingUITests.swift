@@ -74,7 +74,7 @@ final class ComposePublishingUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_PUBLISHING", "-moro.debug.logs", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launchEnvironment = ["UITEST_USE_FULL_APP": "1", "UITEST_PUBLISH_SCENARIO": scenario]
-        app.launch()
+        app.launch(isolatedFor: self)
         let open = app.buttons["publishFixture.open"]
         XCTAssertTrue(open.waitForExistence(timeout: 10))
         open.tap()

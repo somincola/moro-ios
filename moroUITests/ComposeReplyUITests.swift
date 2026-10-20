@@ -97,7 +97,7 @@ final class ComposeReplyUITests: XCTestCase {
         app.launchEnvironment["UITEST_REPLY_MODE"] = mode
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = dark ? "dark" : "light"
         if largeText { app.launchEnvironment["UITEST_DYNAMIC_TYPE_SIZE"] = "accessibilityXXXL" }
-        app.launch()
+        app.launch(isolatedFor: self)
         XCTAssertTrue(app.buttons["replyHarness.open"].waitForExistence(timeout: 6))
         app.buttons["replyHarness.open"].tap()
         return app

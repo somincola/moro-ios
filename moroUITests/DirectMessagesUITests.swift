@@ -108,7 +108,7 @@ final class DirectMessagesUITests: XCTestCase {
             // Native sheet presentation also reads UIKit's content-size category.
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
-        app.launch()
+        app.launch(isolatedFor: self)
         return app
     }
 

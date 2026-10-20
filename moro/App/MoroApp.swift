@@ -17,6 +17,10 @@ struct MoroApp: App {
     @StateObject private var settings = AppSettings.shared
 
     init() {
+        #if DEBUG
+        // First, before anything reads a setting.
+        UITestDefaultsIsolation.applyIfRequested()
+        #endif
         StorageManagementStore.configureImageCache()
         let appState = AppState()
         let interceptor = AuthInterceptor(tokenProvider: appState)
