@@ -1,0 +1,41 @@
+Access
+
+Please sign in using the demo account provided in App Review Information. Moro is an independently developed third-party client that connects to Mastodon servers selected by users. An account is required to review timelines, posting, search, notifications, profiles, and the safety controls described below.
+
+First launch and sign-in (new in 1.1.0):
+• The first screen is a wordless animated welcome. Tap anywhere (or swipe up), then tap "Get started". You can also tap "Log in" at the top right to go straight to sign-in.
+• The server field on the sign-in screen is now empty by default. Enter m.somincola.org (the server of the demo account) and tap "Log in". The server's own sign-in page then opens in a secure browser sheet, where the demo account email and password are entered.
+• Moro now supports several signed-in accounts. Long-press the "Me" tab to switch between them.
+---
+User-Generated Content and Safety (Guideline 1.2)
+
+Moro does not operate the connected servers and does not host the accounts or user-generated content displayed in the app. Account rules, content policies, and administrator-level moderation are managed by each connected server. Users remain subject to the terms and rules of the server where their account is hosted.
+
+Moro provides the server-supported safety controls directly in the app:
+
+• Report a post or account: open the More (•••) menu on a post or user profile and select Report. Posts also provide a Block and Report option.
+• Block a user: open the More (•••) menu on a post or user profile and select Block.
+
+Reports and block requests are submitted to the connected server through its API.
+---
+Account Management and Deletion (Guideline 5.1.1(v))
+
+The location of account deletion has changed in this version.
+
+Open Settings from either place:
+• Home → profile avatar at the top left → Settings
+• Me tab → More (•••) at the top right → Settings
+
+Then:
+Settings → tap your account (name and @handle) at the top → Account → Delete Account → Delete Account
+
+This directly opens the account-deletion page hosted by the active server. The server may require the user to sign in again before confirming deletion because the server stores and manages the account and its associated data.
+
+Removing an account from Moro (swipe left on it under Settings → Account, or Log Out) only removes that account from the app and is separate from deleting the account on the server.
+
+Data handling: Moro has no accounts or content servers of its own. Posts, profiles, and account data are stored by the server the user signs in to. Moro keeps only on-device caches and preferences, and collects only anonymous crash diagnostics.
+---
+Trademark clarification — Guideline 4.1(c)
+Please see the attached correspondence from Mastodon’s Legal team regarding the “Moro for Mastodon” App Store listing and the subtitle usage described in our request. Their response states: “This listing appears compliant with our guidelines,” and explicitly permits us to refer Apple to the email and their Trade Mark Policy. https://joinmastodon.org/trademark
+
+Moro is independently developed and is not affiliated with or endorsed by Mastodon GmbH or Mastodon Inc.
