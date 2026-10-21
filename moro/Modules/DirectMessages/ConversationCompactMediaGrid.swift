@@ -12,6 +12,7 @@ struct ConversationCompactMediaGrid: View {
     let isSensitive: Bool
 
     @Environment(\.moroTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selectedImageAttachment: Status.Attachment?
     @State private var selectedImageIndex = 0
     @State private var isSensitiveRevealed = false
@@ -180,6 +181,7 @@ struct ConversationCompactMediaGrid: View {
         .onTapGesture {
             handleTap(attachment)
         }
+        .background(MediaPreviewSource(id: attachment.id))
         .matchedTransitionSource(id: attachment.id, in: mediaTransitionNamespace)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel(for: attachment))
@@ -199,6 +201,9 @@ struct ConversationCompactMediaGrid: View {
             guard let index = imageAttachments.firstIndex(where: { $0.id == attachment.id }) else {
                 return
             }
+            // Presented from UIKit so it outlives this message's row (e.g. when rotating).
+            if MediaPreviewPresenter.present(attachments: imageAttachments, initialIndex: index,
+                sourceID: attachment.id, theme: theme, dynamicTypeSize: dynamicTypeSize) { return }
             selectedImageIndex = index
             selectedImageAttachment = attachment
         } else {
