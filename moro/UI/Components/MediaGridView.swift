@@ -28,6 +28,7 @@ struct MediaGridView: View {
     
     @Environment(\.moroTheme) private var theme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selectedAttachment: Status.Attachment? = nil
     @State private var selectedIndex: Int = 0
     @Namespace private var mediaTransitionNamespace
@@ -227,8 +228,12 @@ struct MediaGridView: View {
     }
     
     private func openPreview(index: Int) {
+        let attachment = imageAttachments[index]
+        // Presented from UIKit so rotating cannot close it by unloading this post's row.
+        if MediaPreviewPresenter.present(attachments: imageAttachments, initialIndex: index,
+            sourceID: attachment.id, theme: theme, dynamicTypeSize: dynamicTypeSize) { return }
         selectedIndex = index
-        selectedAttachment = imageAttachments[index]
+        selectedAttachment = attachment
     }
 
 }

@@ -14,6 +14,14 @@ struct ImagePreviewHarnessView: View {
     }
 
     var body: some View {
+        if ProcessInfo.processInfo.environment["UITEST_IMAGE_PREVIEW_LIST"] == "1" {
+            ImagePreviewListHarness()
+        } else {
+            singleViewer
+        }
+    }
+
+    private var singleViewer: some View {
         Button("Open image viewer") { showsPreview = true }
             .accessibilityIdentifier("imagePreview.open")
             .disabled(attachments.isEmpty)
@@ -29,7 +37,7 @@ struct ImagePreviewHarnessView: View {
             }
     }
 
-    private static func makeAttachments() async -> [Status.Attachment] {
+    static func makeAttachments() async -> [Status.Attachment] {
         let defaultDescription = "A long reading page with numbered chapters and a green END marker at the bottom.\n\n"
             + String(repeating: "图片描述可以单独阅读和复制，关闭后应回到原来的图片阅读位置。\n", count: 18)
             + "\n描述结束。"
@@ -79,6 +87,37 @@ struct ImagePreviewHarnessView: View {
         (text as NSString).draw(at: point, withAttributes: [
             .font: UIFont.systemFont(ofSize: size, weight: .medium), .foregroundColor: color,
         ])
+    }
+}
+/// A lazily loaded feed of posts with images, like a timeline: the viewer must stay open
+/// when rotating moves the post it was opened from out of the loaded rows.
+private struct ImagePreviewListHarness: View {
+    @State private var image: Status.Attachment?
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 24) {
+                if let image {
+                    ForEach(0..<30, id: \.self) { row in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Post \(row)")
+                            MediaGridView(
+                                attachments: [Status.Attachment(id: "row-\(row)", type: "image",
+                                    url: image.url, description: nil)],
+                                isSensitive: false
+                            )
+                        }
+                        .padding(.horizontal, 16)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("mediaList.row.\(row)")
+                    }
+                }
+            }
+        }
+        .task {
+            guard image == nil else { return }
+            image = await ImagePreviewHarnessView.makeAttachments().last
+        }
     }
 }
 #endif
