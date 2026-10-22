@@ -92,6 +92,8 @@ private struct NotificationFeedView: View {
     @State private var scrollPositionID: String?
     @State private var paginationFooterVisible = false
     @State private var isScrolledToTop = true
+    @State private var refreshBridge = ScrollViewRefreshBridge()
+    @State private var isPullRefreshing = false
 
     private static let topAnchorID = "notifications.top"
 
@@ -222,6 +224,7 @@ private struct NotificationFeedView: View {
                     Color.clear
                         .frame(height: 0)
                         .id(Self.topAnchorID)
+                        .background(ScrollViewRefreshBridgeAnchor(bridge: refreshBridge))
 
                     LazyVStack(spacing: 0) {
                         if viewModel.refreshFailed {
@@ -350,19 +353,41 @@ private struct NotificationFeedView: View {
                 isScrolledToTop = atTop
             }
             .refreshable {
+                // Runs for a real pull and for a tab re-tap that started the same control.
+                isPullRefreshing = true
+                defer { isPullRefreshing = false }
                 await refreshAndMarkRead()
             }
-            // Same as Home: re-tapping Inbox scrolls up, and at the top it refreshes.
+            .overlay(alignment: .top) { pullRefreshProbe }
+            // Same as Home: re-tapping Inbox scrolls up, and at the top it refreshes the way a
+            // pull does (spinner shown, rows pushed down). A re-tap during that refresh is ignored.
             .onTabReselect(.inbox) {
                 guard isActive else { return }
                 if !isScrolledToTop {
                     withAnimation(.snappy) { proxy.scrollTo(Self.topAnchorID, anchor: .top) }
-                } else {
+                } else if !refreshBridge.isRefreshing {
                     MoroRefreshFeedback.armed()
-                    Task { await refreshAndMarkRead() }
+                    if !refreshBridge.beginRefreshing() {
+                        Task { await refreshAndMarkRead() }
+                    }
                 }
             }
         }
+    }
+
+    /// UI tests cannot see the system refresh control or the rows it pushes down, so DEBUG
+    /// builds launched by them expose whether the pull-to-refresh action is running.
+    @ViewBuilder
+    private var pullRefreshProbe: some View {
+        #if DEBUG
+        if isPullRefreshing, ProcessInfo.processInfo.environment["UITEST_USE_FULL_APP"] == "1" {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityElement()
+                .accessibilityLabel("pull refresh running")
+                .accessibilityIdentifier("notifications.pullRefreshRunning")
+        }
+        #endif
     }
 
     private func loadInitialAndMarkRead() async {

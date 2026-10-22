@@ -136,6 +136,60 @@ final class PushNotificationUITests: XCTestCase {
         attach(app, "inbox-restored-and-refreshed")
     }
 
+    func testReTappingInboxAtTheTopStartsThePullToRefresh() {
+        let app = launch("inbox", environment: ["UITEST_NOTIFICATIONS_DELAY": "4"])
+        defer { app.terminate() }
+        let inboxTab = app.buttons["mainTab.inbox"]
+        inboxTab.tap()
+        XCTAssertTrue(text("Recent activity 330", in: app).waitForExistence(timeout: 10))
+        let pullRefresh = pullRefreshRunning(in: app)
+        XCTAssertFalse(pullRefresh.exists)
+
+        inboxTab.tap()
+        XCTAssertTrue(pullRefresh.waitForExistence(timeout: 3),
+            "Re-tapping Inbox at the top must start the list's own pull to refresh (spinner, rows pushed down)")
+        attach(app, "inbox-retap-pull-spinner")
+        XCTAssertTrue(text("New activity 331", in: app).waitForExistence(timeout: 8))
+        XCTAssertTrue(pullRefresh.waitForNonExistence(timeout: 5), "The spinner ends with the refresh")
+    }
+
+    func testOpeningInboxOverSavedNotificationsRefreshesQuietly() {
+        let app = launch("inbox")
+        inboxTabAndWait(in: app, for: "Recent activity 330")
+        // Rows show before the snapshot is written; loading another filter lets it finish.
+        app.buttons["inbox.filter.mentions"].tap()
+        XCTAssertTrue(text("Private initial mention", in: app).waitForExistence(timeout: 5))
+        app.buttons["inbox.filter.all"].tap()
+        app.terminate()
+
+        app.launchEnvironment["UITEST_PRESERVE_NOTIFICATION_SNAPSHOT"] = "1"
+        app.launchEnvironment["UITEST_NOTIFICATIONS_UPDATED"] = "1"
+        app.launchEnvironment["UITEST_NOTIFICATIONS_DELAY"] = "4"
+        app.launch(isolatedFor: self)
+        defer { app.terminate() }
+        app.buttons["mainTab.inbox"].tap()
+        XCTAssertTrue(text("Recent activity 330", in: app).waitForExistence(timeout: 5))
+        XCTAssertFalse(pullRefreshRunning(in: app).waitForExistence(timeout: 2),
+            "An automatic refresh must not start the pull spinner")
+        XCTAssertFalse(app.staticTexts["Refreshing..."].exists)
+        XCTAssertTrue(text("New activity after restart", in: app).waitForExistence(timeout: 8),
+            "The automatic refresh still runs")
+    }
+
+    func testReTappingInboxAwayFromTheTopOnlyScrollsBack() {
+        let app = launch("inbox")
+        defer { app.terminate() }
+        inboxTabAndWait(in: app, for: "Recent activity 330")
+        let newest = text("Recent activity 330", in: app)
+        app.scrollViews.firstMatch.swipeUp()
+        XCTAssertTrue(waitUntil(timeout: 3) { !newest.isHittable })
+
+        app.buttons["mainTab.inbox"].tap()
+        XCTAssertTrue(waitUntil(timeout: 3) { newest.isHittable }, "Re-tapping away from the top scrolls back up")
+        XCTAssertFalse(text("New activity 331", in: app).waitForExistence(timeout: 2),
+            "Scrolling back up must not also refresh")
+    }
+
     func testGroupedNotificationsContinuePagingWithoutAnotherScrollAppearance() {
         let app = launch("inbox", environment: ["UITEST_NOTIFICATIONS_GROUPED": "1"])
         defer { app.terminate() }
@@ -216,6 +270,20 @@ final class PushNotificationUITests: XCTestCase {
         XCTAssertTrue(notifications.waitForExistence(timeout: 12))
         XCTAssertTrue(notifications.isSelected)
         XCTAssertTrue(app.buttons["mainTab.inbox"].isSelected)
+    }
+
+    private func pullRefreshRunning(in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)["notifications.pullRefreshRunning"].firstMatch
+    }
+
+    private func waitUntil(timeout: TimeInterval, _ condition: @escaping () -> Bool) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: nil)
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    private func inboxTabAndWait(in app: XCUIApplication, for value: String) {
+        app.buttons["mainTab.inbox"].tap()
+        XCTAssertTrue(text(value, in: app).waitForExistence(timeout: 10))
     }
 
     private func text(_ value: String, in app: XCUIApplication) -> XCUIElement {
