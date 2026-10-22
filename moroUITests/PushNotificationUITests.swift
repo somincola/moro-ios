@@ -136,28 +136,30 @@ final class PushNotificationUITests: XCTestCase {
         attach(app, "inbox-restored-and-refreshed")
     }
 
-    func testReTappingInboxAtTheTopShowsTheRefreshInProgress() {
+    func testReTappingInboxAtTheTopStartsThePullToRefresh() {
         let app = launch("inbox", environment: ["UITEST_NOTIFICATIONS_DELAY": "4"])
         defer { app.terminate() }
         let inboxTab = app.buttons["mainTab.inbox"]
         inboxTab.tap()
         XCTAssertTrue(text("Recent activity 330", in: app).waitForExistence(timeout: 10))
-        let notice = refreshNotice(in: app)
-        XCTAssertTrue(notice.waitForNonExistence(timeout: 5))
+        let pullRefresh = pullRefreshRunning(in: app)
+        XCTAssertFalse(pullRefresh.exists)
 
         inboxTab.tap()
-        XCTAssertTrue(notice.waitForExistence(timeout: 2), "Re-tapping Inbox should show that it is refreshing")
-        attach(app, "inbox-retap-refreshing")
+        XCTAssertTrue(pullRefresh.waitForExistence(timeout: 3),
+            "Re-tapping Inbox at the top must start the list's own pull to refresh (spinner, rows pushed down)")
+        attach(app, "inbox-retap-pull-spinner")
         XCTAssertTrue(text("New activity 331", in: app).waitForExistence(timeout: 8))
-        XCTAssertTrue(notice.waitForNonExistence(timeout: 3), "The notice should go away once the refresh ends")
+        XCTAssertTrue(pullRefresh.waitForNonExistence(timeout: 5), "The spinner ends with the refresh")
     }
 
-    func testOpeningInboxOverSavedNotificationsShowsTheRefreshInProgress() {
+    func testOpeningInboxOverSavedNotificationsRefreshesQuietly() {
         let app = launch("inbox")
         inboxTabAndWait(in: app, for: "Recent activity 330")
         // Rows show before the snapshot is written; loading another filter lets it finish.
         app.buttons["inbox.filter.mentions"].tap()
         XCTAssertTrue(text("Private initial mention", in: app).waitForExistence(timeout: 5))
+        app.buttons["inbox.filter.all"].tap()
         app.terminate()
 
         app.launchEnvironment["UITEST_PRESERVE_NOTIFICATION_SNAPSHOT"] = "1"
@@ -167,25 +169,25 @@ final class PushNotificationUITests: XCTestCase {
         defer { app.terminate() }
         app.buttons["mainTab.inbox"].tap()
         XCTAssertTrue(text("Recent activity 330", in: app).waitForExistence(timeout: 5))
-        let notice = refreshNotice(in: app)
-        XCTAssertTrue(notice.waitForExistence(timeout: 2),
-            "Saved notifications on screen must not hide that a refresh is running")
-        attach(app, "inbox-saved-rows-refreshing")
-        XCTAssertTrue(text("New activity after restart", in: app).waitForExistence(timeout: 8))
-        XCTAssertTrue(notice.waitForNonExistence(timeout: 3))
+        XCTAssertFalse(pullRefreshRunning(in: app).waitForExistence(timeout: 2),
+            "An automatic refresh must not start the pull spinner")
+        XCTAssertFalse(app.staticTexts["Refreshing..."].exists)
+        XCTAssertTrue(text("New activity after restart", in: app).waitForExistence(timeout: 8),
+            "The automatic refresh still runs")
     }
 
-    func testPullingInboxUsesOnlyThePullSpinner() {
-        let app = launch("inbox", environment: ["UITEST_NOTIFICATIONS_DELAY": "4"])
+    func testReTappingInboxAwayFromTheTopOnlyScrollsBack() {
+        let app = launch("inbox")
         defer { app.terminate() }
         inboxTabAndWait(in: app, for: "Recent activity 330")
-        let notice = refreshNotice(in: app)
-        XCTAssertTrue(notice.waitForNonExistence(timeout: 5))
-        let scrollView = app.scrollViews.firstMatch
-        scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
-            .press(forDuration: 0.1, thenDragTo: scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)))
-        XCTAssertFalse(notice.waitForExistence(timeout: 1), "Pulling already shows the system spinner")
-        XCTAssertTrue(text("New activity 331", in: app).waitForExistence(timeout: 8))
+        let newest = text("Recent activity 330", in: app)
+        app.scrollViews.firstMatch.swipeUp()
+        XCTAssertTrue(waitUntil(timeout: 3) { !newest.isHittable })
+
+        app.buttons["mainTab.inbox"].tap()
+        XCTAssertTrue(waitUntil(timeout: 3) { newest.isHittable }, "Re-tapping away from the top scrolls back up")
+        XCTAssertFalse(text("New activity 331", in: app).waitForExistence(timeout: 2),
+            "Scrolling back up must not also refresh")
     }
 
     func testGroupedNotificationsContinuePagingWithoutAnotherScrollAppearance() {
@@ -270,8 +272,13 @@ final class PushNotificationUITests: XCTestCase {
         XCTAssertTrue(app.buttons["mainTab.inbox"].isSelected)
     }
 
-    private func refreshNotice(in app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any)["notifications.refreshing"].firstMatch
+    private func pullRefreshRunning(in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)["notifications.pullRefreshRunning"].firstMatch
+    }
+
+    private func waitUntil(timeout: TimeInterval, _ condition: @escaping () -> Bool) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: nil)
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
 
     private func inboxTabAndWait(in app: XCUIApplication, for value: String) {

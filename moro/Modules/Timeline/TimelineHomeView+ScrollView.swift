@@ -122,24 +122,28 @@ extension TimelineHomeView {
         }
     }
 
+    /// Shared by a released pull and a tab re-tap at the top: both pin the same slot first.
     @MainActor
     func performPullRefresh(
         viewModel: TimelineViewModel,
-        timelineType: TimelineType
+        timelineType: TimelineType,
+        trigger: TimelineViewModel.RefreshTrigger = .pull
     ) async {
         let indicatorStart = Date()
         let detectionSnapshot = detectionDimension(for: timelineType).map {
             detectionManager.snapshot(for: $0)
         }
-        let result = await viewModel.refresh(trigger: .pull)
+        let result = await viewModel.refresh(trigger: trigger)
 
         switch result {
-        case .success:
+        case .success(let insertedCount, let replacedTimeline):
             if let detectionSnapshot {
                 detectionManager.resolve(detectionSnapshot)
             }
             syncDetectionTopID(for: timelineType)
-            MoroRefreshFeedback.deliver(.succeeded)
+            // Confirm only when something arrived; "nothing new" just collapses the slot.
+            MoroRefreshFeedback.deliver(.succeeded,
+                confirmsSuccess: insertedCount > 0 || replacedTimeline)
         case .failure:
             MoroRefreshFeedback.deliver(.failed)
         case .cancelled:
@@ -171,6 +175,7 @@ extension TimelineHomeView {
         let timeline: TimelineType
 
         @Environment(\.moroTheme) private var theme
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @State private var state = TimelinePullRefreshVisualState.idle
 
         private var progress: CGFloat {
@@ -212,7 +217,11 @@ extension TimelineHomeView {
                 if slotHeight <= 0.5 { bridge.pullRefreshSlotDidCollapse(for: timeline) }
             }
             .onReceive(subject) { nextState in
-                if isCollapsing(to: nextState) {
+                if isExpandingFromRest(to: nextState) {
+                    // A tab re-tap pins the slot with no pull before it: open it smoothly
+                    // so the rows visibly make room, like a released pull.
+                    withAnimation(reduceMotion ? nil : .spring(duration: 0.35)) { state = nextState }
+                } else if isCollapsing(to: nextState) {
                     // The slot is off screen while reading. An immediate layout
                     // lets the bridge restore the anchor once, without animating
                     // the entire timeline upward under the reader.
@@ -225,6 +234,10 @@ extension TimelineHomeView {
                 }
             }
             .animation(.easeOut(duration: 0.16), value: state.isRefreshing)
+        }
+
+        private func isExpandingFromRest(to nextState: TimelinePullRefreshVisualState) -> Bool {
+            !state.isPinned && state.distance <= 0 && nextState.isPinned
         }
 
         private func isCollapsing(to nextState: TimelinePullRefreshVisualState) -> Bool {

@@ -148,6 +148,29 @@ final class TimelineSwitchingUITests: XCTestCase {
         XCTAssertTrue(wait { self.post(1061, in: app).isHittable })
     }
 
+    /// Re-tapping Home at the top is a pull without the finger: the petal slot opens and pushes
+    /// the rows down for as long as the refresh runs, and the new post lands on top.
+    @MainActor func testRetappingHomeAtTheTopOpensThePullSlotWhileRefreshing() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let newest = post(1060, in: app)
+        XCTAssertTrue(wait { newest.isHittable })
+        let restingY = newest.frame.minY
+        app.buttons["timeline.switch.add"].tap()
+        app.buttons["timeline.switch.delay"].tap()
+
+        app.buttons["mainTab.home"].tap()
+        XCTAssertTrue(wait { app.staticTexts["timeline.switch.requests"].label.contains("home:newer:started") })
+        XCTAssertTrue(wait { newest.frame.minY >= restingY + 30 },
+            "The pull slot must open and push the rows down (rested at \(restingY), now \(newest.frame.minY))")
+        XCTAssertFalse(app.staticTexts["刷新中..."].exists, "Home no longer shows a separate refreshing notice")
+        app.buttons["mainTab.home"].tap()
+
+        app.buttons["timeline.switch.release"].tap()
+        XCTAssertTrue(wait { self.post(1061, in: app).isHittable })
+        XCTAssertFalse(app.buttons["timeline.newPosts"].exists)
+    }
+
     @MainActor private func launch(controlSource: String = "home") -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()

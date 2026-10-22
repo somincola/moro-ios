@@ -92,10 +92,8 @@ private struct NotificationFeedView: View {
     @State private var scrollPositionID: String?
     @State private var paginationFooterVisible = false
     @State private var isScrolledToTop = true
+    @State private var refreshBridge = ScrollViewRefreshBridge()
     @State private var isPullRefreshing = false
-    @State private var showsRefreshNotice = false
-    @State private var refreshNoticeShownAt: Date?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let topAnchorID = "notifications.top"
 
@@ -124,9 +122,6 @@ private struct NotificationFeedView: View {
         .onChange(of: canResumePagination) { _, ready in
             if ready { loadMoreFromVisibleFooter() }
         }
-        .onChange(of: isRefreshingInBackground, initial: true) { _, refreshing in
-            updateRefreshNotice(refreshing)
-        }
         .sheet(item: $actorsSheet) { item in
             NotificationActorsSheet(
                 title: item.title,
@@ -142,45 +137,7 @@ private struct NotificationFeedView: View {
         ContentStateContainer(state: contentState) {
             notificationsList
         }
-        .overlay(alignment: .top) {
-            if showsRefreshNotice {
-                MoroNoticePill(icon: "arrow.trianglehead.2.clockwise", text: MoroL10n.Timeline.refreshing)
-                    .frame(maxWidth: 280)
-                    .padding(.top, 8)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                    .allowsHitTesting(false)
-                    .accessibilityIdentifier("notifications.refreshing")
-            }
-        }
     }
-
-    /// A refresh the reader did not start by pulling (opening the page, a tab re-tap, a new
-    /// push) over rows that are already on screen. Pulling shows the system spinner instead,
-    /// and an empty list shows the full-page loading state.
-    private var isRefreshingInBackground: Bool {
-        guard case .refreshing = viewModel.loadingState else { return false }
-        return !isPullRefreshing && !viewModel.notifications.isEmpty
-    }
-
-    /// Keeps the notice up long enough to read, so a fast refresh does not just flicker.
-    private func updateRefreshNotice(_ refreshing: Bool) {
-        let animation: Animation? = reduceMotion ? nil : .easeInOut(duration: 0.2)
-        if refreshing {
-            refreshNoticeShownAt = Date()
-            withAnimation(animation) { showsRefreshNotice = true }
-            return
-        }
-        guard showsRefreshNotice else { return }
-        let shownFor = refreshNoticeShownAt.map { Date().timeIntervalSince($0) } ?? .infinity
-        let remaining = Self.minimumRefreshNoticeDuration - shownFor
-        Task { @MainActor in
-            if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
-            guard !isRefreshingInBackground else { return }
-            withAnimation(animation) { showsRefreshNotice = false }
-        }
-    }
-
-    private static let minimumRefreshNoticeDuration: TimeInterval = 0.6
 
     private var isLoadingMore: Bool {
         if case .loadingMore = viewModel.loadingState { return true }
@@ -267,6 +224,7 @@ private struct NotificationFeedView: View {
                     Color.clear
                         .frame(height: 0)
                         .id(Self.topAnchorID)
+                        .background(ScrollViewRefreshBridgeAnchor(bridge: refreshBridge))
 
                     LazyVStack(spacing: 0) {
                         if viewModel.refreshFailed {
@@ -395,21 +353,41 @@ private struct NotificationFeedView: View {
                 isScrolledToTop = atTop
             }
             .refreshable {
+                // Runs for a real pull and for a tab re-tap that started the same control.
                 isPullRefreshing = true
                 defer { isPullRefreshing = false }
                 await refreshAndMarkRead()
             }
-            // Same as Home: re-tapping Inbox scrolls up, and at the top it refreshes.
+            .overlay(alignment: .top) { pullRefreshProbe }
+            // Same as Home: re-tapping Inbox scrolls up, and at the top it refreshes the way a
+            // pull does (spinner shown, rows pushed down). A re-tap during that refresh is ignored.
             .onTabReselect(.inbox) {
                 guard isActive else { return }
                 if !isScrolledToTop {
                     withAnimation(.snappy) { proxy.scrollTo(Self.topAnchorID, anchor: .top) }
-                } else {
+                } else if !refreshBridge.isRefreshing {
                     MoroRefreshFeedback.armed()
-                    Task { await refreshAndMarkRead() }
+                    if !refreshBridge.beginRefreshing() {
+                        Task { await refreshAndMarkRead() }
+                    }
                 }
             }
         }
+    }
+
+    /// UI tests cannot see the system refresh control or the rows it pushes down, so DEBUG
+    /// builds launched by them expose whether the pull-to-refresh action is running.
+    @ViewBuilder
+    private var pullRefreshProbe: some View {
+        #if DEBUG
+        if isPullRefreshing, ProcessInfo.processInfo.environment["UITEST_USE_FULL_APP"] == "1" {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityElement()
+                .accessibilityLabel("pull refresh running")
+                .accessibilityIdentifier("notifications.pullRefreshRunning")
+        }
+        #endif
     }
 
     private func loadInitialAndMarkRead() async {

@@ -9,7 +9,6 @@ extension TimelineHomeView {
             count: currentDetectionCount,
             hasMore: viewModel.newPostsHaveMore,
             isEnabled: settings.timelineInAppNewPostBannerEnabled,
-            isRefreshing: showsTopRefreshIndicator,
             bridge: scrollBridge
         ) {
             loadDetectedPosts(scrollToTop: true, providesFeedback: true)
@@ -17,24 +16,18 @@ extension TimelineHomeView {
         .padding(.top, headerHeight + 8)
     }
 
-    var showsTopRefreshIndicator: Bool {
-        guard case .refreshing(let trigger) = viewModel.refreshState else { return false }
-        return trigger == .tabRetap || trigger == .compose
-    }
-
+    /// Re-tapping Home at the top is a pull without the finger: it opens the same petal slot
+    /// and runs the same refresh, so it shows, finishes and keeps the reader's place the same.
+    /// A re-tap while that refresh is still running is ignored.
     func refreshCurrentTimelineFromTab() {
         let timeline = selectedTimeline
         let target = viewModel
+        guard scrollBridge.beginProgrammaticPullRefresh(
+            for: timeline, threshold: pullRefreshTriggerDistance, isSelected: true)
+        else { return }
         MoroRefreshFeedback.armed()
         Task { @MainActor in
-            let result = await target.refresh(trigger: .tabRetap)
-            guard selectedTimeline == timeline else { return }
-            if result.succeeded {
-                processLiveUpdates(for: timeline, viewModel: target)
-                syncDetectionTopID(for: timeline)
-            } else if case .failure = result {
-                MoroRefreshFeedback.deliver(.failed)
-            }
+            await performPullRefresh(viewModel: target, timelineType: timeline, trigger: .tabRetap)
         }
     }
 
@@ -99,7 +92,6 @@ private struct TimelineNewPostsNotice: View {
     let count: Int
     let hasMore: Bool
     let isEnabled: Bool
-    let isRefreshing: Bool
     let bridge: TimelineScrollBridge
     let onTap: () -> Void
 
@@ -113,7 +105,6 @@ private struct TimelineNewPostsNotice: View {
         count: Int,
         hasMore: Bool,
         isEnabled: Bool,
-        isRefreshing: Bool,
         bridge: TimelineScrollBridge,
         onTap: @escaping () -> Void
     ) {
@@ -121,7 +112,6 @@ private struct TimelineNewPostsNotice: View {
         self.count = count
         self.hasMore = hasMore
         self.isEnabled = isEnabled
-        self.isRefreshing = isRefreshing
         self.bridge = bridge
         self.onTap = onTap
         _isAtTop = State(initialValue: bridge.isAtTop(timeline))
@@ -152,9 +142,6 @@ private struct TimelineNewPostsNotice: View {
                 }
                 .padding(.horizontal, theme.spacing.m)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isCompact)
-            } else if isRefreshing {
-                MoroNoticePill(icon: "arrow.trianglehead.2.clockwise", text: MoroL10n.Timeline.refreshing)
-                    .frame(maxWidth: 280)
             }
             Spacer()
         }

@@ -536,6 +536,30 @@ final class TimelineScrollBridge: ObservableObject {
         return true
     }
 
+    /// Re-tapping the tab at the top: the same pinned slot a released pull leaves, so the
+    /// refresh looks and finishes exactly like a pull. False while one is already running.
+    func beginProgrammaticPullRefresh(
+        for timeline: TimelineType,
+        threshold: CGFloat,
+        isSelected: Bool
+    ) -> Bool {
+        guard isSelected else { return false }
+        var state = pullRefreshStates[timeline] ?? TimelinePullRefreshState()
+        guard state.phase != .refreshing else { return false }
+        state.phase = .refreshing
+        state.distance = threshold
+        pullRefreshStates[timeline] = state
+        pullRefreshSubject(for: timeline).send(
+            TimelinePullRefreshVisualState(
+                distance: threshold,
+                threshold: threshold,
+                isRefreshing: true,
+                isPinned: true
+            )
+        )
+        return true
+    }
+
     func cancelUnarmedPullRefresh(for timeline: TimelineType) {
         guard pullRefreshStates[timeline]?.phase != .refreshing else { return }
         finishPullRefresh(for: timeline)
