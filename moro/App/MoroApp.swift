@@ -130,7 +130,6 @@ struct MoroApp: App {
                 \.dynamicTypeSize,
                 uiTestDynamicTypeSizeOverride ?? systemDynamicTypeSize
             )
-            .privacyProtectedWhenInactive()
         }
     }
 

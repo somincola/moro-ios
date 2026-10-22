@@ -1963,8 +1963,7 @@ struct ComposeView: View {
 
 // MARK: - Camera View
 
-/// Asks for camera access before the picker opens, so the one-time system prompt
-/// is Moro's own (no privacy shield behind it) and a denial gets a clear path to
+/// Asks for camera access before the picker opens, so a denial gets a clear path to
 /// Settings instead of a black camera screen.
 @MainActor
 enum CameraAccess {
@@ -1973,9 +1972,7 @@ enum CameraAccess {
         case .authorized:
             return true
         case .notDetermined:
-            return await PrivacyProtectionCenter.shared.whilePresentingSystemPrompt {
-                await AVCaptureDevice.requestAccess(for: .video)
-            }
+            return await AVCaptureDevice.requestAccess(for: .video)
         default:
             return false
         }

@@ -67,9 +67,7 @@ enum MediaExportService {
     static func saveToPhotos(_ file: ImageFile) async throws {
         var status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
         if status == .notDetermined {
-            status = await PrivacyProtectionCenter.shared.whilePresentingSystemPrompt {
-                await PHPhotoLibrary.requestAuthorization(for: .addOnly)
-            }
+            status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         }
         guard status == .authorized || status == .limited else { throw ExportError.photoAccessDenied }
         do {
