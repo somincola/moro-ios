@@ -13,6 +13,7 @@ final class MoroAppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         PushRegistrationCenter.shared.configure()
+        PrivacySnapshotShield.shared.install()
         return true
     }
 

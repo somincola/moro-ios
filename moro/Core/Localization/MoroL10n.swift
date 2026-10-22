@@ -1133,10 +1133,6 @@ public enum MoroL10n {
         public static var toastSyncFailed: String { text("privacy.toast.syncFailed") }
     }
 
-    public enum PrivacyProtection {
-        public static var message: String { text("privacyProtection.message") }
-    }
-
     public enum Filters {
         public static var title: String { text("filters.title") }
         public static var newFilter: String { text("filters.newFilter") }
