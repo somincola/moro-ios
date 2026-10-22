@@ -5,6 +5,8 @@ import SwiftUI
 /// chrome events. Updating a toolbar or opening ALT must not reset the viewport.
 struct ZoomableImageView: UIViewRepresentable {
     let url: URL
+    /// The smaller rendition the timeline shows; displayed at once while `url` loads.
+    var previewURL: URL? = nil
     let altText: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var onSingleTap: () -> Void
@@ -20,7 +22,7 @@ struct ZoomableImageView: UIViewRepresentable {
         view.scrollView.onInteractionBegan = onInteractionBegan
         view.scrollView.onDismiss = onDismiss
         view.scrollView.onLongPress = onLongPress
-        view.scrollView.configure(url: url, altText: altText)
+        view.scrollView.configure(url: url, previewURL: previewURL, altText: altText)
     }
 
     static func dismantleUIView(_ view: ImagePreviewPageView, coordinator: ()) {
@@ -126,6 +128,11 @@ final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestur
     private var imageLoad: SDWebImageOperation?
     private var requestID = UUID()
     private var imageURL: URL?
+    private var previewURL: URL?
+    /// True once the full-size image is on screen (not just the timeline's preview).
+    private var showsFullImage = false
+    /// A full-size image that arrived mid-gesture; swapped in when the gesture ends.
+    private var pendingFullImage: UIImage?
     private var viewportSize: CGSize = .zero
     private var needsImageLayout = false
     private var isUpdatingLayout = false
@@ -193,12 +200,16 @@ final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestur
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func configure(url: URL, altText: String?) {
+    func configure(url: URL, previewURL: URL? = nil, altText: String?) {
         imageView.accessibilityLabel = altText ?? MoroL10n.ImagePreview.noAltDescription
         guard imageURL != url else { return }
         imageURL = url
+        // The timeline shows `preview_url` when there is one, otherwise the image itself.
+        self.previewURL = previewURL ?? url
         imageView.image = nil
         imageView.isHidden = true
+        showsFullImage = false
+        pendingFullImage = nil
         loadImage()
     }
 
@@ -213,8 +224,9 @@ final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestur
         cancelLoading()
         guard let imageURL else { return }
         let request = requestID
-        spinner.startAnimating()
+        if !showsFullImage, imageView.image == nil { spinner.startAnimating() }
         retryButton.isHidden = true
+        showCachedPreview(for: request)
         // Preserve long-image width with a 32 MiB decoded-pixel budget. The former
         // 2000px longest-edge limit could reduce a 600x6000 page to 200x2000.
         // Thumbnail context separates this rendition from timeline memory-cache
@@ -234,9 +246,99 @@ final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestur
                 guard let self, self.requestID == request else { return }
                 self.spinner.stopAnimating()
                 self.retryButton.isHidden = image != nil
-                if let image { self.display(image) }
+                if let image { self.showFullImage(image) }
             }
         }
+    }
+
+    /// Shows the image the timeline already loaded, straight from the cache, while the full
+    /// size downloads. The timeline shows `preview_url` (a smaller file), so the viewer still
+    /// needs the original; it just no longer opens on an empty spinner. Never downloads.
+    private func showCachedPreview(for request: UUID) {
+        guard let previewURL, !showsFullImage, imageView.image == nil else { return }
+        let side = MoroNetworkImage.thumbnailPixelSize
+        SDWebImageManager.shared.loadImage(
+            with: previewURL,
+            options: [.fromCacheOnly, .decodeFirstFrameOnly],
+            // Same context as the timeline's MoroNetworkImage, so this is the same cache entry.
+            context: [.imageThumbnailPixelSize: NSValue(cgSize: CGSize(width: side, height: side))],
+            progress: nil
+        ) { [weak self] image, _, _, _, finished, _ in
+            guard finished, let image else { return }
+            DispatchQueue.main.async {
+                guard let self, self.requestID == request, !self.showsFullImage,
+                    self.imageView.image == nil else { return }
+                self.spinner.stopAnimating()
+                self.display(image)
+            }
+        }
+    }
+
+    private func showFullImage(_ image: UIImage) {
+        showsFullImage = true
+        guard imageView.image != nil, viewportSize != .zero else {
+            display(image)
+            return
+        }
+        // Replacing the preview mid-gesture would fight the user's fingers.
+        if isZooming || isTracking || isDragging || isDecelerating || isZoomBouncing {
+            pendingFullImage = image
+            return
+        }
+        replaceDisplayedImage(with: image)
+    }
+
+    private func applyPendingFullImage() {
+        guard let image = pendingFullImage, !isZooming, !isTracking, !isDecelerating else { return }
+        pendingFullImage = nil
+        replaceDisplayedImage(with: image)
+    }
+
+    /// Swaps the preview for the full-size image without moving anything on screen: same
+    /// relative zoom, same visible point. A different aspect ratio starts over instead.
+    func replaceDisplayedImage(with image: UIImage) {
+        guard let current = imageView.image, current.size.width > 0, current.size.height > 0,
+            image.size.width > 0, image.size.height > 0, viewportSize != .zero
+        else {
+            display(image)
+            return
+        }
+        let currentAspect = current.size.width / current.size.height
+        let newAspect = image.size.width / image.size.height
+        guard abs(currentAspect - newAspect) / newAspect < 0.02 else {
+            display(image)
+            return
+        }
+
+        let wasAtMinimum = isAtMinimumZoom
+        let relativeScale = zoomScale / max(minimumZoomScale, 0.0001)
+        let visibleCenter = CGPoint(
+            x: (contentOffset.x + bounds.width / 2) / max(contentSize.width, 1),
+            y: (contentOffset.y + bounds.height / 2) / max(contentSize.height, 1))
+
+        isUpdatingLayout = true
+        defer { isUpdatingLayout = false }
+        imageView.image = image
+        minimumZoomScale = 0.0001
+        maximumZoomScale = 100
+        setZoomScale(1, animated: false)
+        imageView.frame = CGRect(origin: .zero, size: image.size)
+        contentSize = image.size
+        let geometry = ImageZoomGeometry(imageSize: image.size, viewport: bounds.size)
+        minimumZoomScale = geometry.minimumScale
+        maximumZoomScale = geometry.maximumScale
+        setZoomScale(wasAtMinimum ? minimumZoomScale
+            : min(maximumZoomScale, minimumZoomScale * relativeScale), animated: false)
+        centerImage()
+        if wasAtMinimum {
+            contentOffset = CGPoint(x: -contentInset.left, y: -contentInset.top)
+        } else {
+            contentOffset = boundedOffset(CGPoint(
+                x: visibleCenter.x * contentSize.width - bounds.width / 2,
+                y: visibleCenter.y * contentSize.height - bounds.height / 2))
+        }
+        viewportSize = bounds.size
+        updateAccessibilityValue()
     }
 
     func display(_ image: UIImage) {
@@ -313,7 +415,12 @@ final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestur
     func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
         if isAtMinimumZoom { unlockPager() }
         updateAccessibilityValue()
+        applyPendingFullImage()
     }
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate { applyPendingFullImage() }
+    }
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { applyPendingFullImage() }
 
     private func updateAccessibilityValue() {
         imageView.accessibilityValue = "\(Int((zoomScale / max(minimumZoomScale, 0.0001) * 100).rounded()))%"
