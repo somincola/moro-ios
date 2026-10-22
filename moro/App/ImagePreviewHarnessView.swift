@@ -101,11 +101,7 @@ private struct ImagePreviewListHarness: View {
                     ForEach(0..<30, id: \.self) { row in
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Post \(row)")
-                            MediaGridView(
-                                attachments: [Status.Attachment(id: "row-\(row)", type: "image",
-                                    url: image.url, description: nil)],
-                                isSensitive: false
-                            )
+                            MediaGridView(attachments: [attachment(for: row, image: image)], isSensitive: false)
                         }
                         .padding(.horizontal, 16)
                         .accessibilityElement(children: .contain)
@@ -118,6 +114,17 @@ private struct ImagePreviewListHarness: View {
             guard image == nil else { return }
             image = await ImagePreviewHarnessView.makeAttachments().last
         }
+    }
+
+    /// With UITEST_IMAGE_PREVIEW_UNREACHABLE_ORIGINAL the feed shows the cached image as the
+    /// post's preview while the full-size URL never loads, as on a slow network.
+    private func attachment(for row: Int, image: Status.Attachment) -> Status.Attachment {
+        guard ProcessInfo.processInfo.environment["UITEST_IMAGE_PREVIEW_UNREACHABLE_ORIGINAL"] == "1" else {
+            return Status.Attachment(id: "row-\(row)", type: "image", url: image.url, description: nil)
+        }
+        let original = URL(string: "https://image-preview-original.invalid/row-\(row).png")!
+        return Status.Attachment(id: "row-\(row)", type: "image", url: original,
+            previewURL: image.url, description: nil)
     }
 }
 #endif

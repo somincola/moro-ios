@@ -11,6 +11,10 @@
 import SwiftUI
 
 struct MoroNetworkImage: View {
+    /// Decode cap for inline images. The fullscreen viewer looks its thumbnail up in the
+    /// cache with the same value, so it must stay shared.
+    static let thumbnailPixelSize: CGFloat = 2000
+
     let url: URL?
     var contentMode: ContentMode
     /// Keep chrome/avatar/link-preview imagery static by default. Media surfaces can opt in.
@@ -32,7 +36,7 @@ struct MoroNetworkImage: View {
             url: url,
             // A generous cap: only outsized images (e.g. a banner) shrink; previews,
             // emoji and link thumbnails are already small and pass through untouched.
-            thumbnailPixelSize: 2000,
+            thumbnailPixelSize: Self.thumbnailPixelSize,
             contentMode: contentMode == .fit ? .scaleAspectFit : .scaleAspectFill,
             allowsAnimation: playAnimations
         )

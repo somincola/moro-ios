@@ -55,6 +55,7 @@ struct ImagePreviewView: View {
                         ForEach(Array(attachments.enumerated()), id: \.element.id) { index, attachment in
                             ZoomableImageView(
                                 url: attachment.url,
+                                previewURL: attachment.previewURL,
                                 altText: Self.descriptionText(attachment.description),
                                 onSingleTap: toggleControls,
                                 onInteractionBegan: hideControls,
