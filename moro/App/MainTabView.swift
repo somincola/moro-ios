@@ -128,9 +128,11 @@ struct MainTabView: View {
             )
 
         }
-        // UIKit owns both system bars and their safe-area backgrounds. Give the shell the
-        // full window so pushed scenes can carry their canvas through the bottom inset.
-        .ignoresSafeArea(.container, edges: [.top, .bottom])
+        // UIKit owns the system bars and their safe-area backgrounds. Give the shell the
+        // full window so pushed scenes can carry their canvas through the bottom inset, and
+        // so the tab bar controller reaches the display edge: on iPhone Duo the status bar
+        // sits on the side, and a shell inset from that edge keeps its bars horizontal.
+        .ignoresSafeArea(.container)
         .fullScreenCover(item: $coordinator.composeContext) { wrapper in
             ComposeView(
                 context: wrapper.context,
