@@ -38,6 +38,8 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
     private let presentFeedback = UIImpactFeedbackGenerator(style: .medium)
     private var pressOrigin: CGPoint = .zero
     private var didTravel = false
+    /// The tabs run down the leading side (iPhone Duo, the left app in Split View).
+    private var barIsLeading = false
 
     init(container: UIViewController, tabBarController: UITabBarController, theme: MoroTheme) {
         self.container = container
@@ -49,14 +51,17 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
     }
 
     func install() {
-        guard let tabBar = tabBarController?.tabBar else { return }
+        // Attach to the tab controller's view, not the tab bar: on iPhone Duo the tabs move
+        // into a vertical system bar outside `tabBar`. The delegate only admits touches that
+        // land on the Me tab, so the rest of the screen is unaffected.
+        guard let tabView = tabBarController?.view else { return }
         pressRecognizer.addTarget(self, action: #selector(handlePress(_:)))
         pressRecognizer.minimumPressDuration = 0.35
         pressRecognizer.allowableMovement = .greatestFiniteMagnitude
         // Once recognized, the hold must not also select the tab.
         pressRecognizer.cancelsTouchesInView = true
         pressRecognizer.delegate = self
-        tabBar.addGestureRecognizer(pressRecognizer)
+        tabView.addGestureRecognizer(pressRecognizer)
         // Build the overlay once the shell has settled, so the first hold doesn't pay
         // for the hosting controller, its first SwiftUI pass and the avatar decodes.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.prewarm() }
@@ -114,19 +119,24 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
     // MARK: - Gesture
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard gestureRecognizer === pressRecognizer else { return true }
+        guard isOnMeTab(touch.location(in: gestureRecognizer.view)) else { return false }
         // Wake the Taptic Engine on touch down so the "raise" tap lands on time.
-        if gestureRecognizer === pressRecognizer {
-            presentFeedback.prepare()
-        }
+        presentFeedback.prepare()
         return true
     }
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard gestureRecognizer === pressRecognizer, !model.isPresented,
-            !AccountSwitchTransition.shared.isActive,
-            let tabBar = tabBarController?.tabBar, let meFrame = meTabFrame(in: tabBar)
+            !AccountSwitchTransition.shared.isActive
         else { return false }
-        return meFrame.insetBy(dx: -6, dy: -6).contains(gestureRecognizer.location(in: tabBar))
+        return isOnMeTab(gestureRecognizer.location(in: gestureRecognizer.view))
+    }
+
+    /// `point` is in the press recognizer's view.
+    private func isOnMeTab(_ point: CGPoint) -> Bool {
+        guard let space = pressRecognizer.view, let meFrame = meTabFrame(in: space) else { return false }
+        return meFrame.insetBy(dx: -6, dy: -6).contains(point)
     }
 
     func gestureRecognizer(
@@ -135,10 +145,8 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
     ) -> Bool {
         // The iOS 26 tab bar tracks touches with its own recognizer (the selection lens),
         // which would otherwise exclude the hold. Run alongside it, then cancel it on begin.
-        guard gestureRecognizer === pressRecognizer,
-            let tabBar = tabBarController?.tabBar, let view = otherGestureRecognizer.view
-        else { return false }
-        return view === tabBar || view.isDescendant(of: tabBar)
+        guard gestureRecognizer === pressRecognizer, let view = otherGestureRecognizer.view else { return false }
+        return isTabChrome(view)
     }
 
     /// Stops the tab bar's own tracking so releasing the hold doesn't also select a tab.
@@ -146,12 +154,19 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
         guard let tabBar = tabBarController?.tabBar else { return }
         var queue: [UIView] = [tabBar]
         while let view = queue.popLast() {
-            for recognizer in view.gestureRecognizers ?? []
-            where recognizer !== pressRecognizer && recognizer.isEnabled {
-                recognizer.isEnabled = false
-                recognizer.isEnabled = true
-            }
+            Self.resetTracking(on: view, except: pressRecognizer)
             queue.append(contentsOf: view.subviews)
+        }
+        // iPhone Duo's vertical bar tracks on the views around its buttons.
+        for view in verticalBarChrome() {
+            Self.resetTracking(on: view, except: pressRecognizer)
+        }
+    }
+
+    private static func resetTracking(on view: UIView, except kept: UIGestureRecognizer) {
+        for recognizer in view.gestureRecognizers ?? [] where recognizer !== kept && recognizer.isEnabled {
+            recognizer.isEnabled = false
+            recognizer.isEnabled = true
         }
     }
 
@@ -206,7 +221,10 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
             ? point.y >= union.minY - reach && point.y <= bounds.maxY
             : point.y >= bounds.minY && point.y <= union.maxY + reach
         let slack = AccountSwitcherMetrics.spacing / 2 + AccountSwitcherMetrics.padding
-        guard inBand, point.x >= union.minX - slack else { return nil }
+        // The finger starts on the Me tab beside the panel: trailing of it on a bottom or
+        // trailing bar, leading of it on a leading bar.
+        let reachesPanel = barIsLeading ? point.x <= union.maxX + slack : point.x >= union.minX - slack
+        guard inBand, reachesPanel else { return nil }
         return frames.min { abs($0.1.midX - point.x) < abs($1.1.midX - point.x) }?.0
     }
 
@@ -357,8 +375,13 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
 
     private func layoutPanel() {
         guard let hostView = host?.view, let tabBar = tabBarController?.tabBar else { return }
+        if let column = verticalTabColumn(in: hostView), let me = meTabFrame(in: hostView) {
+            layoutPanelBeside(column: column, me: me, in: hostView)
+            return
+        }
+        barIsLeading = false
         let bar = tabBar.convert(tabBar.bounds, to: hostView)
-        let me = meTabFrame(in: tabBar).map { tabBar.convert($0, to: hostView) }
+        let me = meTabFrame(in: hostView)
             ?? CGRect(x: bar.maxX - bar.width / 4, y: bar.minY, width: bar.width / 4, height: bar.height)
         let above = bar.midY > hostView.bounds.midY
         model.placement = above ? .aboveTabBar : .belowTabBar
@@ -368,6 +391,26 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
         model.edgeInset = above
             ? hostView.bounds.height - bar.minY + AccountSwitcherMetrics.gapToTabBar
             : bar.maxY + AccountSwitcherMetrics.gapToTabBar
+    }
+
+    /// iPhone Duo: the tabs run down the side of the display. Open the panel beside the
+    /// column, level with the Me tab, so sliding from Me toward the content crosses the
+    /// accounts the way sliding along a bottom bar does.
+    private func layoutPanelBeside(column: CGRect, me: CGRect, in hostView: UIView) {
+        let gap = AccountSwitcherMetrics.gapToTabBar
+        let half = AccountSwitcherMetrics.avatarSize / 2 + AccountSwitcherMetrics.padding
+        barIsLeading = column.midX < hostView.bounds.midX
+        model.placement = .aboveTabBar
+        if barIsLeading {
+            let count = CGFloat(max(model.entries.count, 1))
+            let width = count * AccountSwitcherMetrics.avatarSize
+                + (count - 1) * AccountSwitcherMetrics.spacing + 2 * AccountSwitcherMetrics.padding
+            model.trailingInset = max(
+                AccountSwitcherMetrics.edgeMargin, hostView.bounds.width - column.maxX - gap - width)
+        } else {
+            model.trailingInset = max(AccountSwitcherMetrics.edgeMargin, hostView.bounds.width - column.minX + gap)
+        }
+        model.edgeInset = max(AccountSwitcherMetrics.edgeMargin, hostView.bounds.height - me.midY - half)
     }
 
     private func makeHostIfNeeded() -> UIHostingController<AnyView>? {
@@ -408,32 +451,110 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
 
     // MARK: - Me tab geometry
 
-    private func meTabView() -> UIView? {
-        guard let tabBar = tabBarController?.tabBar else { return nil }
-        return Self.firstView(in: tabBar) { $0.accessibilityIdentifier == Self.meTabIdentifier }
+    /// The tab buttons the system exposes by identifier. The classic bar keeps them inside
+    /// `tabBar` (iOS 26 doesn't expose them at all); iPhone Duo's vertical bar hosts them in
+    /// a system bar elsewhere under the tab controller. The page on screen is skipped: it is
+    /// the bulk of the hierarchy and never holds a tab. Its navigation controller is not,
+    /// since the vertical bar may be drawn there.
+    private func tabButtons() -> [UIView] {
+        guard let tabController = tabBarController else { return [] }
+        let selected = tabController.selectedViewController
+        let content = (selected as? UINavigationController)?.topViewController?.view ?? selected?.view
+        var buttons: [UIView] = []
+        var queue: [UIView] = [tabController.view]
+        while !queue.isEmpty {
+            let view = queue.removeFirst()
+            if view === content || view === host?.view { continue }
+            if let id = view.accessibilityIdentifier, id.hasPrefix("mainTab.") {
+                buttons.append(view)
+                continue
+            }
+            queue.append(contentsOf: view.subviews)
+        }
+        return buttons
     }
 
-    private func meTabFrame(in tabBar: UITabBar) -> CGRect? {
-        if let view = meTabView(), view.bounds.width > 0 {
-            return view.convert(view.bounds, to: tabBar)
+    private func meTabView() -> UIView? {
+        tabButtons().first { $0.accessibilityIdentifier == Self.meTabIdentifier }
+    }
+
+    /// The column of tabs on iPhone Duo's vertical bar, or nil while the bar is horizontal.
+    private func verticalTabColumn(in space: UIView) -> CGRect? {
+        let frames = tabButtons().map { $0.convert($0.bounds, to: space) }
+        guard frames.count > 1, let first = frames.first else { return nil }
+        let column = frames.dropFirst().reduce(first) { $0.union($1) }
+        return column.height > column.width ? column : nil
+    }
+
+    /// On iPhone Duo's vertical bar: the tab buttons and every view between them and the
+    /// tab controller's view. The bar's selection lens tracks on one of those ancestors, not
+    /// inside the buttons. Empty while the tabs sit in the classic `tabBar`.
+    private func verticalBarChrome() -> [UIView] {
+        guard let tabController = tabBarController else { return [] }
+        var chrome: [UIView] = []
+        for button in tabButtons() where !button.isDescendant(of: tabController.tabBar) {
+            var cursor: UIView? = button
+            while let view = cursor, view !== tabController.view {
+                if !chrome.contains(where: { $0 === view }) { chrome.append(view) }
+                cursor = view.superview
+            }
         }
-        // Fallback: the trailing of four equal tab slots.
+        return chrome
+    }
+
+    /// Whether `view` draws the tabs, so its own tracking may run alongside the hold until
+    /// the hold begins (and then gets cancelled).
+    private func isTabChrome(_ view: UIView) -> Bool {
+        if let tabBar = tabBarController?.tabBar, view === tabBar || view.isDescendant(of: tabBar) {
+            return true
+        }
+        return verticalBarChrome().contains { chrome in view === chrome || view.isDescendant(of: chrome) }
+    }
+
+    /// The Me tab's frame in `space`.
+    private func meTabFrame(in space: UIView) -> CGRect? {
+        if let view = meTabView(), view.bounds.width > 0 {
+            return view.convert(view.bounds, to: space)
+        }
+        // Fallback: the trailing of four equal slots on the horizontal bar.
+        guard let tabBar = tabBarController?.tabBar else { return nil }
         let width = tabBar.bounds.width / CGFloat(MainTab.allCases.count)
         guard width > 0 else { return nil }
         let x = tabBar.effectiveUserInterfaceLayoutDirection == .rightToLeft
             ? tabBar.bounds.minX : tabBar.bounds.maxX - width
-        return CGRect(x: x, y: 0, width: width, height: tabBar.bounds.height)
+        return tabBar.convert(CGRect(x: x, y: 0, width: width, height: tabBar.bounds.height), to: space)
     }
 
     /// Where the Me tab's glyph is drawn. The iOS 26 tab bar doesn't expose the item's
     /// view by identifier, so pick the icon-sized image view nearest the Me slot.
     private func meIconFrame(in window: UIWindow) -> CGRect {
         let size = MeTabAvatarMetrics.avatar
+        // Where the Me tab exposes its own button (iPhone Duo's vertical bar), its icon is inside it.
+        if let meView = meTabView(),
+            let icon = Self.iconViews(in: meView).max(by: { $0.bounds.width < $1.bounds.width })
+        {
+            return Self.landingFrame(of: icon, in: window, size: size)
+        }
         guard let tabBar = tabBarController?.tabBar, let slot = meTabFrame(in: tabBar) else {
             return CGRect(x: window.bounds.maxX - 60, y: window.bounds.maxY - 70, width: size, height: size)
         }
+        let nearest = Self.iconViews(in: tabBar).min { lhs, rhs in
+            let l = lhs.convert(lhs.bounds, to: tabBar), r = rhs.convert(rhs.bounds, to: tabBar)
+            return abs(l.midX - slot.midX) < abs(r.midX - slot.midX)
+        }
+        if let nearest {
+            let frame = nearest.convert(nearest.bounds, to: window)
+            if abs(frame.midX - tabBar.convert(slot, to: window).midX) < slot.width / 2 {
+                return Self.landingFrame(of: nearest, in: window, size: size)
+            }
+        }
+        let inWindow = tabBar.convert(slot, to: window)
+        return CGRect(x: inWindow.midX - size / 2, y: inWindow.minY + 6, width: size, height: size)
+    }
+
+    private static func iconViews(in root: UIView) -> [UIImageView] {
         var icons: [UIImageView] = []
-        var queue: [UIView] = [tabBar]
+        var queue: [UIView] = [root]
         while !queue.isEmpty {
             let view = queue.removeFirst()
             if let image = view as? UIImageView, image.image != nil, !image.isHidden, image.alpha > 0.01,
@@ -443,34 +564,18 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
             }
             queue.append(contentsOf: view.subviews)
         }
-        let nearest = icons.min { lhs, rhs in
-            let l = lhs.convert(lhs.bounds, to: tabBar), r = rhs.convert(rhs.bounds, to: tabBar)
-            return abs(l.midX - slot.midX) < abs(r.midX - slot.midX)
-        }
-        if let nearest {
-            let frame = nearest.convert(nearest.bounds, to: window)
-            if abs(frame.midX - tabBar.convert(slot, to: window).midX) < slot.width / 2 {
-                // On the avatar image, land on the avatar circle inside the ring canvas,
-                // scaled the way the tab bar actually drew it.
-                let isAvatar = abs((nearest.image?.size.width ?? 0) - MeTabAvatarMetrics.canvas) < 0.5
-                let side = isAvatar
-                    ? min(frame.width, frame.height) * MeTabAvatarMetrics.avatar / MeTabAvatarMetrics.canvas
-                    : size
-                return CGRect(x: frame.midX - side / 2, y: frame.midY - side / 2, width: side, height: side)
-            }
-        }
-        let inWindow = tabBar.convert(slot, to: window)
-        return CGRect(x: inWindow.midX - size / 2, y: inWindow.minY + 6, width: size, height: size)
+        return icons
     }
 
-    private static func firstView(in root: UIView, where predicate: (UIView) -> Bool) -> UIView? {
-        var queue = [root]
-        while !queue.isEmpty {
-            let view = queue.removeFirst()
-            if view !== root, predicate(view) { return view }
-            queue.append(contentsOf: view.subviews)
-        }
-        return nil
+    /// On the avatar image, land on the avatar circle inside the ring canvas, scaled the way
+    /// the bar actually drew it; on a glyph, on a Me-sized square at its centre.
+    private static func landingFrame(of icon: UIImageView, in window: UIWindow, size: CGFloat) -> CGRect {
+        let frame = icon.convert(icon.bounds, to: window)
+        let isAvatar = abs((icon.image?.size.width ?? 0) - MeTabAvatarMetrics.canvas) < 0.5
+        let side = isAvatar
+            ? min(frame.width, frame.height) * MeTabAvatarMetrics.avatar / MeTabAvatarMetrics.canvas
+            : size
+        return CGRect(x: frame.midX - side / 2, y: frame.midY - side / 2, width: side, height: side)
     }
 }
 

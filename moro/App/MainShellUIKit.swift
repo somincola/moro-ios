@@ -465,8 +465,11 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         }
 
         private func publishTabBarHeight() {
-            let height = mainTabController.tabBar.frame.height
-            guard height > 0 else { return }
+            let frame = mainTabController.tabBar.frame
+            guard frame.height > 0 else { return }
+            // On iPhone Duo the bar runs down the side, so nothing covers the bottom of the
+            // content and only the compose button's clearance remains.
+            let height = frame.height > frame.width ? 0 : frame.height
 
             let heightChanged = abs(coordinator.tabBarHeight - height) > 0.5
             guard heightChanged else { return }
