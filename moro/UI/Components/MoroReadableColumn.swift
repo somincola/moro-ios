@@ -14,4 +14,26 @@ extension View {
         frame(maxWidth: MoroLayoutMetrics.readableColumnWidth)
             .frame(maxWidth: .infinity)
     }
+
+    /// The same reading column for a `List`, which can't be framed narrower without cutting
+    /// off its row backgrounds and swipe actions. The list stays full width and moves its
+    /// rows' content in from both sides by the width beyond the cap: nothing on iPhone in
+    /// portrait, where that width is zero.
+    func moroReadableListMargins() -> some View {
+        modifier(ReadableListMargins())
+    }
+}
+
+private struct ReadableListMargins: ViewModifier {
+    @State private var width: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .safeAreaPadding(.horizontal, max(0, (width - MoroLayoutMetrics.readableColumnWidth) / 2))
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { newWidth in
+                width = newWidth
+            }
+    }
 }

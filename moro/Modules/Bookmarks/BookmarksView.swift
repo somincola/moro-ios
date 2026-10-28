@@ -120,6 +120,7 @@ struct BookmarksView: View {
             .listRowBackground(theme.colors.surfaceBase)
         }
         .listStyle(.plain)
+        .moroReadableListMargins()
         .scrollContentBackground(.hidden)
         .background(theme.colors.surfaceBase)
         .scrollDismissesKeyboard(.interactively)

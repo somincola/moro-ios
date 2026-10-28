@@ -122,6 +122,7 @@ struct FavouritesView: View {
                     onRetry: { Task { await viewModel.loadMore() } }
                 )
             }
+            .moroReadableColumn()
         }
         .refreshable {
             await viewModel.refresh()

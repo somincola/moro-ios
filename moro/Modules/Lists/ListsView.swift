@@ -159,6 +159,7 @@ struct ListsView: View {
                     }
                 }
             }
+            .moroReadableColumn()
             .padding(.horizontal, theme.spacing.m)
             .padding(.vertical, theme.spacing.s)
         }
@@ -462,6 +463,7 @@ struct ListTimelineView: View {
                     onRetry: { Task { await viewModel.loadMore() } }
                 )
             }
+            .moroReadableColumn()
         }
         .refreshable {
             await viewModel.refresh()

@@ -259,6 +259,7 @@ struct DirectMessagesView: View {
                     onRetry: { Task { await viewModel.loadMore() } }
                 )
             }
+            .moroReadableColumn()
         }
         .refreshable {
             await viewModel.refresh()

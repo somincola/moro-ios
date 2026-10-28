@@ -344,6 +344,7 @@ private struct NotificationFeedView: View {
                             .onDisappear { paginationFooterVisible = false }
                     }
                     .scrollTargetLayout()
+                    .moroReadableColumn()
                 }
             }
             .scrollPosition(id: $scrollPositionID, anchor: .top)
@@ -503,6 +504,7 @@ private struct NotificationActorsSheet: View {
                 .buttonStyle(.plain)
             }
             .listStyle(.plain)
+            .moroReadableListMargins()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
         }

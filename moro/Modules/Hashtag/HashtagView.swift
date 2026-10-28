@@ -82,6 +82,7 @@ struct HashtagView: View {
                         onRetry: { Task { await viewModel.loadMore() } }
                     )
                 }
+                .moroReadableColumn()
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
