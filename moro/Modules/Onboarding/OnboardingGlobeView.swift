@@ -75,7 +75,6 @@ struct OnboardingGlobeView: View {
             .accessibilityElement(children: .contain)
             .onAppear { sceneSize = fullSize }
             .onChange(of: fullSize) { _, size in sceneSize = size }
-            .overlay(alignment: .topTrailing) { skipButton }
         }
         .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: formed)
         .accessibilityAction(named: MoroL10n.Registration.continueButton) { gather() }
@@ -168,24 +167,6 @@ struct OnboardingGlobeView: View {
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 12)
-        }
-    }
-
-    /// Skips straight to login. Kept outside the scene's gestures so a tap on it is only
-    /// ever a tap on it.
-    @ViewBuilder private var skipButton: some View {
-        if formed == nil && dive == nil {
-            Button { finish(.login) } label: {
-                Text(MoroL10n.Login.login)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .padding(.horizontal, 20)
-                    .frame(height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("onboarding.skip")
-            .transition(.opacity.animation(.easeOut(duration: 0.4)))
         }
     }
 
