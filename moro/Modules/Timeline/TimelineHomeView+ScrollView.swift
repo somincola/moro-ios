@@ -44,6 +44,7 @@ extension TimelineHomeView {
                     timelinePrimaryContent(for: viewModel, timelineType: timelineType)
                 }
                 .scrollTargetLayout()
+                .moroReadableColumn()
                 // Clear the compact footer, including the device bottom safe area. The timeline
                 // remains edge to edge, while its final row stays fully reachable above the footer.
                 .padding(.bottom, bottomContentInset + theme.spacing.s)

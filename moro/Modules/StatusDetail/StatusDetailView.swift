@@ -263,6 +263,7 @@ struct StatusDetailView: View {
                 }
             }
             .scrollTargetLayout()
+            .moroReadableColumn()
         }
         .scrollPosition(id: $visibleStatusID, anchor: .top)
     }
