@@ -335,12 +335,14 @@ private struct ListEditorSheet: View {
             .navigationTitle(draft.isEditing ? MoroL10n.Lists.formEditTitle : MoroL10n.Lists.newList)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(MoroL10n.Lists.formCancel) { onCancel() }
+                ToolbarItem(placement: .cancellationAction) {
+                    MoroToolbarButton(MoroL10n.Lists.formCancel, kind: .close) { onCancel() }
                         .disabled(isSaving)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(draft.isEditing ? MoroL10n.Lists.formSave : MoroL10n.Lists.formCreate) {
+                ToolbarItem(placement: .confirmationAction) {
+                    MoroToolbarButton(
+                        draft.isEditing ? MoroL10n.Lists.formSave : MoroL10n.Lists.formCreate, kind: .confirm
+                    ) {
                         Task { await onSave() }
                     }
                     .disabled(isSaving || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

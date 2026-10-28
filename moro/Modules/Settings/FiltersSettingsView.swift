@@ -493,14 +493,16 @@ private struct FilterEditorSheet: View {
             .navigationTitle(draft.isEditing ? MoroL10n.Filters.formEditTitle : MoroL10n.Filters.newFilter)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(MoroL10n.Filters.formCancel) {
+                ToolbarItem(placement: .cancellationAction) {
+                    MoroToolbarButton(MoroL10n.Filters.formCancel, kind: .close) {
                         onCancel()
                     }
                     .disabled(isSaving || isKeywordSaving)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(draft.isEditing ? MoroL10n.Filters.formSave : MoroL10n.Filters.formCreate) {
+                ToolbarItem(placement: .confirmationAction) {
+                    MoroToolbarButton(
+                        draft.isEditing ? MoroL10n.Filters.formSave : MoroL10n.Filters.formCreate, kind: .confirm
+                    ) {
                         Task { await onSave() }
                     }
                     .disabled(isSaving || !draft.canSave || isKeywordSaving)

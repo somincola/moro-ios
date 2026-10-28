@@ -240,6 +240,38 @@ struct ComposeView: View {
         viewModel.isPublishing || viewModel.hasPublished
     }
     
+    /// iOS 26+: the system confirm button with an arrow (the title stays the accessibility label),
+    /// so it can move into iPhone Duo's vertical side bar; earlier systems keep the text button.
+    @ViewBuilder
+    private var publishButton: some View {
+        if #available(iOS 26.0, *) {
+            Button(role: .confirm) {
+                Task { await publish() }
+            } label: {
+                if isPublishingOrClosing {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Label(primaryActionTitle, systemImage: "arrow.up")
+                }
+            }
+        } else {
+            Button {
+                Task { await publish() }
+            } label: {
+                ZStack {
+                    Text(primaryActionTitle)
+                        .opacity(isPublishingOrClosing ? 0 : 1)
+                    if isPublishingOrClosing {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+            }
+            .fontWeight(.semibold)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -295,8 +327,8 @@ struct ComposeView: View {
             // silently losing the post.
             .interactiveDismissDisabled(viewModel.hasDraftableContent)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(MoroL10n.Common.cancel) {
+                ToolbarItem(placement: .cancellationAction) {
+                    MoroToolbarButton(MoroL10n.Common.cancel, kind: .close) {
                         if viewModel.hasDraftableContent {
                             destination = .discardConfirmation
                         } else {
@@ -341,23 +373,9 @@ struct ComposeView: View {
                     .accessibilityLabel(MoroL10n.ComposeReading.options)
                     .accessibilityIdentifier("compose.editorOptions")
 
-                    Button {
-                        Task {
-                            await publish()
-                        }
-                    } label: {
-                        ZStack {
-                            Text(primaryActionTitle)
-                                .opacity(isPublishingOrClosing ? 0 : 1)
-                            if isPublishingOrClosing {
-                                ProgressView()
-                                    .controlSize(.small)
-                            }
-                        }
-                    }
+                    publishButton
                     .disabled(!viewModel.canPublish)
                     .accessibilityIdentifier("compose.postButton")
-                    .fontWeight(.semibold)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(Text(primaryActionTitle))
                     .accessibilityValue(Text(isPublishingOrClosing ? publishingButtonText : ""))

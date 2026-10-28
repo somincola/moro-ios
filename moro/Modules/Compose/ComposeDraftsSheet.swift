@@ -28,8 +28,8 @@ struct ComposeDraftsSheet: View {
             .navigationTitle(MoroL10n.ComposeDrafts.navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(MoroL10n.Common.done) {
+                ToolbarItem(placement: .confirmationAction) {
+                    MoroToolbarButton(MoroL10n.Common.done, kind: .confirm) {
                         dismiss()
                     }
                 }

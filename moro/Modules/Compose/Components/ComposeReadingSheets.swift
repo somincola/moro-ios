@@ -77,7 +77,7 @@ struct ComposePreviewSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(MoroL10n.Common.done) { dismiss() }.accessibilityIdentifier("compose.previewDone")
+                    MoroToolbarButton(MoroL10n.Common.done, kind: .confirm, identifier: "compose.previewDone") { dismiss() }
                 }
             }
         }
@@ -131,7 +131,7 @@ struct ComposeMediaOrderSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(MoroL10n.Common.done) { dismiss() }.accessibilityIdentifier("compose.orderDone")
+                    MoroToolbarButton(MoroL10n.Common.done, kind: .confirm, identifier: "compose.orderDone") { dismiss() }
                 }
             }
         }

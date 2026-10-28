@@ -657,8 +657,8 @@ private struct AddAccountLoginContainer: View {
         NavigationStack {
             LoginView(authService: AuthService(), onAuthSuccess: onAuthSuccess)
                 .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button(MoroL10n.Common.cancel) {
+                    ToolbarItem(placement: .cancellationAction) {
+                        MoroToolbarButton(MoroL10n.Common.cancel, kind: .close) {
                             onCancel()
                         }
                     }

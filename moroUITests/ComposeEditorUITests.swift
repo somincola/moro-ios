@@ -56,7 +56,7 @@ final class ComposeEditorUITests: XCTestCase {
         XCTAssertEqual(editor.value as? String, prefix + "Hello @hanna@remote.example #SwiftUI done")
         XCTAssertFalse(hashtag.exists)
         XCTAssertTrue(app.keyboards.firstMatch.exists)
-        XCTAssertTrue(app.buttons["compose.postButton"].isEnabled)
+        XCTAssertTrue(app.composePostButton.isEnabled)
         attach(app, name: "composer-\(mode)-completed-tokens")
     }
 
