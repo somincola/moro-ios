@@ -98,7 +98,69 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
         chinese ? ["林知夏", "陈屿", "苏晚", "周默"] : ["Alex Rivers", "Luna Park", "Sam Chen", "Mira Stone"]
     }
     private static var tagNames: [String] {
-        chinese ? ["摄影", "插画", "自然", "读书"] : ["Photography", "Art", "Nature", "Books"]
+        if usesPhotos {
+            return chinese ? ["摄影", "猫", "咖啡", "读书"] : ["Photography", "Cats", "Coffee", "Books"]
+        }
+        return chinese ? ["摄影", "插画", "自然", "读书"] : ["Photography", "Art", "Nature", "Books"]
+    }
+
+    // MARK: Showcase photos
+
+    /// Licensed photos for the showcase (see `screenshots/app-store/showcase-assets/CREDITS.md`),
+    /// read straight from the checkout so they never ship inside the app: this works in the
+    /// simulator, where the app can read the Mac's files. `STORE_ASSETS` overrides the folder.
+    /// Without it (a device, or no checkout) the showcase falls back to drawn illustrations.
+    private static let photosDirectory: URL? = {
+        let url = ProcessInfo.processInfo.environment["STORE_ASSETS"].map { URL(fileURLWithPath: $0) }
+            ?? URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("screenshots/app-store/showcase-assets")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }()
+
+    static var usesPhotos: Bool { showcase && photosDirectory != nil }
+
+    private static let avatarPhotos = ["avatar-0-corgi.jpg", "avatar-1-cat.jpg", "avatar-2-shiba.jpg", "avatar-3-hiker.jpg"]
+    private static let headerPhotos = ["header-0-sea.jpg", "post-1-cat-sunlight.jpg", "post-2-latte.jpg", "post-3-city-sunset.jpg"]
+
+    /// Versioned by file size, so a replaced photo never comes back from the image cache.
+    private static func photoURL(_ name: String) -> String {
+        "\(base)/photos/\(name)?v=\(photoVersions[name] ?? 0)"
+    }
+
+    private static let photoVersions: [String: Int] = {
+        guard let directory = photosDirectory,
+            let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path)
+        else { return [:] }
+        var versions: [String: Int] = [:]
+        for name in names {
+            let attributes = try? FileManager.default.attributesOfItem(atPath: directory.appendingPathComponent(name).path)
+            versions[name] = (attributes?[.size] as? NSNumber)?.intValue ?? 0
+        }
+        return versions
+    }()
+
+    /// A post's photos: file, width, height and alt text (Chinese, English).
+    private static func postPhotos(_ index: Int) -> [(String, Int, Int, String, String)] {
+        switch index {
+        case 0: return [("post-0-mountain.jpg", 1600, 1067, "晨雾在山峰间散开，峰顶被日出照亮。",
+                          "Morning mist clearing between mountain peaks lit by the sunrise.")]
+        case 1: return [("post-1-cat-sunlight.jpg", 1600, 1067, "一只橘猫蜷在沙发上，正好躺在窗外照进来的一块阳光里。",
+                          "An orange cat curled up on the couch, right in a patch of sunlight from the window.")]
+        case 2: return [("post-2-latte.jpg", 1600, 1065, "木桌上一杯拉了爱心的卡布奇诺。",
+                          "A cappuccino with heart latte art on a wooden table."),
+                         ("post-2-reading-corner.jpg", 1600, 2400, "咖啡店角落，书架、绿植和一张小桌。",
+                          "A corner of the café with bookshelves, plants and a small table.")]
+        default: return [("post-3-city-sunset.jpg", 1600, 1067, "傍晚的街道，夕阳从两栋楼之间的树后照过来。",
+                           "An evening street, the sunset shining through a tree between two buildings.")]
+        }
+    }
+
+    /// Posts spread over the last day, so times read as recent.
+    private static func recentDate(minutesAgo: Int) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: Date().addingTimeInterval(-Double(minutesAgo) * 60))
     }
 
     static func decodedAccount(_ index: Int) -> Account? {
@@ -118,13 +180,28 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
 
     /// A reply in a showcase thread, from the account at `index`.
     private static func reply(_ index: Int, to statusID: String) -> [String: Any] {
-        let copy = chinese
-            ? ["<p>楼下的猫在窗台上晒太阳，我看了好一会儿。☀️</p>", "<p>朋友寄来一张手写明信片，字有点歪，但很可爱。✉️</p>"]
-            : ["<p>The neighbor's cat napping in a sunny window. I watched for a while. ☀️</p>",
-               "<p>A handwritten postcard from a friend, crooked letters and all. ✉️</p>"]
+        let copy: [String]
+        if usesPhotos {
+            switch statusIndex(forID: statusID) ?? 0 {
+            case 1: copy = chinese ? ["<p>这个睡姿我家猫也会，阳光在哪它就在哪。😂</p>", "<p>橘猫的快乐就是这么简单。☀️</p>"]
+                : ["<p>Mine does the exact same sunbeam shuffle. 😂</p>", "<p>The simple joys of an orange cat. ☀️</p>"]
+            case 2: copy = chinese ? ["<p>求店名！周末想去坐坐。</p>", "<p>书墙那张好有氛围，想在那里待一下午。📚</p>"]
+                : ["<p>Name of the café, please! Going this weekend.</p>", "<p>That book wall. I could spend a whole afternoon there. 📚</p>"]
+            case 3: copy = chinese ? ["<p>下班路上的小确幸。🌇</p>", "<p>这个光线太好了，像电影里的一帧。</p>"]
+                : ["<p>Little joys on the way home. 🌇</p>", "<p>That light. It looks like a still from a film.</p>"]
+            default: copy = chinese ? ["<p>太美了！下次带上我，我负责带热咖啡。☕️</p>", "<p>这张可以直接当壁纸了，是哪座山？</p>"]
+                : ["<p>Stunning! Take me next time, I'll bring the hot coffee. ☕️</p>", "<p>This could be a wallpaper. Which mountain is it?</p>"]
+            }
+        } else {
+            copy = chinese
+                ? ["<p>楼下的猫在窗台上晒太阳，我看了好一会儿。☀️</p>", "<p>朋友寄来一张手写明信片，字有点歪，但很可爱。✉️</p>"]
+                : ["<p>The neighbor's cat napping in a sunny window. I watched for a while. ☀️</p>",
+                   "<p>A handwritten postcard from a friend, crooked letters and all. ✉️</p>"]
+        }
         return ["id": "\(statusID)-\(index)", "content": copy[(index - 1) % copy.count], "account": account(index),
                 "in_reply_to_id": statusID, "in_reply_to_account_id": account(0)["id"] ?? "",
-                "created_at": "2026-09-30T02:00:00.000Z", "media_attachments": [] as [Any],
+                "created_at": usesPhotos ? recentDate(minutesAgo: 20 + index * 7) : "2026-09-30T02:00:00.000Z",
+                "media_attachments": [] as [Any],
                 "visibility": "public", "sensitive": false, "spoiler_text": "",
                 "favourites_count": 6 - index, "reblogs_count": 0, "replies_count": 0,
                 "language": chinese ? "zh" : "en"]
@@ -152,14 +229,24 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
             authInterceptor: AuthInterceptor(tokenProvider: AppStoreScreenshotToken()))
     }
 
+    private static func avatarURL(_ index: Int) -> String {
+        usesPhotos ? photoURL(avatarPhotos[index]) : "\(base)/avatar-\(index).png"
+    }
+
+    private static func headerURL(_ index: Int) -> String {
+        usesPhotos ? photoURL(headerPhotos[index]) : "\(base)/landscape.png"
+    }
+
     static func account(_ index: Int) -> [String: Any] {
         ["id": "store-\(index)", "username": handles[index], "acct": handles[index],
          "display_name": names[index],
          "note": chinese ? "<p>记录小小的冒险和好的对话，也给自己留一点生长的空间。🌿</p>"
              : "<p>Small adventures, good conversations, and a little room to grow. 🌿</p>",
-         "avatar": "\(base)/avatar-\(index).png", "avatar_static": "\(base)/avatar-\(index).png",
-         "header": "\(base)/landscape.png", "header_static": "\(base)/landscape.png",
-         "followers_count": 128, "following_count": 86, "statuses_count": 42,
+         "avatar": avatarURL(index), "avatar_static": avatarURL(index),
+         "header": headerURL(index), "header_static": headerURL(index),
+         "followers_count": usesPhotos ? [1284, 562, 318, 905][index] : 128,
+         "following_count": usesPhotos ? [216, 143, 98, 187][index] : 86,
+         "statuses_count": usesPhotos ? [672, 1530, 241, 388][index] : 42,
          "url": "\(base)/@\(handles[index])", "show_media": true, "show_featured": true,
          "fields": chinese
              ? [["name": "关于", "value": "摄影与日常发现"], ["name": "社区", "value": "开放的社交网络"]]
@@ -175,6 +262,7 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
     }
 
     private static func status(_ index: Int) -> [String: Any] {
+        if usesPhotos { return photoStatus(index) }
         let copy = chinese ? [
             "<p>雨后的早晨，空气很新鲜。🌿</p><p>今天有什么让你笑了一下？ <a href='\(tagURL("摄影"))'>#摄影</a></p>",
             "<p>给书、植物和咖啡收拾出了一个小角落。☕️</p><p>最好的发现，常常就在身边。</p>",
@@ -211,6 +299,32 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
         return result
     }
 
+    /// The showcase's everyday posts, each with its photos.
+    private static func photoStatus(_ index: Int) -> [String: Any] {
+        let copy = chinese ? [
+            "<p>周末进山看日出，五点出发，雾散开的那一刻觉得早起都值了。⛰️</p><p><a href='\(tagURL("摄影"))'>#摄影</a></p>",
+            "<p>家里这位今天的全部工作：跟着阳光挪窝。☀️🐈</p>",
+            "<p>楼下新开了家咖啡店，拉花是爱心，角落里还有一整面书墙。周末有地方待了。☕️📚</p>",
+            "<p>下班路上，夕阳刚好卡在两栋楼中间，停下来看了一会儿。🌇</p>",
+        ] : [
+            "<p>Up at five for a mountain sunrise. The moment the mist cleared made the early alarm worth it. ⛰️</p><p><a href='\(tagURL("Photography"))'>#Photography</a></p>",
+            "<p>Today's full job description for this one: follow the sunbeam around the couch. ☀️🐈</p>",
+            "<p>A new café opened downstairs. Heart latte art and a whole wall of books in the corner. Weekend plans: sorted. ☕️📚</p>",
+            "<p>On the walk home the sunset slipped right between two buildings. Stopped for a minute to watch. 🌇</p>",
+        ]
+        let media: [[String: Any]] = postPhotos(index).enumerated().map { offset, photo in
+            ["id": "store-photo-\(index)-\(offset)", "type": "image", "url": photoURL(photo.0),
+             "preview_url": photoURL(photo.0), "description": chinese ? photo.3 : photo.4,
+             "meta": ["original": ["width": photo.1, "height": photo.2]]]
+        }
+        return ["id": String(900 - index), "content": copy[index], "account": account(index),
+                "created_at": recentDate(minutesAgo: [38, 95, 180, 310][index]), "media_attachments": media,
+                "visibility": "public", "sensitive": false, "spoiler_text": "",
+                "favourites_count": [48, 126, 31, 22][index], "reblogs_count": [12, 34, 5, 3][index],
+                "replies_count": [6, 18, 4, 2][index],
+                "bookmarked": index == 1, "language": chinese ? "zh" : "en"]
+    }
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func stopLoading() {}
@@ -240,11 +354,28 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
             payload = ["count": 0]
         } else if path.hasSuffix("/notifications") {
             let types = query.filter { $0.name == "types[]" }.compactMap(\.value)
-            payload = (1...3).map { index -> [String: Any] in
-                ["id": String(600 - index), "type": ["mention", "favourite", "follow"][index - 1],
-                 "created_at": "2026-09-30T01:00:00.000Z", "account": Self.account(index),
-                 "status": Self.status(index)]
-            }.filter { types.isEmpty || types.contains($0["type"] as? String ?? "") }
+            let items: [[String: Any]]
+            if Self.usesPhotos {
+                // Replies, likes and boosts on the sunrise post, and a new follower.
+                let rows: [(String, Int, [String: Any]?, Int)] = [
+                    ("mention", 1, Self.reply(1, to: "900"), 12), ("favourite", 2, Self.status(0), 25),
+                    ("reblog", 3, Self.status(0), 41), ("mention", 2, Self.reply(2, to: "900"), 58),
+                    ("follow", 3, nil, 140), ("favourite", 1, Self.status(0), 205),
+                ]
+                items = rows.enumerated().map { offset, row in
+                    var item: [String: Any] = ["id": String(600 - offset), "type": row.0,
+                        "created_at": Self.recentDate(minutesAgo: row.3), "account": Self.account(row.1)]
+                    if let status = row.2 { item["status"] = status }
+                    return item
+                }
+            } else {
+                items = (1...3).map { index -> [String: Any] in
+                    ["id": String(600 - index), "type": ["mention", "favourite", "follow"][index - 1],
+                     "created_at": "2026-09-30T01:00:00.000Z", "account": Self.account(index),
+                     "status": Self.status(index)]
+                }
+            }
+            payload = items.filter { types.isEmpty || types.contains($0["type"] as? String ?? "") }
         } else if path.hasSuffix("/trends/tags") || path.hasSuffix("/featured_tags") || path.hasSuffix("/followed_tags") {
             payload = Self.tagNames.map {
                 ["id": "tag-\($0)", "name": $0, "url": Self.tagURL($0),
@@ -324,6 +455,24 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
             let key = index == 4 ? "\(base)/landscape.png" : "\(base)/avatar-\(index).png"
             await withCheckedContinuation { continuation in
                 SDImageCache.shared.store(image, imageData: image.pngData(), forKey: key, toDisk: true) {
+                    continuation.resume()
+                }
+            }
+        }
+        await cachePhotos()
+    }
+
+    /// Puts the showcase photos in the image cache under their fixture URLs (nothing is fetched).
+    @MainActor private static func cachePhotos() async {
+        guard usesPhotos, let directory = photosDirectory,
+            let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path)
+        else { return }
+        for name in names where name.hasSuffix(".jpg") {
+            guard let data = FileManager.default.contents(atPath: directory.appendingPathComponent(name).path),
+                let image = UIImage(data: data)
+            else { continue }
+            await withCheckedContinuation { continuation in
+                SDImageCache.shared.store(image, imageData: data, forKey: photoURL(name), toDisk: true) {
                     continuation.resume()
                 }
             }
