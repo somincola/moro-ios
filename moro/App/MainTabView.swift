@@ -436,8 +436,88 @@ private struct HomeTabRootView: View {
 
     private let composeButtonSize: CGFloat = 52
     private let composeButtonTabBarSpacing: CGFloat = 10
+    /// Narrowest root width that gets the timeline + thread columns (iPhone Duo inner display
+    /// held landscape); anything narrower, including the outer display, stays one column.
+    private let splitMinimumWidth: CGFloat = 820
+
+    @State private var rootWidth: CGFloat = 0
+    /// The thread shown in the second column.
+    @State private var threadStatus: Status?
+
+    private var isSplit: Bool {
+        coordinator.usesSystemHomeBar && rootWidth >= splitMinimumWidth
+    }
+
+    private var timelineColumnWidth: CGFloat {
+        min(max(rootWidth * 0.42, 360), 460)
+    }
 
     var body: some View {
+        HStack(spacing: 0) {
+            timelineColumn
+                .frame(width: isSplit ? timelineColumnWidth : nil)
+            if isSplit {
+                Rectangle()
+                    .fill(theme.colors.borderSubtle)
+                    .frame(width: 0.5)
+                    .ignoresSafeArea()
+                threadColumn
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            rootWidth = width
+        }
+        .onChange(of: isSplit, initial: true) { _, split in
+            updateThreadRouting(isSplit: split)
+        }
+    }
+
+    /// While split, opening a post from the timeline fills the thread column instead of pushing.
+    /// Pages pushed on top (a profile, say) keep pushing. Leaving the split layout carries the
+    /// open thread over as a pushed page so the reader keeps their place.
+    private func updateThreadRouting(isSplit: Bool) {
+        let router = coordinator.homeRouter
+        guard isSplit else {
+            router.inPlaceRouteHandler = nil
+            if let status = threadStatus {
+                threadStatus = nil
+                router.navigate(to: .statusDetail(status))
+            }
+            return
+        }
+        router.inPlaceRouteHandler = { [coordinator] route in
+            guard case .statusDetail(let status) = route, coordinator.isAtRoot(.home) else {
+                return false
+            }
+            threadStatus = status
+            return true
+        }
+    }
+
+    @ViewBuilder
+    private var threadColumn: some View {
+        if let threadStatus {
+            StatusDetailView(status: threadStatus, apiClient: apiClient, isEmbedded: true)
+                .id(threadStatus.id)
+        } else {
+            VStack(spacing: theme.spacing.m) {
+                Image(systemName: "text.bubble")
+                    .moroScaledFont(size: 40, weight: .light)
+                Text(MoroL10n.StatusDetail.splitPlaceholder)
+                    .font(theme.typography.body)
+                    .multilineTextAlignment(.center)
+            }
+            .foregroundStyle(theme.colors.textSecondary)
+            .padding(theme.spacing.xl)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityIdentifier("home.threadPlaceholder")
+        }
+    }
+
+    private var timelineColumn: some View {
         TimelineHomeView(
             apiClient: apiClient,
             cacheClientID: cacheClientID,
