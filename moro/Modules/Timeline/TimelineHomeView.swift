@@ -55,6 +55,8 @@ struct TimelineHomeView: View {
     /// iPhone Duo: the header controls live in the system navigation bar (toolbar items) instead
     /// of the custom floating header, so the system can move them into the vertical side bar.
     let usesSystemNavigationBar: Bool
+    /// The system bars currently run vertically along the side (iPhone Duo).
+    @State var toolbarIsVertical = false
     /// False while a detail/profile route is pushed over the timeline. The timeline remains
     /// mounted as the UIKit navigation root, but must not keep publishing hidden scroll geometry.
     let isActive: Bool
@@ -252,6 +254,13 @@ struct TimelineHomeView: View {
         .ignoresSafeArea(.container, edges: .bottom)
         .modifier(SystemBarTitle(title: usesSystemNavigationBar ? selectedTimeline.localizedTitle : nil))
         .toolbar { systemBarToolbar }
+        .background {
+            ToolbarAxisReader { isVertical in
+                Color.clear.onChange(of: isVertical, initial: true) { _, vertical in
+                    toolbarIsVertical = vertical
+                }
+            }
+        }
         .onAppear {
             scrollBridge.resumePresentation(for: selectedTimeline)
             scrollBridge.setActive(isActive && scenePhase == .active && !hasLocalModal)

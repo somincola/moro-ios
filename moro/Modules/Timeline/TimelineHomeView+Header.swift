@@ -69,14 +69,22 @@ extension TimelineHomeView {
     var systemBarToolbar: some ToolbarContent {
         if usesSystemNavigationBar {
             if let onAvatarTap, let account = appState.currentAccount {
-                ToolbarItem(placement: .topBarLeading) {
+                VerticalPreferredToolbarItem(placement: .topBarLeading) {
                     SettingsAvatarButton(account: account, isToolbarItem: true, action: onAvatarTap)
                 }
             }
-            ToolbarItem(placement: .principal) {
-                timelineSwitcher(style: .toolbar)
+            // A title-slot item stays in a bar across the top, so with vertical bars the menu
+            // joins the avatar as an ordinary item and moves to the side with the others.
+            if toolbarIsVertical {
+                ToolbarItem(placement: .topBarLeading) {
+                    timelineSwitcher(style: .toolbar)
+                }
+            } else {
+                ToolbarItem(placement: .principal) {
+                    timelineSwitcher(style: .toolbar)
+                }
             }
-            ToolbarItem(placement: .topBarTrailing) {
+            VerticalPreferredToolbarItem(placement: .topBarTrailing) {
                 announcementsButton
             }
         }
@@ -202,4 +210,20 @@ extension TimelineHomeView {
         if isSelected { onChromeFraction?(fraction) }
     }
 
+}
+
+/// A toolbar item with a custom view that may still go into iPhone Duo's vertical side bar
+/// (custom views stay horizontal unless they opt in).
+struct VerticalPreferredToolbarItem<Content: View>: ToolbarContent {
+    let placement: ToolbarItemPlacement
+    @ViewBuilder let content: () -> Content
+
+    var body: some ToolbarContent {
+        if #available(iOS 27.1, *) {
+            ToolbarItem(placement: placement, content: content)
+                .axisBehavior(.verticalPreferred)
+        } else {
+            ToolbarItem(placement: placement, content: content)
+        }
+    }
 }

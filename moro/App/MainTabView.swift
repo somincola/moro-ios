@@ -441,6 +441,9 @@ private struct HomeTabRootView: View {
     private let splitMinimumWidth: CGFloat = 820
 
     @State private var rootWidth: CGFloat = 0
+    /// x of the display's fold when it runs top to bottom (inner display held landscape), in
+    /// this view's space. Reported even fully open, so the columns don't move when folding.
+    @State private var verticalFoldX: CGFloat?
     /// The thread shown in the second column.
     @State private var threadStatus: Status?
 
@@ -448,8 +451,19 @@ private struct HomeTabRootView: View {
         coordinator.usesSystemHomeBar && rootWidth >= splitMinimumWidth
     }
 
+    /// The columns split at the fold, so neither column's content runs across the crease when
+    /// half open; without a usable fold, a fixed share of the width.
     private var timelineColumnWidth: CGFloat {
-        min(max(rootWidth * 0.42, 360), 460)
+        if let verticalFoldX, verticalFoldX > rootWidth * 0.3, verticalFoldX < rootWidth * 0.7 {
+            return verticalFoldX
+        }
+        return min(max(rootWidth * 0.42, 360), 460)
+    }
+
+    private static func verticalFoldX(in proxy: GeometryProxy) -> CGFloat? {
+        guard #available(iOS 27.1, *) else { return nil }
+        let folds = proxy.reservedRegions(kind: .division, options: .includeInactive)
+        return folds.first { $0.frame.height > $0.frame.width }?.frame.midX
     }
 
     var body: some View {
@@ -469,6 +483,11 @@ private struct HomeTabRootView: View {
             proxy.size.width
         } action: { width in
             rootWidth = width
+        }
+        .onGeometryChange(for: CGFloat?.self) { proxy in
+            Self.verticalFoldX(in: proxy)
+        } action: { foldX in
+            verticalFoldX = foldX
         }
         .onChange(of: isSplit, initial: true) { _, split in
             updateThreadRouting(isSplit: split)

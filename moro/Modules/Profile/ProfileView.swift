@@ -130,6 +130,9 @@ struct ProfileView: View {
                     pullDistance: chromeState.pullDistance
                 )
                 .allowsHitTesting(false)
+                // The cover runs to the display edges, under a landscape notch or iPhone Duo's
+                // vertical side bar, instead of stopping beside them.
+                .ignoresSafeArea(.container, edges: .horizontal)
 
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -190,6 +193,7 @@ struct ProfileView: View {
                     topChromeHeight: topChromeHeight,
                     progress: profileChromeProgress
                 )
+                .ignoresSafeArea(.container, edges: .horizontal)
                 .zIndex(1)
 
                 if let tabOverlayOffset = chromeLayout.tabOverlayOffset {
