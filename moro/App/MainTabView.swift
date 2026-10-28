@@ -275,7 +275,13 @@ struct MainTabView: View {
 
     private var inboxRootView: AnyView {
         routedView(
-            AnyView(InboxView(coordinator: coordinator, apiClient: apiClient, sessionID: activeSessionID)),
+            AnyView(
+                ThreadSplitView(
+                    coordinator: coordinator, tab: .inbox, router: coordinator.inboxRouter, apiClient: apiClient
+                ) {
+                    InboxView(coordinator: coordinator, apiClient: apiClient, sessionID: activeSessionID)
+                }
+            ),
             router: coordinator.inboxRouter
         )
     }
@@ -436,103 +442,22 @@ private struct HomeTabRootView: View {
 
     private let composeButtonSize: CGFloat = 52
     private let composeButtonTabBarSpacing: CGFloat = 10
-    /// Narrowest root width that gets the timeline + thread columns (iPhone Duo inner display
-    /// held landscape); anything narrower, including the outer display, stays one column.
-    private let splitMinimumWidth: CGFloat = 820
-
-    @State private var rootWidth: CGFloat = 0
-    /// x of the display's fold when it runs top to bottom (inner display held landscape), in
-    /// this view's space. Reported even fully open, so the columns don't move when folding.
-    @State private var verticalFoldX: CGFloat?
-    /// The thread shown in the second column.
-    @State private var threadStatus: Status?
-
-    private var isSplit: Bool {
-        coordinator.usesSystemHomeBar && rootWidth >= splitMinimumWidth
-    }
-
-    /// The columns split at the fold, so neither column's content runs across the crease when
-    /// half open; without a usable fold, a fixed share of the width.
-    private var timelineColumnWidth: CGFloat {
-        if let verticalFoldX, verticalFoldX > rootWidth * 0.3, verticalFoldX < rootWidth * 0.7 {
-            return verticalFoldX
-        }
-        return min(max(rootWidth * 0.42, 360), 460)
-    }
-
-    private static func verticalFoldX(in proxy: GeometryProxy) -> CGFloat? {
-        guard #available(iOS 27.1, *) else { return nil }
-        let folds = proxy.reservedRegions(kind: .division, options: .includeInactive)
-        return folds.first { $0.frame.height > $0.frame.width }?.frame.midX
-    }
 
     var body: some View {
-        HStack(spacing: 0) {
+        ThreadSplitView(coordinator: coordinator, tab: .home, router: coordinator.homeRouter, apiClient: apiClient) {
             timelineColumn
-                .frame(width: isSplit ? timelineColumnWidth : nil)
-            if isSplit {
-                Rectangle()
-                    .fill(theme.colors.borderSubtle)
-                    .frame(width: 0.5)
-                    .ignoresSafeArea()
-                threadColumn
-                    .frame(maxWidth: .infinity)
-            }
         }
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.width
-        } action: { width in
-            rootWidth = width
-        }
-        .onGeometryChange(for: CGFloat?.self) { proxy in
-            Self.verticalFoldX(in: proxy)
-        } action: { foldX in
-            verticalFoldX = foldX
-        }
-        .onChange(of: isSplit, initial: true) { _, split in
-            updateThreadRouting(isSplit: split)
-        }
-    }
-
-    /// While split, opening a post from the timeline fills the thread column instead of pushing.
-    /// Pages pushed on top (a profile, say) keep pushing. Leaving the split layout carries the
-    /// open thread over as a pushed page so the reader keeps their place.
-    private func updateThreadRouting(isSplit: Bool) {
-        let router = coordinator.homeRouter
-        guard isSplit else {
-            router.inPlaceRouteHandler = nil
-            if let status = threadStatus {
-                threadStatus = nil
-                router.navigate(to: .statusDetail(status))
-            }
-            return
-        }
-        router.inPlaceRouteHandler = { [coordinator] route in
-            guard case .statusDetail(let status) = route, coordinator.isAtRoot(.home) else {
-                return false
-            }
-            threadStatus = status
-            return true
-        }
-    }
-
-    @ViewBuilder
-    private var threadColumn: some View {
-        if let threadStatus {
-            StatusDetailView(status: threadStatus, apiClient: apiClient, isEmbedded: true)
-                .id(threadStatus.id)
-        } else {
-            VStack(spacing: theme.spacing.m) {
-                Image(systemName: "text.bubble")
-                    .moroScaledFont(size: 40, weight: .light)
-                Text(MoroL10n.StatusDetail.splitPlaceholder)
-                    .font(theme.typography.body)
-                    .multilineTextAlignment(.center)
-            }
-            .foregroundStyle(theme.colors.textSecondary)
-            .padding(theme.spacing.xl)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .accessibilityIdentifier("home.threadPlaceholder")
+        // The whole root's corner: with two columns that is the thread column, clear of the
+        // fold between them (the system's guidance for book-style half open).
+        .overlay(alignment: .bottomTrailing) {
+            composeButton
+                .padding(.trailing, theme.spacing.l)
+                .padding(.bottom, composeButtonTabBarSpacing)
+                // Steps aside for the account switcher, which floats in the same corner.
+                .scaleEffect(coordinator.isAccountSwitcherPresented ? 0.6 : 1)
+                .opacity(coordinator.isAccountSwitcherPresented ? 0 : 1)
+                .allowsHitTesting(!coordinator.isAccountSwitcherPresented)
+                .animation(.snappy(duration: 0.22), value: coordinator.isAccountSwitcherPresented)
         }
     }
 
@@ -562,16 +487,6 @@ private struct HomeTabRootView: View {
             bottomContentInset: coordinator.tabBarHeight + composeButtonClearance
         )
         .environment(\.tabReselection, coordinator.tabReselection)
-        .overlay(alignment: .bottomTrailing) {
-            composeButton
-                .padding(.trailing, theme.spacing.l)
-                .padding(.bottom, composeButtonTabBarSpacing)
-                // Steps aside for the account switcher, which floats in the same corner.
-                .scaleEffect(coordinator.isAccountSwitcherPresented ? 0.6 : 1)
-                .opacity(coordinator.isAccountSwitcherPresented ? 0 : 1)
-                .allowsHitTesting(!coordinator.isAccountSwitcherPresented)
-                .animation(.snappy(duration: 0.22), value: coordinator.isAccountSwitcherPresented)
-        }
     }
 
     private var composeButtonClearance: CGFloat {

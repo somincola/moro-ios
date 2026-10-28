@@ -45,6 +45,15 @@ enum TimelineType: Hashable, Identifiable {
         }
     }
 
+    /// The menu's glyph in iPhone Duo's vertical side bar, which shows no text. Following uses
+    /// people rather than its house, which would repeat the Home tab's below it.
+    var sideBarIcon: String {
+        switch self {
+        case .home: return "person.2"
+        default: return icon
+        }
+    }
+
     var description: String {
         switch self {
         case .home: return MoroL10n.TimelineSwitcher.homeDesc
@@ -118,7 +127,7 @@ struct TimelineSwitcher: View {
             if style == .toolbar {
                 ToolbarAxisReader { isVertical in
                     if isVertical {
-                        Image(systemName: selectedTimeline.icon)
+                        Image(systemName: selectedTimeline.sideBarIcon)
                     } else {
                         titleLabel
                     }
