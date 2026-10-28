@@ -56,6 +56,10 @@ struct MainTabView: View {
     let onSwitchAccount: (String) -> Void
     let onRemoveAccount: (String) -> Void
     let onAccountAuthenticated: (String, Account, URL) -> Void
+    #if DEBUG
+    /// Store screenshots: the tab to open and a post to open in it.
+    var showcaseStart: ShowcaseStart? = nil
+    #endif
 
     @StateObject private var coordinator = RootTabCoordinator()
     @ObservedObject private var notificationUnreadStore = NotificationUnreadStore.shared
@@ -166,6 +170,9 @@ struct MainTabView: View {
             consumePendingSharedDraftIfNeeded()
             ensureInboxStreamSubscription()
             updateNotificationListVisibility()
+            #if DEBUG
+            applyShowcaseStart()
+            #endif
         }
         .task(id: activeSessionID) {
             async let instanceMetadataLoad: Void = refreshInstanceMetadataIfNeeded()
@@ -338,6 +345,18 @@ struct MainTabView: View {
                 )
         )
     }
+
+    #if DEBUG
+    private func applyShowcaseStart() {
+        guard let start = showcaseStart else { return }
+        coordinator.selectTab(start.tab)
+        guard let status = start.status else { return }
+        // After the tab's list has laid out (and, on iPhone Duo's wide display, its split).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            coordinator.router(for: start.tab).navigate(to: .statusDetail(status))
+        }
+    }
+    #endif
 
     private func consumePendingSharedDraftIfNeeded() {
         guard coordinator.composeContext == nil else { return }
@@ -614,3 +633,11 @@ private struct AddAccountLoginContainer: View {
     .environmentObject(AppState())
     .moroTheme(MoroTheme())
 }
+
+#if DEBUG
+/// Store screenshots: where `MainTabView` starts, set by the screenshot harness.
+struct ShowcaseStart {
+    let tab: MainTab
+    let status: Status?
+}
+#endif

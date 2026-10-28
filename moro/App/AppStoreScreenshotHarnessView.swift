@@ -6,12 +6,17 @@ import SwiftUI
 ///
 /// `STORE_SHOWCASE=1` switches to the richer showcase fixtures: content in the app's
 /// language, several signed-in accounts for the switcher, and the theme from settings.
-/// `STORE_SCENE` picks the screen: `main` (default), `display` or `editProfile`.
+/// `STORE_SCENE` picks the screen: `main` (default), `display` or `editProfile`. On `main`,
+/// `STORE_TAB` (`home`, `explore`, `inbox`, `me`) picks the tab and `STORE_THREAD` (a post
+/// index, 0–3) opens that post's thread: in the second column on iPhone Duo's wide display,
+/// as a pushed page elsewhere.
 struct AppStoreScreenshotHarnessView: View {
     @StateObject private var appState = AppState()
     @ObservedObject private var settings = AppSettings.shared
     @Environment(\.colorScheme) private var colorScheme
     @State private var ready = false
+    /// `STORE_THREAD`'s post, loaded through the client (its dates need the API decoder).
+    @State private var showcaseThread: Status?
     private let client = AppStoreScreenshotProtocol.makeClient()
 
     private var showcase: Bool { AppStoreScreenshotProtocol.showcase }
@@ -32,7 +37,7 @@ struct AppStoreScreenshotHarnessView: View {
                     MainTabView(apiClient: client, onLogout: {}, accountSessions: sessions,
                         activeSessionID: showcase ? sessions.first?.id : "app-store-screenshots",
                         onSwitchAccount: { _ in }, onRemoveAccount: { _ in },
-                        onAccountAuthenticated: { _, _, _ in })
+                        onAccountAuthenticated: { _, _, _ in }, showcaseStart: showcaseStart)
                         .environmentObject(appState)
                 }
             } else {
@@ -45,6 +50,11 @@ struct AppStoreScreenshotHarnessView: View {
                         .flatMap(MoroThemeColor.init(rawValue:)) {
                         settings.themeColor = color
                     }
+                    if let index = ProcessInfo.processInfo.environment["STORE_THREAD"].flatMap(Int.init),
+                        (0...3).contains(index)
+                    {
+                        showcaseThread = try? await client.fetchStatusDetail(id: String(900 - index))
+                    }
                     ready = true
                 }
             }
@@ -53,6 +63,12 @@ struct AppStoreScreenshotHarnessView: View {
                                         themeColor: settings.themeColor,
                                         customThemeColor: settings.customThemeColor,
                                         postFontSize: settings.postFontSize) : MoroTheme())
+    }
+
+    private var showcaseStart: ShowcaseStart? {
+        let tab = ProcessInfo.processInfo.environment["STORE_TAB"].flatMap(MainTab.init(rawValue:))
+        guard tab != nil || showcaseThread != nil else { return nil }
+        return ShowcaseStart(tab: tab ?? .home, status: showcaseThread)
     }
 
     /// The signed-in accounts the switcher offers, each on its own server.
@@ -93,6 +109,26 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
         "\(base)/tags/\(name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name)"
     }
     private static let handles = ["alex", "luna", "sam", "mira"]
+
+    /// Showcase posts are numbered down from 900 (`status(0)` is "900").
+    static func statusIndex(forID id: String) -> Int? {
+        guard let number = Int(id), (0...3).contains(900 - number) else { return nil }
+        return 900 - number
+    }
+
+    /// A reply in a showcase thread, from the account at `index`.
+    private static func reply(_ index: Int, to statusID: String) -> [String: Any] {
+        let copy = chinese
+            ? ["<p>楼下的猫在窗台上晒太阳，我看了好一会儿。☀️</p>", "<p>朋友寄来一张手写明信片，字有点歪，但很可爱。✉️</p>"]
+            : ["<p>The neighbor's cat napping in a sunny window. I watched for a while. ☀️</p>",
+               "<p>A handwritten postcard from a friend, crooked letters and all. ✉️</p>"]
+        return ["id": "\(statusID)-\(index)", "content": copy[(index - 1) % copy.count], "account": account(index),
+                "in_reply_to_id": statusID, "in_reply_to_account_id": account(0)["id"] ?? "",
+                "created_at": "2026-09-30T02:00:00.000Z", "media_attachments": [] as [Any],
+                "visibility": "public", "sensitive": false, "spoiler_text": "",
+                "favourites_count": 6 - index, "reblogs_count": 0, "replies_count": 0,
+                "language": chinese ? "zh" : "en"]
+    }
     private static let emojiCharacters = Array("😀😄😁😆🥹😊🙂😉😍🥰😘😋😎🤩🥳🤗🤔😴😮😌🙃😇🫶💜🌿🌸🌻🌷🍀🌱🌈✨")
 
     private static var customEmojis: [CustomEmoji] {
@@ -219,7 +255,8 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
         } else if path.hasSuffix("/relationships") {
             payload = []
         } else if path.hasSuffix("/context") {
-            payload = ["ancestors": [], "descendants": []]
+            let statusID = url.deletingLastPathComponent().lastPathComponent
+            payload = ["ancestors": [], "descendants": [1, 2].map { Self.reply($0, to: statusID) }]
         } else if path.hasSuffix("/search") {
             payload = ["accounts": (1...3).map { Self.account($0) }, "statuses": (0...3).map { Self.status($0) }, "hashtags": []]
         } else if path.hasSuffix("/markers") || path.hasSuffix("/preferences") {
@@ -228,7 +265,7 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
             payload = query.contains(where: { $0.name == "max_id" || $0.name == "since_id" || ($0.name == "pinned" && $0.value == "true") })
                 ? [] : (0...3).map { Self.status($0) }
         } else if path.contains("/statuses/") {
-            payload = Self.status(0)
+            payload = Self.status(Self.statusIndex(forID: url.lastPathComponent) ?? 0)
         } else {
             payload = []
         }
