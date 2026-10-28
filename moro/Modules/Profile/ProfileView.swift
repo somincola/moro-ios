@@ -52,6 +52,8 @@ struct ProfileView: View {
     @State private var navigationBarHeight: CGFloat = 44
     /// The native bar's bottom edge in window coordinates, once measured.
     @State private var navigationBarBottom: CGFloat?
+    /// iPhone Duo with the bar in the vertical side bar: the page draws its own title band.
+    @State private var navigationBarIsVertical = false
 
     private var profileChromeProgress: CGFloat {
         chromeState.headerProgress(
@@ -157,6 +159,7 @@ struct ProfileView: View {
                             postActions: postActions
                         )
                             .equatable()
+                            .moroReadableColumn()
                             .frame(minHeight: chromeLayout.pinnedContentHeight, alignment: .top)
                             .background(theme.colors.surfaceBase)
                     }
@@ -207,17 +210,14 @@ struct ProfileView: View {
             ProfileNavigationBarHeightReader(tint: UIColor(navigationForeground)) { metrics in
                 navigationBarHeight = metrics.height
                 navigationBarBottom = metrics.bottom
+                navigationBarIsVertical = metrics.isVertical
             }
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
-        .navigationTitle(
-            navChromeVisible
-                ? (viewModel.account?.displayName
-                    ?? account?.displayName
-                    ?? MoroL10n.Profile.navTitle)
-                : ""
-        )
+        // With the bar in the vertical side bar the system floats the title at the top leading
+        // corner; the page's own band already shows the name, so the system title stays empty.
+        .navigationTitle(navChromeVisible && !navigationBarIsVertical ? collapsedTitle : "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(
@@ -398,6 +398,19 @@ struct ProfileView: View {
         VStack(spacing: 0) {
             theme.colors.surfaceBase
                 .frame(height: topChromeHeight)
+                .overlay(alignment: .bottom) {
+                    // The collapsed name goes in the band (the system title is left empty).
+                    if navigationBarIsVertical {
+                        Text(collapsedTitle)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(theme.colors.textPrimary)
+                            .lineLimit(1)
+                            .padding(.horizontal, theme.spacing.contentHorizontalInset)
+                            .frame(height: navigationBarHeight)
+                            .opacity(navChromeVisible ? 1 : 0)
+                            .animation(.easeOut(duration: 0.15), value: navChromeVisible)
+                    }
+                }
 
             Rectangle()
                 .fill(theme.colors.borderSubtle)
@@ -407,6 +420,10 @@ struct ProfileView: View {
         .opacity(progress)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    private var collapsedTitle: String {
+        viewModel.account?.displayName ?? account?.displayName ?? MoroL10n.Profile.navTitle
     }
 
     private static var activeKeyWindow: UIWindow? {
@@ -471,6 +488,7 @@ struct ProfileView: View {
             }
             MoroDivider()
         }
+        .moroReadableColumn()
         .background(theme.colors.surfaceBase)
     }
 
@@ -575,6 +593,7 @@ struct ProfileView: View {
 
                     statsSection(account: acc)
                 }
+                .moroReadableColumn()
                 .background(theme.colors.surfaceBase)
 
                 VStack(alignment: .leading, spacing: 0) {
@@ -582,12 +601,14 @@ struct ProfileView: View {
 
                     profileInfoSection(account: acc)
                 }
+                .moroReadableColumn()
                 .background(theme.colors.surfaceBase)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
                     avatarAndActionsRow
                     profileContent
                 }
+                .moroReadableColumn()
                 .background(theme.colors.surfaceBase)
             }
         }

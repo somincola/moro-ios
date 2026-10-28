@@ -89,6 +89,10 @@ final class RootTabCoordinator: ObservableObject {
     @Published private(set) var tabReselection: TabReselection?
     @Published var timelineSelection: TimelineType = .home
     @Published var tabBarHeight: CGFloat = 78
+    /// The device has a hinge (iPhone Duo): the home timeline moves its header controls into the
+    /// system navigation bar, so they follow the bars into the vertical side bar and share the
+    /// status row on the inner display. Other iPhones keep the custom hide-on-scroll header.
+    @Published var usesSystemHomeBar = false
     @Published private(set) var isExploreSearchEntryActive = false
     @Published private var rootStateByTab: [MainTab: Bool]
 

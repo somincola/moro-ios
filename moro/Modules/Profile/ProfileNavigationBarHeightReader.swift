@@ -10,7 +10,13 @@ struct ProfileNavigationBarHeightReader: UIViewControllerRepresentable {
         /// safe-area top (on Dynamic Island iPhones it starts a few points above it), so
         /// safe area + height can overshoot the real bar.
         var bottom: CGFloat
+        /// The bar lives in iPhone Duo's vertical side bar: there is no bar across the top, so
+        /// `height`/`bottom` describe the band the page draws itself instead.
+        var isVertical = false
     }
+
+    /// The top band a page draws when its bar went into the vertical side bar.
+    static let verticalBarTopBandHeight: CGFloat = 44
 
     /// Bar button tint for the current header state. The shell tints hero pages white
     /// for the banner; once the header collapses onto a light bar that would hide the
@@ -77,7 +83,14 @@ struct ProfileNavigationBarHeightReader: UIViewControllerRepresentable {
             let bar = navigationController.navigationBar
             let height = bar.bounds.height
             guard height > 0 else { return }
-            let metrics = Metrics(height: height, bottom: bar.convert(bar.bounds, to: nil).maxY)
+            let metrics: Metrics
+            if Self.isVerticalBar(bar) {
+                let band = ProfileNavigationBarHeightReader.verticalBarTopBandHeight
+                let top = view.window?.safeAreaInsets.top ?? 0
+                metrics = Metrics(height: band, bottom: top + band, isVertical: true)
+            } else {
+                metrics = Metrics(height: height, bottom: bar.convert(bar.bounds, to: nil).maxY)
+            }
             guard reportedMetrics != metrics else { return }
             reportedMetrics = metrics
 
@@ -86,6 +99,13 @@ struct ProfileNavigationBarHeightReader: UIViewControllerRepresentable {
                 guard let self, self.viewIfLoaded?.window != nil, self.reportedMetrics == metrics else { return }
                 self.onChange?(metrics)
             }
+        }
+
+        private static func isVerticalBar(_ bar: UINavigationBar) -> Bool {
+            if #available(iOS 27.1, *), bar.traitCollection.verticalBarEdge != .unspecified {
+                return true
+            }
+            return bar.bounds.height > bar.bounds.width
         }
     }
 }

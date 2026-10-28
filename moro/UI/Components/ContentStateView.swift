@@ -78,7 +78,9 @@ struct ContentStateContainer<Content: View>: View {
     var body: some View {
         switch state {
         case .loading(let skeletonStyle):
+            // Same column as the loaded rows, so wide screens don't flash an edge-to-edge skeleton.
             ContentSkeletonView(style: skeletonStyle)
+                .moroReadableColumn()
         case .loaded:
             content()
         case .empty(let spec):

@@ -456,6 +456,7 @@ private struct HomeTabRootView: View {
                 coordinator.timelineSelection = timeline
             },
             onChromeFraction: nil,
+            usesSystemNavigationBar: coordinator.usesSystemHomeBar,
             isActive: coordinator.selectedTab == .home && coordinator.isAtRoot(.home)
                 && coordinator.presentedSheet == nil && coordinator.composeContext == nil
                 && !coordinator.showAddAccountLogin,
