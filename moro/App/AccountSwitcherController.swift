@@ -451,31 +451,54 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
 
     // MARK: - Me tab geometry
 
-    /// The tab buttons the system exposes by identifier. The classic bar keeps them inside
-    /// `tabBar` (iOS 26 doesn't expose them at all); iPhone Duo's vertical bar hosts them in
-    /// a system bar elsewhere under the tab controller. The page on screen is skipped: it is
-    /// the bulk of the hierarchy and never holds a tab. Its navigation controller is not,
-    /// since the vertical bar may be drawn there.
+    /// The system's tab buttons, one per tab in bar order (Me last). Found by class, not by
+    /// identifier: the system fills in the buttons' identifiers only while accessibility is
+    /// running (UI tests, VoiceOver), so a normal session sees none. The classic bar keeps them
+    /// inside `tabBar`; iPhone Duo's vertical bar hosts them in a system bar elsewhere under
+    /// the tab controller. The page on screen is skipped: it is the bulk of the hierarchy and
+    /// never holds a tab. Its navigation controller is not, since the vertical bar may be
+    /// drawn there.
     private func tabButtons() -> [UIView] {
         guard let tabController = tabBarController else { return [] }
         let selected = tabController.selectedViewController
         let content = (selected as? UINavigationController)?.topViewController?.view ?? selected?.view
-        var buttons: [UIView] = []
+        var found: [UIView] = []
         var queue: [UIView] = [tabController.view]
         while !queue.isEmpty {
             let view = queue.removeFirst()
             if view === content || view === host?.view { continue }
-            if let id = view.accessibilityIdentifier, id.hasPrefix("mainTab.") {
-                buttons.append(view)
+            if view.window != nil, !view.isHidden, Self.isTabButton(view) {
+                found.append(view)
                 continue
             }
             queue.append(contentsOf: view.subviews)
         }
-        return buttons
+        // The selection lens draws a second copy of each button in the same place: keep one.
+        var buttons: [(view: UIView, frame: CGRect)] = []
+        for view in found {
+            let frame = view.convert(view.bounds, to: nil)
+            if !buttons.contains(where: { $0.frame.insetBy(dx: -1, dy: -1).contains(frame) }) {
+                buttons.append((view, frame))
+            }
+        }
+        guard buttons.count == MainTab.allCases.count else { return [] }
+        let xs = buttons.map(\.frame.midX), ys = buttons.map(\.frame.midY)
+        let isColumn = (ys.max()! - ys.min()!) > (xs.max()! - xs.min()!)
+        let rightToLeft = tabController.view.effectiveUserInterfaceLayoutDirection == .rightToLeft
+        return buttons.sorted { a, b in
+            if isColumn { return a.frame.midY < b.frame.midY }
+            return rightToLeft ? a.frame.midX > b.frame.midX : a.frame.midX < b.frame.midX
+        }.map(\.view)
+    }
+
+    private static func isTabButton(_ view: UIView) -> Bool {
+        if let id = view.accessibilityIdentifier, id.hasPrefix("mainTab.") { return true }
+        return String(describing: type(of: view)) == "_UITabButton"
     }
 
     private func meTabView() -> UIView? {
-        tabButtons().first { $0.accessibilityIdentifier == Self.meTabIdentifier }
+        let buttons = tabButtons()
+        return buttons.first { $0.accessibilityIdentifier == Self.meTabIdentifier } ?? buttons.last
     }
 
     /// The column of tabs on iPhone Duo's vertical bar, or nil while the bar is horizontal.
@@ -516,8 +539,11 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
         if let view = meTabView(), view.bounds.width > 0 {
             return view.convert(view.bounds, to: space)
         }
-        // Fallback: the trailing of four equal slots on the horizontal bar.
-        guard let tabBar = tabBarController?.tabBar else { return nil }
+        // Fallback: the trailing of four equal slots on the horizontal bar. Not for a vertical
+        // bar, where a slice of the strip would miss the Me tab.
+        guard let tabBar = tabBarController?.tabBar, tabBar.bounds.width > tabBar.bounds.height else {
+            return nil
+        }
         let width = tabBar.bounds.width / CGFloat(MainTab.allCases.count)
         guard width > 0 else { return nil }
         let x = tabBar.effectiveUserInterfaceLayoutDirection == .rightToLeft

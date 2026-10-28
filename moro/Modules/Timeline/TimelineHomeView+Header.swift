@@ -68,7 +68,15 @@ extension TimelineHomeView {
     @ToolbarContentBuilder
     var systemBarToolbar: some ToolbarContent {
         if usesSystemNavigationBar {
-            if let onAvatarTap, let account = appState.currentAccount {
+            // In the side bar the Me tab's avatar sits in the same column, so settings shows as
+            // a gear there instead of a second avatar.
+            if let onAvatarTap, toolbarIsVertical {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: onAvatarTap) {
+                        Label(MoroL10n.Navigation.settings, systemImage: "gearshape")
+                    }
+                }
+            } else if let onAvatarTap, let account = appState.currentAccount {
                 VerticalPreferredToolbarItem(placement: .topBarLeading) {
                     SettingsAvatarButton(account: account, isToolbarItem: true, action: onAvatarTap)
                 }
