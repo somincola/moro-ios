@@ -65,7 +65,7 @@ final class moroUITests: XCTestCase {
         app.launch(isolatedFor: self)
 
         let count = app.staticTexts["compose.charCount"]
-        let post = app.buttons["compose.postButton"]
+        let post = app.composePostButton
         XCTAssertTrue(
             count.waitForExistence(timeout: 12),
             "Compose counter harness should render its character count"

@@ -52,6 +52,11 @@ struct TimelineHomeView: View {
     let onTimelineSelectionChange: ((TimelineType) -> Void)?
     /// Optional observer for consumers that coordinate other chrome with the timeline header.
     let onChromeFraction: ((CGFloat) -> Void)?
+    /// iPhone Duo: the header controls live in the system navigation bar (toolbar items) instead
+    /// of the custom floating header, so the system can move them into the vertical side bar.
+    let usesSystemNavigationBar: Bool
+    /// The system bars currently run vertically along the side (iPhone Duo).
+    @State var toolbarIsVertical = false
     /// False while a detail/profile route is pushed over the timeline. The timeline remains
     /// mounted as the UIKit navigation root, but must not keep publishing hidden scroll geometry.
     let isActive: Bool
@@ -80,7 +85,10 @@ struct TimelineHomeView: View {
     @State var lastInactiveAt: Date?
     /// The root header grows for larger content sizes while keeping its normal compact height.
     @ScaledMetric(relativeTo: .body) var scaledHeaderHeight: CGFloat = 48
-    var headerHeight: CGFloat { min(max(scaledHeaderHeight, 48), 72) }
+    /// Zero when the system bar holds the controls: the safe area already clears it.
+    var headerHeight: CGFloat {
+        usesSystemNavigationBar ? 0 : min(max(scaledHeaderHeight, 48), 72)
+    }
     let announcementRefreshCooldown: TimeInterval = 12
     let minimumPullRefreshIndicatorDuration: TimeInterval = 0.65
     let pullRefreshReservedHeight: CGFloat = 40
@@ -120,6 +128,7 @@ struct TimelineHomeView: View {
         onAvatarTap: (() -> Void)? = nil,
         onTimelineSelectionChange: ((TimelineType) -> Void)? = nil,
         onChromeFraction: ((CGFloat) -> Void)? = nil,
+        usesSystemNavigationBar: Bool = false,
         isActive: Bool = true,
         bottomContentInset: CGFloat = 0,
         homeViewModel: TimelineViewModel? = nil
@@ -130,6 +139,7 @@ struct TimelineHomeView: View {
         self.onAvatarTap = onAvatarTap
         self.onTimelineSelectionChange = onTimelineSelectionChange
         self.onChromeFraction = onChromeFraction
+        self.usesSystemNavigationBar = usesSystemNavigationBar
         self.isActive = isActive
         self.bottomContentInset = bottomContentInset
         _postMenuActionCenter = StateObject(
@@ -221,13 +231,15 @@ struct TimelineHomeView: View {
             // The scroll content owns a fixed header spacer; the header itself stays visible.
             timelinePager
 
-            ScrollElevatingHeader(
-                height: headerHeight,
-                backgroundColor: sceneCanvasColor,
-                dividerColor: theme.colors.borderSubtle,
-                subject: scrollBridge.chromeFractionSubject
-            ) {
-                floatingHeader
+            if !usesSystemNavigationBar {
+                ScrollElevatingHeader(
+                    height: headerHeight,
+                    backgroundColor: sceneCanvasColor,
+                    dividerColor: theme.colors.borderSubtle,
+                    subject: scrollBridge.chromeFractionSubject
+                ) {
+                    floatingHeader
+                }
             }
 
             // Pinned models live in a retained store, so the notice observes the
@@ -240,6 +252,15 @@ struct TimelineHomeView: View {
         .background(sceneCanvasColor)
         // Extend content + background under the bottom safe area.
         .ignoresSafeArea(.container, edges: .bottom)
+        .modifier(SystemBarTitle(title: usesSystemNavigationBar ? selectedTimeline.localizedTitle : nil))
+        .toolbar { systemBarToolbar }
+        .background {
+            ToolbarAxisReader { isVertical in
+                Color.clear.onChange(of: isVertical, initial: true) { _, vertical in
+                    toolbarIsVertical = vertical
+                }
+            }
+        }
         .onAppear {
             scrollBridge.resumePresentation(for: selectedTimeline)
             scrollBridge.setActive(isActive && scenePhase == .active && !hasLocalModal)
@@ -722,4 +743,18 @@ struct TimelineHomeView: View {
         )
     }
 
+}
+
+/// Titles the root only while the system bar is shown, so iPhone's pushed screens keep their
+/// current back button.
+private struct SystemBarTitle: ViewModifier {
+    let title: String?
+
+    func body(content: Content) -> some View {
+        if let title {
+            content.navigationTitle(title)
+        } else {
+            content
+        }
+    }
 }

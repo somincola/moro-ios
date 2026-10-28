@@ -206,6 +206,7 @@ struct ConversationDetailView: View {
                     }
                 }
             }
+            .moroReadableColumn()
             .padding(.bottom, theme.spacing.s)
         }
         .scrollDismissesKeyboard(.interactively)

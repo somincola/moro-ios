@@ -15,6 +15,9 @@ enum MoroLayoutMetrics {
 
     static let timelineDividerInset =
         contentHorizontalInset + timelineAvatarSize + timelineAvatarContentSpacing
+
+    /// The widest a column of posts grows before it centers instead (see `moroReadableColumn`).
+    static let readableColumnWidth: CGFloat = 680
 }
 
 struct MoroSpacing {

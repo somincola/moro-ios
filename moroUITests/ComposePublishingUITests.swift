@@ -86,7 +86,7 @@ final class ComposePublishingUITests: XCTestCase {
     }
 
     private func publishButton(_ app: XCUIApplication) -> XCUIElement {
-        app.buttons["compose.postButton"]
+        app.composePostButton
     }
 
     private func assertPublished(_ app: XCUIApplication, requests: Int) {

@@ -24,8 +24,10 @@ extension TimelineHomeView {
                     // Scrollable spacer reserving room for the floating header. Being part of
                     // the content (not a fixed/animated inset), it scrolls away naturally and the
                     // content fills from the top — no layout jump or scroll feedback (= no jitter).
+                    // At least 1pt even without a header (iPhone Duo's system bar): a zero-height
+                    // row never lays out its scroll-view resolver, and the pager stays blank.
                     Color.clear
-                        .frame(height: headerHeight)
+                        .frame(height: max(headerHeight, 1))
                         .id("timeline-top")
                         .background(
                             TimelineScrollViewResolver(
@@ -44,6 +46,7 @@ extension TimelineHomeView {
                     timelinePrimaryContent(for: viewModel, timelineType: timelineType)
                 }
                 .scrollTargetLayout()
+                .moroReadableColumn()
                 // Clear the compact footer, including the device bottom safe area. The timeline
                 // remains edge to edge, while its final row stays fully reachable above the footer.
                 .padding(.bottom, bottomContentInset + theme.spacing.s)

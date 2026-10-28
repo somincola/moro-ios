@@ -51,52 +51,95 @@ extension TimelineHomeView {
             Spacer()
 
             // Center: Timeline switcher
-            TimelineSwitcher(
-                selectedTimeline: $selectedTimeline,
-                pinnedTimelines: pinnedTimelineTypes,
-                onManageLists: { router.navigate(to: .lists) },
-                onManageTopics: { router.navigate(to: .followedTopics) }
-            )
+            timelineSwitcher(style: .header)
 
             Spacer()
 
             // Right: Announcements
-            Button(action: { router.navigate(to: .announcements) }) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: appState.unreadAnnouncementsCount > 0 ? "megaphone.fill" : "megaphone")
-                        .moroScaledFont(size: 16, weight: .semibold)
-                        .foregroundStyle(
-                            appState.unreadAnnouncementsCount > 0
-                                ? theme.colors.primary500
-                                : theme.colors.textSecondary
-                        )
-                        .frame(width: 30, height: 30)
-
-                    if appState.unreadAnnouncementsCount > 0 {
-                        Text(appState.unreadAnnouncementsCount > 99 ? "99+" : "\(appState.unreadAnnouncementsCount)")
-                            .moroScaledFont(size: 9, weight: .bold)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, appState.unreadAnnouncementsCount > 9 ? 4 : 3)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule()
-                                    .fill(theme.colors.error)
-                            )
-                            .offset(x: 5, y: -2)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .frame(width: 44, height: 44)
-            .accessibilityLabel(
-                appState.unreadAnnouncementsCount > 0
-                    ? MoroL10n.Timeline.announcements(appState.unreadAnnouncementsCount)
-                    : MoroL10n.Timeline.announcementsTitle)
+            announcementsButton
         }
         .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .frame(height: headerHeight)
         .background(sceneCanvasColor)
         .dynamicTypeSize(.xSmall ... .xxxLarge)
+    }
+
+    /// The same three controls as toolbar items, used when the system bar replaces the header.
+    @ToolbarContentBuilder
+    var systemBarToolbar: some ToolbarContent {
+        if usesSystemNavigationBar {
+            // In the side bar the Me tab's avatar sits in the same column, so settings shows as
+            // a gear there instead of a second avatar.
+            if let onAvatarTap, toolbarIsVertical {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: onAvatarTap) {
+                        Label(MoroL10n.Navigation.settings, systemImage: "gearshape")
+                    }
+                }
+            } else if let onAvatarTap, let account = appState.currentAccount {
+                VerticalPreferredToolbarItem(placement: .topBarLeading) {
+                    SettingsAvatarButton(account: account, isToolbarItem: true, action: onAvatarTap)
+                }
+            }
+            // A title-slot item stays in a bar across the top, so with vertical bars the menu
+            // joins the avatar as an ordinary item and moves to the side with the others.
+            if toolbarIsVertical {
+                ToolbarItem(placement: .topBarLeading) {
+                    timelineSwitcher(style: .toolbar)
+                }
+            } else {
+                ToolbarItem(placement: .principal) {
+                    timelineSwitcher(style: .toolbar)
+                }
+            }
+            VerticalPreferredToolbarItem(placement: .topBarTrailing) {
+                announcementsButton
+            }
+        }
+    }
+
+    func timelineSwitcher(style: TimelineSwitcher.Style) -> some View {
+        TimelineSwitcher(
+            selectedTimeline: $selectedTimeline,
+            pinnedTimelines: pinnedTimelineTypes,
+            style: style,
+            onManageLists: { router.navigate(to: .lists) },
+            onManageTopics: { router.navigate(to: .followedTopics) }
+        )
+    }
+
+    var announcementsButton: some View {
+        Button(action: { router.navigate(to: .announcements) }) {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: appState.unreadAnnouncementsCount > 0 ? "megaphone.fill" : "megaphone")
+                    .moroScaledFont(size: 16, weight: .semibold)
+                    .foregroundStyle(
+                        appState.unreadAnnouncementsCount > 0
+                            ? theme.colors.primary500
+                            : theme.colors.textSecondary
+                    )
+                    .frame(width: 30, height: 30)
+
+                if appState.unreadAnnouncementsCount > 0 {
+                    Text(appState.unreadAnnouncementsCount > 99 ? "99+" : "\(appState.unreadAnnouncementsCount)")
+                        .moroScaledFont(size: 9, weight: .bold)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, appState.unreadAnnouncementsCount > 9 ? 4 : 3)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(theme.colors.error)
+                        )
+                        .offset(x: 5, y: -2)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(width: 44, height: 44)
+        .accessibilityLabel(
+            appState.unreadAnnouncementsCount > 0
+                ? MoroL10n.Timeline.announcements(appState.unreadAnnouncementsCount)
+                : MoroL10n.Timeline.announcementsTitle)
     }
 
     func refreshAnnouncementBadge(initialDelay: Bool) {
@@ -175,4 +218,20 @@ extension TimelineHomeView {
         if isSelected { onChromeFraction?(fraction) }
     }
 
+}
+
+/// A toolbar item with a custom view that may still go into iPhone Duo's vertical side bar
+/// (custom views stay horizontal unless they opt in).
+struct VerticalPreferredToolbarItem<Content: View>: ToolbarContent {
+    let placement: ToolbarItemPlacement
+    @ViewBuilder let content: () -> Content
+
+    var body: some ToolbarContent {
+        if #available(iOS 27.1, *) {
+            ToolbarItem(placement: placement, content: content)
+                .axisBehavior(.verticalPreferred)
+        } else {
+            ToolbarItem(placement: placement, content: content)
+        }
+    }
 }

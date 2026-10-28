@@ -128,9 +128,11 @@ struct MainTabView: View {
             )
 
         }
-        // UIKit owns both system bars and their safe-area backgrounds. Give the shell the
-        // full window so pushed scenes can carry their canvas through the bottom inset.
-        .ignoresSafeArea(.container, edges: [.top, .bottom])
+        // UIKit owns the system bars and their safe-area backgrounds. Give the shell the
+        // full window so pushed scenes can carry their canvas through the bottom inset, and
+        // so the tab bar controller reaches the display edge: on iPhone Duo the status bar
+        // sits on the side, and a shell inset from that edge keeps its bars horizontal.
+        .ignoresSafeArea(.container)
         .fullScreenCover(item: $coordinator.composeContext) { wrapper in
             ComposeView(
                 context: wrapper.context,
@@ -273,7 +275,13 @@ struct MainTabView: View {
 
     private var inboxRootView: AnyView {
         routedView(
-            AnyView(InboxView(coordinator: coordinator, apiClient: apiClient, sessionID: activeSessionID)),
+            AnyView(
+                ThreadSplitView(
+                    coordinator: coordinator, tab: .inbox, router: coordinator.inboxRouter, apiClient: apiClient
+                ) {
+                    InboxView(coordinator: coordinator, apiClient: apiClient, sessionID: activeSessionID)
+                }
+            ),
             router: coordinator.inboxRouter
         )
     }
@@ -436,6 +444,24 @@ private struct HomeTabRootView: View {
     private let composeButtonTabBarSpacing: CGFloat = 10
 
     var body: some View {
+        ThreadSplitView(coordinator: coordinator, tab: .home, router: coordinator.homeRouter, apiClient: apiClient) {
+            timelineColumn
+        }
+        // The whole root's corner: with two columns that is the thread column, clear of the
+        // fold between them (the system's guidance for book-style half open).
+        .overlay(alignment: .bottomTrailing) {
+            composeButton
+                .padding(.trailing, theme.spacing.l)
+                .padding(.bottom, composeButtonTabBarSpacing)
+                // Steps aside for the account switcher, which floats in the same corner.
+                .scaleEffect(coordinator.isAccountSwitcherPresented ? 0.6 : 1)
+                .opacity(coordinator.isAccountSwitcherPresented ? 0 : 1)
+                .allowsHitTesting(!coordinator.isAccountSwitcherPresented)
+                .animation(.snappy(duration: 0.22), value: coordinator.isAccountSwitcherPresented)
+        }
+    }
+
+    private var timelineColumn: some View {
         TimelineHomeView(
             apiClient: apiClient,
             cacheClientID: cacheClientID,
@@ -454,22 +480,13 @@ private struct HomeTabRootView: View {
                 coordinator.timelineSelection = timeline
             },
             onChromeFraction: nil,
+            usesSystemNavigationBar: coordinator.usesSystemHomeBar,
             isActive: coordinator.selectedTab == .home && coordinator.isAtRoot(.home)
                 && coordinator.presentedSheet == nil && coordinator.composeContext == nil
                 && !coordinator.showAddAccountLogin,
             bottomContentInset: coordinator.tabBarHeight + composeButtonClearance
         )
         .environment(\.tabReselection, coordinator.tabReselection)
-        .overlay(alignment: .bottomTrailing) {
-            composeButton
-                .padding(.trailing, theme.spacing.l)
-                .padding(.bottom, composeButtonTabBarSpacing)
-                // Steps aside for the account switcher, which floats in the same corner.
-                .scaleEffect(coordinator.isAccountSwitcherPresented ? 0.6 : 1)
-                .opacity(coordinator.isAccountSwitcherPresented ? 0 : 1)
-                .allowsHitTesting(!coordinator.isAccountSwitcherPresented)
-                .animation(.snappy(duration: 0.22), value: coordinator.isAccountSwitcherPresented)
-        }
     }
 
     private var composeButtonClearance: CGFloat {
@@ -574,8 +591,8 @@ private struct AddAccountLoginContainer: View {
         NavigationStack {
             LoginView(authService: AuthService(), onAuthSuccess: onAuthSuccess)
                 .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button(MoroL10n.Common.cancel) {
+                    ToolbarItem(placement: .cancellationAction) {
+                        MoroToolbarButton(MoroL10n.Common.cancel, kind: .close) {
                             onCancel()
                         }
                     }

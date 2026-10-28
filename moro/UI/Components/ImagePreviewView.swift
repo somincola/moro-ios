@@ -15,6 +15,9 @@ struct ImagePreviewView: View {
     @State private var isExporting = false
     @State private var exportNotice: String?
     @State private var noticeTask: Task<Void, Never>?
+    /// iPhone Duo half open like a laptop: the fold across the screen, in screen space. The
+    /// image then stays above it and the controls move below it, onto the flat half.
+    @State private var tabletopFold: CGRect?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -66,12 +69,15 @@ struct ImagePreviewView: View {
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
+                    .frame(height: tabletopFold?.minY)
+                    .frame(maxHeight: .infinity, alignment: .top)
                     .ignoresSafeArea()
                 }
             }
 
             if showsControls {
                 VStack {
+                    if tabletopFold != nil { Spacer() }
                     HStack(spacing: 12) {
                         MoroFloatingNavButton(kind: .close, action: closePreview)
                             .accessibilityIdentifier("imagePreview.close")
@@ -124,7 +130,8 @@ struct ImagePreviewView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
-                    Spacer()
+                    .padding(.bottom, tabletopFold == nil ? 0 : 16)
+                    if tabletopFold == nil { Spacer() }
                 }
             }
 
@@ -149,6 +156,19 @@ struct ImagePreviewView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: exportNotice)
+        .animation(.easeInOut(duration: 0.25), value: tabletopFold)
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { tabletopFold = Self.tabletopFold(in: proxy) }
+                    .onChange(of: proxy.size) { _, _ in tabletopFold = Self.tabletopFold(in: proxy) }
+                    .modifier(HingeChangeObserver {
+                        // The fold's region updates with the layout that follows the hinge.
+                        DispatchQueue.main.async { tabletopFold = Self.tabletopFold(in: proxy) }
+                    })
+            }
+            .ignoresSafeArea()
+        }
         .statusBar(hidden: true)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
         .onReceive(NotificationCenter.default.publisher(for: UIAccessibility.voiceOverStatusDidChangeNotification)) { _ in
@@ -179,6 +199,14 @@ struct ImagePreviewView: View {
             )
             .environment(\.dynamicTypeSize, dynamicTypeSize)
         }
+    }
+
+    /// The active fold running across the screen (tabletop), or nil when flat, closed, held
+    /// the other way (the fold then runs top to bottom) or on a device without one.
+    private static func tabletopFold(in proxy: GeometryProxy) -> CGRect? {
+        guard #available(iOS 27.1, *) else { return nil }
+        return proxy.reservedRegions(kind: .division)
+            .first { $0.isActive && $0.frame.width > $0.frame.height }?.frame
     }
 
     private func run(_ action: MediaExportAction, on attachment: Status.Attachment) {
@@ -219,5 +247,18 @@ struct ImagePreviewView: View {
     private func closePreview() {
         dismiss()
         onDismiss?()
+    }
+}
+
+/// Runs `action` whenever the device's hinge changes (iPhone Duo); nothing elsewhere.
+private struct HingeChangeObserver: ViewModifier {
+    let action: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 27.1, *) {
+            content.onHingeChange { _, _ in action() }
+        } else {
+            content
+        }
     }
 }

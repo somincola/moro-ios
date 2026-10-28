@@ -117,6 +117,7 @@ struct AnnouncementsView: View {
                     }
                 }
             }
+            .moroReadableColumn()
         }
     }
 

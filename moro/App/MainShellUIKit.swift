@@ -142,6 +142,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         override func viewDidLoad() {
             super.viewDidLoad()
             configureHierarchy()
+            installHingeObserver()
             configureTabs()
             apply(theme: appliedTheme)
             updateAvatar(appliedAvatarURL, force: true)
@@ -214,6 +215,22 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
             updateAvatar(currentUserAvatarURL)
             updateSelectedTab(coordinator.selectedTab)
+        }
+
+        /// Only devices with a hinge report one; the first update arrives right after install.
+        private func installHingeObserver() {
+            guard #available(iOS 27.1, *) else { return }
+            let interaction = UIHingeInteraction { [weak self] _, update in
+                self?.applyHingePresence(update.hinge != nil)
+            }
+            view.addInteraction(interaction)
+        }
+
+        private func applyHingePresence(_ hasHinge: Bool) {
+            homeNavigationController.setShowsNavigationBarAtRoot(hasHinge)
+            if coordinator.usesSystemHomeBar != hasHinge {
+                coordinator.usesSystemHomeBar = hasHinge
+            }
         }
 
         private func configureHierarchy() {
@@ -465,8 +482,11 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         }
 
         private func publishTabBarHeight() {
-            let height = mainTabController.tabBar.frame.height
-            guard height > 0 else { return }
+            let frame = mainTabController.tabBar.frame
+            guard frame.height > 0 else { return }
+            // On iPhone Duo the bar runs down the side, so nothing covers the bottom of the
+            // content and only the compose button's clearance remains.
+            let height = frame.height > frame.width ? 0 : frame.height
 
             let heightChanged = abs(coordinator.tabBarHeight - height) > 0.5
             guard heightChanged else { return }
@@ -661,7 +681,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         private var routeView: (Route, AppRouter) -> AnyView
         private let onRootStateChanged: (Bool) -> Void
         private let onSceneChanged: (MoroSceneDescriptor) -> Void
-        private let showsNavigationBarAtRoot: Bool
+        private var showsNavigationBarAtRoot: Bool
         private let rootSceneDescriptor: MoroSceneDescriptor
         private var appliedTheme: MoroTheme
 
@@ -714,6 +734,17 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             setNavigationBarHidden(!showsNavigationBarAtRoot, animated: false)
             onRootStateChanged(true)
             onSceneChanged(rootSceneDescriptor)
+        }
+
+        /// Home shows the system bar at its root on iPhone Duo (see `usesSystemHomeBar`).
+        func setShowsNavigationBarAtRoot(_ shows: Bool) {
+            guard showsNavigationBarAtRoot != shows else { return }
+            showsNavigationBarAtRoot = shows
+            guard topViewController === viewControllers.first else { return }
+            setNavigationBarHidden(
+                shouldHideNavigationBar(isRoot: true, sceneDescriptor: rootSceneDescriptor),
+                animated: false
+            )
         }
 
         func setRouteView(_ routeView: @escaping (Route, AppRouter) -> AnyView) {

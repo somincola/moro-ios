@@ -21,7 +21,7 @@ final class ComposeEditSourceUITests: XCTestCase {
         app.launch(isolatedFor: self)
         defer { app.terminate() }
 
-        let post = app.buttons["compose.postButton"]
+        let post = app.composePostButton
         XCTAssertTrue(post.waitForExistence(timeout: 8))
         XCTAssertFalse(post.isEnabled)
         XCTAssertFalse(app.textViews["compose.textInput"].exists)

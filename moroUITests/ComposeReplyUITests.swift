@@ -19,7 +19,7 @@ final class ComposeReplyUITests: XCTestCase {
         let app = launch(mode: "missing", language: "en", dark: true, largeText: true)
         defer { app.terminate() }
         let editor = readyEditor(in: app, prefix: "@bob@example.com ")
-        XCTAssertTrue(app.buttons["compose.postButton"].isEnabled)
+        XCTAssertTrue(app.composePostButton.isEnabled)
         attach(app, name: "reply-offline-dark-accessibility")
         app.navigationBars.buttons["Cancel"].tap()
         assertNoRecipientRequests(in: app)
@@ -68,7 +68,7 @@ final class ComposeReplyUITests: XCTestCase {
         let app = launch(mode: mode)
         defer { app.terminate() }
         let editor = readyEditor(in: app, prefix: prefix)
-        XCTAssertTrue(app.buttons["compose.postButton"].isEnabled)
+        XCTAssertTrue(app.composePostButton.isEnabled)
         focusAtEnd(editor)
         editor.typeText("Hello")
         XCTAssertEqual(editor.value as? String, prefix + "Hello")

@@ -49,10 +49,8 @@ struct AddToListSheet: View {
                         .accessibilityLabel(MoroL10n.Lists.newList)
                     }
 
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(MoroL10n.Common.done) { dismiss() }
-                            .font(theme.typography.bodyStrong)
-                            .foregroundStyle(theme.colors.primary500)
+                    ToolbarItem(placement: .confirmationAction) {
+                        MoroToolbarButton(MoroL10n.Common.done, kind: .confirm) { dismiss() }
                     }
                 }
         }

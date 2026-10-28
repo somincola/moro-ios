@@ -74,17 +74,16 @@ struct AltTextEditorView: View {
             .navigationTitle(MoroL10n.Media.editDescNavTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(MoroL10n.Media.cancel) {
+                ToolbarItem(placement: .cancellationAction) {
+                    MoroToolbarButton(MoroL10n.Media.cancel, kind: .close) {
                         onCancel()
                     }
                 }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(MoroL10n.Media.save) {
+                ToolbarItem(placement: .confirmationAction) {
+                    MoroToolbarButton(MoroL10n.Media.save, kind: .confirm) {
                         onSave()
                     }
-                    .fontWeight(.semibold)
                     .disabled(altText.count > maxLength)
                 }
             }

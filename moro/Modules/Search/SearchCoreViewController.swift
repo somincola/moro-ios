@@ -95,6 +95,10 @@ final class SearchCoreViewController: UIViewController {
     private var searchFieldHeightConstraint: NSLayoutConstraint!
     let cancelEntryButton = UIButton(type: .system)
     var searchTrailingRegular: NSLayoutConstraint!
+    /// The readable column every control and list hangs from: full width on a phone, capped
+    /// and centered on wide displays (iPhone Duo inner screen), and always inside the safe
+    /// area so nothing runs under a vertical side bar.
+    let readableGuide = UILayoutGuide()
     var searchTrailingWithCancel: NSLayoutConstraint!
     let scopeControl = UISegmentedControl(items: Scope.exploreScopes.map(\.title))
     private let scopeIndicatorView = UIView()
@@ -452,6 +456,7 @@ final class SearchCoreViewController: UIViewController {
 
     private func setupUI() {
         view.backgroundColor = appliedTheme.uiKitPalette.canvasBackground
+        setupReadableGuide()
 
         searchBar.translatesAutoresizingMaskIntoConstraints = false
         scopeControl.translatesAutoresizingMaskIntoConstraints = false
@@ -473,7 +478,7 @@ final class SearchCoreViewController: UIViewController {
         NSLayoutConstraint.activate([
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
             searchBar.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor,
+                equalTo: readableGuide.leadingAnchor,
                 constant: SearchLayoutMetrics.searchBarOuterHorizontalInset
             ),
             searchTrailingRegular,
@@ -481,11 +486,11 @@ final class SearchCoreViewController: UIViewController {
 
             scopeControl.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 4),
             scopeControl.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor,
+                equalTo: readableGuide.leadingAnchor,
                 constant: SearchLayoutMetrics.contentHorizontalInset
             ),
             scopeControl.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor,
+                equalTo: readableGuide.trailingAnchor,
                 constant: -SearchLayoutMetrics.contentHorizontalInset
             ),
             scopeHeightConstraint,
@@ -496,9 +501,27 @@ final class SearchCoreViewController: UIViewController {
             scopeMenuButton.bottomAnchor.constraint(equalTo: scopeControl.bottomAnchor),
 
             tableView.topAnchor.constraint(equalTo: scopeControl.bottomAnchor, constant: 4),
-            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tableView.leadingAnchor.constraint(equalTo: readableGuide.leadingAnchor),
+            tableView.trailingAnchor.constraint(equalTo: readableGuide.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+    }
+
+    private func setupReadableGuide() {
+        view.addLayoutGuide(readableGuide)
+        let safe = view.safeAreaLayoutGuide
+        let centered = readableGuide.centerXAnchor.constraint(equalTo: view.centerXAnchor)
+        centered.priority = .defaultHigh
+        let fills = readableGuide.widthAnchor.constraint(equalTo: view.widthAnchor)
+        fills.priority = .defaultHigh - 1
+        NSLayoutConstraint.activate([
+            readableGuide.topAnchor.constraint(equalTo: view.topAnchor),
+            readableGuide.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            readableGuide.leadingAnchor.constraint(greaterThanOrEqualTo: safe.leadingAnchor),
+            readableGuide.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor),
+            readableGuide.widthAnchor.constraint(lessThanOrEqualToConstant: MoroLayoutMetrics.readableColumnWidth),
+            centered,
+            fills,
         ])
     }
 

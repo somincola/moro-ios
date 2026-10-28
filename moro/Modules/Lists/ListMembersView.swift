@@ -233,8 +233,8 @@ private struct ListMemberPickerSheet: View {
             .navigationTitle(MoroL10n.ListMembers.addToList(listTitle))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(MoroL10n.ListMembers.done) {
+                ToolbarItem(placement: .confirmationAction) {
+                    MoroToolbarButton(MoroL10n.ListMembers.done, kind: .confirm) {
                         onClose()
                     }
                 }
