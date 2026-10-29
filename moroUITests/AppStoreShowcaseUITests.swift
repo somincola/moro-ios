@@ -4,7 +4,8 @@ import XCTest
 /// Opt-in: run with `TEST_RUNNER_CAPTURE_STORE_SHOWCASE=1` and, optionally,
 /// `TEST_RUNNER_SHOWCASE_LOCALES=zh-Hans,en-US` and `TEST_RUNNER_SHOWCASE_PAGES=compose,inbox`
 /// (groups: onboarding, login, home, thread, explore, inbox, profile, compose, switcher,
-/// display, edit-profile; default all).
+/// display, edit-profile; default all). Captures default to all nine app languages;
+/// Arabic promotional assets reuse the English captures.
 @MainActor
 final class AppStoreShowcaseUITests: XCTestCase {
     func testCaptureShowcase() throws {
@@ -12,8 +13,10 @@ final class AppStoreShowcaseUITests: XCTestCase {
             throw XCTSkip("Store showcase capture is opt-in.")
         }
         continueAfterFailure = true
-        let locales = (ProcessInfo.processInfo.environment["SHOWCASE_LOCALES"] ?? "zh-Hans,en-US")
-            .split(separator: ",").map(String.init)
+        let locales = (ProcessInfo.processInfo.environment["SHOWCASE_LOCALES"]
+            ?? "zh-Hans,en-US,de-DE,es-ES,fr-FR,it,ja,pt-PT,zh-Hant")
+            .split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
         let pages = ProcessInfo.processInfo.environment["SHOWCASE_PAGES"].flatMap { list in
             list.isEmpty ? nil : Set(list.split(separator: ",").map(String.init))
         }
@@ -95,7 +98,7 @@ final class AppStoreShowcaseUITests: XCTestCase {
 
     /// A new post with a poll, typed into the real composer.
     private func captureCompose(_ locale: String) {
-        let chinese = locale.hasPrefix("zh")
+        let copy = composeCopy(for: locale)
         let app = launchStore(locale, "light")
         let compose = app.buttons["home.composeButton"]
         XCTAssertTrue(compose.waitForExistence(timeout: 20))
@@ -104,16 +107,14 @@ final class AppStoreShowcaseUITests: XCTestCase {
         XCTAssertTrue(input.waitForExistence(timeout: 10))
         input.tap()
         dismissKeyboardTip(app)
-        input.typeText(chinese ? "这个周末想去海边走走，你们更想做哪件事？🌊"
-            : "Thinking about a weekend by the sea. Which would you pick? 🌊")
+        input.typeText(copy.text)
         let poll = app.buttons["compose.pollToggle"]
         XCTAssertTrue(poll.waitForExistence(timeout: 5))
         poll.tap()
-        let options = chinese ? ["看日出", "海边咖啡", "拍晚霞"] : ["Sunrise walk", "Seaside café", "Sunset photos"]
         let fields = app.scrollViews["compose.contentScroll"].textFields
         XCTAssertTrue(fields.firstMatch.waitForExistence(timeout: 5), "poll options: \(app.debugDescription)")
-        for (index, option) in options.enumerated() {
-            if index >= fields.count { app.buttons[chinese ? "添加选项" : "Add option"].firstMatch.tap() }
+        for (index, option) in copy.options.enumerated() {
+            if index >= fields.count { app.buttons[copy.addOptionTitle].firstMatch.tap() }
             let field = fields.element(boundBy: index)
             guard field.waitForExistence(timeout: 5) else { break }
             field.tap()
@@ -138,6 +139,51 @@ final class AppStoreShowcaseUITests: XCTestCase {
 
     // MARK: Helpers
 
+    private struct ComposeCopy {
+        let text: String
+        let options: [String]
+        let addOptionTitle: String
+    }
+
+    private func composeCopy(for locale: String) -> ComposeCopy {
+        // Button titles match compose.poll.addOption in Moro.xcstrings.
+        switch appLanguage(for: locale) {
+        case "zh-Hans":
+            return ComposeCopy(text: "这个周末想去海边走走，你们更想做哪件事？🌊",
+                options: ["看日出", "海边咖啡", "拍晚霞"], addOptionTitle: "添加选项")
+        case "zh-Hant":
+            return ComposeCopy(text: "這個週末想去海邊走走，你們比較想做哪件事？🌊",
+                options: ["看日出", "海邊喝咖啡", "拍晚霞"], addOptionTitle: "新增選項")
+        case "de":
+            return ComposeCopy(text: "Wie wäre es mit einem Wochenende am Meer? Was würdet ihr am liebsten machen? 🌊",
+                options: ["Sonnenaufgang erleben", "Kaffee am Meer", "Abendrot fotografieren"], addOptionTitle: "Option hinzufügen")
+        case "es":
+            return ComposeCopy(text: "Estoy pensando en pasar el fin de semana junto al mar. ¿Qué plan os apetece más? 🌊",
+                options: ["Paseo al amanecer", "Café junto al mar", "Fotos del atardecer"], addOptionTitle: "Añadir opción")
+        case "fr":
+            return ComposeCopy(text: "Et si on passait le week-end au bord de la mer ? Vous choisiriez quoi ? 🌊",
+                options: ["Balade à l’aube", "Café face à la mer", "Photos du couchant"], addOptionTitle: "Ajouter une option")
+        case "it":
+            return ComposeCopy(text: "Pensavo a un fine settimana al mare. Voi cosa preferireste fare? 🌊",
+                options: ["Passeggiata all’alba", "Caffè sul mare", "Foto al tramonto"], addOptionTitle: "Aggiungi opzione")
+        case "ja":
+            return ComposeCopy(text: "週末は海辺で過ごしたいな。みんななら何をしたい？🌊",
+                options: ["朝日を見に散歩", "海辺のカフェ", "夕焼けを撮る"], addOptionTitle: "選択肢を追加")
+        case "pt-PT":
+            return ComposeCopy(text: "Estava a pensar passar o fim de semana à beira-mar. O que vos apetecia mais? 🌊",
+                options: ["Passeio ao nascer do sol", "Café à beira-mar", "Fotografar o pôr do sol"], addOptionTitle: "Adicionar opção")
+        default:
+            return ComposeCopy(text: "Thinking about a weekend by the sea. Which would you pick? 🌊",
+                options: ["Sunrise walk", "Seaside café", "Sunset photos"], addOptionTitle: "Add option")
+        }
+    }
+
+    private func appLanguage(for locale: String) -> String {
+        let languages = ["de-DE": "de", "es-ES": "es", "fr-FR": "fr", "it": "it", "ja": "ja",
+                         "pt-PT": "pt-PT", "zh-Hans": "zh-Hans", "zh-Hant": "zh-Hant", "ar-SA": "en"]
+        return languages[locale] ?? locale
+    }
+
     private func launchStore(_ locale: String, _ scheme: String, environment: [String: String] = [:]) -> XCUIApplication {
         launch(locale, scheme, arguments: ["APP_STORE_SCREENSHOTS"],
                environment: environment.merging(["STORE_SHOWCASE": "1"]) { $1 })
@@ -146,8 +192,9 @@ final class AppStoreShowcaseUITests: XCTestCase {
     private func launch(_ locale: String, _ scheme: String, arguments: [String],
                         environment: [String: String]) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = arguments + ["-AppleLanguages", "(\(locale))",
-                                           "-AppleLocale", locale.replacingOccurrences(of: "-", with: "_")]
+        let captureLocale = locale == "ar-SA" ? "en-US" : locale
+        app.launchArguments = arguments + ["-AppleLanguages", "(\(appLanguage(for: locale)))",
+                                           "-AppleLocale", captureLocale.replacingOccurrences(of: "-", with: "_")]
         app.launchEnvironment = environment.merging(["UITEST_USE_FULL_APP": "1",
                                                      "UITEST_COLOR_SCHEME": scheme]) { $1 }
         app.launch(isolatedFor: self)

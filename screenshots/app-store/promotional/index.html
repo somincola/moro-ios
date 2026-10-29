@@ -121,9 +121,10 @@
             opacity: .72;
         }
 
-        :lang(zh) .copy h1 { line-height: 1.16; letter-spacing: .02em; }
-        :lang(zh) .copy p { line-height: 1.5; letter-spacing: .02em; }
-        :lang(zh) .copy .eyebrow { letter-spacing: .14em; }
+        :is(:lang(zh), :lang(ja)) .copy h1 { line-height: 1.16; letter-spacing: .02em; }
+        :is(:lang(zh), :lang(ja)) .copy p { line-height: 1.5; letter-spacing: .02em; }
+        :is(:lang(zh), :lang(ja)) .copy .eyebrow { letter-spacing: .14em; }
+        .copy[dir="rtl"]:not(.single-copy) { text-align: right; }
 
         .copy.light { color: white; }
         .copy.light p { opacity: .82; }
@@ -189,41 +190,134 @@
 <body>
 <script>
     const params = new URLSearchParams(location.search);
-    const locale = params.get("lang") || "en-US";
+    const requestedLocale = params.get("lang") || "en-US";
     const mode = params.get("mode") || "hero";
-    const zh = locale.startsWith("zh");
-    document.documentElement.lang = zh ? "zh-Hans" : "en";
 
     const icon = "../../../moro/Resources/Assets.xcassets/AppIcon.appiconset/appicon-default-1024.png";
-    const shot = (name) => `../${locale}/iphone/${name}.png`;
+    // Arabic has promotional copy only; its app captures are the English set.
+    const shot = (name) => `../${locale === "ar-SA" ? "en-US" : locale}/iphone/${name}.png`;
 
     const phone = (name, className) =>
         `<div class="phone-wrap ${className}"><div class="phone"><div class="screen"><img src="${shot(name)}" alt=""><div class="island"></div></div></div></div>`;
     const brand = (light = false) => `<div class="brand ${light ? "light" : ""}"><img src="${icon}" alt=""><b>Moro</b></div>`;
     const copy = (className, c) =>
-        `<div class="copy ${className}">${c.eyebrow ? `<div class="eyebrow">${c.eyebrow}</div>` : ""}<h1>${c.title}</h1>${c.body ? `<p>${c.body}</p>` : ""}</div>`;
+        `<div class="copy ${className}" dir="${locale === "ar-SA" ? "rtl" : "ltr"}">${c.eyebrow ? `<div class="eyebrow">${c.eyebrow}</div>` : ""}<h1>${c.title}</h1>${c.body ? `<p>${c.body}</p>` : ""}</div>`;
 
-    const text = zh ? {
-        hero: { title: "联邦宇宙里，<br>一个安静的家", body: "在开放的社交网络里，<br>阅读、相遇、分享生活。" },
-        heroFeature: { eyebrow: "时间线", title: "每个瞬间，<br>都清晰好看", body: "照片、对话和你关注的人，<br>集中在一条专注的时间线里。" },
-        thread: { eyebrow: "对话", title: "完整的对话脉络", body: "回复按上下文排列，<br>读嘟文串就像聊天一样自然。" },
-        explore: { eyebrow: "发现", title: "遇见志趣相投的人", body: "跨实例搜索用户、嘟文和话题标签。" },
-        profile: { eyebrow: "个人主页", title: "属于你的小天地", body: "简介、资料、嘟文和媒体，一处呈现。" },
-        compose: { eyebrow: "发嘟", title: "用你的方式<br>表达", body: "投票、图片、表情和可见范围，写作时随手可用。" },
-        composeFeature: { title: "写作所需，<br>触手可及", body: "内容警告、发帖语言、草稿与引用权限，一应俱全。" },
-        inbox: { eyebrow: "通知", title: "动态一目了然", body: "提及、喜欢、转嘟和关注，<br>分组整理，清爽不打扰。" },
-        display: { eyebrow: "个性化", title: "让 Moro 更像你", body: "外观、字号、主题色和应用图标，<br>随心调整。" },
-    } : {
-        hero: { title: "A calmer home for the fediverse", body: "Read, connect, and share everyday life across the open social web." },
-        heroFeature: { eyebrow: "Timeline", title: "Every moment, beautifully clear", body: "Photos, conversations, and the people you follow—in one focused timeline." },
-        thread: { eyebrow: "Conversations", title: "Follow every conversation", body: "Replies stay in context, so threads read like a real conversation." },
-        explore: { eyebrow: "Discover", title: "Find your people", body: "Search accounts, posts, and hashtags across the open social web." },
-        profile: { eyebrow: "Profiles", title: "A space that feels like yours", body: "Your bio, fields, posts, and media—together in one place." },
-        compose: { eyebrow: "Post", title: "Say it your way", body: "Polls, photos, emoji, and visibility—right where you write." },
-        composeFeature: { title: "Everything you need, right where you write", body: "Content warnings, posting language, drafts, and quote controls." },
-        inbox: { eyebrow: "Notifications", title: "Every signal, easy to scan", body: "Mentions, likes, boosts, and follows—grouped and calm." },
-        display: { eyebrow: "Personalize", title: "Make Moro yours", body: "Tune the appearance, text size, theme color, and app icon." },
+    const translations = {
+        "zh-Hans": {
+            hero: { title: "联邦宇宙里，<br>一个安静的家", body: "在开放的社交网络里，<br>阅读、相遇、分享生活。" },
+            heroFeature: { eyebrow: "时间线", title: "每个瞬间，<br>都清晰好看", body: "照片、对话和你关注的人，<br>集中在一条专注的时间线里。" },
+            thread: { eyebrow: "对话", title: "完整的对话脉络", body: "回复按上下文排列，<br>读嘟文串就像聊天一样自然。" },
+            explore: { eyebrow: "发现", title: "遇见志趣相投的人", body: "跨实例搜索用户、嘟文和话题标签。" },
+            profile: { eyebrow: "个人主页", title: "属于你的小天地", body: "简介、资料、嘟文和媒体，一处呈现。" },
+            compose: { eyebrow: "发嘟", title: "用你的方式<br>表达", body: "投票、图片、表情和可见范围，写作时随手可用。" },
+            composeFeature: { title: "写作所需，<br>触手可及", body: "内容警告、发帖语言、草稿与引用权限，一应俱全。" },
+            inbox: { eyebrow: "通知", title: "动态一目了然", body: "提及、喜欢、转嘟和关注，<br>分组整理，清爽不打扰。" },
+            display: { eyebrow: "个性化", title: "让 Moro 更像你", body: "外观、字号、主题色和应用图标，<br>随心调整。" },
+        },
+        "en-US": {
+            hero: { title: "A calmer home for the fediverse", body: "Read, connect, and share everyday life across the open social web." },
+            heroFeature: { eyebrow: "Timeline", title: "Every moment, beautifully clear", body: "Photos, conversations, and the people you follow—in one focused timeline." },
+            thread: { eyebrow: "Conversations", title: "Follow every conversation", body: "Replies stay in context, so threads read like a real conversation." },
+            explore: { eyebrow: "Discover", title: "Find your people", body: "Search accounts, posts, and hashtags across the open social web." },
+            profile: { eyebrow: "Profiles", title: "A space that feels like yours", body: "Your bio, fields, posts, and media—together in one place." },
+            compose: { eyebrow: "Post", title: "Say it your way", body: "Polls, photos, emoji, and visibility—right where you write." },
+            composeFeature: { title: "Everything you need, right where you write", body: "Content warnings, posting language, drafts, and quote controls." },
+            inbox: { eyebrow: "Notifications", title: "Every signal, easy to scan", body: "Mentions, likes, boosts, and follows—grouped and calm." },
+            display: { eyebrow: "Personalize", title: "Make Moro yours", body: "Tune the appearance, text size, theme color, and app icon." },
+        },
+        "de-DE": {
+            hero: { title: "Dein Ruhepol<br>im Fediverse", body: "Lesen, Menschen treffen, Alltag teilen.<br>Im offenen sozialen Netz." },
+            heroFeature: { eyebrow: "Timeline", title: "Jeder Moment.<br>Schön und klar.", body: "Fotos, Gespräche und die Menschen, denen du folgst. Alles in einer fokussierten Timeline." },
+            thread: { eyebrow: "Gespräche", title: "Gespräche im Blick", body: "Antworten bleiben im Zusammenhang.<br>So lesen sich Threads wie ein Gespräch." },
+            explore: { eyebrow: "Entdecken", title: "Finde Gleichgesinnte", body: "Suche nach Konten, Beiträgen und Hashtags.<br>Über Servergrenzen hinweg." },
+            profile: { eyebrow: "Profil", title: "Dein eigener Freiraum", body: "Bio, Profilangaben, Beiträge und Medien.<br>Alles an einem Ort." },
+            compose: { eyebrow: "Posten", title: "Sag es<br>auf deine Art", body: "Umfragen, Fotos, Emoji und Sichtbarkeit. Direkt beim Schreiben zur Hand." },
+            composeFeature: { title: "Alles fürs<br>Schreiben", body: "Inhaltswarnungen, Beitragssprache, Entwürfe und Einstellungen für Zitate." },
+            inbox: { eyebrow: "Mitteilungen", title: "Alles gut im Blick", body: "Erwähnungen, Likes, Boosts und neue Follower.<br>Übersichtlich gruppiert, angenehm ruhig." },
+            display: { eyebrow: "Anpassen", title: "Moro, ganz nach dir", body: "Passe Darstellung, Schriftgröße, Themenfarbe<br>und App-Symbol nach deinen Wünschen an." },
+        },
+        "es-ES": {
+            hero: { title: "Calma en el<br>fediverso", body: "Lee, conecta y comparte tu día a día<br>en la web social abierta." },
+            heroFeature: { eyebrow: "Cronología", title: "Cada momento,<br>con toda claridad", body: "Fotos, conversaciones y las personas que sigues, en una cronología para leer sin distracciones." },
+            thread: { eyebrow: "Conversaciones", title: "Conversaciones<br>con contexto", body: "Cada respuesta sigue el hilo,<br>para leer con la naturalidad de una charla." },
+            explore: { eyebrow: "Descubre", title: "Encuentra a tu gente", body: "Busca cuentas, publicaciones y etiquetas<br>más allá de tu servidor." },
+            profile: { eyebrow: "Perfiles", title: "Un espacio muy tuyo", body: "Tu biografía, datos, publicaciones y archivos multimedia.<br>Todo en un mismo lugar." },
+            compose: { eyebrow: "Publica", title: "Exprésate<br>a tu manera", body: "Encuestas, fotos, emojis y visibilidad, justo donde escribes." },
+            composeFeature: { title: "Todo a mano<br>al escribir", body: "Avisos de contenido, idioma de publicación, borradores y permisos de cita." },
+            inbox: { eyebrow: "Notificaciones", title: "Todo de un vistazo", body: "Menciones, me gusta, impulsos y seguidores.<br>Agrupados con claridad y sin agobios." },
+            display: { eyebrow: "Personaliza", title: "Moro, a tu manera", body: "Ajusta la apariencia, el tamaño del texto,<br>el color del tema y el icono de la app." },
+        },
+        "fr-FR": {
+            hero: { title: "Au calme<br>dans le fédivers", body: "Lisez, échangez et partagez votre quotidien<br>sur le web social ouvert." },
+            heroFeature: { eyebrow: "Fil d’actualité", title: "Chaque instant,<br>tout en clarté", body: "Photos, conversations et personnes suivies, dans un fil qui va à l’essentiel." },
+            thread: { eyebrow: "Conversations", title: "Gardez le fil", body: "Chaque réponse garde son contexte,<br>pour des échanges qui se lisent naturellement." },
+            explore: { eyebrow: "Découvrir", title: "Trouvez les vôtres", body: "Recherchez des comptes, des publications et des hashtags,<br>au-delà de votre serveur." },
+            profile: { eyebrow: "Profils", title: "Un espace à vous", body: "Bio, informations, publications et médias.<br>Tout se retrouve au même endroit." },
+            compose: { eyebrow: "Publier", title: "À vous<br>la parole", body: "Sondages, photos, émojis et visibilité, là où vous écrivez." },
+            composeFeature: { title: "Tout pour<br>vous exprimer", body: "Avertissements de contenu, langue de publication, brouillons et autorisations de citation." },
+            inbox: { eyebrow: "Notifications", title: "Tout voir<br>d’un coup d’œil", body: "Mentions, favoris, partages et abonnements.<br>Regroupés pour y voir clair, en toute sérénité." },
+            display: { eyebrow: "Personnaliser", title: "Moro, à votre image", body: "Ajustez l’apparence, la taille du texte,<br>la couleur du thème et l’icône de l’app." },
+        },
+        "it": {
+            hero: { title: "La tua oasi<br>nel fediverso", body: "Leggi, incontra persone e condividi la quotidianità<br>nel web sociale aperto." },
+            heroFeature: { eyebrow: "Timeline", title: "Ogni momento,<br>in tutta chiarezza", body: "Foto, conversazioni e le persone che segui, in una timeline senza distrazioni." },
+            thread: { eyebrow: "Conversazioni", title: "Il filo di ogni<br>conversazione", body: "Le risposte restano nel loro contesto.<br>Leggere un thread è naturale come chiacchierare." },
+            explore: { eyebrow: "Esplora", title: "Trova chi ti somiglia", body: "Cerca account, post e hashtag<br>anche oltre il tuo server." },
+            profile: { eyebrow: "Profili", title: "Uno spazio tutto tuo", body: "Biografia, informazioni, post e contenuti multimediali.<br>Tutto in un solo posto." },
+            compose: { eyebrow: "Pubblica", title: "Dillo<br>a modo tuo", body: "Sondaggi, foto, emoji e visibilità, proprio dove scrivi." },
+            composeFeature: { title: "Tutto ciò<br>che ti serve", body: "Avvisi sui contenuti, lingua dei post, bozze e permessi per le citazioni." },
+            inbox: { eyebrow: "Notifiche", title: "Tutto a colpo d’occhio", body: "Menzioni, preferiti, condivisioni e nuovi follower.<br>Raggruppati con ordine, senza rumore." },
+            display: { eyebrow: "Personalizza", title: "Moro, come piace a te", body: "Scegli aspetto, dimensioni del testo,<br>colore del tema e icona dell’app." },
+        },
+        "ja": {
+            hero: { title: "フェディバースの<br>ほっとする居場所", body: "開かれたソーシャルウェブで、<br>読み、出会い、日々を分かち合う。" },
+            heroFeature: { eyebrow: "タイムライン", title: "一つひとつの瞬間を、<br>美しく、くっきりと", body: "写真も、会話も、フォローしている人も。<br>ひとつのタイムラインで、じっくりと。" },
+            thread: { eyebrow: "会話", title: "会話の流れが<br>自然につながる", body: "前後のつながりに沿って返信を表示。<br>スレッドも、おしゃべりのように読めます。" },
+            explore: { eyebrow: "見つける", title: "気の合う人に出会おう", body: "サーバーを越えて、アカウントや投稿、<br>ハッシュタグを検索。" },
+            profile: { eyebrow: "プロフィール", title: "自分らしい居場所を", body: "自己紹介も、プロフィール項目も、投稿もメディアも。<br>あなたのことを、ひとつの場所に。" },
+            compose: { eyebrow: "投稿", title: "あなたらしい<br>言葉で", body: "アンケート、写真、絵文字、公開範囲。<br>書く場所に、使いたいものを。" },
+            composeFeature: { title: "書きたいときに、<br>必要なものを", body: "コンテンツ警告、投稿言語、下書き、引用の許可設定も。" },
+            inbox: { eyebrow: "通知", title: "みんなの反応が<br>ひと目でわかる", body: "メンション、お気に入り、ブースト、フォロー。<br>すっきりまとまり、落ち着いて確認。" },
+            display: { eyebrow: "カスタマイズ", title: "Moroを、<br>あなたらしく", body: "外観、文字サイズ、テーマカラー、アプリアイコン。<br>自分の好みに合わせて。" },
+        },
+        "pt-PT": {
+            hero: { title: "O teu refúgio<br>no fediverso", body: "Lê, conversa e partilha o dia a dia<br>na web social aberta." },
+            heroFeature: { eyebrow: "Cronologia", title: "Cada momento,<br>com toda a clareza", body: "Fotografias, conversas e as pessoas que segues, numa cronologia sem distrações." },
+            thread: { eyebrow: "Conversas", title: "Segue cada conversa", body: "As respostas mantêm o contexto.<br>Ler uma conversa torna-se natural." },
+            explore: { eyebrow: "Descobrir", title: "Encontra a tua gente", body: "Pesquisa contas, publicações e hashtags<br>para lá do teu servidor." },
+            profile: { eyebrow: "Perfis", title: "Um espaço só teu", body: "Biografia, informações, publicações e multimédia.<br>Tudo no mesmo lugar." },
+            compose: { eyebrow: "Publicar", title: "Diz à<br>tua maneira", body: "Sondagens, fotografias, emojis e visibilidade, mesmo onde escreves." },
+            composeFeature: { title: "Tudo à mão<br>para escrever", body: "Avisos de conteúdo, idioma de publicação, rascunhos e permissões de citação." },
+            inbox: { eyebrow: "Notificações", title: "Tudo à primeira vista", body: "Menções, favoritos, partilhas e novos seguidores.<br>Agrupados com clareza e tranquilidade." },
+            display: { eyebrow: "Personalizar", title: "Moro, à tua medida", body: "Ajusta o aspeto, o tamanho do texto,<br>a cor do tema e o ícone da app." },
+        },
+        "zh-Hant": {
+            hero: { title: "聯邦宇宙裡，<br>一個安心的家", body: "在開放的社交網路裡，<br>閱讀、相遇、分享生活。" },
+            heroFeature: { eyebrow: "時間軸", title: "每個瞬間，<br>都清晰好看", body: "照片、對話和你追蹤的人，<br>都在一條專注的時間軸裡。" },
+            thread: { eyebrow: "對話", title: "完整的對話脈絡", body: "回覆依上下文排列，<br>讀嘟文串就像聊天一樣自然。" },
+            explore: { eyebrow: "探索", title: "遇見志趣相投的人", body: "跨伺服器搜尋使用者、嘟文和主題標籤。" },
+            profile: { eyebrow: "個人頁面", title: "屬於你的小天地", body: "簡介、資料、嘟文和媒體，一次呈現。" },
+            compose: { eyebrow: "發嘟", title: "用你的方式<br>表達", body: "投票、照片、表情符號和可見範圍，寫作時隨手可用。" },
+            composeFeature: { title: "寫作所需，<br>觸手可及", body: "內容警告、發文語言、草稿與引用權限，一應俱全。" },
+            inbox: { eyebrow: "通知", title: "動態一目了然", body: "提及、喜歡、轉嘟和追蹤，<br>分組整理，清爽不打擾。" },
+            display: { eyebrow: "個人化", title: "讓 Moro 更像你", body: "外觀、字級、主題色和 App 圖像，<br>隨心調整。" },
+        },
+        "ar-SA": {
+            hero: { title: "مساحتك الهادئة<br>في الفديفرس", body: "اقرأ وتواصل وشارك تفاصيل يومك<br>عبر الويب الاجتماعي المفتوح." },
+            heroFeature: { eyebrow: "الخط الزمني", title: "كل لحظة،<br>بوضوح وجمال", body: "صور ومحادثات ومن تتابعهم،<br>في خط زمني واحد يركز على ما يهمك." },
+            thread: { eyebrow: "المحادثات", title: "تابع خيط الحديث", body: "ردود ضمن سياقها، لتقرأ المحادثات<br>بسلاسة وكأنك تتحدث وجهًا لوجه." },
+            explore: { eyebrow: "اكتشف", title: "اعثر على من يشبهك", body: "ابحث عن حسابات ومنشورات ووسوم<br>عبر الويب الاجتماعي المفتوح." },
+            profile: { eyebrow: "الملف الشخصي", title: "مساحة تشبهك", body: "نبذتك ومعلوماتك ومنشوراتك ووسائطك،<br>كلها في مكان واحد." },
+            compose: { eyebrow: "انشر", title: "عبّر<br>بطريقتك", body: "استطلاعات وصور ورموز تعبيرية وخيارات ظهور، حيث تكتب." },
+            composeFeature: { title: "كل أدواتك،<br>حيث تكتب", body: "تحذيرات المحتوى، ولغة النشر، والمسودات، وأذونات الاقتباس." },
+            inbox: { eyebrow: "الإشعارات", title: "تفاعلاتك بلمحة", body: "إشارات وإعجابات وإعادات نشر ومتابعات،<br>مرتبة بوضوح وهدوء." },
+            display: { eyebrow: "التخصيص", title: "اجعل Moro على ذوقك", body: "اضبط المظهر وحجم النص ولون السمة<br>وأيقونة التطبيق كما تحب." },
+        },
     };
+    const locale = Object.hasOwn(translations, requestedLocale) ? requestedLocale : "en-US";
+    const text = translations[locale];
+    document.documentElement.lang = locale;
 
     const single = (theme, c, screen) =>
         `<main class="canvas single ${theme}"><div class="layer glow"></div><div class="layer arc"></div>${brand()}${copy("single-copy", c)}${phone(screen, "single-phone")}</main>`;

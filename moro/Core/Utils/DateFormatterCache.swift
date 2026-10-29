@@ -31,7 +31,7 @@ actor DateFormatterCache {
     /// Relative date formatter for "2 hours ago" style
     private lazy var _relativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
+        formatter.unitsStyle = RelativeDateTimeFormatter.compactUnitsStyle
         return formatter
     }()
 
@@ -203,7 +203,7 @@ nonisolated enum DateFormatting {
 
     nonisolated(unsafe) private static let relative: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
+        formatter.unitsStyle = RelativeDateTimeFormatter.compactUnitsStyle
         return formatter
     }()
 
@@ -278,5 +278,16 @@ extension Date {
     /// Get a smart relative string (relative for recent, absolute for older)
     func smartRelativeString(cutoff: TimeInterval = 86400) -> String {
         DateFormatting.smartRelativeString(for: self, cutoff: cutoff)
+    }
+}
+
+nonisolated extension RelativeDateTimeFormatter {
+    /// The compact style for timestamps in lists. French and Portuguese abbreviate the past as
+    /// "-38 min", which reads like a negative number, so they use the short "il y a 38 min".
+    static var compactUnitsStyle: UnitsStyle {
+        switch Locale.current.language.languageCode?.identifier {
+        case "fr", "pt": .short
+        default: .abbreviated
+        }
     }
 }

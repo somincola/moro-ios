@@ -3,11 +3,11 @@ import { existsSync, mkdirSync, statSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-// Usage: node render.mjs [zh-Hans,en-US]
-// Reads the real captures from ../<locale>/iphone/ and writes ../<locale>/promotional/.
+// Usage: node render.mjs [zh-Hans,en-US,de-DE,es-ES,fr-FR,it,ja,pt-PT,zh-Hant,ar-SA]
+// Reads ../<locale>/iphone/ (ar-SA reuses en-US) and writes ../<locale>/promotional/.
 const here = path.dirname(fileURLToPath(import.meta.url));
 const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const locales = (process.argv[2] || "zh-Hans,en-US").split(",").filter(Boolean);
+const locales = (process.argv[2] || "zh-Hans,en-US,de-DE,es-ES,fr-FR,it,ja,pt-PT,zh-Hant,ar-SA").split(",").filter(Boolean);
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
