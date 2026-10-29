@@ -2,7 +2,9 @@ import XCTest
 
 /// Captures the real screens behind the App Store showcase, with offline fixtures.
 /// Opt-in: run with `TEST_RUNNER_CAPTURE_STORE_SHOWCASE=1` and, optionally,
-/// `TEST_RUNNER_SHOWCASE_LOCALES=zh-Hans,en-US`.
+/// `TEST_RUNNER_SHOWCASE_LOCALES=zh-Hans,en-US` and `TEST_RUNNER_SHOWCASE_PAGES=compose,inbox`
+/// (groups: onboarding, login, home, thread, explore, inbox, profile, compose, switcher,
+/// display, edit-profile; default all).
 @MainActor
 final class AppStoreShowcaseUITests: XCTestCase {
     func testCaptureShowcase() throws {
@@ -12,16 +14,27 @@ final class AppStoreShowcaseUITests: XCTestCase {
         continueAfterFailure = true
         let locales = (ProcessInfo.processInfo.environment["SHOWCASE_LOCALES"] ?? "zh-Hans,en-US")
             .split(separator: ",").map(String.init)
+        let pages = ProcessInfo.processInfo.environment["SHOWCASE_PAGES"].flatMap { list in
+            list.isEmpty ? nil : Set(list.split(separator: ",").map(String.init))
+        }
+        func wants(_ page: String) -> Bool { pages?.contains(page) ?? true }
         for locale in locales {
             for scheme in ["dark", "light"] {
-                captureOnboarding(locale, scheme)
-                captureLogin(locale, scheme)
+                if wants("onboarding") { captureOnboarding(locale, scheme) }
+                if wants("login") { captureLogin(locale, scheme) }
             }
-            captureHome(locale, "light")
-            captureHome(locale, "dark")
-            captureSwitcher(locale)
-            captureScene(locale, "display", page: "display", theme: "purple")
-            captureScene(locale, "editProfile", page: "edit-profile")
+            if wants("home") {
+                captureHome(locale, "light")
+                captureHome(locale, "dark")
+            }
+            if wants("thread") { captureScene(locale, "main", page: "thread", environment: ["STORE_THREAD": "0"]) }
+            if wants("explore") { captureScene(locale, "main", page: "explore", environment: ["STORE_TAB": "explore"]) }
+            if wants("inbox") { captureScene(locale, "main", page: "inbox", environment: ["STORE_TAB": "inbox"]) }
+            if wants("profile") { captureScene(locale, "main", page: "profile", environment: ["STORE_TAB": "me"]) }
+            if wants("compose") { captureCompose(locale) }
+            if wants("switcher") { captureSwitcher(locale) }
+            if wants("display") { captureScene(locale, "display", page: "display", theme: "purple") }
+            if wants("edit-profile") { captureScene(locale, "editProfile", page: "edit-profile") }
         }
     }
 
@@ -30,9 +43,8 @@ final class AppStoreShowcaseUITests: XCTestCase {
     private func captureOnboarding(_ locale: String, _ scheme: String) {
         let app = launch(locale, scheme, arguments: ["UITEST_ONBOARDING_PREVIEW"],
                          environment: ["UITEST_ONBOARDING_VARIANT": "globe"])
-        // Let the net settle and a few sparks run before gathering it.
-        sleep(4)
-        capture(app, locale, "onboarding-net-\(scheme)")
+        // The store shows the gathered globe with the title, not the opening net.
+        sleep(2)
         app.tap()
         XCTAssertTrue(app.buttons["onboarding.start"].waitForExistence(timeout: 10))
         sleep(3)
@@ -81,8 +93,42 @@ final class AppStoreShowcaseUITests: XCTestCase {
         app.terminate()
     }
 
-    private func captureScene(_ locale: String, _ scene: String, page: String, theme: String? = nil) {
-        var environment = ["STORE_SCENE": scene]
+    /// A new post with a poll, typed into the real composer.
+    private func captureCompose(_ locale: String) {
+        let chinese = locale.hasPrefix("zh")
+        let app = launchStore(locale, "light")
+        let compose = app.buttons["home.composeButton"]
+        XCTAssertTrue(compose.waitForExistence(timeout: 20))
+        compose.tap()
+        let input = app.textViews["compose.textInput"]
+        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        input.tap()
+        dismissKeyboardTip(app)
+        input.typeText(chinese ? "这个周末想去海边走走，你们更想做哪件事？🌊"
+            : "Thinking about a weekend by the sea. Which would you pick? 🌊")
+        let poll = app.buttons["compose.pollToggle"]
+        XCTAssertTrue(poll.waitForExistence(timeout: 5))
+        poll.tap()
+        let options = chinese ? ["看日出", "海边咖啡", "拍晚霞"] : ["Sunrise walk", "Seaside café", "Sunset photos"]
+        let fields = app.scrollViews["compose.contentScroll"].textFields
+        XCTAssertTrue(fields.firstMatch.waitForExistence(timeout: 5), "poll options: \(app.debugDescription)")
+        for (index, option) in options.enumerated() {
+            if index >= fields.count { app.buttons[chinese ? "添加选项" : "Add option"].firstMatch.tap() }
+            let field = fields.element(boundBy: index)
+            guard field.waitForExistence(timeout: 5) else { break }
+            field.tap()
+            field.typeText(option)
+        }
+        // Return closes the keyboard, so the whole poll (length, multiple choice) shows.
+        app.typeText("\n")
+        sleep(2)
+        capture(app, locale, "compose")
+        app.terminate()
+    }
+
+    private func captureScene(_ locale: String, _ scene: String, page: String, theme: String? = nil,
+                              environment extra: [String: String] = [:]) {
+        var environment = extra.merging(["STORE_SCENE": scene]) { $1 }
         if let theme { environment["STORE_THEME_COLOR"] = theme }
         let app = launchStore(locale, "light", environment: environment)
         sleep(4)

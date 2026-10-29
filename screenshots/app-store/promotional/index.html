@@ -6,19 +6,8 @@
     <title>Moro App Store Screenshots</title>
     <style>
         :root {
-            --ink: #102a43;
-            --ink-2: #173b5e;
-            --text: #172033;
-            --muted: #7b8491;
-            --line: #e5e8ec;
-            --paper: #f7f7f4;
-            --white: #ffffff;
-            --mist: #d7e5ef;
-            --lavender: #b5a9da;
-            --gold: #e7d17b;
-            --coral: #d98e82;
-            --sage: #ceddd2;
-            --red: #e5484d;
+            --text: #1b2230;
+            --night: #18222f;
         }
 
         * { box-sizing: border-box; }
@@ -26,9 +15,9 @@
         html, body {
             margin: 0;
             overflow: hidden;
-            background: var(--paper);
+            background: #f4efe8;
             color: var(--text);
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
         }
 
         .canvas {
@@ -39,72 +28,49 @@
         }
 
         .single { width: 1320px; }
-        .hero { width: 3960px; background: var(--mist); }
-        .duo { width: 2640px; background: var(--mist); }
+        .hero { width: 3960px; }
+        .duo { width: 2640px; }
 
-        .shape {
+        .layer {
             position: absolute;
             z-index: -1;
+            pointer-events: none;
         }
 
-        .hero .shape-a {
-            inset: 0 auto auto 0;
-            width: 3960px;
-            height: 1440px;
-            background: var(--ink);
-            clip-path: polygon(0 0, 100% 0, 82% 58%, 48% 84%, 0 56%);
+        /* Panorama 01–03: a sunrise over layered ridges, echoing the mountain post. */
+        .hero {
+            background:
+                radial-gradient(circle at 2640px 1180px, rgba(255, 214, 160, .95) 0, rgba(255, 190, 140, .55) 360px, rgba(255, 170, 130, 0) 980px),
+                linear-gradient(100deg, #172234 0%, #263955 26%, #4d5f80 44%, #c98d7c 64%, #f2c39d 80%, #fae6d0 100%);
         }
 
-        .hero .shape-b {
-            left: 0;
-            bottom: 0;
-            width: 3960px;
-            height: 1440px;
-            background: var(--ink-2);
-            clip-path: polygon(0 54%, 26% 10%, 56% 46%, 79% 0, 100% 38%, 100% 100%, 0 100%);
+        .hero .ridge { left: 0; width: 3960px; }
+        .hero .ridge-1 { bottom: 0; height: 1400px; background: rgba(23, 34, 52, .30); clip-path: polygon(0 38%, 9% 22%, 18% 34%, 29% 12%, 40% 30%, 52% 8%, 63% 26%, 74% 14%, 86% 30%, 100% 18%, 100% 100%, 0 100%); }
+        .hero .ridge-2 { bottom: 0; height: 960px; background: rgba(23, 34, 52, .42); clip-path: polygon(0 30%, 12% 48%, 24% 22%, 35% 44%, 47% 26%, 58% 50%, 70% 24%, 82% 46%, 92% 30%, 100% 40%, 100% 100%, 0 100%); }
+        .hero .ridge-3 { bottom: 0; height: 560px; background: rgba(23, 34, 52, .58); clip-path: polygon(0 40%, 15% 18%, 30% 46%, 44% 28%, 57% 54%, 71% 30%, 85% 52%, 100% 32%, 100% 100%, 0 100%); }
+        .hero .mist { left: 0; bottom: 0; width: 3960px; height: 1100px; background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 240, 228, .16)); }
+
+        /* Panorama 07–08: an evening sea for the seaside poll. */
+        .duo {
+            background:
+                radial-gradient(circle at 2050px 1240px, rgba(255, 210, 170, .75) 0, rgba(255, 190, 150, 0) 760px),
+                linear-gradient(180deg, #13324a 0%, #1f5a72 38%, #4d93a3 62%, #a9cfcf 80%, #efe0c4 100%);
         }
 
-        .hero .shape-c {
-            left: 2720px;
-            top: 0;
-            width: 1240px;
-            height: 2868px;
-            background: var(--gold);
-            clip-path: polygon(58% 0, 100% 0, 100% 100%, 0 100%, 18% 58%);
-        }
+        .duo .wave { left: 0; width: 2640px; }
+        .duo .wave-1 { bottom: 0; height: 760px; background: rgba(255, 255, 255, .16); clip-path: polygon(0 34%, 10% 28%, 22% 36%, 34% 26%, 46% 34%, 58% 24%, 70% 32%, 82% 22%, 92% 30%, 100% 26%, 100% 100%, 0 100%); }
+        .duo .wave-2 { bottom: 0; height: 420px; background: rgba(247, 232, 205, .85); clip-path: polygon(0 40%, 14% 30%, 28% 42%, 42% 28%, 56% 40%, 70% 26%, 84% 38%, 100% 28%, 100% 100%, 0 100%); }
 
-        .duo .shape-a {
-            inset: 0;
-            background: var(--ink);
-            clip-path: polygon(0 0, 100% 0, 100% 46%, 72% 70%, 44% 42%, 0 72%);
-        }
+        /* Single slides: soft paper gradients with a warm glow. */
+        .single { background: linear-gradient(180deg, var(--top), var(--bottom)); }
+        .single .glow { right: -260px; top: -240px; width: 1080px; height: 1080px; border-radius: 50%; background: radial-gradient(circle, var(--glow) 0, rgba(255, 255, 255, 0) 68%); }
+        .single .arc { left: -200px; right: -200px; bottom: -1180px; height: 2200px; border-radius: 50%; background: var(--arc); }
 
-        .duo .shape-b {
-            left: 0;
-            bottom: 0;
-            width: 2640px;
-            height: 1500px;
-            background: var(--lavender);
-            clip-path: polygon(0 35%, 32% 0, 66% 48%, 100% 12%, 100% 100%, 0 100%);
-        }
-
-        .single.timeline-bg { background: var(--gold); }
-        .single.search-bg { background: var(--paper); }
-        .single.profile-bg { background: var(--lavender); }
-        .single.notifications-bg { background: var(--mist); }
-        .single.preferences-bg { background: var(--sage); }
-
-        .single::before {
-            content: "";
-            position: absolute;
-            top: 0;
-            right: 0;
-            z-index: -1;
-            width: 510px;
-            height: 620px;
-            background: rgba(255, 255, 255, .28);
-            clip-path: polygon(24% 0, 100% 0, 100% 100%, 0 58%);
-        }
+        .single.thread   { --top: #fbf3e4; --bottom: #f2dfbf; --glow: rgba(255, 255, 255, .85); --arc: rgba(214, 160, 92, .16); --accent: #a8662a; }
+        .single.explore  { --top: #eef5f7; --bottom: #d3e6ee; --glow: rgba(255, 255, 255, .9);  --arc: rgba(66, 128, 156, .14); --accent: #2f6f8c; }
+        .single.profile  { --top: #f1f5ec; --bottom: #d8e5cf; --glow: rgba(255, 255, 255, .9);  --arc: rgba(92, 134, 86, .15);  --accent: #4b7a44; }
+        .single.inbox    { --top: #f4f0fa; --bottom: #e0d7f1; --glow: rgba(255, 255, 255, .9);  --arc: rgba(118, 94, 170, .14); --accent: #6a52a3; }
+        .single.display  { --top: #fbf0ee; --bottom: #f0d5cf; --glow: rgba(255, 255, 255, .9);  --arc: rgba(196, 106, 96, .14); --accent: #b2574c; }
 
         .brand {
             position: absolute;
@@ -118,480 +84,158 @@
             width: 112px;
             height: 112px;
             border-radius: 26px;
-            box-shadow: 0 18px 42px rgba(16, 42, 67, .22);
+            box-shadow: 0 18px 42px rgba(16, 26, 40, .22);
         }
 
-        .brand b {
-            font-size: 54px;
-            line-height: 1;
-            letter-spacing: 0;
-        }
-
+        .brand b { font-size: 54px; line-height: 1; }
         .brand.light { color: white; }
-        .hero .brand { left: 96px; top: 120px; }
-        .single .brand { left: 92px; top: 110px; }
-        .duo .brand { left: 92px; top: 110px; }
+        .hero .brand, .duo .brand, .single .brand { left: 96px; top: 112px; }
 
-        .copy {
-            position: absolute;
-            z-index: 7;
-        }
+        .copy { position: absolute; z-index: 7; }
 
         .copy .eyebrow {
-            margin-bottom: 24px;
-            font-size: 29px;
+            margin-bottom: 26px;
+            font-size: 30px;
             line-height: 1;
-            font-weight: 760;
-            letter-spacing: 0;
+            font-weight: 700;
+            letter-spacing: .06em;
             text-transform: uppercase;
-            opacity: .64;
+            color: var(--accent, currentColor);
         }
+
+        .copy.light .eyebrow { color: rgba(255, 255, 255, .72); }
+        .hero-feature .eyebrow { color: #a0573a; }
 
         .copy h1 {
             margin: 0;
-            font-size: 108px;
-            line-height: 1.02;
-            font-weight: 780;
-            letter-spacing: 0;
+            font-size: 104px;
+            line-height: 1.06;
+            font-weight: 760;
         }
 
         .copy p {
             margin: 34px 0 0;
             font-size: 41px;
-            line-height: 1.27;
-            font-weight: 510;
-            letter-spacing: 0;
+            line-height: 1.32;
+            font-weight: 500;
             opacity: .72;
         }
 
-        .hero-copy {
-            left: 96px;
-            top: 430px;
-            width: 980px;
-            color: white;
-        }
+        :lang(zh) .copy h1 { line-height: 1.16; letter-spacing: .02em; }
+        :lang(zh) .copy p { line-height: 1.5; letter-spacing: .02em; }
+        :lang(zh) .copy .eyebrow { letter-spacing: .14em; }
 
+        .copy.light { color: white; }
+        .copy.light p { opacity: .82; }
+
+        .hero-copy { left: 96px; top: 430px; width: 1020px; }
         .hero-copy h1 { font-size: 118px; }
 
-        .hero-feature {
-            left: 2990px;
-            top: 1720px;
-            width: 790px;
-            color: var(--text);
-        }
+        .hero-feature { left: 2980px; top: 1240px; width: 860px; color: var(--night); }
+        .hero-feature h1 { font-size: 80px; }
+        .hero-feature p { font-size: 36px; }
 
-        .hero-feature h1 { font-size: 76px; }
-        .hero-feature p { font-size: 34px; }
+        .single-copy { top: 270px; left: 82px; right: 82px; text-align: center; }
+        .single-copy p { max-width: 1040px; margin-inline: auto; }
 
-        .single-copy {
-            top: 265px;
-            left: 82px;
-            right: 82px;
-            text-align: center;
-        }
+        .duo-copy { left: 96px; top: 380px; width: 660px; }
+        .duo-copy h1 { font-size: 98px; }
+        .duo-copy p { font-size: 36px; }
 
-        .single-copy h1 { font-size: 104px; }
-        .single-copy p { max-width: 1010px; margin-inline: auto; }
+        .duo-feature { left: 1940px; top: 380px; width: 600px; }
+        .duo-feature h1 { font-size: 64px; }
+        .duo-feature p { font-size: 32px; }
 
-        .duo-copy {
-            left: 92px;
-            top: 360px;
-            width: 600px;
-            color: white;
-        }
+        .phone-wrap { position: absolute; z-index: 4; transform-origin: center; }
+        .single-phone { left: 230px; top: 790px; transform: scale(1.1); transform-origin: top center; }
+        .hero-phone { left: 1420px; top: 300px; transform: rotate(14deg) scale(1.46); }
+        .duo-phone { left: 1060px; top: 420px; transform: rotate(-12deg) scale(1.26); }
 
-        .duo-copy h1 { font-size: 96px; }
-        .duo-copy p { font-size: 34px; }
-
-        .duo-feature {
-            left: 1970px;
-            top: 360px;
-            width: 560px;
-            color: white;
-        }
-
-        .duo-feature h1 { font-size: 60px; }
-        .duo-feature p { font-size: 28px; }
-
-        .phone-wrap {
-            position: absolute;
-            z-index: 4;
-            transform-origin: center;
-        }
-
-        .single-phone { left: 230px; top: 925px; }
-        .hero-phone { left: 1420px; top: 250px; transform: rotate(16deg) scale(1.48); }
-        .duo-phone { left: 1060px; top: 370px; transform: rotate(-13deg) scale(1.28); }
-
+        /* 792 × 1721 keeps the 1320 × 2868 capture at its native aspect ratio. */
         .phone {
             position: relative;
             width: 860px;
-            height: 1868px;
             padding: 24px;
             border: 10px solid #111317;
-            border-radius: 118px;
+            border-radius: 142px;
             background: #111317;
-            box-shadow: 0 56px 100px rgba(16, 42, 67, .25), inset 0 8px 0 rgba(255, 255, 255, .16);
+            box-shadow: 0 60px 110px rgba(16, 26, 40, .28), 0 18px 40px rgba(16, 26, 40, .16), inset 0 8px 0 rgba(255, 255, 255, .16);
         }
 
         .screen {
             position: relative;
-            width: 100%;
-            height: 100%;
+            width: 792px;
+            height: 1721px;
             overflow: hidden;
-            border-radius: 84px;
+            border-radius: 108px;
             background: white;
-            color: var(--text);
         }
+
+        .screen img { display: block; width: 100%; height: 100%; }
 
         .island {
             position: absolute;
-            top: 28px;
+            top: 20px;
             left: 50%;
-            z-index: 20;
-            width: 248px;
-            height: 72px;
+            z-index: 2;
+            width: 226px;
+            height: 66px;
             border-radius: 99px;
             background: black;
             transform: translateX(-50%);
         }
-
-        .status {
-            height: 118px;
-            padding: 39px 54px 0;
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            font-size: 29px;
-            font-weight: 720;
-        }
-
-        .status-icons { display: flex; align-items: center; gap: 13px; }
-        .signal { display: flex; align-items: end; gap: 4px; height: 25px; }
-        .signal i { display: block; width: 5px; border-radius: 5px; background: var(--text); }
-        .signal i:nth-child(1) { height: 8px; }
-        .signal i:nth-child(2) { height: 13px; }
-        .signal i:nth-child(3) { height: 19px; }
-        .signal i:nth-child(4) { height: 25px; }
-        .wifi { width: 26px; height: 20px; border: 5px solid var(--text); border-left-color: transparent; border-right-color: transparent; border-bottom-color: transparent; border-radius: 50%; }
-        .battery { width: 38px; height: 20px; border: 3px solid var(--text); border-radius: 6px; padding: 2px; }
-        .battery::after { content: ""; display: block; width: 24px; height: 10px; border-radius: 2px; background: var(--text); }
-
-        .top-tabs {
-            height: 112px;
-            display: flex;
-            align-items: flex-end;
-            justify-content: center;
-            gap: 58px;
-            border-bottom: 1px solid var(--line);
-            font-size: 28px;
-            color: var(--muted);
-        }
-
-        .top-tabs span { padding-bottom: 26px; }
-        .top-tabs .active { position: relative; color: var(--text); font-weight: 720; }
-        .top-tabs .active::after {
-            content: "";
-            position: absolute;
-            left: 50%;
-            bottom: 0;
-            width: 54px;
-            height: 5px;
-            border-radius: 5px;
-            background: var(--text);
-            transform: translateX(-50%);
-        }
-
-        .post {
-            display: grid;
-            grid-template-columns: 88px minmax(0, 1fr);
-            gap: 23px;
-            padding: 30px 42px 28px;
-            border-bottom: 1px solid var(--line);
-        }
-
-        .avatar {
-            width: 88px;
-            height: 88px;
-            border-radius: 50%;
-            object-fit: cover;
-            background: #eef1f4;
-        }
-
-        .author { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
-        .name { overflow: hidden; font-size: 30px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
-        .handle, .time { font-size: 26px; color: var(--muted); white-space: nowrap; }
-        .time { margin-left: auto; }
-        .body-copy { margin-top: 11px; font-size: 31px; line-height: 1.34; font-weight: 460; }
-
-        .media {
-            width: 100%;
-            height: 420px;
-            margin-top: 20px;
-            border-radius: 25px;
-            object-fit: cover;
-        }
-
-        .actions { display: flex; justify-content: space-between; padding: 22px 5px 0; color: #87909c; font-size: 29px; }
-        .actions .liked { color: var(--red); }
-
-        .timeline-demo .post { padding-top: 25px; padding-bottom: 22px; }
-        .timeline-demo .post.featured .media { height: 322px; }
-        .timeline-demo .post.compact .body-copy { font-size: 28px; }
-        .timeline-demo .post.compact .actions { padding-top: 15px; }
-
-        .poll-card {
-            display: grid;
-            gap: 12px;
-            margin-top: 19px;
-        }
-
-        .poll-option {
-            position: relative;
-            height: 58px;
-            overflow: hidden;
-            border: 1px solid #dce2e8;
-            border-radius: 16px;
-            background: #f7f8f9;
-        }
-
-        .poll-fill {
-            position: absolute;
-            inset: 0 auto 0 0;
-            border-radius: inherit;
-            background: #dceaf4;
-        }
-
-        .poll-option:nth-child(2) .poll-fill { background: #eee8fa; }
-        .poll-option:nth-child(3) .poll-fill { background: #e3eee7; }
-        .poll-option span { position: relative; z-index: 1; height: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; font-size: 23px; font-weight: 620; }
-        .poll-meta { display: flex; justify-content: space-between; color: var(--muted); font-size: 21px; }
-
-        .emoji-reactions { display: flex; gap: 10px; margin-top: 16px; }
-        .emoji-reactions span { padding: 8px 14px; border: 1px solid #e2e6ea; border-radius: 99px; background: #fafafa; font-size: 21px; }
-
-        .bottom-nav {
-            position: absolute;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            height: 146px;
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-around;
-            padding-top: 29px;
-            border-top: 1px solid var(--line);
-            background: rgba(255, 255, 255, .98);
-            color: #87909c;
-            font-size: 39px;
-        }
-
-        .bottom-nav .active { color: var(--text); }
-
-        .search-header { padding: 18px 38px 22px; border-bottom: 1px solid var(--line); }
-        .search-field { height: 82px; display: flex; align-items: center; gap: 18px; padding: 0 24px; border-radius: 24px; background: #f0f2f4; font-size: 29px; }
-        .filter-tabs { display: flex; gap: 38px; margin-top: 27px; font-size: 26px; color: var(--muted); }
-        .filter-tabs .active { color: var(--text); font-weight: 720; }
-        .section-label { padding: 28px 42px 15px; color: var(--muted); font-size: 23px; font-weight: 760; text-transform: uppercase; }
-
-        .result {
-            display: grid;
-            grid-template-columns: 80px minmax(0, 1fr) 22px;
-            align-items: center;
-            gap: 20px;
-            padding: 23px 42px;
-            border-bottom: 1px solid var(--line);
-        }
-
-        .result .avatar { width: 80px; height: 80px; }
-        .result p { overflow: hidden; margin: 6px 0 0; color: var(--muted); font-size: 25px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
-        .chevron { color: #abb1b9; font-size: 35px; }
-        .tag-row { display: flex; justify-content: space-between; padding: 25px 42px; border-bottom: 1px solid var(--line); font-size: 28px; }
-        .tag-row span { color: var(--muted); }
-
-        .profile-cover { width: 100%; height: 438px; object-fit: cover; }
-        .profile-main { position: relative; padding: 0 40px 27px; }
-        .profile-avatar { width: 158px; height: 158px; margin-top: -77px; border: 8px solid white; border-radius: 50%; object-fit: cover; }
-        .profile-menu { position: absolute; top: 25px; right: 40px; width: 68px; height: 68px; display: grid; place-items: center; border: 2px solid #dde1e5; border-radius: 50%; font-size: 31px; }
-        .profile-name { margin-top: 18px; font-size: 37px; font-weight: 760; }
-        .verified { color: #26845b; }
-        .profile-handle { margin-top: 4px; color: var(--muted); font-size: 27px; }
-        .profile-bio { margin-top: 20px; font-size: 28px; line-height: 1.36; }
-        .profile-stats { display: flex; gap: 30px; margin-top: 20px; color: var(--muted); font-size: 25px; }
-        .profile-stats b { color: var(--text); }
-        .field-card { margin: 4px 34px 0; padding: 18px 27px; border: 1px solid var(--line); border-radius: 21px; background: white; }
-        .field { display: flex; justify-content: space-between; gap: 20px; padding: 14px 0; font-size: 25px; }
-        .field + .field { border-top: 1px solid var(--line); }
-        .field span { color: var(--muted); }
-        .profile-tabs { height: 100px; margin-top: 20px; display: flex; align-items: end; justify-content: space-around; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 27px; }
-        .profile-tabs span { padding-bottom: 23px; }
-        .profile-tabs .active { border-bottom: 5px solid var(--text); color: var(--text); font-weight: 720; }
-
-        .compose-header, .page-header {
-            height: 110px;
-            display: grid;
-            grid-template-columns: 1fr auto 1fr;
-            align-items: center;
-            padding: 0 36px;
-            border-bottom: 1px solid var(--line);
-            font-size: 28px;
-        }
-
-        .compose-header b, .page-header b { font-size: 31px; }
-        .post-button { justify-self: end; padding: 16px 28px; border-radius: 40px; background: var(--text); color: white; font-weight: 720; }
-        .composer { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 20px; padding: 34px 38px; }
-        .composer .avatar { width: 76px; height: 76px; }
-        .composer-text { min-height: 205px; font-size: 32px; line-height: 1.42; }
-        .composer-text .quiet { color: var(--muted); }
-        .attachment { height: 450px; margin: 0 38px 0 134px; border-radius: 27px; object-fit: cover; }
-        .attachment-note { margin: 14px 38px 0 134px; color: var(--muted); font-size: 24px; }
-        .compose-tools { position: absolute; left: 0; right: 0; bottom: 0; padding: 28px 34px 58px; border-top: 1px solid var(--line); background: white; }
-        .tool-row { display: flex; justify-content: space-between; color: #727b88; font-size: 35px; }
-        .chip-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
-        .chip { padding: 13px 20px; border-radius: 99px; background: #f0f2f4; color: #657080; font-size: 23px; }
-
-        .poll-editor {
-            margin: 0 38px 0 134px;
-            padding: 22px;
-            border: 1px solid #dfe3e8;
-            border-radius: 25px;
-            background: #fbfbfa;
-        }
-
-        .poll-editor-title { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 23px; font-weight: 730; }
-        .poll-editor-title span { color: var(--muted); font-weight: 540; }
-        .poll-input { height: 55px; display: flex; align-items: center; gap: 13px; padding: 0 15px; border-radius: 14px; background: white; font-size: 22px; }
-        .poll-input + .poll-input { margin-top: 9px; }
-        .poll-dot { width: 18px; height: 18px; flex: 0 0 auto; border: 2px solid #a8b0ba; border-radius: 50%; }
-        .poll-add { margin-top: 13px; color: #476d8d; font-size: 21px; font-weight: 640; }
-
-        .attachment-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; height: 230px; margin: 20px 38px 0 134px; }
-        .attachment-grid img { width: 100%; height: 100%; border-radius: 22px; object-fit: cover; }
-        .attachment-note.rich { display: flex; justify-content: space-between; font-size: 21px; }
-
-        .emoji-tray { display: flex; align-items: center; gap: 15px; margin: 19px 38px 0 134px; padding: 13px 18px; border-radius: 20px; background: #f2f4f6; }
-        .emoji-tray b { margin-right: auto; color: var(--muted); font-size: 19px; text-transform: uppercase; }
-        .emoji-tray span { font-size: 29px; }
-
-        .notification-filters { height: 82px; display: flex; align-items: center; gap: 13px; padding: 0 39px; border-bottom: 1px solid var(--line); }
-        .notification-filter { padding: 11px 19px; border-radius: 99px; background: #f0f2f4; color: #6d7784; font-size: 21px; font-weight: 640; }
-        .notification-filter.active { background: var(--text); color: white; }
-        .notification-group { padding: 20px 40px 10px; color: var(--muted); font-size: 20px; font-weight: 760; text-transform: uppercase; }
-        .notification { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 20px; padding: 21px 40px; border-bottom: 1px solid var(--line); }
-        .notification .avatar { width: 78px; height: 78px; }
-        .notification-avatar { position: relative; width: 78px; height: 78px; }
-        .notification-kind { position: absolute; right: -7px; bottom: -5px; width: 34px; height: 34px; display: grid; place-items: center; border: 4px solid white; border-radius: 50%; background: #476f91; color: white; font-size: 18px; font-weight: 800; }
-        .notification-kind.like { background: #dc6468; }
-        .notification-kind.boost { background: #4f8a67; }
-        .notification-kind.follow { background: #8569ad; }
-        .notification-kind.poll { background: #bf8c3c; }
-        .notification-line { font-size: 27px; line-height: 1.25; }
-        .notification-line b { font-weight: 720; }
-        .notification-time { color: var(--muted); }
-        .notification-preview { margin-top: 7px; color: var(--muted); font-size: 25px; line-height: 1.25; }
-        .notification-card { display: grid; grid-template-columns: 78px minmax(0, 1fr); align-items: center; gap: 14px; margin-top: 12px; padding: 11px; border: 1px solid #e1e5e9; border-radius: 17px; background: #fafafa; }
-        .notification-card img { width: 78px; height: 65px; border-radius: 12px; object-fit: cover; }
-        .notification-card b { font-size: 21px; }
-        .notification-card span { display: block; margin-top: 4px; color: var(--muted); font-size: 19px; }
-        .follow-button { display: inline-block; margin-top: 12px; padding: 9px 17px; border-radius: 99px; background: var(--text); color: white; font-size: 20px; font-weight: 700; }
-
-        .settings-section { margin: 24px 30px 0; overflow: hidden; border: 1px solid var(--line); border-radius: 22px; background: white; }
-        .settings-title { padding: 26px 32px 14px; color: var(--muted); font-size: 22px; font-weight: 760; text-transform: uppercase; }
-        .setting-row { min-height: 100px; display: flex; align-items: center; gap: 22px; padding: 18px 30px; border-top: 1px solid var(--line); font-size: 28px; }
-        .setting-row:first-of-type { border-top: 0; }
-        .setting-row .value { margin-left: auto; color: var(--muted); font-size: 25px; }
-        .setting-icon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 13px; background: var(--mist); color: var(--ink); }
-        .icon-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; padding: 28px 30px 34px; border-top: 1px solid var(--line); }
-        .icon-choice { text-align: center; color: var(--muted); font-size: 23px; }
-        .icon-choice img { width: 112px; height: 112px; margin-bottom: 11px; border-radius: 25px; box-shadow: 0 12px 28px rgba(16, 42, 67, .16); }
-        .icon-choice.active { color: var(--text); font-weight: 720; }
     </style>
 </head>
 <body>
 <script>
-    const asset = (name) => `assets/generated/${name}`;
-    const rootAsset = (name) => `../../../moro/Resources/Assets.xcassets/${name}`;
-    const icon = rootAsset("AppIcon.appiconset/appicon-default-1024.png");
-    const avatar = (index) => asset(`avatar-${String(index).padStart(2, "0")}.png`);
-    const scene = (index) => asset(`scene-${String(index).padStart(2, "0")}.png`);
+    const params = new URLSearchParams(location.search);
+    const locale = params.get("lang") || "en-US";
+    const mode = params.get("mode") || "hero";
+    const zh = locale.startsWith("zh");
+    document.documentElement.lang = zh ? "zh-Hans" : "en";
 
-    const status = `
-        <div class="island"></div>
-        <div class="status"><span>9:41</span><div class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"></span></div></div>`;
+    const icon = "../../../moro/Resources/Assets.xcassets/AppIcon.appiconset/appicon-default-1024.png";
+    const shot = (name) => `../${locale}/iphone/${name}.png`;
 
-    const actions = (liked = false) => `<div class="actions"><span>↩</span><span>⇄</span><span class="${liked ? "liked" : ""}">${liked ? "♥" : "♡"}</span><span>♧</span><span>•••</span></div>`;
-    const nav = (active) => `<div class="bottom-nav"><span class="${active === "home" ? "active" : ""}">⌂</span><span class="${active === "search" ? "active" : ""}">⌕</span><span>＋</span><span class="${active === "notifications" ? "active" : ""}">♢</span><span class="${active === "profile" ? "active" : ""}">●</span></div>`;
-    const phone = (content, className = "") => `<div class="phone-wrap ${className}"><div class="phone"><div class="screen">${content}</div></div></div>`;
+    const phone = (name, className) =>
+        `<div class="phone-wrap ${className}"><div class="phone"><div class="screen"><img src="${shot(name)}" alt=""><div class="island"></div></div></div></div>`;
     const brand = (light = false) => `<div class="brand ${light ? "light" : ""}"><img src="${icon}" alt=""><b>Moro</b></div>`;
+    const copy = (className, c) =>
+        `<div class="copy ${className}">${c.eyebrow ? `<div class="eyebrow">${c.eyebrow}</div>` : ""}<h1>${c.title}</h1>${c.body ? `<p>${c.body}</p>` : ""}</div>`;
 
-    const people = [
-        { avatar: 1, name: "Mira Chen", handle: "@mira", body: "雨停以后，城市的颜色突然变得很安静。", time: "8m", media: 1 },
-        { avatar: 6, name: "Aiko Mori", handle: "@aiko", body: "帰り道の空が、少しだけ夏の色でした。", time: "22m", media: 2 },
-        { avatar: 4, name: "Sofía Reyes", handle: "@sofia", body: "Las mejores conversaciones empiezan despacio.", time: "41m", media: 4 },
-        { avatar: 5, name: "Julian Reed", handle: "@julian", body: "Small communities make the web feel human again.", time: "1h", media: 3 },
-        { avatar: 2, name: "Ren Ito", handle: "@ren", body: "Open source, slow mornings, and notes from the train.", time: "2h", media: 5 },
-        { avatar: 3, name: "Malik Stone", handle: "@malik", body: "Sharing work in progress makes the process feel less lonely.", time: "3h", media: 6 },
-    ];
+    const text = zh ? {
+        hero: { title: "联邦宇宙里，<br>一个安静的家", body: "在开放的社交网络里，<br>阅读、相遇、分享生活。" },
+        heroFeature: { eyebrow: "时间线", title: "每个瞬间，<br>都清晰好看", body: "照片、对话和你关注的人，<br>集中在一条专注的时间线里。" },
+        thread: { eyebrow: "对话", title: "完整的对话脉络", body: "回复按上下文排列，<br>读嘟文串就像聊天一样自然。" },
+        explore: { eyebrow: "发现", title: "遇见志趣相投的人", body: "跨实例搜索用户、嘟文和话题标签。" },
+        profile: { eyebrow: "个人主页", title: "属于你的小天地", body: "简介、资料、嘟文和媒体，一处呈现。" },
+        compose: { eyebrow: "发嘟", title: "用你的方式<br>表达", body: "投票、图片、表情和可见范围，写作时随手可用。" },
+        composeFeature: { title: "写作所需，<br>触手可及", body: "内容警告、发帖语言、草稿与引用权限，一应俱全。" },
+        inbox: { eyebrow: "通知", title: "动态一目了然", body: "提及、喜欢、转嘟和关注，<br>分组整理，清爽不打扰。" },
+        display: { eyebrow: "个性化", title: "让 Moro 更像你", body: "外观、字号、主题色和应用图标，<br>随心调整。" },
+    } : {
+        hero: { title: "A calmer home for the fediverse", body: "Read, connect, and share everyday life across the open social web." },
+        heroFeature: { eyebrow: "Timeline", title: "Every moment, beautifully clear", body: "Photos, conversations, and the people you follow—in one focused timeline." },
+        thread: { eyebrow: "Conversations", title: "Follow every conversation", body: "Replies stay in context, so threads read like a real conversation." },
+        explore: { eyebrow: "Discover", title: "Find your people", body: "Search accounts, posts, and hashtags across the open social web." },
+        profile: { eyebrow: "Profiles", title: "A space that feels like yours", body: "Your bio, fields, posts, and media—together in one place." },
+        compose: { eyebrow: "Post", title: "Say it your way", body: "Polls, photos, emoji, and visibility—right where you write." },
+        composeFeature: { title: "Everything you need, right where you write", body: "Content warnings, posting language, drafts, and quote controls." },
+        inbox: { eyebrow: "Notifications", title: "Every signal, easy to scan", body: "Mentions, likes, boosts, and follows—grouped and calm." },
+        display: { eyebrow: "Personalize", title: "Make Moro yours", body: "Tune the appearance, text size, theme color, and app icon." },
+    };
 
-    function postRow(person, options = {}) {
-        return `<article class="post ${options.className || ""}"><img class="avatar" src="${avatar(person.avatar)}" alt=""><div><div class="author"><span class="name">${person.name}</span><span class="handle">${person.handle}</span><span class="time">${person.time}</span></div><div class="body-copy">${person.body}</div>${options.media === false ? "" : `<img class="media" src="${scene(person.media)}" alt="">`}${options.extra || ""}${actions(Boolean(options.liked))}</div></article>`;
-    }
+    const single = (theme, c, screen) =>
+        `<main class="canvas single ${theme}"><div class="layer glow"></div><div class="layer arc"></div>${brand()}${copy("single-copy", c)}${phone(screen, "single-phone")}</main>`;
 
-    function timelineScreen() {
-        const featured = { ...people[0], body: "雨停以后，城市的颜色突然变得很安静。🌧️✨" };
-        const pollPerson = { ...people[4], body: "What makes your feed feel like home? 🌿" };
-        const poll = `<div class="poll-card"><div class="poll-option"><div class="poll-fill" style="width:48%"></div><span>People I trust <b>48%</b></span></div><div class="poll-option"><div class="poll-fill" style="width:32%"></div><span>Chronological posts <b>32%</b></span></div><div class="poll-option"><div class="poll-fill" style="width:20%"></div><span>Small communities <b>20%</b></span></div><div class="poll-meta"><span>326 votes</span><span>18h left</span></div></div>`;
-        const reactions = `<div class="emoji-reactions"><span>✨ 8</span><span>🌿 5</span><span>💛 3</span></div>`;
-        return `<div class="timeline-demo">${status}<div class="top-tabs"><span>Following</span><span class="active">Local</span><span>Federated</span></div>${postRow(featured, { liked: true, className: "featured" })}${postRow(pollPerson, { media: false, extra: poll, className: "compact" })}${postRow({ ...people[2], body: "Un rincón tranquilo de internet para compartir ideas. 💫" }, { media: false, extra: reactions, className: "compact" })}${nav("home")}</div>`;
-    }
-
-    function searchScreen() {
-        return `${status}<div class="search-header"><div class="search-field"><span>⌕</span><span>independent web</span></div><div class="filter-tabs"><span class="active">All</span><span>Accounts</span><span>Posts</span><span>Hashtags</span></div></div><div class="section-label">Accounts</div>${people.slice(1, 6).map((p) => `<div class="result"><img class="avatar" src="${avatar(p.avatar)}" alt=""><div><div class="name">${p.name}</div><div class="handle">${p.handle}@social.example</div><p>${p.body}</p></div><div class="chevron">›</div></div>`).join("")}<div class="section-label">Trending hashtags</div><div class="tag-row"><b>#indieweb</b><span>2.1K posts</span></div><div class="tag-row"><b>#photography</b><span>1.4K posts</span></div>${nav("search")}`;
-    }
-
-    function profileScreen() {
-        const person = people[1];
-        return `${status}<img class="profile-cover" src="${scene(2)}" alt=""><div class="profile-main"><img class="profile-avatar" src="${avatar(person.avatar)}" alt=""><div class="profile-menu">•••</div><div class="profile-name">${person.name} <span class="verified">✓</span></div><div class="profile-handle">${person.handle}@social.example</div><div class="profile-bio">写真、電車の窓、静かなインターネット。 Notes from everyday journeys.</div><div class="profile-stats"><span><b>364</b> Posts</span><span><b>771</b> Following</span><span><b>2.8K</b> Followers</span></div></div><div class="field-card"><div class="field"><span>Website <b class="verified">✓ Verified</b></span><b>aikomori.page</b></div><div class="field"><span>Languages</span><b>日本語 · English</b></div></div><div class="profile-tabs"><span class="active">Posts</span><span>Replies</span><span>Media</span></div>${postRow(person, { media: false, liked: true })}${nav("profile")}`;
-    }
-
-    function composeScreen() {
-        return `${status}<div class="compose-header"><span>Cancel</span><b>New Post</b><span class="post-button">Post</span></div><div class="composer"><img class="avatar" src="${avatar(1)}" alt=""><div class="composer-text">Which corner of the fediverse should we explore next? 🌿✨<br><span class="quiet">Vote below or add your own idea.</span></div></div><div class="poll-editor"><div class="poll-editor-title">Poll <span>3 choices</span></div><div class="poll-input"><i class="poll-dot"></i>Creative coding</div><div class="poll-input"><i class="poll-dot"></i>Street photography</div><div class="poll-input"><i class="poll-dot"></i>Open-source tools</div><div class="poll-add">＋ Add another choice</div></div><div class="attachment-grid"><img src="${scene(3)}" alt=""><img src="${scene(5)}" alt=""></div><div class="attachment-note rich"><span>2 images · Add descriptions</span><span>Alt text ready ✓</span></div><div class="emoji-tray"><b>Emoji</b><span>😊</span><span>🌿</span><span>✨</span><span>🐘</span><span>🌈</span></div><div class="compose-tools"><div class="tool-row"><span>▧</span><span>◫</span><span>▥</span><span>!</span><span>⌁</span><span>EN</span></div><div class="chip-row"><span class="chip">Public</span><span class="chip">1 day</span><span class="chip">Multiple choice</span><span class="chip">Drafts</span></div></div>`;
-    }
-
-    function notificationsScreen() {
-        const rows = [
-            { avatar: 2, kind: "mention", symbol: "@", name: "Ren Ito", action: "mentioned you", preview: "写真がとても好きです。Thanks for sharing! ✨", time: "12m" },
-            { avatar: 4, kind: "like", symbol: "♥", name: "Sofía Reyes", action: "liked your photo", preview: "", time: "28m", card: [1, "Rain after midnight", "24 favourites · 6 replies"] },
-            { avatar: 3, kind: "poll", symbol: "▥", name: "Your poll", action: "has finished", preview: "Small communities won with 48% of 326 votes.", time: "1h" },
-            { avatar: 6, kind: "follow", symbol: "+", name: "Aiko Mori", action: "started following you", preview: "Photography · quiet internet · Tokyo", time: "2h", follow: true },
-            { avatar: 5, kind: "boost", symbol: "↻", name: "Julian Reed", action: "boosted your post", preview: "This is exactly why I still love the open web.", time: "3h" },
-            { avatar: 1, kind: "like", symbol: "♥", name: "Mira Chen", action: "reacted with 🌿", preview: "A calmer corner for the weekend.", time: "5h" },
-        ];
-        return `${status}<div class="page-header"><span></span><b>Notifications</b><span style="justify-self:end;color:var(--muted)">•••</span></div><div class="notification-filters"><span class="notification-filter active">All</span><span class="notification-filter">Mentions</span><span class="notification-filter">Follows</span><span class="notification-filter">Polls</span></div><div class="notification-group">Today</div>${rows.map((r) => `<div class="notification"><div class="notification-avatar"><img class="avatar" src="${avatar(r.avatar)}" alt=""><span class="notification-kind ${r.kind}">${r.symbol}</span></div><div><div class="notification-line"><b>${r.name}</b> ${r.action} <span class="notification-time">· ${r.time}</span></div>${r.preview ? `<div class="notification-preview">${r.preview}</div>` : ""}${r.card ? `<div class="notification-card"><img src="${scene(r.card[0])}" alt=""><div><b>${r.card[1]}</b><span>${r.card[2]}</span></div></div>` : ""}${r.follow ? `<span class="follow-button">Following ✓</span>` : ""}</div></div>`).join("")}${nav("notifications")}`;
-    }
-
-    function preferencesScreen() {
-        const icons = [
-            [rootAsset("AppIcon.appiconset/appicon-default-1024.png"), "Moro", true],
-            [rootAsset("AppIconRainbow.appiconset/appicon-rainbow-1024.png"), "Rainbow", false],
-            [rootAsset("AppIconLineElephant.appiconset/appicon-lineelephant-1024.png"), "Line", false],
-        ];
-        return `${status}<div class="page-header"><span>‹</span><b>Preferences</b><span></span></div><div class="settings-section"><div class="settings-title">Appearance</div><div class="setting-row"><span class="setting-icon">◐</span><span>Appearance</span><span class="value">System ›</span></div><div class="setting-row"><span class="setting-icon">A</span><span>Language</span><span class="value">System ›</span></div></div><div class="settings-section"><div class="settings-title">App icon</div><div class="icon-grid">${icons.map((i) => `<div class="icon-choice ${i[2] ? "active" : ""}"><img src="${i[0]}" alt=""><div>${i[1]}${i[2] ? " ✓" : ""}</div></div>`).join("")}</div></div><div class="settings-section"><div class="settings-title">Experience</div><div class="setting-row"><span class="setting-icon">♢</span><span>Notifications</span><span class="value">On ›</span></div><div class="setting-row"><span class="setting-icon">⌁</span><span>Default post visibility</span><span class="value">Public ›</span></div><div class="setting-row"><span class="setting-icon">EN</span><span>Posting language</span><span class="value">English ›</span></div></div>`;
-    }
-
-    function singleCanvas(background, eyebrow, title, description, content, active = "") {
-        return `<main class="canvas single ${background}">${brand()}<div class="copy single-copy"><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><p>${description}</p></div>${phone(content, `single-phone ${active}`)}</main>`;
-    }
-
-    const mode = new URLSearchParams(location.search).get("mode") || "hero";
     const views = {
-        hero: `<main class="canvas hero"><div class="shape shape-a"></div><div class="shape shape-b"></div><div class="shape shape-c"></div>${brand(true)}<div class="copy hero-copy"><h1>A calmer home for the fediverse</h1><p>Read, connect, and share across the open social web.</p></div><div class="copy hero-feature"><div class="eyebrow">Timeline</div><h1>Conversations without the noise</h1><p>Clear reading, thoughtful communities, one beautifully focused timeline.</p></div>${phone(timelineScreen(), "hero-phone")}</main>`,
-        "4": singleCanvas("timeline-bg", "Timeline", "Your whole world, in one calm feed", "Photos, polls, emoji, and many languages—without losing the conversation.", timelineScreen()),
-        "5": singleCanvas("search-bg", "Discover", "Find people and ideas", "Search accounts, posts, and hashtags across the open social web.", searchScreen()),
-        "6": singleCanvas("profile-bg", "Profiles", "A space that feels like yours", "Bring your identity, links, posts, replies, and media together.", profileScreen()),
-        compose: `<main class="canvas duo"><div class="shape shape-a"></div><div class="shape shape-b"></div>${brand(true)}<div class="copy duo-copy"><div class="eyebrow">Post</div><h1>Say it your way</h1><p>Create with polls, media, emoji, and context—without the clutter.</p></div><div class="copy duo-feature"><h1>Everything you need, right where you write</h1><p>Polls, media, emoji, content warnings, visibility, drafts, and language controls.</p></div>${phone(composeScreen(), "duo-phone")}</main>`,
-        "9": singleCanvas("notifications-bg", "Notifications", "Every signal, easy to scan", "Mentions, follows, reactions, and poll results—organized without the clutter.", notificationsScreen()),
-        "10": singleCanvas("preferences-bg", "Personalize", "Make Moro yours", "Choose your appearance and icon while keeping the experience unmistakably iOS.", preferencesScreen()),
+        hero: `<main class="canvas hero"><div class="layer ridge ridge-1"></div><div class="layer ridge ridge-2"></div><div class="layer ridge ridge-3"></div><div class="layer mist"></div>${brand(true)}${copy("hero-copy light", text.hero)}${copy("hero-feature", text.heroFeature)}${phone("home-light", "hero-phone")}</main>`,
+        "4": single("thread", text.thread, "thread"),
+        "5": single("explore", text.explore, "explore"),
+        "6": single("profile", text.profile, "profile"),
+        compose: `<main class="canvas duo"><div class="layer wave wave-1"></div><div class="layer wave wave-2"></div>${brand(true)}${copy("duo-copy light", text.compose)}${copy("duo-feature light", text.composeFeature)}${phone("compose", "duo-phone")}</main>`,
+        "9": single("inbox", text.inbox, "inbox"),
+        "10": single("display", text.display, "display"),
     };
 
     document.body.innerHTML = views[mode] || views.hero;

@@ -15,6 +15,8 @@
 #
 # App Store screenshots can't carry an alpha channel: ImageMagick (`magick`) flattens them.
 #
+# DUO_PAGES limits the run to some pages by file stem, e.g. DUO_PAGES="07-onboarding".
+#
 # Environment: DUO_SIM, DUO_INNER_DISPLAY, DUO_OUTER_DISPLAY override the simulator and
 # display identifiers (see `xcrun simctl list devices` and Device Hub).
 set -euo pipefail
@@ -41,6 +43,7 @@ xcrun simctl status_bar "$SIM" override --time 9:41 --batteryState charged --bat
 # capture <file stem> <seconds to settle> [VAR=value ...] -- [launch arguments ...]
 capture() {
     local stem=$1 settle=$2; shift 2
+    if [ -n "${DUO_PAGES:-}" ] && [[ " $DUO_PAGES " != *" $stem "* ]]; then return; fi
     local env_args=() launch_args=()
     # UITEST_USE_FULL_APP lets the launch environment set the color scheme.
     env_args+=("SIMCTL_CHILD_UITEST_USE_FULL_APP=1")
@@ -76,7 +79,8 @@ for LOCALE in $LOCALES; do
     fi
     capture 05-profile 8 STORE_SHOWCASE=1 STORE_TAB=me UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
     capture 06-display 7 STORE_SHOWCASE=1 STORE_SCENE=display STORE_THEME_COLOR=purple UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
-    capture 07-onboarding 7 UITEST_ONBOARDING_VARIANT=globe UITEST_COLOR_SCHEME=dark -- UITEST_ONBOARDING_PREVIEW
+    # The gathered globe with the title and button, not the opening net.
+    capture 07-onboarding 9 UITEST_ONBOARDING_VARIANT=globe UITEST_ONBOARDING_GATHER=1 UITEST_COLOR_SCHEME=dark -- UITEST_ONBOARDING_PREVIEW
 done
 
 xcrun simctl status_bar "$SIM" clear

@@ -42,6 +42,16 @@ struct AppStoreScreenshotHarnessView: View {
                 }
             } else {
                 ProgressView().task {
+                    if showcase {
+                        // Every launch starts from the fixtures: no posts or notifications cached
+                        // by an earlier run, which may have been in another language.
+                        for id in sessions.map(\.id) {
+                            await NotificationSnapshotStore.shared.removeSession(id).value
+                        }
+                        await CacheManager.shared.timelineCache.clearAllCaches()
+                        CacheManager.shared.threadCache.invalidateAll()
+                        CacheManager.shared.accountCache.clear()
+                    }
                     await AppStoreScreenshotProtocol.cacheIllustrations()
                     appState.currentAccount = AppStoreScreenshotProtocol.decodedAccount(0)
                     appState.isAuthenticated = true
@@ -95,7 +105,8 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
     static var chinese: Bool { showcase && (Locale.preferredLanguages.first ?? "").hasPrefix("zh") }
 
     private static var names: [String] {
-        chinese ? ["林知夏", "陈屿", "苏晚", "周默"] : ["Alex Rivers", "Luna Park", "Sam Chen", "Mira Stone"]
+        chinese ? ["林知夏", "陈屿", "苏晚", "周默", "许诺", "唐一舟", "白芷", "程野"]
+            : ["Alex Rivers", "Luna Park", "Sam Chen", "Mira Stone", "Nora Hale", "Theo Grant", "Ivy Lane", "Kai Morgan"]
     }
     private static var tagNames: [String] {
         if usesPhotos {
@@ -120,8 +131,10 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
 
     static var usesPhotos: Bool { showcase && photosDirectory != nil }
 
-    private static let avatarPhotos = ["avatar-0-corgi.jpg", "avatar-1-cat.jpg", "avatar-2-shiba.jpg", "avatar-3-hiker.jpg"]
-    private static let headerPhotos = ["header-0-sea.jpg", "post-1-cat-sunlight.jpg", "post-2-latte.jpg", "post-3-city-sunset.jpg"]
+    private static let avatarPhotos = ["avatar-0-corgi.jpg", "avatar-1-cat.jpg", "avatar-2-shiba.jpg", "avatar-3-hiker.jpg",
+        "post-3-city-sunset.jpg", "header-0-sea.jpg", "post-2-reading-corner.jpg", "post-2-latte.jpg"]
+    private static let headerPhotos = ["header-0-sea.jpg", "post-1-cat-sunlight.jpg", "post-2-latte.jpg", "post-3-city-sunset.jpg",
+        "post-3-city-sunset.jpg", "header-0-sea.jpg", "post-2-reading-corner.jpg", "post-2-latte.jpg"]
 
     /// Versioned by file size, so a replaced photo never comes back from the image cache.
     private static func photoURL(_ name: String) -> String {
@@ -170,7 +183,8 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
     private static func tagURL(_ name: String) -> String {
         "\(base)/tags/\(name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name)"
     }
-    private static let handles = ["alex", "luna", "sam", "mira"]
+    /// Accounts 4–7 only appear in Explore's directory and search in photos mode.
+    private static let handles = ["alex", "luna", "sam", "mira", "nora", "theo", "ivy", "kai"]
 
     /// Showcase posts are numbered down from 900 (`status(0)` is "900").
     static func statusIndex(forID id: String) -> Int? {
@@ -198,7 +212,9 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
                 : ["<p>The neighbor's cat napping in a sunny window. I watched for a while. ☀️</p>",
                    "<p>A handwritten postcard from a friend, crooked letters and all. ✉️</p>"]
         }
-        return ["id": "\(statusID)-\(index)", "content": copy[(index - 1) % copy.count], "account": account(index),
+        // The replier is never the post's author: shift by the post's index.
+        let author = usesPhotos ? ((statusIndex(forID: statusID) ?? 0) + index) % 4 : index
+        return ["id": "\(statusID)-\(index)", "content": copy[(index - 1) % copy.count], "account": account(author),
                 "in_reply_to_id": statusID, "in_reply_to_account_id": account(0)["id"] ?? "",
                 "created_at": usesPhotos ? recentDate(minutesAgo: 20 + index * 7) : "2026-09-30T02:00:00.000Z",
                 "media_attachments": [] as [Any],
@@ -237,16 +253,31 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
         usesPhotos ? photoURL(headerPhotos[index]) : "\(base)/landscape.png"
     }
 
+    /// Each showcase account's bio (the profile's own note stays the original first one).
+    private static func note(_ index: Int) -> String {
+        guard usesPhotos, index > 0 else {
+            return chinese ? "<p>记录小小的冒险和好的对话，也给自己留一点生长的空间。🌿</p>"
+                : "<p>Small adventures, good conversations, and a little room to grow. 🌿</p>"
+        }
+        return chinese
+            ? ["", "<p>两只猫的铲屎官，偶尔拍拍窗外。🐈</p>", "<p>咖啡、旧书店和周末的城市散步。☕️</p>", "<p>徒步、露营，在路上的人。⛰️</p>",
+               "<p>城市夜跑、日落和一杯热拿铁。🌇</p>", "<p>海边长大，喜欢拍潮汐和渔船。🌊</p>",
+               "<p>独立书店店员，每周推荐一本书。📚</p>", "<p>咖啡烘焙师，记录每一杯的味道。☕️</p>"][index]
+            : ["", "<p>Staff to two cats. Occasionally photographs the window. 🐈</p>",
+               "<p>Coffee, used bookshops and weekend city walks. ☕️</p>", "<p>Hiking, camping, usually somewhere on a trail. ⛰️</p>",
+               "<p>Night runs, city sunsets, and a warm latte. 🌇</p>", "<p>Grew up by the sea. I photograph tides and fishing boats. 🌊</p>",
+               "<p>Indie bookshop clerk. One book recommendation a week. 📚</p>", "<p>Coffee roaster, noting how every cup tastes. ☕️</p>"][index]
+    }
+
     static func account(_ index: Int) -> [String: Any] {
         ["id": "store-\(index)", "username": handles[index], "acct": handles[index],
          "display_name": names[index],
-         "note": chinese ? "<p>记录小小的冒险和好的对话，也给自己留一点生长的空间。🌿</p>"
-             : "<p>Small adventures, good conversations, and a little room to grow. 🌿</p>",
+         "note": note(index),
          "avatar": avatarURL(index), "avatar_static": avatarURL(index),
          "header": headerURL(index), "header_static": headerURL(index),
-         "followers_count": usesPhotos ? [1284, 562, 318, 905][index] : 128,
-         "following_count": usesPhotos ? [216, 143, 98, 187][index] : 86,
-         "statuses_count": usesPhotos ? [672, 1530, 241, 388][index] : 42,
+         "followers_count": usesPhotos ? [1284, 562, 318, 905, 742, 1168, 486, 823][index] : 128,
+         "following_count": usesPhotos ? [216, 143, 98, 187, 203, 176, 132, 214][index] : 86,
+         "statuses_count": usesPhotos ? [672, 1530, 241, 388, 529, 864, 317, 658][index] : 42,
          "url": "\(base)/@\(handles[index])", "show_media": true, "show_featured": true,
          "fields": chinese
              ? [["name": "关于", "value": "摄影与日常发现"], ["name": "社区", "value": "开放的社交网络"]]
@@ -382,14 +413,15 @@ private final class AppStoreScreenshotProtocol: URLProtocol, @unchecked Sendable
                  "statuses_count": "12", "history": [["day": "1790726400", "uses": "128", "accounts": "42"]]] as [String: Any]
             }
         } else if path.hasSuffix("/directory") {
-            payload = (1...3).map { Self.account($0) }
+            payload = (1...(Self.usesPhotos ? 7 : 3)).map { Self.account($0) }
         } else if path.hasSuffix("/relationships") {
             payload = []
         } else if path.hasSuffix("/context") {
             let statusID = url.deletingLastPathComponent().lastPathComponent
             payload = ["ancestors": [], "descendants": [1, 2].map { Self.reply($0, to: statusID) }]
         } else if path.hasSuffix("/search") {
-            payload = ["accounts": (1...3).map { Self.account($0) }, "statuses": (0...3).map { Self.status($0) }, "hashtags": []]
+            payload = ["accounts": (1...(Self.usesPhotos ? 7 : 3)).map { Self.account($0) },
+                       "statuses": (0...3).map { Self.status($0) }, "hashtags": []]
         } else if path.hasSuffix("/markers") || path.hasSuffix("/preferences") {
             payload = [:]
         } else if path.contains("/timelines/") || path.hasSuffix("/statuses") || path.hasSuffix("/bookmarks") {
