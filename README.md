@@ -22,15 +22,15 @@ Moro brings a focused, native iOS experience to the fediverse. Sign in with an a
 
 ## Preview
 
-These promotional previews use fictional demo accounts, deterministic UI states, and editorial illustrations. No real account or timeline data is shown.
+These promotional previews are real app captures driven by fictional demo accounts and Unsplash photos (see `screenshots/app-store/showcase-assets/CREDITS.md`). No real account or timeline data is shown.
 
 <p align="center">
-  <img src="screenshots/app-store/en-US/promotional/04-moro.png" width="45%" alt="Moro timeline with multilingual posts, a photo, a poll, and emoji reactions">
-  <img src="screenshots/app-store/en-US/promotional/09-moro.png" width="45%" alt="Moro notifications with mentions, reactions, follows, media, and poll results">
+  <img src="screenshots/app-store/en-US/promotional/04-moro.png" width="45%" alt="Moro thread view with a mountain sunrise photo and replies">
+  <img src="screenshots/app-store/en-US/promotional/09-moro.png" width="45%" alt="Moro notifications with mentions, likes, boosts, and follows">
 </p>
 
 <p align="center">
-  <img src="screenshots/app-store/en-US/promotional/07-moro.png" width="45%" alt="Moro new post editor with a poll, media, alt text, and emoji">
+  <img src="screenshots/app-store/en-US/promotional/07-moro.png" width="45%" alt="Moro post editor with a seaside poll">
 </p>
 
 ## Highlights

@@ -78,6 +78,14 @@ struct OnboardingGlobeView: View {
         }
         .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: formed)
         .accessibilityAction(named: MoroL10n.Registration.continueButton) { gather() }
+        #if DEBUG
+        // Store captures driven by simctl can't tap: gather on their own after a beat.
+        .task {
+            guard ProcessInfo.processInfo.environment["UITEST_ONBOARDING_GATHER"] == "1" else { return }
+            try? await Task.sleep(for: .seconds(2))
+            gather()
+        }
+        #endif
     }
 
     // MARK: Timing
