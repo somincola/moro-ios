@@ -90,7 +90,7 @@ enum StatusPublishResult {
 }
 
 /// The exact creation payload, shared by transport encoding and retry identity.
-struct StatusPublishPayload: Encodable {
+nonisolated struct StatusPublishPayload: Encodable {
     let status: String
     let visibility: MastodonVisibility
     let mediaIDs: [String]?

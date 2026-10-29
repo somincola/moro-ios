@@ -240,8 +240,10 @@ struct TimelineCacheDurabilityTests {
         let cache = TimelineCache(directory: directory, persistenceDelay: .seconds(30))
         await cache.set(statuses: [post("1"), post("2")], for: "a", filter: .home)
 
+        // Well inside the 30 s delay, but generous for a loaded CI machine running suites in parallel.
         var onDisk: [String]?
-        for _ in 0..<100 {
+        let deadline = ContinuousClock.now + .seconds(10)
+        while ContinuousClock.now < deadline {
             onDisk = await TimelineCache(directory: directory).getStatuses(for: "a", filter: .home)?.map(\.id)
             if onDisk != nil { break }
             try await Task.sleep(for: .milliseconds(20))
