@@ -309,7 +309,11 @@ actor TimelineCache {
         persistenceTaskIsDelayed = delay != nil
         persistenceGeneration &+= 1
         let generation = persistenceGeneration
-        persistenceTask = Task.detached(priority: .background) { [weak self] in
+        // An immediate write protects content the reader just loaded, so it must not sit
+        // behind everything else: background priority can be starved for many seconds
+        // while the device is busy. Coalesced, delayed writes stay in the background.
+        let priority: TaskPriority = delay == nil ? .utility : .background
+        persistenceTask = Task.detached(priority: priority) { [weak self] in
             if let delay {
                 do { try await Task.sleep(for: delay) } catch { return }
             }
