@@ -41,12 +41,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Keep this pin aligned with Xcode Cloud's "Moro Stable Xcode" alias.
+      # Keep this pin aligned with the Xcode Cloud Release workflow (iPhone Duo needs the iOS 27.1 SDK).
       # Validate GitHub CI and Cloud Release before upgrading both environments.
-      - name: Select Xcode 26.6
+      - name: Select Xcode 27.1
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "26.6"
+          xcode-version: "27.1"
 
       - name: Toolchain versions
         run: |
@@ -157,10 +157,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Select Xcode 26.6
+      - name: Select Xcode 27.1
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "26.6"
+          xcode-version: "27.1"
 
       - name: Require the iOS 26.2 runtime
         id: sim
