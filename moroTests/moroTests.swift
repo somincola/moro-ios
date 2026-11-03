@@ -7422,7 +7422,8 @@ private extension moroTests {
                 44,
                 threshold: 40,
                 for: .home,
-                isSelected: true
+                isSelected: true,
+                isDragging: true
             )
         )
         #expect(homeSubject.value.distance == 44)
@@ -7433,7 +7434,8 @@ private extension moroTests {
                 24,
                 threshold: 40,
                 for: .home,
-                isSelected: true
+                isSelected: true,
+                isDragging: true
             ) == false
         )
         #expect(
@@ -7447,6 +7449,37 @@ private extension moroTests {
         #expect(homeSubject.value.isRefreshing == false)
     }
 
+    /// Jumping to the newest posts, a lazy-row height correction or a bounce can push the
+    /// timeline past its top with no finger on it. That must not open the pull slot.
+    @Test @MainActor func timelineOverscrollWithoutAFingerDoesNotOpenThePullSlot() {
+        let bridge = TimelineScrollBridge()
+        let subject = bridge.pullRefreshSubject(for: .home)
+
+        #expect(bridge.updatePullRefreshDistance(
+            180, threshold: 40, for: .home, isSelected: true, isDragging: false) == false)
+        #expect(subject.value == .idle)
+        #expect(bridge.commitPullRefresh(for: .home, threshold: 40, isSelected: true) == false)
+        #expect(subject.value.isRefreshing == false)
+    }
+
+    /// Once a finger has started a pull, the bounce after it lets go still moves the slot,
+    /// so an unarmed pull closes smoothly instead of freezing open.
+    @Test @MainActor func timelinePullStartedByAFingerKeepsFollowingAfterRelease() {
+        let bridge = TimelineScrollBridge()
+        let subject = bridge.pullRefreshSubject(for: .home)
+
+        _ = bridge.updatePullRefreshDistance(30, threshold: 40, for: .home, isSelected: true, isDragging: true)
+        #expect(subject.value.distance == 30)
+        _ = bridge.updatePullRefreshDistance(12, threshold: 40, for: .home, isSelected: true, isDragging: false)
+        #expect(subject.value.distance == 12)
+        _ = bridge.updatePullRefreshDistance(0, threshold: 40, for: .home, isSelected: true, isDragging: false)
+        #expect(subject.value.distance == 0)
+        #expect(bridge.updatePullRefreshDistance(
+            90, threshold: 40, for: .home, isSelected: true, isDragging: false) == false,
+            "back at rest, a later stray overscroll starts nothing")
+        #expect(subject.value.distance == 0)
+    }
+
     @Test @MainActor func timelinePullRefreshCommitsOnceAfterArmedRelease() {
         let bridge = TimelineScrollBridge()
         let subject = bridge.pullRefreshSubject(for: .local)
@@ -7455,7 +7488,8 @@ private extension moroTests {
             48,
             threshold: 40,
             for: .local,
-            isSelected: true
+            isSelected: true,
+            isDragging: true
         )
         #expect(
             bridge.commitPullRefresh(

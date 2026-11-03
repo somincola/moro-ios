@@ -520,7 +520,7 @@
 			inputPaths = (
 				"$(SRCROOT)/scripts/prepare-app-store-test-fixtures.swift",
 				"$(SRCROOT)/metadata/app-store/app-info/",
-				"$(SRCROOT)/metadata/app-store/version/1.0.0/",
+				"$(SRCROOT)/metadata/app-store/version/",
 				"$(SRCROOT)/moro/Resources/Localizations/Moro.xcstrings",
 				"$(SRCROOT)/moro/Core/Localization/MoroL10n.swift",
 				"$(SRCROOT)/moro.xcodeproj/project.pbxproj",

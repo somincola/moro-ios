@@ -8,10 +8,10 @@
 import Foundation
 
 enum MoroBrand {
-    static let websiteURL = URL(string: "https://moro.somincola.com/")!
-    static let privacyPolicyURL = URL(string: "https://moro.somincola.com/privacy")!
-    static let termsOfUseURL = URL(string: "https://moro.somincola.com/terms")!
-    static let supportURL = URL(string: "https://moro.somincola.com/support")!
+    static let websiteURL = URL(string: "https://getmoro.app/")!
+    static let privacyPolicyURL = URL(string: "https://getmoro.app/privacy")!
+    static let termsOfUseURL = URL(string: "https://getmoro.app/terms")!
+    static let supportURL = URL(string: "https://getmoro.app/support")!
 
     /// The developer's Mastodon account, shown as "Follow the Developer" in About.
     static let authorAcct = "acacius@m.somincola.org"

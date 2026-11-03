@@ -102,9 +102,13 @@ struct ProfileNavigationBarHeightReader: UIViewControllerRepresentable {
         }
 
         private static func isVerticalBar(_ bar: UINavigationBar) -> Bool {
+            // verticalBarEdge is an iOS 27.1 SDK API (Swift 6.4); older toolchains, such as
+            // CI's Xcode 26, rely on the bar's shape alone.
+            #if compiler(>=6.4)
             if #available(iOS 27.1, *), bar.traitCollection.verticalBarEdge != .unspecified {
                 return true
             }
+            #endif
             return bar.bounds.height > bar.bounds.width
         }
     }

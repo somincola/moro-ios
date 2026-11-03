@@ -9,13 +9,13 @@ import Foundation
 /// timeline tests. The UI tests pass a session ID per test; when it differs from the last
 /// launch's, the app's defaults start from scratch. Relaunches inside one test keep the same
 /// ID, so a test can still check that a setting persists across a relaunch.
-enum UITestDefaultsIsolation {
+nonisolated enum UITestDefaultsIsolation {
     static let environmentKey = "UITEST_DEFAULTS_SESSION"
     static let sessionKey = "uitest.defaultsSession"
 
     /// Returns true when it reset the defaults.
     @discardableResult
-    nonisolated static func applyIfRequested(
+    static func applyIfRequested(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         defaults: UserDefaults = .standard,
         domain: String? = Bundle.main.bundleIdentifier

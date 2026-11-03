@@ -1166,7 +1166,7 @@ struct ProfileView: View {
         bot: false,
         fields: [
             AccountField(
-                name: "Website", value: "<a href=\"https://moro.somincola.com\">moro.somincola.com</a>",
+                name: "Website", value: "<a href=\"https://getmoro.app\">getmoro.app</a>",
                 verifiedAt: Date()),
             AccountField(
                 name: "GitHub", value: "<a href=\"https://github.com/moro\">github.com/moro</a>"),

@@ -162,14 +162,21 @@ struct ToolbarAxisReader<Content: View>: View {
     @ViewBuilder let content: (_ isVertical: Bool) -> Content
 
     var body: some View {
+        // The vertical toolbar edge is an iOS 27.1 SDK API (Swift 6.4); older toolchains,
+        // such as CI's Xcode 26, build without it and never run on an iPhone Duo.
+        #if compiler(>=6.4)
         if #available(iOS 27.1, *) {
             VerticalToolbarEdgeReader(content: content)
         } else {
             content(false)
         }
+        #else
+        content(false)
+        #endif
     }
 }
 
+#if compiler(>=6.4)
 @available(iOS 27.1, *)
 private struct VerticalToolbarEdgeReader<Content: View>: View {
     @Environment(\.toolbarVerticalEdge) private var verticalEdge
@@ -177,6 +184,7 @@ private struct VerticalToolbarEdgeReader<Content: View>: View {
 
     var body: some View { content(verticalEdge != nil) }
 }
+#endif
 
 #Preview {
     @Previewable @State var selectedTimeline: TimelineType = .home

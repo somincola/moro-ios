@@ -3,7 +3,7 @@ import Foundation
 
 /// Keep an uncertain submission's identity with its draft. Only a changed request
 /// gets a new key; a timeout or response-decoding failure may follow a server commit.
-struct ComposePublishAttempt: Codable, Equatable {
+nonisolated struct ComposePublishAttempt: Codable, Equatable {
     let idempotencyKey: String
     let fingerprint: String
 

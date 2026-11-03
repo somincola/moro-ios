@@ -41,9 +41,15 @@ struct ThreadSplitView<ListColumn: View>: View {
     }
 
     private static func verticalFoldX(in proxy: GeometryProxy) -> CGFloat? {
+        // Reserved regions are an iOS 27.1 SDK API (Swift 6.4); older toolchains, such as
+        // CI's Xcode 26, build without them.
+        #if compiler(>=6.4)
         guard #available(iOS 27.1, *) else { return nil }
         let folds = proxy.reservedRegions(kind: .division, options: .includeInactive)
         return folds.first { $0.frame.height > $0.frame.width }?.frame.midX
+        #else
+        return nil
+        #endif
     }
 
     var body: some View {

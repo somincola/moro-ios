@@ -12,6 +12,9 @@ import SwiftUI
 /// One configured player and the item it plays.
 @MainActor
 final class PooledVideoPlayer {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     let url: URL
     let isGIF: Bool
     let loops: Bool
@@ -100,6 +103,9 @@ enum VideoAudioSession {
 /// downloading from the start again.
 @MainActor
 final class TimelineVideoPlayerPool {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = TimelineVideoPlayerPool()
 
     /// Each parked player keeps its buffered data and a decoder, so keep only a few.

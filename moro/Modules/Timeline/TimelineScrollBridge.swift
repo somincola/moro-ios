@@ -169,6 +169,14 @@ final class TimelineScrollBridge: ObservableObject {
         if phase == .idle { scheduleLayoutEvent(for: timeline) }
     }
 
+    /// A finger is on the timeline right now (UIKit's own flags, so it does not wait for
+    /// SwiftUI's phase callback).
+    func isUserDragging(_ timeline: TimelineType) -> Bool {
+        if let view = nativeScrollViews[timeline]?.value, view.isTracking || view.isDragging { return true }
+        let phase = phases[timeline, default: .idle]
+        return phase == .tracking || phase == .interacting
+    }
+
     func isUserScrolling(_ timeline: TimelineType) -> Bool {
         phases[timeline] == .interacting || phases[timeline] == .decelerating
     }
@@ -478,15 +486,21 @@ final class TimelineScrollBridge: ObservableObject {
         proxies[timeline]?.scrollTo(targetID, anchor: .top)
     }
 
+    /// `isDragging`: a finger is on the timeline now (see `isUserDragging`).
     func updatePullRefreshDistance(
         _ distance: CGFloat,
         threshold: CGFloat,
         for timeline: TimelineType,
-        isSelected: Bool
+        isSelected: Bool,
+        isDragging: Bool
     ) -> Bool {
         guard isSelected else { return false }
         var state = pullRefreshStates[timeline] ?? TimelinePullRefreshState()
         guard state.phase != .refreshing else { return false }
+        // Only the reader's finger starts a pull. Jumping to the newest post, a lazy-row height
+        // correction or a bounce can briefly overscroll the top; without this the slot would
+        // open with them and push the rows down under a loading indicator.
+        guard state.phase != .idle || isDragging else { return false }
 
         let wasArmed = state.phase == .armed
         state.distance = max(0, distance)
