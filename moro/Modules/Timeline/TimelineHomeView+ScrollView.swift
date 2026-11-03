@@ -67,7 +67,8 @@ extension TimelineHomeView {
                     max(0, -offsetY),
                     threshold: pullRefreshTriggerDistance,
                     for: timelineType,
-                    isSelected: timelineType == selectedTimeline
+                    isSelected: timelineType == selectedTimeline,
+                    isDragging: scrollBridge.isUserDragging(timelineType)
                 )
                 if crossedThreshold {
                     MoroRefreshFeedback.armed()
