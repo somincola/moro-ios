@@ -149,8 +149,62 @@ final class PushNotificationUITests: XCTestCase {
         XCTAssertTrue(pullRefresh.waitForExistence(timeout: 3),
             "Re-tapping Inbox at the top must start the list's own pull to refresh (spinner, rows pushed down)")
         attach(app, "inbox-retap-pull-spinner")
-        XCTAssertTrue(text("New activity 331", in: app).waitForExistence(timeout: 8))
+        let newest = text("New activity 331", in: app)
+        XCTAssertTrue(newest.waitForExistence(timeout: 8))
         XCTAssertTrue(pullRefresh.waitForNonExistence(timeout: 5), "The spinner ends with the refresh")
+        XCTAssertTrue(waitUntil(timeout: 3) { newest.isHittable },
+            "A refresh the reader asked for shows the new notification at the top, not above the screen")
+        XCTAssertFalse(app.buttons["notifications.newNotifications"].exists)
+    }
+
+    func testOpeningInboxWithABadgeShowsTheSpinnerOnlyWhenTheRequestIsSlow() {
+        let app = launch("inbox", environment: [
+            "UITEST_NOTIFICATIONS_UNREAD": "3", "UITEST_NOTIFICATIONS_DELAY": "4",
+        ])
+        defer { app.terminate() }
+        inboxTabAndWait(in: app, for: "Recent activity 330")
+        let pullRefresh = pullRefreshRunning(in: app)
+        XCTAssertTrue(pullRefresh.waitForNonExistence(timeout: 5))
+        leaveInboxAndComeBackWithABadge(in: app)
+
+        // Coming back with a badge refreshes at once; resting at the top while it is slow,
+        // the spinner shows late and ends with the request.
+        XCTAssertTrue(pullRefresh.waitForExistence(timeout: 3),
+            "A slow refresh opened over unread notifications shows the spinner while the reader rests at the top")
+        attach(app, "inbox-badge-late-spinner")
+        let newest = text("New activity 331", in: app)
+        XCTAssertTrue(newest.waitForExistence(timeout: 8))
+        XCTAssertTrue(pullRefresh.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 3) { newest.isHittable })
+    }
+
+    func testNewNotificationsWhileReadingOlderOnesWaitBehindThePill() {
+        let app = launch("inbox", environment: ["UITEST_NOTIFICATIONS_UNREAD": "3"])
+        defer { app.terminate() }
+        inboxTabAndWait(in: app, for: "Recent activity 330")
+        let scrollView = app.scrollViews.firstMatch
+        scrollView.swipeUp()
+        let reading = text("Recent activity 320", in: app)
+        XCTAssertTrue(waitUntil(timeout: 3) { reading.exists && reading.isHittable })
+        let readingFrame = reading.frame
+
+        // Back with a badge: the refresh brings a new notification, but the reader is further
+        // down, so the rows they are reading stay put and a pill appears.
+        leaveInboxAndComeBackWithABadge(in: app)
+        let pill = app.buttons["notifications.newNotifications"]
+        XCTAssertTrue(pill.waitForExistence(timeout: 8),
+            "New notifications above the reader are announced, not scrolled into view")
+        XCTAssertTrue(pill.label.contains("1 new notifications"), "Got: \(pill.label)")
+        XCTAssertTrue(reading.isHittable)
+        XCTAssertEqual(reading.frame.minY, readingFrame.minY, accuracy: 2,
+            "The row being read must not move when new notifications arrive above it")
+        XCTAssertFalse(text("New activity 331", in: app).isHittable)
+        attach(app, "inbox-new-notifications-pill")
+
+        pill.tap()
+        XCTAssertTrue(waitUntil(timeout: 3) { self.text("New activity 331", in: app).isHittable },
+            "The pill scrolls to the new notification")
+        XCTAssertTrue(pill.waitForNonExistence(timeout: 3), "The pill goes once the new rows are seen")
     }
 
     func testOpeningInboxOverSavedNotificationsRefreshesQuietly() {
@@ -270,6 +324,22 @@ final class PushNotificationUITests: XCTestCase {
         XCTAssertTrue(notifications.waitForExistence(timeout: 12))
         XCTAssertTrue(notifications.isSelected)
         XCTAssertTrue(app.buttons["mainTab.inbox"].isSelected)
+    }
+
+    /// Seeing the newest rows clears the badge. The fixture's server keeps reporting unread
+    /// notifications, so foregrounding (which asks it again) brings the badge back.
+    private func leaveInboxAndComeBackWithABadge(in app: XCUIApplication,
+        file: StaticString = #filePath, line: UInt = #line) {
+        let inbox = app.buttons["mainTab.inbox"]
+        func showsBadge() -> Bool { inbox.label.contains("unread") }
+        XCTAssertTrue(waitUntil(timeout: 5) { !showsBadge() },
+            "Rows on screen count as seen and clear the badge", file: file, line: line)
+        app.buttons["mainTab.home"].tap()
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        XCTAssertTrue(waitUntil(timeout: 8) { showsBadge() },
+            "Foregrounding restores the server's unread count", file: file, line: line)
+        inbox.tap()
     }
 
     private func pullRefreshRunning(in app: XCUIApplication) -> XCUIElement {

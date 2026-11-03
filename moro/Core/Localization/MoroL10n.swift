@@ -578,6 +578,9 @@ public enum MoroL10n {
     public enum Notifications {
         // Page
         public static var title: String { text("notifications.title") }
+        public static func newNotifications(_ count: Int) -> String {
+            format("notifications.newNotifications", Int64(count))
+        }
         public static var notificationToggleEnable: String { text("notificationToggle.enable") }
         public static var notificationToggleDisable: String { text("notificationToggle.disable") }
 
