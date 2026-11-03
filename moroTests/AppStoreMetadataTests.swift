@@ -43,6 +43,9 @@ final class AppStoreMetadataTests: XCTestCase {
         let value: String
     }
 
+    /// The newest version folder, the one the next submission uses (see the fixture script).
+    private static let currentVersionMetadata = "metadata/app-store/version/current"
+
     private let expectedLocales: Set<String> = [
         "de-DE", "en-US", "es-ES", "fr-FR", "it", "ja", "pt-PT", "zh-Hans", "zh-Hant",
     ]
@@ -65,12 +68,13 @@ final class AppStoreMetadataTests: XCTestCase {
             as: AppInfoMetadata.self
         )
         let version = try loadMetadata(
-            at: "metadata/app-store/version/1.0.0",
+            at: Self.currentVersionMetadata,
             as: VersionMetadata.self
         )
 
         XCTAssertEqual(Set(appInfo.keys), expectedLocales)
-        XCTAssertEqual(Set(version.keys), expectedLocales)
+        // A version can add store-only languages (Arabic since 1.0.5) on top of the app's.
+        XCTAssertTrue(Set(version.keys).isSuperset(of: expectedLocales))
 
         for (locale, metadata) in appInfo {
             XCTAssertEqual(
@@ -78,9 +82,11 @@ final class AppStoreMetadataTests: XCTestCase {
                 MoroBrand.privacyPolicyURL.absoluteString,
                 locale
             )
+            // The privacy policy's "Data retention and your choices" section is where users
+            // learn how to manage and delete their data.
             XCTAssertEqual(
                 metadata.privacyChoicesUrl,
-                MoroBrand.termsOfUseURL.absoluteString,
+                MoroBrand.privacyPolicyURL.absoluteString,
                 locale
             )
         }
@@ -97,7 +103,7 @@ final class AppStoreMetadataTests: XCTestCase {
             as: AppInfoMetadata.self
         )
         let version = try loadMetadata(
-            at: "metadata/app-store/version/1.0.0",
+            at: Self.currentVersionMetadata,
             as: VersionMetadata.self
         )
 
@@ -115,7 +121,7 @@ final class AppStoreMetadataTests: XCTestCase {
 
     func testDescriptionsDoNotAdvertiseRemovedThemeColorSwitching() throws {
         let version = try loadMetadata(
-            at: "metadata/app-store/version/1.0.0",
+            at: Self.currentVersionMetadata,
             as: VersionMetadata.self
         )
         let obsoleteClaims = [
@@ -141,6 +147,7 @@ final class AppStoreMetadataTests: XCTestCase {
         let catalog = try sourceText(at: "moro/Resources/Localizations/Moro.xcstrings")
         let obsoleteCopy = [
             "https://somincola.org/moro",
+            "moro.somincola.com",
             "support@somincola.org",
             "privacy@somincola.org",
             "contract@somincola.org",
