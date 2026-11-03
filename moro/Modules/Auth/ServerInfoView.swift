@@ -37,6 +37,7 @@ struct ServerInfoView: View {
             }
         }
         .background(theme.colors.surfaceBase)
+        .moroReadableListMargins()
         .navigationTitle(domain)
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }

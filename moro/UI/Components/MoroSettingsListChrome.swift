@@ -60,6 +60,9 @@ struct MoroSettingsListChrome: ViewModifier {
             .tint(theme.colors.primary500)
             .toolbarBackground(theme.colors.groupedBackground, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            // Same reading width as the timeline: rows stop stretching across a wide
+            // display (iPhone Duo's inner screen); nothing changes on iPhone in portrait.
+            .moroReadableListMargins()
     }
 }
 
@@ -83,6 +86,7 @@ private struct MoroSettingsPageChrome: ViewModifier {
             .tint(theme.colors.primary500)
             .toolbarBackground(theme.colors.groupedBackground, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .moroReadableListMargins()
     }
 }
 

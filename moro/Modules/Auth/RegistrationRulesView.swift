@@ -50,6 +50,8 @@ struct RegistrationRulesView: View {
         .safeAreaInset(edge: .bottom) {
             continueFooter
         }
+        // Rules and the continue button keep the same reading width on a wide display.
+        .moroReadableListMargins()
     }
 
     private var header: some View {
