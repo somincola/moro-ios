@@ -227,11 +227,17 @@ struct VerticalPreferredToolbarItem<Content: View>: ToolbarContent {
     @ViewBuilder let content: () -> Content
 
     var body: some ToolbarContent {
+        // axisBehavior is an iOS 27.1 SDK API (Swift 6.4); older toolchains, such as CI's
+        // Xcode 26, build the plain item.
+        #if compiler(>=6.4)
         if #available(iOS 27.1, *) {
             ToolbarItem(placement: placement, content: content)
                 .axisBehavior(.verticalPreferred)
         } else {
             ToolbarItem(placement: placement, content: content)
         }
+        #else
+        ToolbarItem(placement: placement, content: content)
+        #endif
     }
 }

@@ -219,11 +219,15 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
         /// Only devices with a hinge report one; the first update arrives right after install.
         private func installHingeObserver() {
+            // UIHingeInteraction is an iOS 27.1 SDK API (Swift 6.4); older toolchains, such as
+            // CI's Xcode 26, build without it.
+            #if compiler(>=6.4)
             guard #available(iOS 27.1, *) else { return }
             let interaction = UIHingeInteraction { [weak self] _, update in
                 self?.applyHingePresence(update.hinge != nil)
             }
             view.addInteraction(interaction)
+            #endif
         }
 
         private func applyHingePresence(_ hasHinge: Bool) {
