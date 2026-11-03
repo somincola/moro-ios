@@ -414,13 +414,26 @@ final class SettingsHierarchyUITests: XCTestCase {
                 ? toggle : app.descendants(matching: .any).matching(identifier: identifier).firstMatch
             _ = element.waitForExistence(timeout: 1)
         }
-        for _ in 0..<10 where !element.exists || !element.isHittable { app.swipeUp() }
-        for _ in 0..<10 where !element.exists || !element.isHittable { app.swipeDown() }
+        var swiped = false
+        for _ in 0..<10 where !element.exists || !element.isHittable { app.swipeUp(); swiped = true }
+        for _ in 0..<10 where !element.exists || !element.isHittable { app.swipeDown(); swiped = true }
+        // A tap while the list still glides after a swipe only stops the scroll.
+        if swiped { waitUntilSettled(element) }
         XCTAssertTrue(element.exists, identifier)
         XCTAssertTrue(element.isHittable, identifier)
         XCTAssertGreaterThanOrEqual(element.frame.minX, 0)
         XCTAssertLessThanOrEqual(element.frame.maxX, app.windows.firstMatch.frame.maxX)
         if activate { element.tap() }
+    }
+
+    private func waitUntilSettled(_ element: XCUIElement) {
+        var previous = element.frame.minY
+        let settled = NSPredicate { _, _ in
+            let current = element.frame.minY
+            defer { previous = current }
+            return abs(current - previous) < 0.5
+        }
+        _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: settled, object: nil)], timeout: 5)
     }
 
     private func attach(_ app: XCUIApplication, _ name: String) {
