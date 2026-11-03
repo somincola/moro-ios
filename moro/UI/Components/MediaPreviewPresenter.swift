@@ -81,6 +81,9 @@ final class MediaPreviewHostingController: UIHostingController<AnyView> {
 /// Weak lookup from attachment ID to the on-screen thumbnail the viewer zooms from.
 @MainActor
 final class MediaPreviewSourceRegistry {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = MediaPreviewSourceRegistry()
     private let views = NSMapTable<NSString, UIView>.strongToWeakObjects()
 

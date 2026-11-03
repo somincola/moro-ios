@@ -17,6 +17,9 @@ import UIKit
 /// untouched, as other apps do.
 @MainActor
 final class PrivacySnapshotShield {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     static let shared = PrivacySnapshotShield()
 
     /// Tag of the cover view, so it can be found again and never stacks.
