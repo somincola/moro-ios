@@ -275,7 +275,13 @@ struct MainTabView: View {
 
     private var exploreRootView: AnyView {
         routedView(
-            AnyView(ExploreTabRootView(coordinator: coordinator, apiClient: apiClient)),
+            AnyView(
+                ThreadSplitView(
+                    coordinator: coordinator, tab: .explore, router: coordinator.exploreRouter, apiClient: apiClient
+                ) {
+                    ExploreTabRootView(coordinator: coordinator, apiClient: apiClient)
+                }
+            ),
             router: coordinator.exploreRouter
         )
     }
@@ -296,12 +302,16 @@ struct MainTabView: View {
     private var meRootView: AnyView {
         routedView(
             AnyView(
-                MeTabRootView(
-                    coordinator: coordinator,
-                    apiClient: apiClient,
-                    accountSessions: accountSessions,
-                    activeSessionID: activeSessionID
-                )
+                ThreadSplitView(
+                    coordinator: coordinator, tab: .me, router: coordinator.meRouter, apiClient: apiClient
+                ) {
+                    MeTabRootView(
+                        coordinator: coordinator,
+                        apiClient: apiClient,
+                        accountSessions: accountSessions,
+                        activeSessionID: activeSessionID
+                    )
+                }
             ),
             router: coordinator.meRouter
         )
