@@ -50,6 +50,7 @@ struct SearchContentView: View {
     @Environment(\.moroMediaPrefs) var mediaPreferences
     @Environment(\.moroSceneDescriptor) var sceneDescriptor
     @Environment(\.tabReselection) var tabReselection
+    @Environment(\.tabActivation) var tabActivation
     @EnvironmentObject var appState: AppState
     @StateObject var interactionService: PostInteractionService
     @StateObject var actionSurface = PostActionSurfaceCenter()
@@ -77,6 +78,7 @@ struct SearchContentView: View {
         SearchCoreControllerHost(
             apiClient: apiClient, initialQuery: initialQuery, initialScope: initialScope,
             accountKey: accountKey, theme: theme, tabReselection: tabReselection,
+            tabActivation: tabActivation,
             makeStatusView: { status, onPollVote in
                 AnyView(
                     VStack(spacing: 0) {
@@ -118,6 +120,7 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
     let accountKey: String
     let theme: MoroTheme
     let tabReselection: TabReselection?
+    let tabActivation: TabActivation?
     let makeStatusView: (Status, @escaping SearchCoreViewController.PollVoteHandler) -> AnyView
     let onOpenProfile: (Account) -> Void
     let onOpenStatus: (Status) -> Void
@@ -131,6 +134,7 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
         )
         updateCallbacks(controller)
         controller.markTabReselectionSeen(tabReselection)
+        controller.markTabActivationSeen(tabActivation)
         return controller
     }
 
@@ -138,6 +142,7 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
         updateCallbacks(controller)
         controller.apply(theme: theme)
         controller.handleTabReselection(tabReselection)
+        controller.handleTabActivation(tabActivation)
     }
 
     private func updateCallbacks(_ controller: SearchCoreViewController) {
