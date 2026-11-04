@@ -1,16 +1,12 @@
 name: CI
 
+# macOS runners bill at 10x on private repositories, so CI runs once per pull request
+# (not again on dev after merging the same code) and trusts the local pre-push gate
+# (AGENTS.md) for UI tests. Run it by hand from the Actions tab when needed.
 on:
-  push:
-    branches: [dev]
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'metadata/**'
-      - 'output/**'
-      - 'screenshots/**'
   pull_request:
-    branches: [dev, main]
+    branches: [dev, main, 'release/**']
+    types: [opened, synchronize, reopened, ready_for_review]
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
@@ -29,7 +25,9 @@ permissions:
 
 jobs:
   test:
-    name: Build & Unit Test
+    name: Build, Unit Test & Release Teardown Check
+    # Drafts are still being pushed to; test them once they are ready for review.
+    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.pull_request.draft }}
     runs-on: macos-26
     timeout-minutes: 40
     env:
@@ -53,8 +51,16 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: SourcePackages
+          key: spm-${{ hashFiles('moro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+
       - name: Resolve Swift packages
-        run: xcodebuild -resolvePackageDependencies -project "$PROJECT" -scheme "$SCHEME"
+        run: |
+          xcodebuild -resolvePackageDependencies -project "$PROJECT" -scheme "$SCHEME" \
+            -clonedSourcePackagesDirPath SourcePackages
 
       - name: Ensure an iOS simulator (runtime + device) and pick it
         id: sim
@@ -134,11 +140,25 @@ jobs:
             -scheme "$SCHEME" \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -testPlan "$TEST_PLAN" \
+            -clonedSourcePackagesDirPath SourcePackages \
             -resultBundlePath TestResults.xcresult \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="-" \
             DEVELOPMENT_TEAM="" \
             PROVISIONING_PROFILE_SPECIFIER=""
+
+      # Main-actor types with an isolated deinit crash on iOS 26.0–26.2. The symbol check
+      # needs no simulator, so it runs on every pull request in this same job.
+      - name: Check Release teardown symbols including private child types
+        run: |
+          set -euo pipefail
+          xcodebuild -project "$PROJECT" -scheme "$SCHEME" \
+            -configuration Release -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ReleaseDerivedData -clonedSourcePackagesDirPath SourcePackages \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="-" \
+            DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" build
+          LC_ALL=en_US.UTF-8 bash scripts/check-isolated-deinits.sh \
+            ReleaseDerivedData/Build/Products/Release-iphonesimulator/moro.app/moro
 
       - name: Upload test result bundle
         if: ${{ failure() }}
@@ -150,7 +170,14 @@ jobs:
           if-no-files-found: ignore
 
   ios26-compatibility:
-    name: iOS 26.2 compatibility
+    name: iOS 26.2 runtime compatibility
+    # Running on the iOS 26.2 simulator needs a second runner and often a runtime
+    # download. Do it before shipping (pull requests to main or a release branch) or
+    # by hand; the teardown symbol check above guards every pull request.
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch'
+          || (!github.event.pull_request.draft
+              && (github.base_ref == 'main' || startsWith(github.base_ref, 'release/'))) }}
     runs-on: macos-26
     timeout-minutes: 60
     steps:
@@ -209,17 +236,6 @@ jobs:
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="-" \
             DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" test
           bash scripts/check-ios26-compatibility-results.sh CompatibilityResults.xcresult
-
-      - name: Check Release teardown symbols including private child types
-        run: |
-          set -euo pipefail
-          xcodebuild -project moro.xcodeproj -scheme moro \
-            -configuration Release -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath CompatibilityDerivedData \
-            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="-" \
-            DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" build
-          bash scripts/check-isolated-deinits.sh \
-            CompatibilityDerivedData/Build/Products/Release-iphonesimulator/moro.app/moro
 
       - name: Upload compatibility test evidence
         if: ${{ always() }}
