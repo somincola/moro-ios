@@ -235,7 +235,10 @@ private final class PushNotificationFixtureProtocol: URLProtocol, @unchecked Sen
         } else if url.path.hasPrefix("/api/v1/statuses/") {
             payload = status
         } else if url.path.hasSuffix("/search") {
-            payload = ["accounts": [], "hashtags": [], "statuses": [status]]
+            // One of each, so iPhone Duo's Explore can open a person and a topic beside the list.
+            let topic: [String: Any] = ["name": "pushtopic", "url": "https://\(url.host ?? "")/tags/pushtopic",
+                "history": [] as [Any]]
+            payload = ["accounts": [account], "hashtags": [topic], "statuses": [status]]
         } else if url.path.hasSuffix("/markers") {
             payload = [:]
         } else if url.path.contains("/instance") {

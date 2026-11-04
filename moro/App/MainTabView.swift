@@ -278,7 +278,8 @@ struct MainTabView: View {
         routedView(
             AnyView(
                 ThreadSplitView(
-                    coordinator: coordinator, tab: .explore, router: coordinator.exploreRouter, apiClient: apiClient
+                    coordinator: coordinator, tab: .explore, router: coordinator.exploreRouter, apiClient: apiClient,
+                    opensProfilesAndTopics: true, placeholder: MoroL10n.StatusDetail.splitPlaceholderExplore
                 ) {
                     ExploreTabRootView(coordinator: coordinator, apiClient: apiClient)
                 }

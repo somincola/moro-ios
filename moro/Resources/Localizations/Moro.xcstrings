@@ -90646,6 +90646,65 @@
         }
       }
     },
+    "statusDetail.splitPlaceholderExplore" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle einen Beitrag, eine Person oder ein Thema, um es hier zu sehen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select a post, person or topic to see it here"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecciona una publicación, persona o tema para verlo aquí"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisissez une publication, une personne ou un sujet pour l’afficher ici"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seleziona un post, una persona o un argomento per vederlo qui"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿、ユーザー、トピックを選ぶとここに表示されます"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecione uma publicação, pessoa ou tópico para o ver aqui"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择嘟文、用户或话题，在这里查看"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇嘟文、使用者或話題，在這裡查看"
+          }
+        }
+      }
+    },
     "statusDetail.splitDivider" : {
       "extractionState" : "manual",
       "localizations" : {
