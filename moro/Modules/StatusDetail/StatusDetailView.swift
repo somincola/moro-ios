@@ -302,6 +302,14 @@ struct StatusDetailView: View {
             .moroReadableColumn()
         }
         .scrollPosition(id: $visibleStatusID, anchor: .top)
+        // Pull for new replies. The loaded thread stays on screen while it reloads, so a
+        // failure keeps it and says so instead of falling back to the inline retry row.
+        .refreshable {
+            await viewModel.refresh()
+            if case .error = viewModel.loadingState, viewModel.threadModel != nil {
+                MoroRefreshFeedback.deliver(.failed, failureMessage: MoroL10n.StatusDetail.threadLoadFailed)
+            }
+        }
     }
 
     private func jumpToPost(_ id: String) {

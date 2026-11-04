@@ -126,6 +126,7 @@ struct ListMembersView: View {
             }
             .padding(.horizontal, theme.spacing.m)
             .padding(.vertical, theme.spacing.s)
+            .moroReadableColumn()
         }
     }
 

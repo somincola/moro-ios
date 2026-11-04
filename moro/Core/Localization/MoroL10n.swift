@@ -345,7 +345,6 @@ public enum MoroL10n {
         public static var postVisibilityMentionedOnly: String {
             text("appsettings.postVisibility.mentionedOnly")
         }
-        public static var densitySection: String { text("appsettings.density.section") }
         public static var densityComfortable: String { text("appsettings.density.comfortable") }
         public static var densityComfortableSubtitle: String {
             text("appsettings.density.comfortable.subtitle")
