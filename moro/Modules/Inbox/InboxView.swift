@@ -14,6 +14,8 @@ struct InboxView: View {
     @Environment(\.moroSceneDescriptor) private var sceneDescriptor
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.appRouter) private var router
+    @Environment(\.threadSplitPanelOwnsBar) private var panelOwnsBar
+    @State private var toolbarIsVertical = false
 
     @ScaledMetric(relativeTo: .body) private var preferredChromeHeight: CGFloat = 54
 
@@ -30,9 +32,78 @@ struct InboxView: View {
         )
         .background(sceneCanvasColor)
         .safeAreaInset(edge: .top, spacing: 0) {
-            inboxChrome
+            // iPhone Duo: the filters and settings go in the system bar instead, like Home.
+            if !coordinator.usesSystemHomeBar {
+                inboxChrome
+            }
+        }
+        .toolbar {
+            if coordinator.usesSystemHomeBar && !panelOwnsBar {
+                systemBarItems
+            }
+        }
+        .background {
+            ToolbarAxisReader { isVertical in
+                Color.clear.onChange(of: isVertical, initial: true) { _, vertical in
+                    toolbarIsVertical = vertical
+                }
+            }
         }
         .environment(\.tabReselection, coordinator.tabReselection)
+    }
+
+    /// Held upright the filters sit in the status row with the settings button; held
+    /// landscape they go down the side bar as icons.
+    @ToolbarContentBuilder
+    private var systemBarItems: some ToolbarContent {
+        if toolbarIsVertical {
+            VerticalPreferredToolbarItem(placement: .topBarLeading) { filterIconButton(.all) }
+            VerticalPreferredToolbarItem(placement: .topBarLeading) { filterIconButton(.mentions) }
+        } else {
+            ToolbarItem(placement: .principal) {
+                HStack(spacing: 0) {
+                    filterButton(.all)
+                        .frame(minWidth: 96)
+                    filterButton(.mentions)
+                        .frame(minWidth: 96)
+                }
+                .frame(height: 44)
+            }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                router.navigate(to: .notificationSettings)
+            } label: {
+                Label(MoroL10n.NotificationSettings.title, systemImage: "gearshape")
+            }
+            .accessibilityIdentifier("inbox.notificationSettings")
+        }
+    }
+
+    private func filterIconButton(_ filter: NotificationFilter) -> some View {
+        let isSelected = coordinator.inboxFilter == filter
+        let unreadCount = filter == .all ? notificationUnreadStore.activeUnreadCount : 0
+        return Button {
+            coordinator.openInbox(filter)
+        } label: {
+            Image(systemName: filter.barIcon(filled: isSelected))
+                .fontWeight(isSelected ? .semibold : .regular)
+                .foregroundStyle(isSelected ? theme.colors.textPrimary : theme.colors.textTertiary)
+                .frame(minWidth: 36, minHeight: 36)
+                .overlay(alignment: .topTrailing) {
+                    if unreadCount > 0 {
+                        Circle()
+                            .fill(theme.colors.error)
+                            .frame(width: 8, height: 8)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityLabel(unreadCount > 0
+            ? "\(filter.title), \(MoroL10n.Navigation.notificationsUnread(unreadCount))" : filter.title)
+        .accessibilityIdentifier("inbox.filter.\(filter.rawValue)")
     }
 
     private var inboxChrome: some View {
@@ -117,5 +188,14 @@ struct InboxView: View {
         .accessibilityLabel(unreadCount > 0
             ? "\(filter.title), \(MoroL10n.Navigation.notificationsUnread(unreadCount))" : filter.title)
         .accessibilityIdentifier("inbox.filter.\(filter.rawValue)")
+    }
+}
+
+private extension NotificationFilter {
+    func barIcon(filled: Bool) -> String {
+        switch self {
+        case .mentions: return "at"
+        default: return filled ? "tray.full.fill" : "tray.full"
+        }
     }
 }

@@ -1,4 +1,5 @@
 import CoreGraphics
+import SwiftUI
 import Testing
 @testable import moro
 
@@ -56,5 +57,51 @@ struct ThreadSplitLayoutTests {
         #expect(ThreadSplitLayout.listWidth(rootWidth: root, foldX: nil, isFoldActive: false,
             preferredFraction: 0.95) == root - ThreadSplitLayout.threadMinimumWidth,
             "A width saved on a wider screen still leaves the thread column room")
+    }
+
+    @Test func draggingTheDividerNearTheRightEdgeClosesThePanel() {
+        let edge = root - ThreadSplitLayout.closeDragWidth
+        #expect(ThreadSplitLayout.closesPanel(dividerX: edge + 1, rootWidth: root))
+        #expect(!ThreadSplitLayout.closesPanel(dividerX: edge, rootWidth: root))
+        // The widest the list can be dragged to on its own still keeps the panel.
+        #expect(!ThreadSplitLayout.closesPanel(
+            dividerX: root - ThreadSplitLayout.threadMinimumWidth, rootWidth: root))
+    }
+}
+
+/// What opens in the panel, and how it hands its controls to the system bar.
+@MainActor
+@Suite
+struct ThreadSplitPanelTests {
+    @Test func topicsOpenInThePanelOnlyWhereAsked() {
+        #expect(!ThreadSplitView<EmptyView>.opensInColumn(.hashtag("moro"), opensProfilesAndTopics: false))
+        #expect(ThreadSplitView<EmptyView>.opensInColumn(.hashtag("moro"), opensProfilesAndTopics: true))
+        #expect(!ThreadSplitView<EmptyView>.opensInColumn(.lists, opensProfilesAndTopics: true))
+    }
+
+    @Test func aPageOnlyWithdrawsTheActionsItPublished() {
+        let bar = ThreadSplitPanelBar()
+        let first = UUID()
+        let second = UUID()
+        let actions = ThreadSplitPanelBar.Actions(
+            editHistory: nil, readingOptions: AnyView(EmptyView()), more: AnyView(EmptyView()))
+        bar.publish(actions, owner: first)
+        // A reply opened in the panel takes over the bar…
+        bar.publish(actions, owner: second)
+        // …and the post under it disappearing must not empty the bar.
+        bar.withdraw(owner: first)
+        #expect(bar.actions != nil)
+        bar.withdraw(owner: second)
+        #expect(bar.actions == nil)
+    }
+
+    @Test func theListMarksThePostOpenInItsTabsPanel() {
+        let selection = ThreadSplitSelection()
+        selection.set("1", for: .home)
+        selection.set("2", for: .me)
+        #expect(selection.contains("1"))
+        #expect(selection.contains("2"))
+        selection.set(nil, for: .home)
+        #expect(!selection.contains("1"))
     }
 }

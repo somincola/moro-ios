@@ -108,6 +108,21 @@ final class SearchCoreViewController: UIViewController {
     /// Highest Explore re-tap already handled; earlier events are never replayed.
     private var handledTabReselection = 0
     private var scopeHeightConstraint: NSLayoutConstraint!
+    private var searchBarTopConstraint: NSLayoutConstraint!
+    /// iPhone Duo: the search button and the scopes live in the system bar (the status row
+    /// held upright, the side bar held landscape); the field only shows once search is opened.
+    var usesSystemBar = false {
+        didSet {
+            guard oldValue != usesSystemBar, isViewLoaded else { return }
+            if !usesSystemBar { isSearchExpanded = false }
+            applySystemBarLayout()
+            updateScopePresentation()
+            setCancelButtonVisible(interaction.page == .entry)
+            syncChromeBridge()
+        }
+    }
+    private(set) var isSearchExpanded = false
+    weak var chromeBridge: SearchChromeBridge?
     let entryHost = UIHostingController(rootView: AnyView(EmptyView()))
 
     private lazy var placeholderView: SearchLandingPlaceholderView = {
@@ -480,8 +495,10 @@ final class SearchCoreViewController: UIViewController {
                 + SearchLayoutMetrics.searchFieldVerticalInset * 2
         )
 
+        searchBarTopConstraint = searchBar.topAnchor.constraint(
+            equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8)
         NSLayoutConstraint.activate([
-            searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            searchBarTopConstraint,
             searchBar.leadingAnchor.constraint(
                 equalTo: readableGuide.leadingAnchor,
                 constant: SearchLayoutMetrics.searchBarOuterHorizontalInset
@@ -581,6 +598,7 @@ final class SearchCoreViewController: UIViewController {
         searchFieldHeightConstraint.constant = fieldHeight
         searchBarHeightConstraint.constant = fieldHeight
             + SearchLayoutMetrics.searchFieldVerticalInset * 2
+        applySystemBarLayout()
         if let glassIconView = searchBar.searchTextField.leftView as? UIImageView {
             glassIconView.tintColor = palette.textSecondary
             glassIconView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(
@@ -655,6 +673,14 @@ final class SearchCoreViewController: UIViewController {
 
         let resolvedPalette = palette ?? appliedTheme.uiKitPalette
         let isEntry = interaction.page == .entry
+        if usesSystemBar {
+            // The system bar shows the scopes.
+            scopeControl.isHidden = true
+            scopeIndicatorView.isHidden = true
+            scopeMenuButton.isHidden = true
+            scopeHeightConstraint.constant = 0
+            return
+        }
         let usesMenu = appliedTheme.dynamicTypeSize.isAccessibilitySize
         scopeControl.isHidden = isEntry || usesMenu
         scopeIndicatorView.isHidden = isEntry || usesMenu
@@ -787,7 +813,76 @@ final class SearchCoreViewController: UIViewController {
 
     @objc
     private func handleEscapeKey() {
-        cancelSearchEntry()
+        if usesSystemBar {
+            collapseSearchFromBar()
+        } else {
+            cancelSearchEntry()
+        }
+    }
+
+    // MARK: - System bar (iPhone Duo)
+
+    /// Collapsed, the field takes no room at all; open, it sits where it always has.
+    func applySystemBarLayout() {
+        guard isViewLoaded, searchBarTopConstraint != nil else { return }
+        let hidesField = usesSystemBar && !isSearchExpanded
+        searchBar.isHidden = hidesField
+        searchBarTopConstraint.constant = hidesField ? 0 : 8
+        searchBarHeightConstraint.constant = hidesField
+            ? 0
+            : searchFieldHeightConstraint.constant + SearchLayoutMetrics.searchFieldVerticalInset * 2
+    }
+
+    func expandSearchFromBar(focus: Bool = true) {
+        guard usesSystemBar else { return }
+        isSearchExpanded = true
+        UIView.animate(withDuration: 0.2) {
+            self.applySystemBarLayout()
+            self.view.layoutIfNeeded()
+        }
+        syncChromeBridge()
+        guard focus else { return }
+        allowsSearchFocus = true
+        searchBar.searchTextField.becomeFirstResponder()
+    }
+
+    /// Close from the bar: back to discovery, field folded away.
+    func collapseSearchFromBar() {
+        guard usesSystemBar else { return }
+        if interaction.page != .discovery { showDiscovery() }
+        searchBar.searchTextField.resignFirstResponder()
+        isSearchExpanded = false
+        UIView.animate(withDuration: 0.2) {
+            self.applySystemBarLayout()
+            self.view.layoutIfNeeded()
+        }
+        syncChromeBridge()
+    }
+
+    func selectScopeFromBar(_ scope: Scope) {
+        guard scopeControl.selectedSegmentIndex != scope.segmentIndex else { return }
+        scopeControl.selectedSegmentIndex = scope.segmentIndex
+        if interaction.page == .entry {
+            // Applies to the search about to be submitted.
+            fireScopeSelectionFeedbackIfNeeded()
+            syncChromeBridge()
+        } else {
+            scopeChanged()
+        }
+    }
+
+    /// Mirrors the controller's state into the bar. Deferred, as it is often reached from
+    /// inside a SwiftUI update of the hosting view.
+    func syncChromeBridge() {
+        guard let chromeBridge else { return }
+        let expanded = isSearchExpanded
+        let scope = selectedScope
+        let hasResults = interaction.page == .results
+        DispatchQueue.main.async {
+            if chromeBridge.isExpanded != expanded { chromeBridge.isExpanded = expanded }
+            if chromeBridge.scope != scope { chromeBridge.scope = scope }
+            if chromeBridge.hasResults != hasResults { chromeBridge.hasResults = hasResults }
+        }
     }
 
     @objc
@@ -821,6 +916,7 @@ final class SearchCoreViewController: UIViewController {
     @objc
     private func scopeChanged() {
         guard interaction.page != .entry else { return }
+        syncChromeBridge()
         fireScopeSelectionFeedbackIfNeeded()
         layoutScopeIndicator()
         updateScopePresentation()
@@ -1175,7 +1271,9 @@ final class SearchCoreViewController: UIViewController {
         return hasGrowth ? inserted : []
     }
 
-    func setCancelButtonVisible(_ visible: Bool) {
+    func setCancelButtonVisible(_ requested: Bool) {
+        // With the system bar, its close button does this.
+        let visible = requested && !usesSystemBar
         guard isCancelButtonVisible != visible else { return }
         isCancelButtonVisible = visible
         // UISearchBar disables its own cancel control when it resigns first responder.

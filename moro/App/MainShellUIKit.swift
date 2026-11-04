@@ -272,6 +272,9 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
         private func applyHingePresence(_ hasHinge: Bool) {
             homeNavigationController.setShowsNavigationBarAtRoot(hasHinge)
+            // Explore and Notifications put their controls in the system bar too.
+            exploreNavigationController.setShowsNavigationBarAtRoot(hasHinge)
+            inboxNavigationController.setShowsNavigationBarAtRoot(hasHinge)
             if coordinator.usesSystemHomeBar != hasHinge {
                 coordinator.usesSystemHomeBar = hasHinge
             }

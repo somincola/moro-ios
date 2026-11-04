@@ -67,7 +67,8 @@ extension TimelineHomeView {
     /// The same three controls as toolbar items, used when the system bar replaces the header.
     @ToolbarContentBuilder
     var systemBarToolbar: some ToolbarContent {
-        if usesSystemNavigationBar {
+        // iPhone Duo with the panel open: the bar shows the panel's controls instead.
+        if usesSystemNavigationBar && !panelOwnsSystemBar {
             // In the side bar the Me tab's avatar sits in the same column, so settings shows as
             // a gear there instead of a second avatar.
             if let onAvatarTap, toolbarIsVertical {

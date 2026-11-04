@@ -19,6 +19,9 @@ struct StatusDetailView: View {
     @State private var visibleStatusID: String?
     @State private var readingState = ThreadReadingState()
     @State private var highlightedStatusID: String?
+    /// iPhone Duo Home: the panel's actions go in the system side bar, not the title row.
+    @Environment(\.threadSplitPanelBar) private var panelBar
+    @State private var panelBarOwner = UUID()
 
     let apiClient: MastodonAPI
     @StateObject private var postMenuActionCenter: PostMenuActionCenter
@@ -27,6 +30,8 @@ struct StatusDetailView: View {
     /// Shown in a column next to the timeline rather than as a pushed page: the title and
     /// actions go in the view's own header instead of the shared navigation bar.
     private let isEmbedded: Bool
+    /// Embedded: a control at the start of the title row (the panel's close button).
+    private let embeddedLeadingAction: AnyView?
 
     @MainActor
     init(
@@ -34,10 +39,12 @@ struct StatusDetailView: View {
         apiClient: MastodonAPI,
         threadCache: ThreadCache? = nil,
         accountCache: AccountCache? = nil,
-        isEmbedded: Bool = false
+        isEmbedded: Bool = false,
+        embeddedLeadingAction: AnyView? = nil
     ) {
         self.apiClient = apiClient
         self.isEmbedded = isEmbedded
+        self.embeddedLeadingAction = embeddedLeadingAction
         _postMenuActionCenter = StateObject(
             wrappedValue: PostMenuActionCenter(apiClient: apiClient))
         // Use provided caches or fall back to shared instance
@@ -64,6 +71,9 @@ struct StatusDetailView: View {
                 }
         }
         .modifier(PageNavigationTitle(isEnabled: !isEmbedded))
+        .onChange(of: panelBarToken, initial: true) { _, _ in publishPanelBarActions() }
+        .onAppear { publishPanelBarActions() }
+        .onDisappear { panelBar?.withdraw(owner: panelBarOwner) }
         .toolbar {
             if !isEmbedded {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
@@ -177,10 +187,52 @@ struct StatusDetailView: View {
         }
     }
 
+    /// The panel hands its actions to the system bar (see `ThreadSplitPanelBar`).
+    private var raisesActionsToPanelBar: Bool {
+        isEmbedded && panelBar != nil
+    }
+
+    /// What the raised actions show; they are handed over again whenever it changes.
+    private struct PanelBarToken: Equatable {
+        let status: Status
+        let authorOnly: Bool
+        let hasCollapsed: Bool
+        let isMutingUser: Bool?
+        let isBlockingUser: Bool?
+    }
+
+    private var panelBarToken: PanelBarToken? {
+        guard raisesActionsToPanelBar else { return nil }
+        let menu = postActions(for: viewModel.focusedStatus).menu
+        return PanelBarToken(
+            status: viewModel.focusedStatus,
+            authorOnly: readingState.authorOnly,
+            hasCollapsed: !readingState.collapsedIDs.isEmpty,
+            isMutingUser: menu?.isMutingUser,
+            isBlockingUser: menu?.isBlockingUser)
+    }
+
+    private func publishPanelBarActions() {
+        guard raisesActionsToPanelBar, let panelBar else { return }
+        panelBar.publish(
+            ThreadSplitPanelBar.Actions(
+                editHistory: viewModel.focusedStatus.editedAt != nil ? AnyView(editHistoryButton) : nil,
+                readingOptions: AnyView(readingOptionsMenu),
+                more: AnyView(detailHeaderMoreButton)),
+            owner: panelBarOwner)
+    }
+
     /// Edit history, reading options and more: in the navigation bar, or in the embedded header.
     @ViewBuilder
     private var headerActions: some View {
         if viewModel.focusedStatus.editedAt != nil {
+            editHistoryButton
+        }
+        readingOptionsMenu
+        detailHeaderMoreButton
+    }
+
+    private var editHistoryButton: some View {
             Button {
                 showingEditHistorySheet = true
                 Task { await viewModel.loadStatusHistory() }
@@ -188,8 +240,9 @@ struct StatusDetailView: View {
                 Image(systemName: "clock.arrow.circlepath")
             }
             .accessibilityLabel(Text(MoroL10n.StatusDetail.editHistory))
-        }
+    }
 
+    private var readingOptionsMenu: some View {
         Menu {
             Button {
                 readingState.setAuthorOnly(!readingState.authorOnly)
@@ -209,21 +262,27 @@ struct StatusDetailView: View {
         }
         .accessibilityLabel(MoroL10n.ThreadReading.options)
         .accessibilityIdentifier("thread.readingOptions")
-
-        detailHeaderMoreButton
     }
 
     /// The column header used when embedded: the same title and actions as the navigation bar.
     private var embeddedHeader: some View {
         VStack(spacing: 0) {
             HStack(spacing: theme.spacing.s) {
+                if let embeddedLeadingAction, !raisesActionsToPanelBar {
+                    embeddedLeadingAction
+                        .foregroundStyle(theme.colors.textPrimary)
+                        .frame(minWidth: 32, minHeight: 32)
+                        .contentShape(Rectangle())
+                }
                 Text(MoroL10n.StatusDetail.headerTitle)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(theme.colors.textPrimary)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 0)
-                headerActions
-                    .foregroundStyle(theme.colors.textPrimary)
+                if !raisesActionsToPanelBar {
+                    headerActions
+                        .foregroundStyle(theme.colors.textPrimary)
+                }
             }
             .padding(.horizontal, theme.spacing.contentHorizontalInset)
             .frame(height: 44)

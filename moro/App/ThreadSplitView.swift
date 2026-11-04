@@ -1,9 +1,20 @@
+import Combine
 import SwiftUI
 
 /// Where the two columns meet. Pure so it can be tested without an unfolded iPhone Duo.
 enum ThreadSplitLayout {
     static let listMinimumWidth: CGFloat = 320
     static let threadMinimumWidth: CGFloat = 400
+    /// Narrowest root width that can show a second column (iPhone Duo inner display held
+    /// landscape); anything narrower, including the outer display, stays one column.
+    static let splitMinimumWidth: CGFloat = 820
+    /// Dragging the divider this close to the trailing edge closes the panel.
+    static let closeDragWidth: CGFloat = 280
+
+    /// The panel closes when the divider is let go within `closeDragWidth` of the edge.
+    static func closesPanel(dividerX: CGFloat, rootWidth: CGFloat) -> Bool {
+        dividerX > rootWidth - closeDragWidth
+    }
 
     /// - Half open (`isFoldActive`), the columns meet at the fold so neither runs across the
     ///   crease, whatever the reader chose.
@@ -53,12 +64,87 @@ enum ThreadSplitLayout {
     }
 }
 
-/// A tab root that, on iPhone Duo's inner display held landscape, shows its list in a left
-/// column and the opened thread in a right column; otherwise it is just the list.
+/// Which post each tab's panel shows, so the list can mark the row it came from. Shared
+/// because the timeline pager hosts its pages in their own hosting controllers, which the
+/// SwiftUI environment does not reach.
+@MainActor
+final class ThreadSplitSelection: ObservableObject {
+    static let shared = ThreadSplitSelection()
+    @Published private(set) var statusIDs: [MainTab: String] = [:]
+
+    // iOS 26.0–26.2 crash releasing a main-actor object off the main thread.
+    nonisolated deinit {}
+
+    func set(_ statusID: String?, for tab: MainTab) {
+        guard statusIDs[tab] != statusID else { return }
+        statusIDs[tab] = statusID
+    }
+
+    func contains(_ statusID: String) -> Bool {
+        statusIDs.values.contains(statusID)
+    }
+}
+
+/// The open post's actions, raised into the tab's system bar. On iPhone Duo, Home keeps its
+/// controls in the bar that runs down the side; with the panel open that bar shows the
+/// panel's close button and the post's actions instead of the timeline's.
+@MainActor
+final class ThreadSplitPanelBar: ObservableObject {
+    struct Actions {
+        var editHistory: AnyView?
+        var readingOptions: AnyView
+        var more: AnyView
+    }
+
+    @Published private(set) var actions: Actions?
+    private var owner: UUID?
+
+    nonisolated deinit {}
+
+    func publish(_ actions: Actions, owner: UUID) {
+        self.owner = owner
+        self.actions = actions
+    }
+
+    func withdraw(owner: UUID) {
+        guard self.owner == owner else { return }
+        self.owner = nil
+        actions = nil
+    }
+}
+
+extension EnvironmentValues {
+    /// Set inside the panel when its actions belong in the system bar.
+    @Entry var threadSplitPanelBar: ThreadSplitPanelBar? = nil
+    /// Set on the list while the panel owns the system bar: the list leaves its items out.
+    @Entry var threadSplitPanelOwnsBar = false
+}
+
+/// Tints the row whose post is open in the panel.
+struct ThreadSplitRowHighlight: ViewModifier {
+    let statusID: String
+    @ObservedObject private var selection = ThreadSplitSelection.shared
+    @Environment(\.moroTheme) private var theme
+
+    func body(content: Content) -> some View {
+        content.background {
+            if selection.contains(statusID) {
+                theme.colors.themeTint.opacity(0.10)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: selection.contains(statusID))
+    }
+}
+
+/// A tab root that, on iPhone Duo's inner display held landscape, can open a panel on the
+/// right next to its list. The list stays full width until something is opened: the panel
+/// appears on demand and closes again (close button, Esc, or dragging the divider to the
+/// right edge), so nothing sits empty waiting for a selection.
 ///
-/// While split, opening a post from the list (`.statusDetail` on this tab's router, with the
-/// tab at its root) fills the thread column instead of pushing. Pages pushed on top (a
-/// profile, say) keep pushing. Leaving the split layout carries the open thread over as a
+/// While the panel can open, opening a post from the list (`.statusDetail` on this tab's
+/// router, with the tab at its root) fills the panel instead of pushing. Pages pushed on top
+/// (a profile, say) keep pushing. Leaving the wide layout carries the open panel over as a
 /// pushed page so the reader keeps their place.
 struct ThreadSplitView<ListColumn: View>: View {
     @ObservedObject var coordinator: RootTabCoordinator
@@ -68,7 +154,6 @@ struct ThreadSplitView<ListColumn: View>: View {
     /// Explore lists people and topics too: opening one fills the second column like a post
     /// does. Elsewhere only posts do, and profiles keep pushing.
     var opensProfilesAndTopics = false
-    var placeholder = MoroL10n.StatusDetail.splitPlaceholder
     @ViewBuilder let list: () -> ListColumn
 
     @Environment(\.moroTheme) private var theme
@@ -86,14 +171,12 @@ struct ThreadSplitView<ListColumn: View>: View {
     @State private var lockedDividerOffset: CGFloat = 0
     @State private var grabberNudge: CGFloat = 0
     @State private var showsDividerHint = false
+    /// The divider has been dragged far enough right that letting go closes the panel.
+    @State private var isPendingClose = false
     @AppStorage("threadSplit.dividerIntroduced") private var hasIntroducedDivider = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let dividerFeedback = UISelectionFeedbackGenerator()
     private let limitFeedback = UIImpactFeedbackGenerator(style: .rigid)
-
-    /// Narrowest root width that gets two columns (iPhone Duo inner display held landscape);
-    /// anything narrower, including the outer display, stays one column.
-    private let splitMinimumWidth: CGFloat = 820
 
     @State private var rootWidth: CGFloat = 0
     /// x of the display's fold when it runs top to bottom (inner display held landscape), in
@@ -105,9 +188,25 @@ struct ThreadSplitView<ListColumn: View>: View {
     /// links inside it (a post on that profile, say) push within the column, with a back
     /// button, and leave the list where it was.
     @StateObject private var columnRouter = AppRouter()
+    @StateObject private var panelBar = ThreadSplitPanelBar()
+
+    /// On iPhone Duo every tab keeps its controls in the system bar (down the side when held
+    /// landscape), so the panel's close button and actions go there too.
+    private var raisesPanelActions: Bool {
+        coordinator.usesSystemHomeBar
+    }
 
     private var isSplit: Bool {
-        coordinator.usesSystemHomeBar && rootWidth >= splitMinimumWidth
+        coordinator.usesSystemHomeBar && rootWidth >= ThreadSplitLayout.splitMinimumWidth
+    }
+
+    /// The panel is on screen: wide enough, and something has been opened.
+    private var isPanelOpen: Bool {
+        isSplit && detailRoute != nil
+    }
+
+    private var panelAnimation: Animation {
+        reduceMotion ? .easeInOut(duration: 0.2) : .snappy(duration: 0.32)
     }
 
     /// The columns split at the fold, so neither column's content runs across the crease when
@@ -139,11 +238,15 @@ struct ThreadSplitView<ListColumn: View>: View {
     var body: some View {
         HStack(spacing: 0) {
             list()
-                .frame(width: isSplit ? listColumnWidth : nil)
-            if isSplit {
+                .environment(\.threadSplitPanelOwnsBar, raisesPanelActions && isPanelOpen)
+                .frame(width: isPanelOpen ? listColumnWidth : nil)
+                .frame(maxWidth: isPanelOpen ? nil : .infinity)
+            if isPanelOpen {
                 columnDivider
                 threadColumn
                     .frame(maxWidth: .infinity)
+                    .opacity(isPendingClose ? 0.45 : 1)
+                    .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
             }
         }
         .onGeometryChange(for: CGFloat.self) { proxy in
@@ -163,9 +266,76 @@ struct ThreadSplitView<ListColumn: View>: View {
             if active { draggedListWidth = nil }
         }
         .coordinateSpace(.named(Self.coordinateSpace))
+        .toolbar {
+            if raisesPanelActions && isPanelOpen {
+                panelToolbar
+            }
+        }
         .onChange(of: isSplit, initial: true) { _, split in
             updateThreadRouting(isSplit: split)
         }
+        .onChange(of: detailRoute, initial: true) { _, route in
+            if case .statusDetail(let status) = route {
+                ThreadSplitSelection.shared.set(status.id, for: tab)
+            } else {
+                ThreadSplitSelection.shared.set(nil, for: tab)
+            }
+        }
+    }
+
+    /// Back to the full-width list.
+    private func closePanel() {
+        withAnimation(panelAnimation) {
+            detailRoute = nil
+        }
+        columnRouter.path = NavigationPath()
+        isPendingClose = false
+        draggedListWidth = nil
+    }
+
+    @ToolbarContentBuilder
+    private var panelToolbar: some ToolbarContent {
+        // Deeper in the panel (a reply opened from the thread, say) it steps back first.
+        ToolbarItem(placement: .topBarLeading) {
+            if columnRouter.path.isEmpty { closeButton } else { panelBackButton }
+        }
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if let actions = panelBar.actions {
+                if let editHistory = actions.editHistory { editHistory }
+                actions.readingOptions
+                actions.more
+            }
+        }
+    }
+
+    private var panelBackButton: some View {
+        Button { columnRouter.pop() } label: {
+            Label(MoroL10n.UtilityButton.back, systemImage: "chevron.left")
+                .labelStyle(.iconOnly)
+        }
+        .keyboardShortcut("[", modifiers: .command)
+        .accessibilityIdentifier("threadSplit.back")
+    }
+
+    /// Pages opened inside the panel. On Home a post keeps the panel's look: its actions,
+    /// and the way back, go in the system bar like the first post's.
+    @ViewBuilder
+    private func columnDestination(_ route: Route) -> some View {
+        if raisesPanelActions, case .statusDetail(let status) = route {
+            StatusDetailView(status: status, apiClient: apiClient, isEmbedded: true)
+                .navigationBarBackButtonHidden(true)
+        } else {
+            routeFactory.view(for: route)
+        }
+    }
+
+    private var closeButton: some View {
+        Button(action: closePanel) {
+            Label(MoroL10n.Common.close, systemImage: "xmark")
+                .labelStyle(.iconOnly)
+        }
+        .keyboardShortcut(.cancelAction)
+        .accessibilityIdentifier("threadSplit.close")
     }
 
     private static var coordinateSpace: String { "threadSplit" }
@@ -259,6 +429,18 @@ struct ThreadSplitView<ListColumn: View>: View {
                     dividerFeedback.selectionChanged()
                     dismissDividerHint()
                 }
+                let closes = ThreadSplitLayout.closesPanel(dividerX: value.location.x, rootWidth: rootWidth)
+                if closes != isPendingClose {
+                    limitFeedback.impactOccurred()
+                    withAnimation(.easeOut(duration: 0.15)) { isPendingClose = closes }
+                }
+                if closes {
+                    // Follows the finger towards the edge, so letting go reads as closing.
+                    draggedListWidth = min(value.location.x, rootWidth - 40)
+                    snappedDetent = nil
+                    isDividerAtLimit = false
+                    return
+                }
                 let raw = ThreadSplitLayout.clamp(value.location.x, rootWidth: rootWidth)
                 let snap = ThreadSplitLayout.snapped(raw, rootWidth: rootWidth, foldX: verticalFoldX)
                 if snap.detent != snappedDetent {
@@ -271,6 +453,12 @@ struct ThreadSplitView<ListColumn: View>: View {
                 draggedListWidth = snap.width
             }
             .onEnded { _ in
+                if isPendingClose {
+                    closePanel()
+                    snappedDetent = nil
+                    isDividerAtLimit = false
+                    return
+                }
                 if let draggedListWidth { setListWidth(draggedListWidth) }
                 draggedListWidth = nil
                 snappedDetent = nil
@@ -354,7 +542,7 @@ struct ThreadSplitView<ListColumn: View>: View {
                 Self.opensInColumn(route, opensProfilesAndTopics: opensProfilesAndTopics)
             else { return false }
             columnRouter.path = NavigationPath()
-            detailRoute = route
+            withAnimation(.snappy(duration: 0.32)) { detailRoute = route }
             return true
         }
     }
@@ -366,11 +554,21 @@ struct ThreadSplitView<ListColumn: View>: View {
     @ViewBuilder
     private func columnRoot(_ route: Route) -> some View {
         if case .statusDetail(let status) = route {
-            // The embedded thread draws its own title row.
-            StatusDetailView(status: status, apiClient: apiClient, isEmbedded: true)
-                .toolbar(.hidden, for: .navigationBar)
+            // The embedded thread draws its own title row, with the close button.
+            StatusDetailView(
+                status: status, apiClient: apiClient, isEmbedded: true,
+                embeddedLeadingAction: AnyView(closeButton))
+                // Hiding the column's bar reaches the tab's own bar too; on Home that bar
+                // carries the panel's actions, so it stays.
+                .toolbar(raisesPanelActions ? .automatic : .hidden, for: .navigationBar)
         } else {
             routeFactory.view(for: route)
+                .toolbar {
+                    // With the system bar, the panel's close button is already there.
+                    if !raisesPanelActions {
+                        ToolbarItem(placement: .topBarLeading) { closeButton }
+                    }
+                }
         }
     }
 
@@ -379,24 +577,13 @@ struct ThreadSplitView<ListColumn: View>: View {
         if let detailRoute {
             NavigationStack(path: $columnRouter.path) {
                 columnRoot(detailRoute)
-                    .navigationDestination(for: Route.self) { routeFactory.view(for: $0) }
+                    .navigationDestination(for: Route.self) { columnDestination($0) }
             }
             .environmentObject(columnRouter)
             .environment(\.appRouter, columnRouter)
+            .environment(\.threadSplitPanelBar, raisesPanelActions ? panelBar : nil)
             .id(detailRoute)
             .accessibilityIdentifier("threadSplit.detail")
-        } else {
-            VStack(spacing: theme.spacing.m) {
-                Image(systemName: "text.bubble")
-                    .moroScaledFont(size: 40, weight: .light)
-                Text(placeholder)
-                    .font(theme.typography.body)
-                    .multilineTextAlignment(.center)
-            }
-            .foregroundStyle(theme.colors.textSecondary)
-            .padding(theme.spacing.xl)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .accessibilityIdentifier("threadSplit.placeholder")
         }
     }
 }

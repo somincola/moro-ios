@@ -279,7 +279,7 @@ struct MainTabView: View {
             AnyView(
                 ThreadSplitView(
                     coordinator: coordinator, tab: .explore, router: coordinator.exploreRouter, apiClient: apiClient,
-                    opensProfilesAndTopics: true, placeholder: MoroL10n.StatusDetail.splitPlaceholderExplore
+                    opensProfilesAndTopics: true
                 ) {
                     ExploreTabRootView(coordinator: coordinator, apiClient: apiClient)
                 }
@@ -551,7 +551,9 @@ private struct ExploreTabRootView: View {
     let apiClient: MastodonAPI
 
     var body: some View {
-        SearchView(apiClient: apiClient, onEntryStateChanged: coordinator.setExploreSearchEntryActive)
+        SearchView(
+            apiClient: apiClient, onEntryStateChanged: coordinator.setExploreSearchEntryActive,
+            usesSystemBar: coordinator.usesSystemHomeBar)
             .environment(\.tabReselection, coordinator.tabReselection)
             .environment(\.tabActivation, coordinator.tabActivation)
     }

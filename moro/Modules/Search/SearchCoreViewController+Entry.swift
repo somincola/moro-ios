@@ -107,6 +107,11 @@ extension SearchCoreViewController {
         updateScopePresentation()
         let palette = appliedTheme.uiKitPalette
         entryHost.view.backgroundColor = palette.canvasBackground
+        if usesSystemBar, interaction.page != .discovery, !isSearchExpanded {
+            // Searching (a re-tap, a query handed in) always shows the field.
+            expandSearchFromBar(focus: false)
+        }
+        syncChromeBridge()
         onEntryStateChanged?(isEntry)
     }
 }
