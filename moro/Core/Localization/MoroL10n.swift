@@ -1777,6 +1777,8 @@ public enum MoroL10n {
     public enum StatusDetail {
         public static var headerTitle: String { text("statusDetail.headerTitle") }
         public static var splitPlaceholder: String { text("statusDetail.splitPlaceholder") }
+        public static var splitDivider: String { text("statusDetail.splitDivider") }
+        public static var splitDividerReset: String { text("statusDetail.splitDividerReset") }
         public static var editHistory: String { text("statusDetail.editHistory") }
         public static var confirmBoostTitle: String { text("statusDetail.confirmBoostTitle") }
         public static var confirmBoostMessage: String { text("statusDetail.confirmBoostMessage") }
