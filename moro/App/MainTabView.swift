@@ -192,6 +192,7 @@ struct MainTabView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
+            coordinator.noteAppBecameActive()
             consumePendingWidgetHandoffIfNeeded()
             consumePendingSharedDraftIfNeeded()
             ensureInboxStreamSubscription()
@@ -551,6 +552,7 @@ private struct ExploreTabRootView: View {
     var body: some View {
         SearchView(apiClient: apiClient, onEntryStateChanged: coordinator.setExploreSearchEntryActive)
             .environment(\.tabReselection, coordinator.tabReselection)
+            .environment(\.tabActivation, coordinator.tabActivation)
     }
 }
 
@@ -558,6 +560,7 @@ private struct MeTabRootView: View {
     /// Not observed: the profile only needs re-tap events, not every shell change.
     let coordinator: RootTabCoordinator
     @State private var tabReselection: TabReselection?
+    @State private var tabActivation: TabActivation?
     @EnvironmentObject private var appState: AppState
 
     let apiClient: MastodonAPI
@@ -576,6 +579,7 @@ private struct MeTabRootView: View {
         self.activeSessionID = activeSessionID
         // Start from the current event so an earlier re-tap is not mistaken for a new one.
         _tabReselection = State(initialValue: coordinator.tabReselection)
+        _tabActivation = State(initialValue: coordinator.tabActivation)
     }
 
     private var currentAccount: Account? {
@@ -608,7 +612,9 @@ private struct MeTabRootView: View {
             }
         }
         .environment(\.tabReselection, tabReselection)
+        .environment(\.tabActivation, tabActivation)
         .onReceive(coordinator.$tabReselection.removeDuplicates()) { tabReselection = $0 }
+        .onReceive(coordinator.$tabActivation.removeDuplicates()) { tabActivation = $0 }
     }
 }
 

@@ -290,9 +290,11 @@ final class TimelineDetectionManager: ObservableObject {
         if let activeDimension {
             dimensions.insert(activeDimension)
         }
+        // Low Power Mode turns polling off; opening a page and foregrounding still check
+        // once (TimelineHomeView), and the stream keeps delivering.
         return TimelineDetectionPolicy(
             enabledDimensions: dimensions,
-            intervals: TimelineDetectionPolicy.powerSavingIntervals,
+            intervals: isLowPowerMode ? [:] : TimelineDetectionPolicy.powerSavingIntervals,
             useStreaming: true
         )
     }
@@ -369,6 +371,8 @@ final class TimelineDetectionManager: ObservableObject {
         allowWhileStreaming: Bool
     ) async {
         guard let apiClient = apiClient else { return }
+        // Offline, a poll can only fail; the reconnect check below catches up.
+        guard !NetworkMonitor.shared.isOffline else { return }
 
         // The user stream covers the following dimension in real time, so polling is
         // only a fallback for when the stream isn't actively connected (dropped or
@@ -499,6 +503,17 @@ final class TimelineDetectionManager: ObservableObject {
 
         // Initialize low power mode state
         isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+
+        // Back online: check the page on screen once instead of waiting for the next poll.
+        NetworkMonitor.shared.$isConnected
+            .removeDuplicates()
+            .dropFirst()
+            .filter { $0 }
+            .sink { [weak self] _ in
+                guard let self, self.isInForeground, let dimension = self.activeDimension else { return }
+                Task { await self.checkForNewItems(dimension: dimension, force: true) }
+            }
+            .store(in: &cancellables)
 
         // Settings changes
         settings.objectWillChange

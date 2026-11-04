@@ -79,7 +79,11 @@ enum RootSheetDestination: String, Identifiable {
 
 @MainActor
 final class RootTabCoordinator: ObservableObject {
-    @Published private(set) var selectedTab: MainTab
+    @Published private(set) var selectedTab: MainTab {
+        didSet {
+            if oldValue != selectedTab { noteTabActivated(selectedTab) }
+        }
+    }
     @Published var inboxFilter: NotificationFilter
     @Published var composeContext: ComposeContextWrapper?
     @Published var presentedSheet: RootSheetDestination?
@@ -87,6 +91,8 @@ final class RootTabCoordinator: ObservableObject {
     /// The Me tab's account switcher is up; floating controls make room for it.
     @Published var isAccountSwitcherPresented = false
     @Published private(set) var tabReselection: TabReselection?
+    /// The latest time a root tab came on screen: switched to, or the app came back to it.
+    @Published private(set) var tabActivation: TabActivation?
     @Published var timelineSelection: TimelineType = .home
     @Published var tabBarHeight: CGFloat = 78
     /// The device has a hinge (iPhone Duo): the home timeline moves its header controls into the
@@ -248,6 +254,15 @@ final class RootTabCoordinator: ObservableObject {
             router(for: tab).popToRoot()
             setIsAtRoot(true, for: tab)
         }
+    }
+
+    /// The app came back to the foreground showing the selected tab.
+    func noteAppBecameActive() {
+        noteTabActivated(selectedTab)
+    }
+
+    private func noteTabActivated(_ tab: MainTab) {
+        tabActivation = TabActivation(tab: tab, sequence: (tabActivation?.sequence ?? 0) + 1)
     }
 
     private func triggerScrollToTopEvent(for tab: MainTab) {
