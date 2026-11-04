@@ -222,7 +222,9 @@ final class ProfileExperienceUITests: XCTestCase {
         XCTAssertEqual(input(app, "profile.field.0.name").value as? String, "About")
         XCTAssertEqual(input(app, "profile.field.1.value").value as? String, rawLink)
         let moved = input(app, "profile.field.1.name")
-        moved.tap()
+        // The menu is still closing and the rows reordering; a tap then can land without
+        // focusing the field, so make sure it has the keyboard before typing.
+        focus(moved)
         moved.typeText(" Link")
         attach(app, "profile-fields-reordered")
         save(app)
@@ -573,6 +575,16 @@ final class ProfileExperienceUITests: XCTestCase {
     /// Multi-line inputs surface as text views, single-line ones as text fields.
     private func input(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
+    private func focus(_ field: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        func hasFocus() -> Bool { field.value(forKey: "hasKeyboardFocus") as? Bool == true }
+        let focused = NSPredicate { _, _ in hasFocus() }
+        for _ in 0..<3 where !hasFocus() {
+            field.tap()
+            _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: focused, object: nil)], timeout: 2)
+        }
+        XCTAssertTrue(hasFocus(), "The field never took the keyboard", file: file, line: line)
     }
 
     private func save(_ app: XCUIApplication) {
