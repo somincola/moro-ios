@@ -34,6 +34,22 @@ struct ThreadSplitLayoutTests {
         #expect(ThreadSplitLayout.isResizable(rootWidth: root, foldX: 100, isFoldActive: true))
     }
 
+    @Test func dragsSettleOnTheFoldHalfAndAThird() {
+        let detents = ThreadSplitLayout.detents(rootWidth: root, foldX: fold)
+        // The fold of a symmetric display is also its half: one detent, not two.
+        #expect(detents.count == 2)
+        #expect(detents.contains(fold))
+        // A third (317 pt) is below the list's minimum, so it settles there instead.
+        #expect(detents.contains(ThreadSplitLayout.listMinimumWidth))
+
+        let nearFold = ThreadSplitLayout.snapped(fold - 9, rootWidth: root, foldX: fold)
+        #expect(nearFold.width == fold)
+        #expect(nearFold.detent == fold)
+        let free = ThreadSplitLayout.snapped(400, rootWidth: root, foldX: fold)
+        #expect(free.width == 400)
+        #expect(free.detent == nil)
+    }
+
     @Test func bothColumnsStayReadable() {
         #expect(ThreadSplitLayout.clamp(100, rootWidth: root) == ThreadSplitLayout.listMinimumWidth)
         #expect(ThreadSplitLayout.clamp(900, rootWidth: root) == root - ThreadSplitLayout.threadMinimumWidth)
