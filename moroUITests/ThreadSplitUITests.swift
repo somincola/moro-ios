@@ -48,6 +48,38 @@ final class ThreadSplitUITests: XCTestCase {
         assertThreadOpenedBeside(listRow: post, in: app)
     }
 
+    /// Explore also opens people and topics beside the list; what opens from there (a post
+    /// on that profile) pushes inside the second column, so the list never moves.
+    func testExploreOpensPeopleAndTopicsInTheSecondColumn() throws {
+        let app = launch()
+        defer { app.terminate() }
+        app.buttons["mainTab.explore"].tap()
+        let input = app.searchFields["search.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        try requireSplit(in: app)
+
+        input.tap()
+        input.typeText("Push\n")
+        let results = app.tables["search.results"]
+        let person = results.cells.firstMatch
+        XCTAssertTrue(person.waitForExistence(timeout: 10))
+        person.tap()
+        let detail = app.descendants(matching: .any)["threadSplit.detail"]
+        XCTAssertTrue(detail.waitForExistence(timeout: 5), "The profile opens in the second column")
+        XCTAssertTrue(person.isHittable, "Opening a person must not push over the list")
+        XCTAssertGreaterThan(detail.frame.minX, person.frame.maxX - 1)
+        attach(app, "split-profile")
+
+        app.segmentedControls["search.scope"].buttons.element(boundBy: 2).tap()
+        let topic = results.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "pushtopic")).firstMatch
+        XCTAssertTrue(topic.waitForExistence(timeout: 5))
+        topic.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "pushtopic")).allElementsBoundByIndex
+            .contains { $0.frame.minX > topic.frame.maxX }, "The topic replaces the profile in the second column")
+        XCTAssertTrue(topic.isHittable)
+        attach(app, "split-topic")
+    }
+
     // MARK: - Helpers
 
     private func launch() -> XCUIApplication {
@@ -63,7 +95,7 @@ final class ThreadSplitUITests: XCTestCase {
     /// Holds the device landscape and skips unless that gives two columns.
     private func requireSplit(in app: XCUIApplication) throws {
         XCUIDevice.shared.orientation = .landscapeLeft
-        let placeholder = app.staticTexts["Select a post to read the conversation here"]
+        let placeholder = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Select a post")).firstMatch
         let window = app.windows.firstMatch
         _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(
             predicate: NSPredicate { _, _ in window.frame.width > window.frame.height }, object: nil)], timeout: 5)
@@ -78,15 +110,12 @@ final class ThreadSplitUITests: XCTestCase {
     /// The thread fills the right column: the placeholder goes, nothing was pushed (the list
     /// is still on screen at its place) and the thread sits right of the list.
     private func assertThreadOpenedBeside(listRow: XCUIElement, in app: XCUIApplication) {
-        let placeholder = app.staticTexts["Select a post to read the conversation here"]
+        let placeholder = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Select a post")).firstMatch
         XCTAssertTrue(placeholder.waitForNonExistence(timeout: 5), "The thread replaces the placeholder")
         XCTAssertTrue(listRow.isHittable, "Opening a thread must not push over the list")
-        // The detail may show the row's post or its refetched copy from the fixture server.
-        let listEdge = listRow.frame.maxX
-        let thread = app.staticTexts.matching(NSPredicate(
-            format: "label CONTAINS %@ OR label CONTAINS %@", "Recent activity 330", "Push target post"))
-            .allElementsBoundByIndex.filter { $0.frame.minX > listEdge }
-        XCTAssertFalse(thread.isEmpty, "The thread shows in the column right of the list")
+        let detail = app.descendants(matching: .any)["threadSplit.detail"]
+        XCTAssertTrue(detail.waitForExistence(timeout: 5), "The thread shows in the second column")
+        XCTAssertGreaterThan(detail.frame.minX, listRow.frame.maxX - 1, "…right of the list")
         attach(app, "split-thread")
     }
 

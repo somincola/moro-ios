@@ -65,9 +65,15 @@ struct ThreadSplitView<ListColumn: View>: View {
     let tab: MainTab
     let router: AppRouter
     let apiClient: MastodonAPI
+    /// Explore lists people and topics too: opening one fills the second column like a post
+    /// does. Elsewhere only posts do, and profiles keep pushing.
+    var opensProfilesAndTopics = false
+    var placeholder = MoroL10n.StatusDetail.splitPlaceholder
     @ViewBuilder let list: () -> ListColumn
 
     @Environment(\.moroTheme) private var theme
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.cacheManager) private var cacheManager
     /// The reader's list width as a share of the root, shared by every tab; 0 is automatic.
     @AppStorage("threadSplit.listFraction") private var preferredListFraction: Double = 0
     /// The list width while the divider is being dragged.
@@ -93,8 +99,12 @@ struct ThreadSplitView<ListColumn: View>: View {
     /// x of the display's fold when it runs top to bottom (inner display held landscape), in
     /// this view's space. Reported even fully open, so the columns don't move when folding.
     @State private var verticalFoldX: CGFloat?
-    /// The thread shown in the second column.
-    @State private var threadStatus: Status?
+    /// What the second column shows: a post, or in Explore a profile or a topic.
+    @State private var detailRoute: Route?
+    /// The second column's own stack. Opening something from the list replaces its root;
+    /// links inside it (a post on that profile, say) push within the column, with a back
+    /// button, and leave the list where it was.
+    @StateObject private var columnRouter = AppRouter()
 
     private var isSplit: Bool {
         coordinator.usesSystemHomeBar && rootWidth >= splitMinimumWidth
@@ -316,34 +326,70 @@ struct ThreadSplitView<ListColumn: View>: View {
         withAnimation(.snappy) { preferredListFraction = 0 }
     }
 
+    /// Routes the second column takes from the list.
+    static func opensInColumn(_ route: Route, opensProfilesAndTopics: Bool) -> Bool {
+        switch route {
+        case .statusDetail:
+            return true
+        case .userProfile, .mentionUser, .accountLookup, .hashtag:
+            return opensProfilesAndTopics
+        default:
+            return false
+        }
+    }
+
     private func updateThreadRouting(isSplit: Bool) {
         guard isSplit else {
             router.inPlaceRouteHandler = nil
-            if let status = threadStatus {
-                threadStatus = nil
-                router.navigate(to: .statusDetail(status))
+            // One column again: what was open on the right becomes a pushed page.
+            if let route = detailRoute {
+                detailRoute = nil
+                columnRouter.path = NavigationPath()
+                router.navigate(to: route)
             }
             return
         }
-        router.inPlaceRouteHandler = { [coordinator, tab] route in
-            guard case .statusDetail(let status) = route, coordinator.isAtRoot(tab) else {
-                return false
-            }
-            threadStatus = status
+        router.inPlaceRouteHandler = { [coordinator, tab, opensProfilesAndTopics] route in
+            guard coordinator.isAtRoot(tab),
+                Self.opensInColumn(route, opensProfilesAndTopics: opensProfilesAndTopics)
+            else { return false }
+            columnRouter.path = NavigationPath()
+            detailRoute = route
             return true
+        }
+    }
+
+    private var routeFactory: AppRouteViewFactory {
+        AppRouteViewFactory(apiClient: apiClient, appState: appState, cacheManager: cacheManager)
+    }
+
+    @ViewBuilder
+    private func columnRoot(_ route: Route) -> some View {
+        if case .statusDetail(let status) = route {
+            // The embedded thread draws its own title row.
+            StatusDetailView(status: status, apiClient: apiClient, isEmbedded: true)
+                .toolbar(.hidden, for: .navigationBar)
+        } else {
+            routeFactory.view(for: route)
         }
     }
 
     @ViewBuilder
     private var threadColumn: some View {
-        if let threadStatus {
-            StatusDetailView(status: threadStatus, apiClient: apiClient, isEmbedded: true)
-                .id(threadStatus.id)
+        if let detailRoute {
+            NavigationStack(path: $columnRouter.path) {
+                columnRoot(detailRoute)
+                    .navigationDestination(for: Route.self) { routeFactory.view(for: $0) }
+            }
+            .environmentObject(columnRouter)
+            .environment(\.appRouter, columnRouter)
+            .id(detailRoute)
+            .accessibilityIdentifier("threadSplit.detail")
         } else {
             VStack(spacing: theme.spacing.m) {
                 Image(systemName: "text.bubble")
                     .moroScaledFont(size: 40, weight: .light)
-                Text(MoroL10n.StatusDetail.splitPlaceholder)
+                Text(placeholder)
                     .font(theme.typography.body)
                     .multilineTextAlignment(.center)
             }

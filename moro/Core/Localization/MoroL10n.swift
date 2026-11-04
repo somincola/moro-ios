@@ -1779,6 +1779,7 @@ public enum MoroL10n {
     public enum StatusDetail {
         public static var headerTitle: String { text("statusDetail.headerTitle") }
         public static var splitPlaceholder: String { text("statusDetail.splitPlaceholder") }
+        public static var splitPlaceholderExplore: String { text("statusDetail.splitPlaceholderExplore") }
         public static var splitDivider: String { text("statusDetail.splitDivider") }
         public static var splitDividerReset: String { text("statusDetail.splitDividerReset") }
         public static var splitDividerHint: String { text("statusDetail.splitDividerHint") }
