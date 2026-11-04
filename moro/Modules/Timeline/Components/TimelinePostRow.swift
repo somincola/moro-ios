@@ -44,6 +44,7 @@ struct TimelinePostRow: View {
             status: status,
             translationAPIClient: translationAPIClient,
             actions: actions,
+            allowsTimelineAvatarAnimation: true,
             accountCache: accountCache
         )
         .contentShape(Rectangle())

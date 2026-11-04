@@ -83,7 +83,7 @@ extension SearchCoreViewController {
         setCancelButtonVisible(false)
         updateSearchChrome()
         startSearch(reset: true)
-        tableView.setContentOffset(CGPoint(x: 0, y: -tableView.adjustedContentInset.top), animated: false)
+        setListContentOffset(CGPoint(x: 0, y: -tableView.adjustedContentInset.top), animated: false)
     }
 
     func showDiscovery() {
@@ -96,7 +96,7 @@ extension SearchCoreViewController {
         clearSearchState()
         loadDiscoveryIfNeeded()
         view.layoutIfNeeded()
-        tableView.setContentOffset(discoveryOffset, animated: false)
+        setListContentOffset(discoveryOffset, animated: false)
     }
 
     func updateSearchChrome() {
@@ -104,6 +104,7 @@ extension SearchCoreViewController {
         let isEntry = interaction.page == .entry
         entryHost.view.isHidden = !isEntry
         tableView.isHidden = isEntry
+        updateMediaPlaybackActivity()
         updateScopePresentation()
         let palette = appliedTheme.uiKitPalette
         entryHost.view.backgroundColor = palette.canvasBackground

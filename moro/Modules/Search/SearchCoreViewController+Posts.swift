@@ -2,6 +2,21 @@ import SwiftUI
 import UIKit
 
 extension SearchCoreViewController {
+    func hostedPlaybackContent(_ content: AnyView) -> AnyView {
+        AnyView(content
+            .environment(\.moroPlaybackScope, playbackScope)
+            .environment(\.moroUIKitScrollVisibility, avatarVisibility))
+    }
+
+    func configureAccountPlayback(_ cell: SearchResultLineCell) {
+        cell.makeAccountView = { [weak self] account in
+            guard let self else { return AnyView(EmptyView()) }
+            let content = self.makeAccountView?(account)
+                ?? AnyView(SearchAccountRowContentView(account: account).moroTheme(self.appliedTheme))
+            return self.hostedPlaybackContent(content)
+        }
+    }
+
     func isStatusRow(at indexPath: IndexPath) -> Bool {
         guard mode == .results, sections.indices.contains(indexPath.section),
               sections[indexPath.section].rows.indices.contains(indexPath.row),
@@ -16,7 +31,8 @@ extension SearchCoreViewController {
         let content = makeStatusView?(status, { [weak self] pollID, choices in
             await self?.votePoll(pollID: pollID, choices: choices) ?? false
         }) ?? AnyView(TimelinePostRow(status: status, threadContext: .none).moroTheme(appliedTheme))
-        cell.contentConfiguration = UIHostingConfiguration { content }.margins(.all, 0)
+        let hosted = hostedPlaybackContent(content)
+        cell.contentConfiguration = UIHostingConfiguration { hosted }.margins(.all, 0)
     }
 
     func votePoll(pollID: String, choices: [Int]) async -> Bool {

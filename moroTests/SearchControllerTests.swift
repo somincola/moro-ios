@@ -6,6 +6,44 @@ import SwiftUI
 @Suite(.serialized)
 @MainActor
 struct SearchControllerTests {
+    @Test func avatarPlaybackStopsForSearchEntryNavigationAndResumesForTheVisibleList() async throws {
+        let (controller, defaults, suite) = makeController()
+        defer { defaults.removePersistentDomain(forName: suite); controller.cancelDiscoveryRequests() }
+        controller.loadViewIfNeeded()
+        #expect(!controller.playbackScope.isActive)
+        controller.beginAppearanceTransition(true, animated: false)
+        controller.endAppearanceTransition()
+        try await waitForDiscovery(controller)
+        #expect(controller.playbackScope.allowsAnimatedAvatars)
+        #expect(controller.playbackScope.isActive)
+
+        controller.beginSearchEntry()
+        #expect(!controller.playbackScope.isActive)
+        controller.cancelSearchEntry()
+        #expect(controller.playbackScope.isActive)
+        controller.scrollViewWillBeginDragging(controller.tableView)
+        #expect(controller.playbackScope.isScrolling)
+        controller.scrollViewDidEndDragging(controller.tableView, willDecelerate: true)
+        #expect(controller.playbackScope.isScrolling)
+        controller.scrollViewDidEndDecelerating(controller.tableView)
+        #expect(!controller.playbackScope.isScrolling)
+        controller.setListContentOffset(controller.tableView.contentOffset, animated: true)
+        #expect(!controller.playbackScope.isScrolling, "A no-op tab re-tap must not wait for an animation callback")
+        controller.playbackScope.isScrolling = true
+        controller.setListContentOffset(controller.tableView.contentOffset, animated: false)
+        #expect(!controller.playbackScope.isScrolling, "Restoring an offset also cancels a previous animation")
+
+        controller.prepareForNavigation()
+        #expect(!controller.playbackScope.isActive)
+        controller.beginAppearanceTransition(false, animated: false)
+        controller.endAppearanceTransition()
+        controller.beginAppearanceTransition(true, animated: false)
+        controller.endAppearanceTransition()
+        #expect(controller.playbackScope.isActive)
+        controller.stopMediaPlayback()
+        #expect(!controller.playbackScope.isActive)
+    }
+
     @Test func focusTypingClearAndKeyboardDismissDoNotSubmit() async throws {
         let (controller, defaults, suite) = makeController()
         defer { defaults.removePersistentDomain(forName: suite); controller.cancelDiscoveryRequests() }
