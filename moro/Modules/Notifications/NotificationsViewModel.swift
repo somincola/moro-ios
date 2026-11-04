@@ -154,7 +154,7 @@ final class NotificationsViewModel: ObservableObject {
                     Date().timeIntervalSince(last) < self.minimumRefreshInterval {
                     return nil
                 }
-                return await self.refresh()
+                return await self.startRefresh()
             case .loading, .refreshing, .loadingMore:
                 return nil
             }
@@ -228,6 +228,14 @@ final class NotificationsViewModel: ObservableObject {
 
     @discardableResult
     func refresh() async -> String? {
+        if let refreshTask { return await refreshTask.value }
+        // A pull while opening the page is still loading joins that request instead of
+        // finding the feed busy and ending at once.
+        if let activationTask { return await activationTask.value }
+        return await startRefresh()
+    }
+
+    private func startRefresh() async -> String? {
         if let refreshTask { return await refreshTask.value }
         // SwiftUI can cancel a refresh action as its content changes. Keep the
         // cached feed's request alive and let concurrent callers share its result.
@@ -455,6 +463,45 @@ final class NotificationsViewModel: ObservableObject {
 
     private var isCurrentSession: Bool {
         snapshotSession.map { snapshotStore.isCurrent($0) } ?? true
+    }
+
+    // MARK: - Read Boundary
+
+    /// True once this launch has loaded the newest page from the server. Rows restored from
+    /// disk may predate a marker another client saved, so they must not move it.
+    var hasCurrentHead: Bool {
+        lastSuccessfulRefresh != nil && !needsSnapshotRevalidation
+    }
+
+    var isRefreshing: Bool {
+        if case .refreshing = loadingState { return true }
+        return activationTask != nil || refreshTask != nil
+    }
+
+    /// Orders two notification IDs: by value for numeric IDs, otherwise by list position
+    /// (the list is newest first). Nil when neither tells.
+    func isNotification(_ lhs: String, newerThan rhs: String) -> Bool? {
+        if let isNewer = Self.isNewerID(lhs, than: rhs) { return isNewer }
+        guard let lhsIndex = rawNotifications.firstIndex(where: { $0.id == lhs }),
+            let rhsIndex = rawNotifications.firstIndex(where: { $0.id == rhs })
+        else { return nil }
+        return lhsIndex < rhsIndex
+    }
+
+    /// The newest notification a row stands for (a grouped row stands for several).
+    func newestSourceID(of item: NotificationDisplayItem) -> String? {
+        item.sourceNotificationIDs.reduce(nil) { newest, id in
+            guard let newest else { return id }
+            return isNotification(id, newerThan: newest) == true ? id : newest
+        }
+    }
+
+    /// Loaded notifications newer than `notificationID`: what stays unread once it is seen.
+    func loadedNotificationCount(newerThan notificationID: String) -> Int {
+        if let index = rawNotifications.firstIndex(where: { $0.id == notificationID }) {
+            return index
+        }
+        return rawNotifications.filter { Self.isNewerID($0.id, than: notificationID) == true }.count
     }
 
     private static func isNewerID(_ lhs: String, than rhs: String) -> Bool? {
