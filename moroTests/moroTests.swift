@@ -122,7 +122,7 @@ struct moroTests {
             let range = maxID == nil ? 31...60 : 1...30
             return range.reversed().map { self.makeNotification(id: String($0), type: "mention") }
         }
-        let feeds = NotificationFeedStore(apiClient: api, minimumRefreshInterval: 0)
+        let feeds = NotificationFeedStore(apiClient: api, automaticRefreshTTL: 0)
         let all = feeds.model(for: .everything)
         let mentions = feeds.model(for: .mentions)
         await all.activate()

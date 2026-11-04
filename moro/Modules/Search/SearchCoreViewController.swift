@@ -158,6 +158,11 @@ final class SearchCoreViewController: UIViewController {
     private var lastRenderedSections: [SectionModel] = []
     var discovery = DiscoveryState()
     var discoveryTask: Task<Void, Never>?
+    /// Trends and suggestions are refreshed on coming back to the tab once older than 15
+    /// minutes; failed automatic refreshes back off.
+    var discoverySchedule = AutoRefreshSchedule(ttl: 15 * 60)
+    var discoveryRefreshIsAutomatic = false
+    var handledTabActivation = 0
     var discoveryRequestID = UUID()
 
     init(apiClient: MastodonAPI, initialQuery: String?, theme: MoroTheme,
@@ -1190,11 +1195,27 @@ final class SearchCoreViewController: UIViewController {
 
     @objc
     private func handlePullToRefresh() {
+        discoverySchedule.resetBackoff()
+        discoveryRefreshIsAutomatic = false
         if trimmedQuery.isEmpty {
             loadDiscoveryIfNeeded(forceRefresh: true)
         } else {
             startSearch(reset: true)
         }
+    }
+
+    // MARK: - Tab activation
+
+    func markTabActivationSeen(_ event: TabActivation?) {
+        handledTabActivation = max(handledTabActivation, event?.sequence ?? 0)
+    }
+
+    /// Coming back to Explore (or to the app on it) refreshes stale trends quietly.
+    func handleTabActivation(_ event: TabActivation?) {
+        guard let event, event.sequence > handledTabActivation else { return }
+        handledTabActivation = event.sequence
+        guard event.tab == .explore else { return }
+        refreshDiscoveryIfStale()
     }
 
     // MARK: - Tab re-tap

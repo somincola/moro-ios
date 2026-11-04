@@ -54,3 +54,50 @@ private struct TabReselectModifier: ViewModifier {
             }
     }
 }
+
+/// A root tab came on screen: the reader switched to it, or the app returned to it from the
+/// background. Pages use it for routine checks such as refreshing content past its TTL.
+struct TabActivation: Equatable, Sendable {
+    let tab: MainTab
+    let sequence: Int
+}
+
+private struct TabActivationKey: EnvironmentKey {
+    static let defaultValue: TabActivation? = nil
+}
+
+extension EnvironmentValues {
+    /// The latest activation of a root tab, injected only into that tab's root page.
+    var tabActivation: TabActivation? {
+        get { self[TabActivationKey.self] }
+        set { self[TabActivationKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Runs `action` each time `tab` comes back on screen. The activation that first showed
+    /// this view is not replayed: its own first load covers that.
+    func onTabActivate(_ tab: MainTab, perform action: @escaping () -> Void) -> some View {
+        modifier(TabActivateModifier(tab: tab, action: action))
+    }
+}
+
+private struct TabActivateModifier: ViewModifier {
+    @Environment(\.tabActivation) private var activation
+    @State private var handledSequence: Int?
+    let tab: MainTab
+    let action: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                if handledSequence == nil { handledSequence = activation?.sequence ?? 0 }
+            }
+            .onChange(of: activation) { _, event in
+                guard let event, event.sequence > (handledSequence ?? 0) else { return }
+                handledSequence = event.sequence
+                guard event.tab == tab else { return }
+                action()
+            }
+    }
+}

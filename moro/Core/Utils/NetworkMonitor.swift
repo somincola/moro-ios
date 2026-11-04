@@ -24,6 +24,13 @@ final class NetworkMonitor: ObservableObject {
     
     @Published var isConnected: Bool = false
     @Published var networkType: NetworkType = .unknown
+    /// False until the system reports the first path, while `isConnected` is still its
+    /// default; only then can "not connected" be trusted.
+    @Published private(set) var hasPathReport = false
+
+    /// Known to be offline. Automatic refreshes pause and catch up once back online; before
+    /// the first path report this is false, so a cold start never skips its first load.
+    var isOffline: Bool { hasPathReport && !isConnected }
     
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "NetworkMonitor")
@@ -53,6 +60,7 @@ final class NetworkMonitor: ObservableObject {
                 // publish only real changes so observers don't re-render for nothing.
                 if self.isConnected != connected { self.isConnected = connected }
                 if self.networkType != type { self.networkType = type }
+                if !self.hasPathReport { self.hasPathReport = true }
             }
         }
         

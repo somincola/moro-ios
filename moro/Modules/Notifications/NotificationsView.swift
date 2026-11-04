@@ -5,6 +5,7 @@
 //  Notifications list view with pull-to-refresh and infinite scroll.
 //
 
+import Combine
 import SwiftUI
 
 enum NotificationsPresentation {
@@ -139,6 +140,18 @@ private struct NotificationFeedView: View {
         // something unread (a push can raise the count under a row the reader is looking at).
         .onChange(of: notificationUnreadStore.isNotificationListVisible) { _, _ in markSeenRows() }
         .onChange(of: notificationUnreadStore.activeUnreadCount) { _, _ in markSeenRows() }
+        // Automatic refreshes pause offline; back online, a check skipped meanwhile runs once.
+        .onReceive(NetworkMonitor.shared.$isConnected.removeDuplicates().dropFirst()) { connected in
+            guard connected, isActive, notificationUnreadStore.isNotificationListVisible else { return }
+            Task { await openFeed() }
+        }
+        // VoiceOver hears about new notifications once, when the pill appears.
+        .onChange(of: unseenNewRowCount > 0) { _, hasUnseen in
+            guard hasUnseen else { return }
+            AccessibilityNotification.Announcement(
+                MoroL10n.Notifications.newNotifications(unseenNewRowCount)
+            ).post()
+        }
         .onChange(of: canResumePagination) { _, ready in
             if ready { loadMoreFromVisibleFooter() }
         }
@@ -463,7 +476,7 @@ private struct NotificationFeedView: View {
             // the scroll position while it runs.
             let settled = userInitiated || isSettledAtTop
             let generation = userScrollGeneration
-            await viewModel.refresh()
+            await viewModel.refresh(automatic: !userInitiated)
             // SwiftUI can cancel a refresh action as its content changes even while the feed
             // stays on screen; the result still has to be shown and its rows still counted.
             await Task { @MainActor in

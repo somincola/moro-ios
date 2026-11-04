@@ -40,6 +40,9 @@ struct ProfileView: View {
     @StateObject private var postMenuActionCenter: PostMenuActionCenter
 
     @State private var chromeState = ProfileChromeState()
+    /// The Me tab's own profile refreshes quietly on coming back to it once older than five
+    /// minutes (pushed profiles never get tab activations).
+    @State private var autoRefresh = AutoRefreshSchedule(ttl: 5 * 60)
     @State private var scrollPosition = ScrollPosition(edge: .top)
     @State private var actionPresentation = ProfileActionPresentationState()
     @StateObject private var actionSurface = PostActionSurfaceCenter()
@@ -238,6 +241,7 @@ struct ProfileView: View {
             viewModel.currentAccountID = appState.currentAccount?.id
             await viewModel.setFeaturedTagsEnabled(profilePreferences.showsFeaturedTags(accountKey: activeAccountKey))
             await viewModel.loadInitial()
+            autoRefresh.recordSuccess()
             await viewModel.loadFeaturedTags()
             syncCurrentUserProfileFromAppState()
         }
@@ -256,6 +260,7 @@ struct ProfileView: View {
         .onChange(of: currentAccountSyncKey) { _, _ in
             syncCurrentUserProfileFromAppState()
         }
+        .onTabActivate(.me) { refreshIfStale() }
         // Only the Me tab's root profile receives re-tap events (pushed profiles don't).
         .onTabReselect(.me) {
             if chromeState.scrollOffset > 1 {
@@ -343,6 +348,11 @@ struct ProfileView: View {
             let started = Date()
             let succeeded = await refreshProfileDataReportingResult()
             MoroRefreshFeedback.deliver(succeeded ? .succeeded : .failed)
+            if succeeded {
+                autoRefresh.recordSuccess()
+            } else {
+                autoRefresh.recordFailure(automatic: false)
+            }
 
             let remaining = refreshFeedbackMinimumDuration - Date().timeIntervalSince(started)
             if remaining > 0 {
@@ -350,6 +360,21 @@ struct ProfileView: View {
             }
 
             chromeState.finishRefresh()
+        }
+    }
+
+    /// Automatic and silent: no spinner, no haptics, and only at the top, so the posts
+    /// being read never move.
+    private func refreshIfStale() {
+        guard chromeState.scrollOffset <= 1, !chromeState.isRefreshing,
+            autoRefresh.shouldRefresh(isOffline: NetworkMonitor.shared.isOffline)
+        else { return }
+        Task { @MainActor in
+            if await refreshProfileDataReportingResult() {
+                autoRefresh.recordSuccess()
+            } else {
+                autoRefresh.recordFailure(automatic: true)
+            }
         }
     }
 
