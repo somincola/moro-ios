@@ -57,10 +57,13 @@ final class TimelineSwitchingUITests: XCTestCase {
         pullToRefresh(in: app)
         scrollUp(in: app)
         revealHeader(in: app)
-        let anchor = try visibleAnchor(in: app)
+        var anchor = try visibleAnchor(in: app)
         app.buttons["timeline.switch.release"].tap()
         XCTAssertTrue(app.buttons["timeline.newPosts"].waitForExistence(timeout: 10))
         assertAnchor(anchor, in: app)
+        // Pulling the hidden header back down also drags this list; the position saved when
+        // leaving is the one after that drag.
+        if try revealSwitcherIfHidden(in: app) { anchor = try visibleAnchor(in: app) }
         select(source == "local" ? "federated" : "local", in: app)
         select(source, in: app)
         assertAnchor(anchor, in: app)
@@ -101,7 +104,8 @@ final class TimelineSwitchingUITests: XCTestCase {
         pullToRefresh(in: app)
         scrollUp(in: app)
         revealHeader(in: app)
-        let anchor = try visibleAnchor(in: app)
+        var anchor = try visibleAnchor(in: app)
+        if try revealSwitcherIfHidden(in: app) { anchor = try visibleAnchor(in: app) }
         select("federated", in: app)
         app.buttons["timeline.switch.release"].tap()
         XCTAssertTrue(wait { app.staticTexts["timeline.switch.requests"].label.contains("local:newer:1:2061") })
@@ -230,13 +234,37 @@ final class TimelineSwitchingUITests: XCTestCase {
         let candidates = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Switch "))
             .allElementsBoundByIndex.filter { $0.isHittable && $0.frame.minY > 150 && $0.frame.minY < 470 }
         let row = try XCTUnwrap(candidates.first)
-        return (row.label, row.frame.minY)
+        // A swipe leaves the list decelerating; a position read mid-glide is not where the
+        // reader ends up, so wait until two reads agree.
+        return (row.label, settledMinY(of: row))
     }
 
-    @MainActor private func assertAnchor(_ anchor: (String, CGFloat), in app: XCUIApplication) {
+    @MainActor private func settledMinY(of element: XCUIElement) -> CGFloat {
+        var previous = element.frame.minY
+        _ = wait {
+            let current = element.frame.minY
+            defer { previous = current }
+            return abs(current - previous) < 0.5
+        }
+        return element.frame.minY
+    }
+
+    @MainActor private func assertAnchor(_ anchor: (String, CGFloat), in app: XCUIApplication,
+        file: StaticString = #filePath, line: UInt = #line) {
         let row = app.staticTexts[anchor.0]
         XCTAssertTrue(wait { row.exists && abs(row.frame.minY - anchor.1) <= 3 },
-            "Reading position must survive the transition: expected y=\(anchor.1), actual y=\(row.exists ? row.frame.minY : -1)")
+            "Reading position must survive the transition: expected y=\(anchor.1), actual y=\(row.exists ? row.frame.minY : -1)",
+            file: file, line: line)
+    }
+
+    /// Pulls the header back when it has hidden itself, so `select` won't drag the list while
+    /// a reading position is being tracked. True when it had to.
+    @MainActor private func revealSwitcherIfHidden(in app: XCUIApplication) throws -> Bool {
+        let menu = app.buttons["时间线切换"]
+        guard !menu.isHittable else { return false }
+        revealHeader(in: app)
+        XCTAssertTrue(wait { menu.isHittable })
+        return true
     }
 
     @MainActor private func wait(_ condition: @escaping () -> Bool) -> Bool {

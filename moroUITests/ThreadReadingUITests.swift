@@ -71,11 +71,16 @@ final class ThreadReadingUITests: XCTestCase {
             XCTAssertTrue(quote.exists)
             XCTAssertEqual(boost.label, "转发")
             XCTAssertEqual(quote.label, "引用")
+            // Each query snapshots the accessibility tree, which is huge at the largest text
+            // size; XCTest logs per element and too much logging gets the app quarantined
+            // (and, in Xcode 27.2, crashed). Read each frame once.
+            let windowMaxX = app.windows.firstMatch.frame.maxX
             for row in [boost, quote] {
+                let frame = row.frame
                 XCTAssertTrue(row.isHittable)
-                XCTAssertGreaterThanOrEqual(row.frame.height, 44)
-                XCTAssertGreaterThanOrEqual(row.frame.minX, 0)
-                XCTAssertLessThanOrEqual(row.frame.maxX, app.windows.firstMatch.frame.maxX)
+                XCTAssertGreaterThanOrEqual(frame.height, 44)
+                XCTAssertGreaterThanOrEqual(frame.minX, 0)
+                XCTAssertLessThanOrEqual(frame.maxX, windowMaxX)
             }
             if largeText { XCTAssertGreaterThan(boost.frame.height, 90) }
             attach(app, "boost-dialog-\(scheme)-\(largeText ? "largest" : "standard")")
