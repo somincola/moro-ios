@@ -134,6 +134,11 @@ extension TimelineHomeView {
         trigger: TimelineViewModel.RefreshTrigger = .pull
     ) async {
         let indicatorStart = Date()
+        switch trigger {
+        case .pull: TabRetapRefreshTip.notePullToRefresh()
+        case .tabRetap: TabRetapRefreshTip.noteTabRetap()
+        default: break
+        }
         let detectionSnapshot = detectionDimension(for: timelineType).map {
             detectionManager.snapshot(for: $0)
         }

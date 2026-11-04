@@ -57172,6 +57172,124 @@
         }
       }
     },
+    "tips.tabRetap.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Aktualisieren erneut auf „Start“ tippen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap Home again to refresh"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toca Inicio otra vez para actualizar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touchez Accueil à nouveau pour actualiser"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tocca di nuovo Home per aggiornare"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "もう一度ホームをタップして更新"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toque novamente em Início para atualizar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再点一下首页也能刷新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再點一下首頁也能重新整理"
+          }
+        }
+      }
+    },
+    "tips.tabRetap.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ganz oben aktualisiert ein erneutes Tippen auf „Start“ wie das Herunterziehen. Weiter unten bringt es dich zuerst nach oben."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "At the top, tapping Home again refreshes just like pulling down. Further down, it takes you back to the top first."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arriba del todo, tocar Inicio otra vez actualiza igual que deslizar hacia abajo. Más abajo, primero te lleva arriba."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En haut, toucher à nouveau Accueil actualise comme un glissement vers le bas. Plus bas, cela vous ramène d’abord en haut."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In cima, toccare di nuovo Home aggiorna come trascinare verso il basso. Più in basso, ti riporta prima in cima."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一番上でもう一度ホームをタップすると、引き下げたときと同じように更新されます。下の方では、まず一番上に戻ります。"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No topo, tocar novamente em Início atualiza tal como puxar para baixo. Mais abaixo, leva-o primeiro ao topo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在顶部时再点一下「首页」，会像下拉一样刷新；不在顶部时会先回到顶部。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在頂部時再點一下「首頁」，會像下拉一樣重新整理；不在頂部時會先回到頂部。"
+          }
+        }
+      }
+    },
     "nav.tab.inbox" : {
       "extractionState" : "manual",
       "localizations" : {

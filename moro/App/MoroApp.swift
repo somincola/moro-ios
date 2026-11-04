@@ -22,6 +22,7 @@ struct MoroApp: App {
         UITestDefaultsIsolation.applyIfRequested()
         #endif
         StorageManagementStore.configureImageCache()
+        MoroTips.configure()
         let appState = AppState()
         let interceptor = AuthInterceptor(tokenProvider: appState)
         let client = MastodonClient(authInterceptor: interceptor)

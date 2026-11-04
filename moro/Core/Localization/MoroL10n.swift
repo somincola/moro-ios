@@ -2111,6 +2111,11 @@ public enum MoroL10n {
         public static var modernSubtitle: String { text("tabIconTheme.modern.subtitle") }
     }
 
+    public enum Tips {
+        public static var tabRetapTitle: String { text("tips.tabRetap.title") }
+        public static var tabRetapMessage: String { text("tips.tabRetap.message") }
+    }
+
     public enum NavigationStyle {
         public static var sectionTitle: String { text("navigationStyle.sectionTitle") }
         public static var sectionFooter: String { text("navigationStyle.sectionFooter") }
