@@ -32,10 +32,12 @@ struct SearchView: View {
     var initialQuery: String? = nil
     var initialScope: SearchViewModel.Scope = .accounts
     var onEntryStateChanged: ((Bool) -> Void)? = nil
+    /// iPhone Duo's Explore root: search and scopes go in the system bar.
+    var usesSystemBar = false
 
     var body: some View {
         SearchContentView(apiClient: apiClient, initialQuery: initialQuery, initialScope: initialScope,
-                          onEntryStateChanged: onEntryStateChanged)
+                          onEntryStateChanged: onEntryStateChanged, usesSystemBar: usesSystemBar)
             .id(accountKey)
     }
 }
@@ -55,14 +57,19 @@ struct SearchContentView: View {
     @StateObject var interactionService: PostInteractionService
     @StateObject var actionSurface = PostActionSurfaceCenter()
     @StateObject var postMenuActionCenter: PostMenuActionCenter
+    @StateObject var chromeBridge = SearchChromeBridge()
+    @Environment(\.threadSplitPanelOwnsBar) var panelOwnsBar
+    @State var toolbarIsVertical = false
+    let usesSystemBar: Bool
     let apiClient: MastodonAPI
     let initialQuery: String?
     let initialScope: SearchViewModel.Scope
     let onEntryStateChanged: ((Bool) -> Void)?
 
     init(apiClient: MastodonAPI, initialQuery: String?, initialScope: SearchViewModel.Scope,
-         onEntryStateChanged: ((Bool) -> Void)? = nil) {
+         onEntryStateChanged: ((Bool) -> Void)? = nil, usesSystemBar: Bool = false) {
         self.apiClient = apiClient
+        self.usesSystemBar = usesSystemBar
         self.initialQuery = initialQuery
         self.initialScope = initialScope
         self.onEntryStateChanged = onEntryStateChanged
@@ -103,8 +110,22 @@ struct SearchContentView: View {
             onOpenProfile: { router.navigate(to: .userProfile($0)) },
             onOpenStatus: { router.navigate(to: .statusDetail($0.displayStatus)) },
             onOpenHashtag: { router.navigate(to: .hashtag($0)) },
-            onEntryStateChanged: onEntryStateChanged
+            onEntryStateChanged: onEntryStateChanged,
+            usesSystemBar: usesSystemBar,
+            chromeBridge: chromeBridge
         )
+        .toolbar {
+            if usesSystemBar && !panelOwnsBar {
+                SearchSystemBarItems(bridge: chromeBridge, isVertical: toolbarIsVertical, theme: theme)
+            }
+        }
+        .background {
+            ToolbarAxisReader { isVertical in
+                Color.clear.onChange(of: isVertical, initial: true) { _, vertical in
+                    toolbarIsVertical = vertical
+                }
+            }
+        }
         // Extend the UIKit list behind the native tab bar, like the timeline.
         // Its scroll view still uses UIKit's automatic safe-area content insets.
         .ignoresSafeArea(.container, edges: .bottom)
@@ -126,12 +147,17 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
     let onOpenStatus: (Status) -> Void
     let onOpenHashtag: (String) -> Void
     let onEntryStateChanged: ((Bool) -> Void)?
+    let usesSystemBar: Bool
+    let chromeBridge: SearchChromeBridge
 
     func makeUIViewController(context: Context) -> SearchCoreViewController {
         let controller = SearchCoreViewController(
             apiClient: apiClient, initialQuery: initialQuery, theme: theme,
             accountKey: accountKey, initialScope: initialScope
         )
+        controller.usesSystemBar = usesSystemBar
+        controller.chromeBridge = chromeBridge
+        chromeBridge.controller = controller
         updateCallbacks(controller)
         controller.markTabReselectionSeen(tabReselection)
         controller.markTabActivationSeen(tabActivation)
@@ -140,6 +166,7 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
 
     func updateUIViewController(_ controller: SearchCoreViewController, context: Context) {
         updateCallbacks(controller)
+        controller.usesSystemBar = usesSystemBar
         controller.apply(theme: theme)
         controller.handleTabReselection(tabReselection)
         controller.handleTabActivation(tabActivation)

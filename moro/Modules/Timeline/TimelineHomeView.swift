@@ -24,6 +24,8 @@ struct TimelineHomeView: View {
     @Environment(\.cacheManager) var cacheManager
     @Environment(\.appRouter) var router
     @Environment(\.scenePhase) var scenePhase
+    /// iPhone Duo: the split panel is open and its controls take over the system bar.
+    @Environment(\.threadSplitPanelOwnsBar) var panelOwnsSystemBar
     @EnvironmentObject var appState: AppState
     @StateObject var actionSurface = PostActionSurfaceCenter()
 

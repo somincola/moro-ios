@@ -1243,10 +1243,13 @@ public enum MoroL10n {
         public static var formNameSection: String { text("lists.form.nameSection") }
         public static var formNamePlaceholder: String { text("lists.form.namePlaceholder") }
         public static var formReplySection: String { text("lists.form.replySection") }
-        public static var formReplyLabel: String { text("lists.form.replyLabel") }
         public static var formReplyFollowed: String { text("lists.form.replyFollowed") }
         public static var formReplyList: String { text("lists.form.replyList") }
         public static var formReplyNone: String { text("lists.form.replyNone") }
+        public static var formReplyFollowedDetail: String { text("lists.form.replyFollowedDetail") }
+        public static var formReplyListDetail: String { text("lists.form.replyListDetail") }
+        public static var formReplyNoneDetail: String { text("lists.form.replyNoneDetail") }
+        public static var formDraftHint: String { text("lists.form.draftHint") }
         public static var formEditTitle: String { text("lists.form.editTitle") }
         public static var formCancel: String { text("lists.form.cancel") }
         public static var formSave: String { text("lists.form.save") }
@@ -1778,8 +1781,6 @@ public enum MoroL10n {
 
     public enum StatusDetail {
         public static var headerTitle: String { text("statusDetail.headerTitle") }
-        public static var splitPlaceholder: String { text("statusDetail.splitPlaceholder") }
-        public static var splitPlaceholderExplore: String { text("statusDetail.splitPlaceholderExplore") }
         public static var splitDivider: String { text("statusDetail.splitDivider") }
         public static var splitDividerReset: String { text("statusDetail.splitDividerReset") }
         public static var splitDividerHint: String { text("statusDetail.splitDividerHint") }

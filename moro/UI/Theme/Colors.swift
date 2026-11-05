@@ -250,7 +250,7 @@ struct MoroColors {
         let shades: (light: UInt32, dark: UInt32)
         switch themeColor {
         case .blue:
-            shades = increased ? (0x004C99, 0x7DBAFF) : (0x0066CC, 0x4DA3FF)
+            shades = increased ? (0x003F80, 0x7DBAFF) : (0x0052A3, 0x3E95F5)
         case .yellow:
             shades = increased ? (0x6B4B00, 0xFFE080) : (0x8A6400, 0xF2C94C)
         case .pink:

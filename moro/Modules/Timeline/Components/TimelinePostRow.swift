@@ -46,6 +46,7 @@ struct TimelinePostRow: View {
             actions: actions,
             accountCache: accountCache
         )
+        .modifier(ThreadSplitRowHighlight(statusID: status.displayStatus.id))
         .contentShape(Rectangle())
         .onTapGesture {
             actions.onTap?()

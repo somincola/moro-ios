@@ -20,6 +20,8 @@ private struct ProfileStatButtonStyle: ButtonStyle {
 struct ProfileView: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.moroSceneDescriptor) private var sceneDescriptor
+    /// iPhone Duo: a post is open in the Me tab's panel and its controls take over the bar.
+    @Environment(\.threadSplitPanelOwnsBar) private var panelOwnsBar
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .subheadline) private var bioLineSpacing: CGFloat = 2
@@ -214,7 +216,10 @@ struct ProfileView: View {
         .ignoresSafeArea(.container, edges: .top)
         .background(sceneCanvasColor)
         .background {
-            ProfileNavigationBarHeightReader(tint: UIColor(navigationForeground)) { metrics in
+            // The panel's controls sit on the plain side bar, not over the banner.
+            ProfileNavigationBarHeightReader(
+                tint: UIColor(panelOwnsBar ? theme.colors.textPrimary : navigationForeground)
+            ) { metrics in
                 navigationBarHeight = metrics.height
                 navigationBarBottom = metrics.bottom
                 navigationBarIsVertical = metrics.isVertical
@@ -228,12 +233,14 @@ struct ProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(
-            isNavigationChromeSolid ? colorScheme : .dark,
+            isNavigationChromeSolid || panelOwnsBar ? colorScheme : .dark,
             for: .navigationBar
         )
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                profileNavigationAction
+            if !panelOwnsBar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    profileNavigationAction
+                }
             }
         }
         .task {
