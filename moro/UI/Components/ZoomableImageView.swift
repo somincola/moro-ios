@@ -9,6 +9,8 @@ struct ZoomableImageView: UIViewRepresentable {
     var previewURL: URL? = nil
     let altText: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityPlayAnimatedImages) private var playAnimatedImages
+    @Environment(\.scenePhase) private var scenePhase
     var onSingleTap: () -> Void
     var onInteractionBegan: () -> Void
     var onDismiss: () -> Void
@@ -18,6 +20,8 @@ struct ZoomableImageView: UIViewRepresentable {
 
     func updateUIView(_ view: ImagePreviewPageView, context: Context) {
         view.reduceMotion = reduceMotion
+        view.scrollView.isAnimationPlaybackActive = scenePhase == .active
+            && playAnimatedImages && !reduceMotion
         view.scrollView.onSingleTap = onSingleTap
         view.scrollView.onInteractionBegan = onInteractionBegan
         view.scrollView.onDismiss = onDismiss
@@ -27,6 +31,7 @@ struct ZoomableImageView: UIViewRepresentable {
 
     static func dismantleUIView(_ view: ImagePreviewPageView, coordinator: ()) {
         view.resetDismissDrag()
+        view.scrollView.isAnimationPlaybackActive = false
         view.scrollView.cancelLoading()
     }
 }
@@ -116,7 +121,18 @@ final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestur
     // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
     nonisolated deinit {}
 
-    let imageView = UIImageView()
+    let imageView = SDAnimatedImageView()
+    var isAnimationPlaybackActive = true {
+        didSet {
+            guard isAnimationPlaybackActive != oldValue else { return }
+            imageView.autoPlayAnimatedImage = isAnimationPlaybackActive
+            if isAnimationPlaybackActive {
+                imageView.startAnimating()
+            } else {
+                imageView.stopAnimating()
+            }
+        }
+    }
     var onSingleTap: (() -> Void)?
     var onInteractionBegan: (() -> Void)?
     var onDismissDrag: ((CGFloat, Bool) -> Void)?
@@ -160,6 +176,8 @@ final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestur
         accessibilityIdentifier = "imagePreview.scroll"
 
         imageView.contentMode = .scaleToFill
+        imageView.maxBufferSize = 8 * 1024 * 1024
+        imageView.clearBufferWhenStopped = true
         imageView.isAccessibilityElement = true
         imageView.accessibilityTraits = .image
         imageView.accessibilityIdentifier = "imagePreview.image"

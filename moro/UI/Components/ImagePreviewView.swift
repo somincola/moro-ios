@@ -15,6 +15,7 @@ struct ImagePreviewView: View {
     @State private var isExporting = false
     @State private var exportNotice: String?
     @State private var noticeTask: Task<Void, Never>?
+    @State private var playbackToken: UUID?
     /// iPhone Duo half open like a laptop: the fold across the screen, in screen space. The
     /// image then stays above it and the controls move below it, onto the flat half.
     @State private var tabletopFold: CGRect?
@@ -170,6 +171,14 @@ struct ImagePreviewView: View {
             .ignoresSafeArea()
         }
         .statusBar(hidden: true)
+        .onAppear {
+            if playbackToken == nil { playbackToken = MediaPlaybackPresentation.shared.begin() }
+        }
+        .onDisappear {
+            if let playbackToken { MediaPlaybackPresentation.shared.end(playbackToken) }
+            playbackToken = nil
+            noticeTask?.cancel()
+        }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
         .onReceive(NotificationCenter.default.publisher(for: UIAccessibility.voiceOverStatusDidChangeNotification)) { _ in
             if UIAccessibility.isVoiceOverRunning { showsControls = true }

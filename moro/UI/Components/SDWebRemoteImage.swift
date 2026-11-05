@@ -16,7 +16,7 @@ enum SDWebRemoteImageAnimationLoadingMode: Equatable {
     /// non-composer call site.
     case standard
     /// Decode the original APNG/GIF without thumbnailing away its frames, while bounding
-    /// frame memory and pausing playback during picker scrolling.
+    /// frame memory and pausing decorative playback during scrolling.
     case boundedPreview
 }
 
@@ -27,6 +27,8 @@ struct SDWebRemoteImage: UIViewRepresentable {
     let thumbnailPixelSize: CGFloat
     var contentMode: UIView.ContentMode = .scaleAspectFill
     var allowsAnimation: Bool = false
+    /// Pause a decoded animation without replacing its image or restarting its request.
+    var isAnimationPlaybackActive: Bool = true
     var animationLoadingMode: SDWebRemoteImageAnimationLoadingMode = .standard
     /// Caps decoded animation frames without forcing APNG/GIF through thumbnail decoding,
     /// which can collapse the resource to a single frame.
@@ -40,13 +42,14 @@ struct SDWebRemoteImage: UIViewRepresentable {
         view.clipsToBounds = true
         view.backgroundColor = .clear
         if animationLoadingMode == .boundedPreview {
-            // Pause decorative picker animation while its scroll view is tracking without
+            // Pause decorative animation while its scroll view is tracking without
             // changing the playback lifecycle of timeline GIF media.
             view.runLoopMode = .default
             view.maxBufferSize = maximumAnimatedBufferSize
             view.clearBufferWhenStopped = true
+            view.resetFrameIndexWhenStopped = false
         }
-        view.autoPlayAnimatedImage = allowsAnimation
+        view.autoPlayAnimatedImage = allowsAnimation && isAnimationPlaybackActive
         return view
     }
 
@@ -58,7 +61,13 @@ struct SDWebRemoteImage: UIViewRepresentable {
         if usesBoundedPreview {
             view.maxBufferSize = maximumAnimatedBufferSize
         }
-        view.autoPlayAnimatedImage = allowsAnimation
+        let shouldPlay = allowsAnimation && isAnimationPlaybackActive
+        view.autoPlayAnimatedImage = shouldPlay
+        if shouldPlay {
+            view.startAnimating()
+        } else {
+            view.stopAnimating()
+        }
         guard context.coordinator.lastURL != url
             || context.coordinator.lastAllowsAnimation != allowsAnimation
             || context.coordinator.lastAnimationLoadingMode != animationLoadingMode

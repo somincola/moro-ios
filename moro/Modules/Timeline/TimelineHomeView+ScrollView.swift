@@ -44,6 +44,7 @@ extension TimelineHomeView {
                     )
 
                     timelinePrimaryContent(for: viewModel, timelineType: timelineType)
+                        .environment(\.moroPlaybackScope, scrollBridge.playbackScope(for: timelineType))
                 }
                 .scrollTargetLayout()
                 .moroReadableColumn()

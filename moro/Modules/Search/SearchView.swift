@@ -50,6 +50,9 @@ struct SearchContentView: View {
     @Environment(\.cacheManager) var cacheManager
     @Environment(\.openURL) var openURL
     @Environment(\.moroMediaPrefs) var mediaPreferences
+    @Environment(\.scenePhase) var scenePhase
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.accessibilityPlayAnimatedImages) var playAnimatedImages
     @Environment(\.moroSceneDescriptor) var sceneDescriptor
     @Environment(\.tabReselection) var tabReselection
     @Environment(\.tabActivation) var tabActivation
@@ -86,8 +89,10 @@ struct SearchContentView: View {
             apiClient: apiClient, initialQuery: initialQuery, initialScope: initialScope,
             accountKey: accountKey, theme: theme, tabReselection: tabReselection,
             tabActivation: tabActivation,
+            systemAllowsAnimatedAvatars: !reduceMotion && playAnimatedImages,
+            makeAccountView: { hostedSearchContent(SearchAccountRowContentView(account: $0)) },
             makeStatusView: { status, onPollVote in
-                AnyView(
+                hostedSearchContent(
                     VStack(spacing: 0) {
                         TimelinePostRow(
                             status: status, threadContext: .none,
@@ -98,13 +103,6 @@ struct SearchContentView: View {
                         MoroDivider()
                     }
                     .id(status.id)
-                    .environment(\.appRouter, router)
-                    .environment(\.openURL, openURL)
-                    .environment(\.moroMediaPrefs, mediaPreferences)
-                    .environment(\.activeAccountKey, accountKey)
-                    .environment(\.colorScheme, theme.colorScheme)
-                    .environment(\.dynamicTypeSize, theme.dynamicTypeSize)
-                    .moroTheme(theme)
                 )
             },
             onOpenProfile: { router.navigate(to: .userProfile($0)) },
@@ -131,6 +129,18 @@ struct SearchContentView: View {
         .ignoresSafeArea(.container, edges: .bottom)
         .background((sceneDescriptor?.canvas ?? .content).backgroundColor(in: theme))
     }
+
+    private func hostedSearchContent(_ content: some View) -> AnyView {
+        AnyView(content
+            .environment(\.appRouter, router)
+            .environment(\.openURL, openURL)
+            .environment(\.moroMediaPrefs, mediaPreferences)
+            .environment(\.activeAccountKey, accountKey)
+            .environment(\.scenePhase, scenePhase)
+            .environment(\.colorScheme, theme.colorScheme)
+            .environment(\.dynamicTypeSize, theme.dynamicTypeSize)
+            .moroTheme(theme))
+    }
 }
 
 #if os(iOS)
@@ -142,6 +152,8 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
     let theme: MoroTheme
     let tabReselection: TabReselection?
     let tabActivation: TabActivation?
+    let systemAllowsAnimatedAvatars: Bool
+    let makeAccountView: (Account) -> AnyView
     let makeStatusView: (Status, @escaping SearchCoreViewController.PollVoteHandler) -> AnyView
     let onOpenProfile: (Account) -> Void
     let onOpenStatus: (Status) -> Void
@@ -173,6 +185,12 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
     }
 
     private func updateCallbacks(_ controller: SearchCoreViewController) {
+        // Assigning an observable during a view update invalidates its readers mid-update;
+        // only write a real change.
+        if controller.playbackScope.systemAllowsAnimatedAvatars != systemAllowsAnimatedAvatars {
+            controller.playbackScope.systemAllowsAnimatedAvatars = systemAllowsAnimatedAvatars
+        }
+        controller.makeAccountView = makeAccountView
         controller.makeStatusView = makeStatusView
         controller.onOpenProfile = onOpenProfile
         controller.onOpenStatus = onOpenStatus
@@ -181,6 +199,7 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
     }
 
     static func dismantleUIViewController(_ controller: SearchCoreViewController, coordinator: ()) {
+        controller.stopMediaPlayback()
         controller.cancelInFlightSearchRequests()
         controller.cancelDiscoveryRequests()
         controller.onEntryStateChanged?(false)

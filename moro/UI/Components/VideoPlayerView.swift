@@ -7,12 +7,12 @@
 //
 //  Playback rules:
 //  • A video plays only while it is on screen (most of it visible) and the app is active;
-//    scrolling it away, leaving the page or the app pauses it.
+//    scrolling it away or leaving the page releases it into a short bounded warm cache.
 //  • Autoplay follows Settings: Always, Wi-Fi only, or Never. With autoplay off nothing is
 //    downloaded until the viewer presses play.
-//  • A video plays once and stops at the end; GIFs (gifv) loop, following the GIF setting.
+//  • A video plays once. GIFV loops under autoplay; an explicit inline play runs once.
 //  • In the timeline videos play silently and never interrupt other audio; fullscreen
-//    plays the sound. Low Power Mode and the system "Auto-Play Video Previews" /
+//    video plays sound, while GIFV stays silent. Low Power Mode and the system "Auto-Play Video Previews" /
 //    "Auto-Play Animated Images" settings turn autoplay off.
 //  • Tapping the video opens it in the system player; the play button plays it in place.
 //  • A video that fails to load shows a retry button instead of loading forever.
@@ -20,6 +20,7 @@
 
 import SwiftUI
 import AVKit
+import Combine
 
 struct VideoPlayerView: View {
     let attachment: Status.Attachment
@@ -30,9 +31,7 @@ struct VideoPlayerView: View {
 
     @Environment(\.moroTheme) private var theme
     @Environment(\.scenePhase) private var scenePhase
-    // Read on demand in `shouldAutoplay` (visibility, scene and tap events), not observed:
-    // observing re-rendered every visible player on each unrelated setting or network tick.
-    private var settings: AppSettings { .shared }
+    // Preferences arrive through the environment, avoiding an AppSettings subscription per row.
     private var networkMonitor: NetworkMonitor { .shared }
     // Parks the player when the row scrolls away, so coming back is instant.
     @StateObject private var playerObserver = VideoPlayerObserver(pool: .shared)
@@ -44,11 +43,15 @@ struct VideoPlayerView: View {
     @State private var isVisible = false
     /// The viewer pressed play, so it plays even with autoplay off.
     @State private var playRequested = false
+    @State private var hasFinishedVideo = false
     @Environment(\.moroMediaPrefs) private var mediaPrefs
     @Environment(\.accessibilityPlayAnimatedImages) private var playAnimatedImages
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.moroPlaybackScope) private var playbackScope
+    private let presentation = MediaPlaybackPresentation.shared
 
     /// How much of the video must be on screen for it to play.
-    static let visibleFraction = 0.6
+    static let visibleFraction = MediaPlaybackPolicy.visibleFraction
 
     private var isConcealed: Bool {
         mediaPrefs.concealsMedia(markedSensitive: isSensitive) && !isRevealed
@@ -60,11 +63,11 @@ struct VideoPlayerView: View {
         guard !ProcessInfo.processInfo.isLowPowerModeEnabled else { return false }
         if isGIF {
             // GIFV follows the GIF preference and the system "Auto-Play Animated Images".
-            return settings.autoplayGIFs && playAnimatedImages
+            return mediaPrefs.autoplayGIFs && playAnimatedImages && !reduceMotion
         }
         // Videos follow the in-app setting and the system "Auto-Play Video Previews".
         return UIAccessibility.isVideoAutoplayEnabled
-            && networkMonitor.shouldAutoplayVideo(autoplayMode: settings.videoAutoplayMode)
+            && networkMonitor.shouldAutoplayVideo(autoplayMode: mediaPrefs.videoAutoplayMode)
     }
 
     private var isGIF: Bool {
@@ -72,7 +75,7 @@ struct VideoPlayerView: View {
     }
 
     private var isPlaying: Bool {
-        playerObserver.playingState != .paused
+        playerObserver.isPlaybackActive
     }
 
     var body: some View {
@@ -93,16 +96,53 @@ struct VideoPlayerView: View {
                 if isConcealed {
                     isRevealed = true
                     updatePlayback()
-                } else {
-                    onTap?()
                 }
             }
             .onScrollVisibilityChange(threshold: Self.visibleFraction) { visible in
                 isVisible = visible
+                if !visible { playRequested = false }
                 updatePlayback()
             }
             .onChange(of: scenePhase) { _, _ in
                 updatePlayback()
+            }
+            .onChange(of: playbackScope.isActive) { _, active in
+                if !active { playRequested = false }
+                updatePlayback()
+            }
+            .onChange(of: presentation.coversInlinePlayback) { _, covered in
+                if covered {
+                    if isGIF { playRequested = false }
+                    isFrameReady = false
+                    playerObserver.tearDown()
+                } else {
+                    updatePlayback()
+                }
+            }
+            .onChange(of: mediaPrefs) { _, _ in updatePlayback() }
+            .onChange(of: playAnimatedImages) { _, _ in updatePlayback() }
+            .onChange(of: reduceMotion) { _, _ in updatePlayback() }
+            .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+                updatePlayback()
+            }
+            .onChange(of: playerObserver.didReachEnd) { _, ended in
+                if ended {
+                    playRequested = false
+                    if !isGIF { hasFinishedVideo = true }
+                }
+            }
+            .onChange(of: attachment.url) { _, _ in
+                hasFinishedVideo = false
+                playRequested = false
+                isFrameReady = false
+                playerObserver.tearDown()
+                updatePlayback()
+            }
+            .onReceive(networkMonitor.$networkType.dropFirst()) { _ in
+                if !isGIF { updatePlayback() }
+            }
+            .onReceive(networkMonitor.$isConnected.dropFirst()) { _ in
+                if !isGIF { updatePlayback() }
             }
             .onAppear {
                 // Back from fullscreen or another page: carry on if still on screen.
@@ -113,12 +153,31 @@ struct VideoPlayerView: View {
                 playRequested = false
                 playerObserver.tearDown()
             }
-            .accessibilityElement(children: .ignore)
+            .contentShape(.contextMenuPreview, Rectangle())
+            .contextMenu {
+                if !isConcealed {
+                    ForEach(MediaExportAction.available(for: attachment), id: \.self) { action in
+                        Button {
+                            Task {
+                                do {
+                                    if let message = try await action.perform(on: attachment) {
+                                        AppFeedbackCenter.shared.showSuccess(message)
+                                    }
+                                } catch {
+                                    AppFeedbackCenter.shared.showError(MediaExportService.message(for: error))
+                                }
+                            }
+                        } label: { Label(action.title, systemImage: action.systemImage) }
+                    }
+                }
+            }
+            .accessibilityElement(children: .contain)
             .accessibilityLabel(Text(MoroL10n.A11y.videoPlayer))
-            .accessibilityValue(Text(playerObserver.playingState == .playing
+            .accessibilityValue(Text(isPlaying
                                      ? MoroL10n.A11y.playing
                                      : MoroL10n.A11y.paused))
             .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("media.video.\(attachment.id)")
         }
     }
 
@@ -140,11 +199,21 @@ struct VideoPlayerView: View {
                     player: player,
                     videoGravity: contentMode == .fit ? .resizeAspect : .resizeAspectFill
                 ) { isReady in
-                    isFrameReady = isReady
+                    // Keep the last displayed frame through a loop handoff or buffering;
+                    // replacing it with the poster creates a visible jump on every replay.
+                    if isReady { isFrameReady = true }
                 }
                 .opacity(isFrameReady ? 1 : 0)
                 .allowsHitTesting(false)
             }
+
+            // Keep opening the viewer and starting inline playback as separate accessible
+            // controls. This button fills the media, underneath the smaller play/retry button.
+            Button { onTap?() } label: { Color.clear.contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+                .accessibilityLabel(MoroL10n.A11y.videoPlayer)
+                .accessibilityValue(isPlaying ? MoroL10n.A11y.playing : MoroL10n.A11y.paused)
+                .accessibilityIdentifier("media.open.\(attachment.id)")
 
             if playerObserver.didFail {
                 // Couldn't load (e.g. a timeout on a slow network): offer to try again
@@ -163,6 +232,8 @@ struct VideoPlayerView: View {
                     playButtonOverlay
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(MoroL10n.A11y.play)
+                .accessibilityIdentifier("media.play.\(attachment.id)")
             }
         }
     }
@@ -177,7 +248,9 @@ struct VideoPlayerView: View {
     }
 
     private func playInPlace() {
+        guard !presentation.coversInlinePlayback else { return }
         playRequested = true
+        hasFinishedVideo = false
         setupPlayer()
         VideoAudioSession.prepareForSilentPlayback()
         // A video that has ended starts again from the beginning.
@@ -187,11 +260,22 @@ struct VideoPlayerView: View {
     /// Plays the video while it may (on screen, app active, revealed, and allowed by the
     /// autoplay setting or a press of play) and pauses it otherwise.
     private func updatePlayback() {
-        guard isVisible, !isConcealed, scenePhase == .active else {
-            playerObserver.pause()
+        guard !presentation.coversInlinePlayback else {
+            playerObserver.tearDown()
             return
         }
-        guard playRequested || shouldAutoplay else { return }
+        guard MediaPlaybackPolicy.canPlay(isVisible: isVisible, isActive: playbackScope.isActive,
+            isSceneActive: scenePhase == .active, isCovered: false, isConcealed: isConcealed) else {
+            isFrameReady = false
+            playerObserver.tearDown()
+            return
+        }
+        guard playRequested || shouldAutoplay else {
+            isFrameReady = false
+            playerObserver.tearDown()
+            return
+        }
+        guard isGIF || !hasFinishedVideo else { return }
         setupPlayer()
         VideoAudioSession.prepareForSilentPlayback()
         // Never restart a video that already played to the end; that's for the play button.
@@ -274,7 +358,7 @@ struct VideoPlayerView: View {
     
     private func setupPlayer() {
         let videoURL = attachment.url
-        playerObserver.setPlayer(url: videoURL, isGIF: isGIF)
+        playerObserver.setPlayer(url: videoURL, isGIF: isGIF, shouldLoop: isGIF && shouldAutoplay)
         // Timeline playback is silent; fullscreen (possibly showing this same player) has
         // the sound.
         if !VideoAudioSession.isAudible {

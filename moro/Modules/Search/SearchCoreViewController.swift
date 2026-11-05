@@ -79,7 +79,11 @@ final class SearchCoreViewController: UIViewController {
     var appliedTheme: MoroTheme
 
     typealias PollVoteHandler = (String, [Int]) async -> Bool
+    var makeAccountView: ((Account) -> AnyView)?
     var makeStatusView: ((Status, @escaping PollVoteHandler) -> AnyView)?
+    let playbackScope = MediaPlaybackScope(allowsAnimatedAvatars: true)
+    let avatarVisibility = UIKitScrollVisibility()
+    private var isPlaybackPresented = false
     private var feedSubscription: AnyCancellable?
 
     var onOpenProfile: ((Account) -> Void)?
@@ -248,6 +252,8 @@ final class SearchCoreViewController: UIViewController {
         library.reload()
         updateSearchChrome()
         if interaction.page == .entry { updateEntryContent() }
+        isPlaybackPresented = true
+        updateMediaPlaybackActivity()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -261,6 +267,7 @@ final class SearchCoreViewController: UIViewController {
     }
 
     func prepareForNavigation() {
+        stopMediaPlayback()
         allowsSearchFocus = false
         view.endEditing(true)
     }
@@ -268,6 +275,28 @@ final class SearchCoreViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         layoutScopeIndicator()
+        avatarVisibility.refresh()
+    }
+
+    func stopMediaPlayback() {
+        isPlaybackPresented = false
+        updateMediaPlaybackActivity()
+    }
+
+    func updateMediaPlaybackActivity() {
+        playbackScope.isActive = isPlaybackPresented && interaction.page != .entry
+        if !playbackScope.isActive { playbackScope.isScrolling = false }
+        avatarVisibility.refresh()
+    }
+
+    func setListContentOffset(_ offset: CGPoint, animated: Bool) {
+        let moves = abs(tableView.contentOffset.y - offset.y) > 0.5
+            || abs(tableView.contentOffset.x - offset.x) > 0.5
+        // A no-op animation has no completion callback. Non-animated restores also
+        // cancel the previous animation, so neither may leave avatars paused.
+        playbackScope.isScrolling = (animated && moves) || tableView.isDragging || tableView.isDecelerating
+        tableView.setContentOffset(offset, animated: animated)
+        avatarVisibility.refresh()
     }
 
     override func didReceiveMemoryWarning() {
@@ -928,7 +957,7 @@ final class SearchCoreViewController: UIViewController {
             library.record(query: trimmedQuery, scope: selectedScope)
             updateSearchChrome()
             startSearch(reset: true)
-            tableView.setContentOffset(CGPoint(x: 0, y: -tableView.adjustedContentInset.top), animated: false)
+            setListContentOffset(CGPoint(x: 0, y: -tableView.adjustedContentInset.top), animated: false)
         }
     }
 
@@ -1331,11 +1360,11 @@ final class SearchCoreViewController: UIViewController {
 
         let topOffset = -tableView.adjustedContentInset.top
         if tableView.contentOffset.y > topOffset + 1 {
-            tableView.setContentOffset(CGPoint(x: 0, y: topOffset), animated: true)
+            setListContentOffset(CGPoint(x: 0, y: topOffset), animated: true)
         } else if !refreshControl.isRefreshing {
             MoroRefreshFeedback.armed()
             refreshControl.beginRefreshing()
-            tableView.setContentOffset(
+            setListContentOffset(
                 CGPoint(x: 0, y: topOffset - refreshControl.frame.height), animated: true)
             handlePullToRefresh()
         }

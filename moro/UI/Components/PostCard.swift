@@ -34,6 +34,7 @@ struct PostCard: View {
     var displayMode: PostDisplayMode = .normal
     var hideAvatar: Bool = false
     var showToolbar: Bool = true
+    var allowsTimelineAvatarAnimation = false
 
     /// Optional account cache for looking up avatar URLs
     var accountCache: AccountCache? = nil
@@ -169,7 +170,8 @@ struct PostCard: View {
                         imageURL: status.account.avatarAnimatedURL,
                         staticImageURL: status.account.avatarURL,
                         initials: status.account.displayNameInitials, seed: status.account.placeholderSeed,
-                        size: avatarSize
+                        size: avatarSize,
+                    allowsAnimation: allowsTimelineAvatarAnimation && !isQuoted
                     )
                 }
                 .buttonStyle(.plain)

@@ -75,6 +75,23 @@ final class TimelineScrollBridge: ObservableObject {
     private var frozenTimelines: Set<TimelineType> = []
     private var suppressChrome: Set<TimelineType> = []
     private var active = false
+    private var playbackScopes: [TimelineType: MediaPlaybackScope] = [:]
+
+    func playbackScope(for timeline: TimelineType) -> MediaPlaybackScope {
+        if let scope = playbackScopes[timeline] { return scope }
+        let scope = MediaPlaybackScope(isActive: active && isPresented(timeline) && !frozenTimelines.contains(timeline),
+                                       allowsAnimatedAvatars: true)
+        scope.isScrolling = phases[timeline].map { $0 != .idle } ?? false
+        playbackScopes[timeline] = scope
+        return scope
+    }
+
+    private func updatePlaybackScopes() {
+        for (timeline, scope) in playbackScopes {
+            scope.isActive = active && isPresented(timeline) && !frozenTimelines.contains(timeline)
+            scope.isScrolling = phases[timeline].map { $0 != .idle } ?? false
+        }
+    }
 
     /// Owned by the bridge, not SwiftUI's onChange cycle. The pager reports the
     /// displayed controller before its parent's selection onChange can run.
@@ -138,6 +155,7 @@ final class TimelineScrollBridge: ObservableObject {
 
     func setActive(_ value: Bool) {
         active = value
+        updatePlaybackScopes()
         if !value {
             pendingLayouts = pendingLayouts.filter { $0.value.includesRefreshCollapse }
             waitingForTop.removeAll()
@@ -155,10 +173,12 @@ final class TimelineScrollBridge: ObservableObject {
             frozenTimelines.remove(timeline)
             scheduleLayoutEvent(for: timeline)
         }
+        updatePlaybackScopes()
     }
 
     func updatePhase(_ phase: ScrollPhase, for timeline: TimelineType) {
         phases[timeline] = phase
+        updatePlaybackScopes()
         if phase == .tracking || phase == .interacting {
             pendingLayouts[timeline] = nil
             waitingForTop.remove(timeline)
@@ -450,6 +470,7 @@ final class TimelineScrollBridge: ObservableObject {
             chromeNeedsSync = true
         }
         presentedTimeline = timeline
+        updatePlaybackScopes()
     }
 
     func isPresented(_ timeline: TimelineType) -> Bool {

@@ -8,7 +8,10 @@ struct SearchFlowHarnessView: View {
     @StateObject private var appState = AppState()
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var accountKey = "ui-search-a"
+    @State private var avatarsPrepared = false
+    @State private var autoplayAvatars = true
     private let client = SearchFixtureProtocol.makeClient()
+    private let testsAnimatedAvatars = ProcessInfo.processInfo.environment["UITEST_ANIMATED_LIST_AVATARS"] == "1"
 
     private static let seed: Void = {
         for key in ["ui-search-a", "ui-search-b"] {
@@ -24,13 +27,39 @@ struct SearchFlowHarnessView: View {
 
     var body: some View {
         Group {
+            if testsAnimatedAvatars {
+                VStack(spacing: 0) {
+                    Toggle("Autoplay GIFs", isOn: $autoplayAvatars)
+                        .accessibilityIdentifier("listAvatars.autoplay")
+                        .padding(.horizontal)
+                    TimelineView(.periodic(from: .now, by: 0.2)) { _ in
+                        Text("active:\(TimelineAvatarAnimationPool.shared.activeCount) warm:\(TimelineAvatarAnimationPool.shared.warmCount)")
+                            .font(.caption.monospacedDigit())
+                            .accessibilityIdentifier("listAvatars.resources")
+                    }
+                    if avatarsPrepared { harnessContent }
+                }
+                .task {
+                    do {
+                        try await TimelineMediaFixture.prepare()
+                        avatarsPrepared = true
+                    } catch { AppFeedbackCenter.shared.showError(error.localizedDescription) }
+                }
+            } else { harnessContent }
+        }
+        .environmentObject(appState)
+        .moroTheme(theme)
+    }
+
+    private var harnessContent: some View {
+        Group {
             if ProcessInfo.processInfo.environment["UITEST_SEARCH_NATIVE_SHELL"] == "1" {
                 MainShellContainerRepresentable(
                     coordinator: tabs, theme: theme, unreadInboxCount: 0,
                     currentUserAvatarURL: nil, contentVersion: accountKey,
                     homeView: AnyView(Text("Home")),
                     exploreView: AnyView(searchRoot(router: tabs.exploreRouter)),
-                    inboxView: AnyView(Text("Inbox")), meView: AnyView(Text("Me")),
+                    inboxView: AnyView(inboxRoot), meView: AnyView(Text("Me")),
                     routeView: { route, router in
                         AnyView(destination(route).environment(\.appRouter, router))
                     }
@@ -54,8 +83,14 @@ struct SearchFlowHarnessView: View {
                 }
             }
         }
-        .environmentObject(appState)
-        .moroTheme(theme)
+    }
+
+    @ViewBuilder private var inboxRoot: some View {
+        if testsAnimatedAvatars {
+            AnimatedListAvatarHarnessRoot(tabs: tabs, autoplay: $autoplayAvatars,
+                apiClient: client, accountKey: accountKey, theme: theme, tab: .inbox)
+                .environmentObject(appState)
+        } else { Text("Inbox") }
     }
 
     private var theme: MoroTheme {
@@ -64,12 +99,18 @@ struct SearchFlowHarnessView: View {
         return MoroTheme(colorScheme: color, dynamicTypeSize: dynamicTypeSize)
     }
 
-    private func searchRoot(router: AppRouter) -> some View {
-        SearchView(apiClient: client, onEntryStateChanged: tabs.setExploreSearchEntryActive)
-            .environment(\.activeAccountKey, accountKey)
-            .environment(\.appRouter, router)
-            .environmentObject(appState)
-            .moroTheme(theme)
+    @ViewBuilder private func searchRoot(router: AppRouter) -> some View {
+        if testsAnimatedAvatars {
+            AnimatedListAvatarHarnessRoot(tabs: tabs, autoplay: $autoplayAvatars,
+                apiClient: client, accountKey: accountKey, theme: theme, tab: .explore)
+                .environmentObject(appState)
+        } else {
+            SearchView(apiClient: client, onEntryStateChanged: tabs.setExploreSearchEntryActive)
+                .environment(\.activeAccountKey, accountKey)
+                .environment(\.appRouter, router)
+                .environmentObject(appState)
+                .moroTheme(theme)
+        }
     }
 
     private func destination(_ route: Route) -> some View {
@@ -80,6 +121,32 @@ struct SearchFlowHarnessView: View {
             .moroTheme(theme)
     }
 
+}
+
+/// Observe settings and tab activity inside retained roots without replacing navigation stacks.
+private struct AnimatedListAvatarHarnessRoot: View {
+    @ObservedObject var tabs: RootTabCoordinator
+    @Binding var autoplay: Bool
+    let apiClient: MastodonAPI
+    let accountKey: String
+    let theme: MoroTheme
+    let tab: MainTab
+
+    var body: some View {
+        Group {
+            if tab == .inbox {
+                NotificationsView(apiClient: apiClient, sessionID: "ui-list-avatars", presentation: .inbox,
+                    isActive: tabs.selectedTab == .inbox && tabs.isAtRoot(.inbox))
+            } else {
+                SearchView(apiClient: apiClient, onEntryStateChanged: tabs.setExploreSearchEntryActive)
+            }
+        }
+        .environment(\.appRouter, tabs.router(for: tab))
+        .environment(\.activeAccountKey, accountKey)
+        .environment(\.tabReselection, tabs.tabReselection)
+        .environment(\.moroMediaPrefs, MoroMediaPreferences(autoplayGIFs: autoplay))
+        .moroTheme(theme)
+    }
 }
 
 private final class SearchFixtureToken: AuthTokenProvider {
@@ -117,11 +184,16 @@ final class SearchFixtureProtocol: URLProtocol, @unchecked Sendable {
             do {
                 if query == "slow" { try await Task.sleep(for: .milliseconds(250)) }
                 try Task.checkCancellation()
-                let account: [String: Any] = [
+                var account: [String: Any] = [
                     "id": "fixture-author", "username": "moro", "acct": "moro", "display_name": query.isEmpty ? "推荐账号" : "Result \(query)",
                     "note": "", "avatar": "", "avatar_static": "", "header": "", "header_static": "",
                     "followers_count": 10, "following_count": 5, "statuses_count": 1,
                 ]
+                if ProcessInfo.processInfo.environment["UITEST_ANIMATED_LIST_AVATARS"] == "1" {
+                    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("TimelineMediaFixture", isDirectory: true)
+                    account["avatar"] = directory.appendingPathComponent("avatar.gif").absoluteString
+                    account["avatar_static"] = directory.appendingPathComponent("still.png").absoluteString
+                }
                 let offset = Int(components?.queryItems?.first(where: { $0.name == "offset" })?.value ?? "0") ?? 0
                 let limit = Int(components?.queryItems?.first(where: { $0.name == "limit" })?.value ?? "20") ?? 20
                 let start = max(0, min(offset, 50))
@@ -148,7 +220,17 @@ final class SearchFixtureProtocol: URLProtocol, @unchecked Sendable {
                 if url.path.hasSuffix("/favourite") { post["favourited"] = true; post["favourites_count"] = 1 }
                 if url.path.hasSuffix("/bookmark") { post["bookmarked"] = true }
                 let payload: Any
-                if url.path.hasSuffix("/votes") {
+                if url.path == "/api/v1/notifications" {
+                    payload = (0..<24).map { index -> [String: Any] in
+                        var actor = account
+                        actor["id"] = "notification-actor-\(index)"
+                        actor["display_name"] = "Actor \(index)"
+                        var item: [String: Any] = ["id": String(1000 - index),
+                            "type": index < 3 ? "favourite" : "follow", "created_at": "2026-10-30T01:00:00Z", "account": actor]
+                        if index < 3 { item["status"] = post; item["group_key"] = "avatar-fixture-group" }
+                        return item
+                    }
+                } else if url.path.hasSuffix("/votes") {
                     try await Task.sleep(for: .milliseconds(100))
                     payload = poll
                 } else if url.path.hasSuffix("/search") {

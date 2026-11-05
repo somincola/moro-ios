@@ -58,6 +58,8 @@ struct MoroApp: App {
                     composeMediaHarness
                         .moroTheme(MoroTheme(accent: .monochrome))
                         .preferredColorScheme(colorScheme)
+                } else if shouldUseTimelineMediaHarness {
+                    timelineMediaHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseTimelineLiveHarness {
                     timelineLiveHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseListCacheHarness {
@@ -235,6 +237,20 @@ struct MoroApp: App {
         launchArguments.contains("UITEST_TIMELINE_LIVE")
         #else
         false
+        #endif
+    }
+
+    private var shouldUseTimelineMediaHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_TIMELINE_MEDIA")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var timelineMediaHarness: some View {
+        #if DEBUG
+        TimelineMediaHarnessView()
         #endif
     }
 

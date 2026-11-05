@@ -24,6 +24,7 @@ struct ProfileView: View {
     @Environment(\.threadSplitPanelOwnsBar) private var panelOwnsBar
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.displayScale) private var displayScale
     @ScaledMetric(relativeTo: .subheadline) private var bioLineSpacing: CGFloat = 2
     @ScaledMetric(relativeTo: .subheadline) private var bioParagraphSpacing: CGFloat = 6
     @Environment(\.cacheManager) private var cacheManager
@@ -47,6 +48,8 @@ struct ProfileView: View {
     @State private var autoRefresh = AutoRefreshSchedule(ttl: 5 * 60)
     @State private var scrollPosition = ScrollPosition(edge: .top)
     @State private var actionPresentation = ProfileActionPresentationState()
+    @State private var avatarPreview: Status.Attachment?
+    @State private var isAvatarVisible = true
     @StateObject private var actionSurface = PostActionSurfaceCenter()
 
     @StateObject private var interactionService: PostInteractionService
@@ -276,6 +279,11 @@ struct ProfileView: View {
                 MoroRefreshFeedback.armed()
                 runRefresh()
             }
+        }
+        .fullScreenCover(item: $avatarPreview) { attachment in
+            ImagePreviewView(attachments: [attachment])
+                .moroTheme(theme)
+                .environment(\.dynamicTypeSize, dynamicTypeSize)
         }
         .profileActionPresentations(
             presentation: $actionPresentation,
@@ -666,7 +674,12 @@ struct ProfileView: View {
 
         ZStack(alignment: .bottom) {
             if let headerURL = acc?.profileHeaderURL {
-                MoroNetworkImage(url: headerURL)
+                ProfileMediaImage(
+                    url: headerURL,
+                    staticURL: acc?.headerURL,
+                    thumbnailPixelSize: MoroNetworkImage.thumbnailPixelSize,
+                    isVisible: profileChromeProgress < 1 && avatarPreview == nil
+                )
                     .frame(maxWidth: .infinity)
                     .frame(height: visibleHeight + 2)
                     .clipped()
@@ -717,13 +730,7 @@ struct ProfileView: View {
         let avatarSize: CGFloat = 76
 
         HStack(alignment: .bottom, spacing: theme.spacing.m) {
-            MoroAvatar(
-                imageURL: acc?.avatarAnimatedURL,
-                staticImageURL: acc?.avatarURL,
-                initials: acc?.displayNameInitials ?? "?",
-                seed: acc?.placeholderSeed,
-                size: avatarSize
-            )
+            profileAvatar(account: acc, size: avatarSize)
             .overlay(
                 Circle()
                     .stroke(theme.colors.surfaceBase, lineWidth: 3)
@@ -741,6 +748,43 @@ struct ProfileView: View {
         .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.top, -(avatarSize / 2))  // Overlap banner by half avatar
         .padding(.bottom, theme.spacing.xs)
+    }
+
+    @ViewBuilder
+    private func profileAvatar(account: Account?, size: CGFloat) -> some View {
+        if let account, let url = account.profileAvatarURL {
+            Button {
+                avatarPreview = Status.Attachment(
+                    id: "profile-avatar-\(account.id)", type: "image", url: url,
+                    previewURL: account.avatarURL
+                )
+            } label: {
+                ZStack {
+                    theme.colors.primary50
+                    ProfileMediaImage(
+                        url: url,
+                        staticURL: account.avatarURL,
+                        thumbnailPixelSize: size * displayScale,
+                        isVisible: isAvatarVisible && avatarPreview == nil,
+                        maximumAnimatedBufferSize: 2 * 1024 * 1024
+                    )
+                }
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(theme.colors.primary300, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(MoroL10n.EditProfile.mediaAvatar)
+            .accessibilityHint(MoroL10n.ImagePreview.zoomAction)
+            .accessibilityIdentifier("profile.avatar")
+            .onScrollVisibilityChange(threshold: 0.1) { isAvatarVisible = $0 }
+        } else {
+            MoroAvatar(
+                initials: account?.displayNameInitials ?? "?",
+                seed: account?.placeholderSeed,
+                size: size
+            )
+        }
     }
 
     // MARK: - Profile Identity

@@ -93,7 +93,8 @@ struct MediaGridView: View {
                             contentMode: .fit,
                             onTap: {
                                 // The system player, continuing this player.
-                                NativeVideoPlayer.present(url: attachment.url, isGIF: attachment.type == "gifv")
+                                NativeVideoPlayer.present(url: attachment.url, isGIF: attachment.type == "gifv",
+                                                          attachment: attachment)
                             }
                         )
                     }

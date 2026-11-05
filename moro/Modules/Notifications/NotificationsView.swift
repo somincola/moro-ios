@@ -107,6 +107,8 @@ private struct NotificationFeedView: View {
     @State private var highlightedRowIDs: Set<String> = []
     /// Bumped to scroll the list to its newest row (only the list's reader proxy can).
     @State private var scrollToNewestRequest = 0
+    @State private var playbackScope = MediaPlaybackScope(allowsAnimatedAvatars: true)
+    @State private var isPresented = false
 
     private static let topAnchorID = "notifications.top"
     /// How long a refresh opened over unread notifications stays silent before the spinner
@@ -128,6 +130,18 @@ private struct NotificationFeedView: View {
                 }
             }
         }
+        .environment(\.moroPlaybackScope, playbackScope)
+        .onAppear {
+            isPresented = true
+            updatePlaybackActivity()
+        }
+        .onDisappear {
+            isPresented = false
+            playbackScope.isActive = false
+            playbackScope.isScrolling = false
+        }
+        .onChange(of: isActive) { _, _ in updatePlaybackActivity() }
+        .onChange(of: actorsSheet?.id) { _, _ in updatePlaybackActivity() }
         .task(id: isActive) {
             guard isActive else { return }
             await openFeed()
@@ -164,6 +178,11 @@ private struct NotificationFeedView: View {
             }
             .moroSheetSurface(detents: [.medium, .large])
         }
+    }
+
+    private func updatePlaybackActivity() {
+        playbackScope.isActive = isPresented && isActive && actorsSheet == nil
+        if !playbackScope.isActive { playbackScope.isScrolling = false }
     }
 
     private var notificationsContent: some View {
@@ -393,6 +412,7 @@ private struct NotificationFeedView: View {
                 }
             }
             .scrollPosition(id: $scrollPositionID, anchor: .top)
+            .accessibilityIdentifier("notifications.list")
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top <= 1
             } action: { _, atTop in
@@ -400,6 +420,8 @@ private struct NotificationFeedView: View {
             }
             .onScrollPhaseChange { _, phase in
                 isUserScrolling = phase != .idle
+                // Avatars pause while the list moves and resume once it settles.
+                playbackScope.isScrolling = phase != .idle
                 if phase == .interacting { userScrollGeneration &+= 1 }
             }
             .onChange(of: scrollToNewestRequest) { _, _ in
@@ -651,6 +673,7 @@ private struct NotificationActorsSheetState: Identifiable {
 private struct NotificationActorsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.moroTheme) private var theme
+    @State private var playbackScope = MediaPlaybackScope(allowsAnimatedAvatars: true)
 
     let title: String
     let accounts: [Account]
@@ -670,7 +693,8 @@ private struct NotificationActorsSheet: View {
                             imageURL: account.avatarAnimatedURL,
                             staticImageURL: account.avatarURL,
                             initials: account.displayNameInitials, seed: account.placeholderSeed,
-                            size: 40
+                            size: 40,
+                            allowsAnimation: true
                         )
                         VStack(alignment: .leading, spacing: 2) {
                             AccountDisplayNameView(
@@ -686,11 +710,19 @@ private struct NotificationActorsSheet: View {
                     .padding(.vertical, 4)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("notifications.actor.\(account.id)")
             }
             .listStyle(.plain)
+            .onScrollPhaseChange { _, phase in playbackScope.isScrolling = phase != .idle }
             .moroReadableListMargins()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
+        }
+        .environment(\.moroPlaybackScope, playbackScope)
+        .onAppear { playbackScope.isActive = true }
+        .onDisappear {
+            playbackScope.isActive = false
+            playbackScope.isScrolling = false
         }
     }
 }

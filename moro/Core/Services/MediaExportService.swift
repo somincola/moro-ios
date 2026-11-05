@@ -31,6 +31,13 @@ enum MediaExportService {
     // MARK: - Loading
 
     static func loadImage(from url: URL) async throws -> ImageFile {
+        if url.isFileURL {
+            let data = try await Task.detached(priority: .userInitiated) {
+                try Data(contentsOf: url, options: .mappedIfSafe)
+            }.value
+            guard UIImage(data: data) != nil else { throw ExportError.downloadFailed }
+            return ImageFile(data: data, type: sniffType(data, url: url))
+        }
         // The original is often already on disk (opened before, or a GIF that
         // autoplayed); only hit the network when it is not.
         let key = url.absoluteString
@@ -102,9 +109,18 @@ enum MediaExportService {
         return destination
     }
 
-    static func presentShareSheet(for fileURL: URL, sourceView: UIView? = nil) {
-        guard let presenter = topViewController() else { return }
+    static func presentShareSheet(for fileURL: URL, sourceView: UIView? = nil,
+                                 removeAfterSharing: Bool = false) {
+        guard let presenter = topViewController() else {
+            if removeAfterSharing { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
+            return
+        }
         let controller = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+        if removeAfterSharing {
+            controller.completionWithItemsHandler = { _, _, _, _ in
+                try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent())
+            }
+        }
         if let popover = controller.popoverPresentationController {
             let anchor = sourceView ?? presenter.view
             popover.sourceView = anchor
@@ -151,6 +167,7 @@ enum MediaExportAction: CaseIterable {
     @MainActor
     func perform(on url: URL, sourceView: UIView? = nil) async throws -> String? {
         let file = try await MediaExportService.loadImage(from: url)
+        try Task.checkCancellation()
         switch self {
         case .save:
             try await MediaExportService.saveToPhotos(file)
