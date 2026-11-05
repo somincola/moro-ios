@@ -34,7 +34,7 @@ struct VideoLoopPlaybackTests {
         defer { observer.tearDown() }
         let player = try #require(observer.getPlayer())
         observer.play()
-        let deadline = ContinuousClock.now + .seconds(6)
+        let deadline = ContinuousClock.now + .seconds(30)
         while !observer.didReachEnd, ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }
@@ -60,7 +60,7 @@ struct VideoLoopPlaybackTests {
         defer { observer.tearDown() }
         let player = try #require(observer.getPlayer())
         observer.play()
-        let deadline = ContinuousClock.now + .seconds(8)
+        let deadline = ContinuousClock.now + .seconds(30)
         var previousTime = 0.0
         var loops = 0
         while loops < 4, ContinuousClock.now < deadline {
@@ -87,7 +87,7 @@ struct VideoLoopPlaybackTests {
         try #require(writer.startWriting())
         writer.startSession(atSourceTime: .zero)
         for frame in 0..<5 {
-            let deadline = ContinuousClock.now + .seconds(4)
+            let deadline = ContinuousClock.now + .seconds(15)
             while !input.isReadyForMoreMediaData, writer.status == .writing, ContinuousClock.now < deadline {
                 try await Task.sleep(for: .milliseconds(10))
             }

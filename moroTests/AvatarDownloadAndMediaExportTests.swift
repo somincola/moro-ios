@@ -66,7 +66,7 @@ struct AvatarDownloadAndMediaExportTests {
         try await Task.sleep(for: .milliseconds(150))
         #expect(entry.player.currentItem != nil)
         pool.release(entry)
-        let deadline = ContinuousClock.now + .seconds(2)
+        let deadline = ContinuousClock.now + .seconds(15)
         while pool.parkedCount > 0, ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }

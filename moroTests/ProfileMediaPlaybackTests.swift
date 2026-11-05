@@ -124,8 +124,10 @@ struct ProfileMediaPlaybackTests {
         return try #require(find(window))
     }
 
+    /// Returns as soon as the condition holds; the deadline is only for a stuck load. Decoding
+    /// on CI's busy runner (parallel suites, few cores) took about 12 s, so leave plenty.
     private func waitUntil(_ condition: () -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(4)
+        let deadline = ContinuousClock.now + .seconds(30)
         while !condition(), ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }
