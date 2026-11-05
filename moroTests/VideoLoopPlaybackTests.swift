@@ -19,9 +19,11 @@ struct VideoLoopPlaybackTests {
         observer.tearDown()
         observer.setPlayer(url: url, isGIF: true, shouldLoop: false)
         #expect(observer.getPlayer() === player)
-        observer.play()
-        await Task.yield()
+        // Let the queued callback run before anything plays: the clip is half a second long,
+        // so once it plays a slow runner can genuinely reach its end before the check.
+        try await Task.sleep(for: .milliseconds(200))
         #expect(!observer.didReachEnd)
+        observer.play()
         #expect(observer.isPlaybackRequested)
     }
 
