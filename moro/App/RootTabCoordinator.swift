@@ -86,9 +86,13 @@ final class RootTabCoordinator: ObservableObject {
     @Published var showAddAccountLogin = false
     /// The Me tab's account switcher is up; floating controls make room for it.
     @Published var isAccountSwitcherPresented = false
-    @Published var selectedTabScrollToTop = -1
+    @Published private(set) var tabReselection: TabReselection?
     @Published var timelineSelection: TimelineType = .home
     @Published var tabBarHeight: CGFloat = 78
+    /// The device has a hinge (iPhone Duo): the home timeline moves its header controls into the
+    /// system navigation bar, so they follow the bars into the vertical side bar and share the
+    /// status row on the inner display. Other iPhones keep the custom hide-on-scroll header.
+    @Published var usesSystemHomeBar = false
     @Published private(set) var isExploreSearchEntryActive = false
     @Published private var rootStateByTab: [MainTab: Bool]
 
@@ -130,8 +134,24 @@ final class RootTabCoordinator: ObservableObject {
         presentedSheet = .settings
     }
 
-    func dismissPresentedSheet() {
-        presentedSheet = nil
+    /// Work that must wait until the root sheet has finished dismissing (switching
+    /// accounts, pushing onto the now-visible stack). Run from the sheet's `onDismiss`
+    /// instead of guessing the animation length with a timer.
+    private var actionsAfterSheetDismiss: [() -> Void] = []
+
+    func dismissPresentedSheet(then action: (() -> Void)? = nil) {
+        if let action { actionsAfterSheetDismiss.append(action) }
+        if presentedSheet == nil {
+            runActionsAfterSheetDismiss()
+        } else {
+            presentedSheet = nil
+        }
+    }
+
+    func runActionsAfterSheetDismiss() {
+        let actions = actionsAfterSheetDismiss
+        actionsAfterSheetDismiss = []
+        actions.forEach { $0() }
     }
 
     func selectTab(_ tab: MainTab) {
@@ -231,18 +251,6 @@ final class RootTabCoordinator: ObservableObject {
     }
 
     private func triggerScrollToTopEvent(for tab: MainTab) {
-        selectedTabScrollToTop = -1
-
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.selectedTabScrollToTop = tab.hashValue
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                guard let self else { return }
-                if self.selectedTabScrollToTop == tab.hashValue {
-                    self.selectedTabScrollToTop = -1
-                }
-            }
-        }
+        tabReselection = TabReselection(tab: tab, sequence: (tabReselection?.sequence ?? 0) + 1)
     }
 }

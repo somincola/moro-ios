@@ -45,6 +45,15 @@ enum TimelineType: Hashable, Identifiable {
         }
     }
 
+    /// The menu's glyph in iPhone Duo's vertical side bar, which shows no text. Following uses
+    /// people rather than its house, which would repeat the Home tab's below it.
+    var sideBarIcon: String {
+        switch self {
+        case .home: return "person.2"
+        default: return icon
+        }
+    }
+
     var description: String {
         switch self {
         case .home: return MoroL10n.TimelineSwitcher.homeDesc
@@ -67,9 +76,18 @@ enum TimelineType: Hashable, Identifiable {
 
 /// Compact timeline selector with one source of truth and no horizontal paging gesture.
 struct TimelineSwitcher: View {
+    enum Style {
+        /// The custom floating header.
+        case header
+        /// A system toolbar item: the title in a horizontal bar, the timeline's icon in the
+        /// vertical side bar (which shows no text).
+        case toolbar
+    }
+
     @Binding var selectedTimeline: TimelineType
     /// Pinned timelines appended after the built-in three.
     var pinnedTimelines: [TimelineType] = []
+    var style: Style = .header
     var onManageLists: (() -> Void)?
     var onManageTopics: (() -> Void)?
     @Environment(\.moroTheme) private var theme
@@ -106,23 +124,58 @@ struct TimelineSwitcher: View {
                 .accessibilityIdentifier("topics.menu")
             }
         } label: {
-            HStack(spacing: 8) {
-                Text(selectedTimeline.localizedTitle)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-
-                Image(systemName: "chevron.down")
-                    .moroScaledFont(size: 11, weight: .semibold, relativeTo: .caption)
+            if style == .toolbar {
+                ToolbarAxisReader { isVertical in
+                    if isVertical {
+                        Image(systemName: selectedTimeline.sideBarIcon)
+                    } else {
+                        titleLabel
+                    }
+                }
+            } else {
+                titleLabel
             }
-            .moroScaledFont(size: 15, weight: .semibold)
-            .foregroundStyle(theme.colors.textPrimary)
-            .padding(.horizontal, 8)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
         }
         .accessibilityLabel(MoroL10n.TimelineSwitcher.accessibility)
         .accessibilityValue(selectedTimeline.localizedTitle)
     }
+
+    private var titleLabel: some View {
+        HStack(spacing: 8) {
+            Text(selectedTimeline.localizedTitle)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+            Image(systemName: "chevron.down")
+                .moroScaledFont(size: 11, weight: .semibold, relativeTo: .caption)
+        }
+        .moroScaledFont(size: 15, weight: .semibold)
+        .foregroundStyle(theme.colors.textPrimary)
+        .padding(.horizontal, 8)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+    }
+}
+
+/// Tells toolbar content whether it is laid out in a vertical side bar (iPhone Duo).
+struct ToolbarAxisReader<Content: View>: View {
+    @ViewBuilder let content: (_ isVertical: Bool) -> Content
+
+    var body: some View {
+        if #available(iOS 27.1, *) {
+            VerticalToolbarEdgeReader(content: content)
+        } else {
+            content(false)
+        }
+    }
+}
+
+@available(iOS 27.1, *)
+private struct VerticalToolbarEdgeReader<Content: View>: View {
+    @Environment(\.toolbarVerticalEdge) private var verticalEdge
+    let content: (Bool) -> Content
+
+    var body: some View { content(verticalEdge != nil) }
 }
 
 #Preview {

@@ -24,8 +24,10 @@ extension TimelineHomeView {
                     // Scrollable spacer reserving room for the floating header. Being part of
                     // the content (not a fixed/animated inset), it scrolls away naturally and the
                     // content fills from the top — no layout jump or scroll feedback (= no jitter).
+                    // At least 1pt even without a header (iPhone Duo's system bar): a zero-height
+                    // row never lays out its scroll-view resolver, and the pager stays blank.
                     Color.clear
-                        .frame(height: headerHeight)
+                        .frame(height: max(headerHeight, 1))
                         .id("timeline-top")
                         .background(
                             TimelineScrollViewResolver(
@@ -44,6 +46,7 @@ extension TimelineHomeView {
                     timelinePrimaryContent(for: viewModel, timelineType: timelineType)
                 }
                 .scrollTargetLayout()
+                .moroReadableColumn()
                 // Clear the compact footer, including the device bottom safe area. The timeline
                 // remains edge to edge, while its final row stays fully reachable above the footer.
                 .padding(.bottom, bottomContentInset + theme.spacing.s)
@@ -67,7 +70,7 @@ extension TimelineHomeView {
                     isSelected: timelineType == selectedTimeline
                 )
                 if crossedThreshold {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    MoroRefreshFeedback.armed()
                 }
                 handleScrollOffset(-offsetY, for: timelineType)
             }
@@ -100,9 +103,7 @@ extension TimelineHomeView {
     }
 
     func didReleasePull(oldPhase: ScrollPhase, newPhase: ScrollPhase) -> Bool {
-        let wasTouching = oldPhase == .tracking || oldPhase == .interacting
-        let isTouching = newPhase == .tracking || newPhase == .interacting
-        return wasTouching && !isTouching
+        ScrollPhase.releasedTouch(from: oldPhase, to: newPhase)
     }
 
     @MainActor
@@ -124,29 +125,32 @@ extension TimelineHomeView {
         }
     }
 
+    /// Shared by a released pull and a tab re-tap at the top: both pin the same slot first.
     @MainActor
     func performPullRefresh(
         viewModel: TimelineViewModel,
-        timelineType: TimelineType
+        timelineType: TimelineType,
+        trigger: TimelineViewModel.RefreshTrigger = .pull
     ) async {
         let indicatorStart = Date()
         let detectionSnapshot = detectionDimension(for: timelineType).map {
             detectionManager.snapshot(for: $0)
         }
-        let result = await viewModel.refresh(trigger: .pull)
+        let result = await viewModel.refresh(trigger: trigger)
 
         switch result {
-        case .success:
+        case .success(let insertedCount, let replacedTimeline):
             if let detectionSnapshot {
                 detectionManager.resolve(detectionSnapshot)
             }
             syncDetectionTopID(for: timelineType)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            // Confirm only when something arrived; "nothing new" just collapses the slot.
+            MoroRefreshFeedback.deliver(.succeeded,
+                confirmsSuccess: insertedCount > 0 || replacedTimeline)
         case .failure:
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            AppFeedbackCenter.shared.showError(MoroL10n.Timeline.loadFailed)
+            MoroRefreshFeedback.deliver(.failed)
         case .cancelled:
-            break
+            MoroRefreshFeedback.deliver(.cancelled)
         }
 
         let elapsed = Date().timeIntervalSince(indicatorStart)
@@ -174,6 +178,7 @@ extension TimelineHomeView {
         let timeline: TimelineType
 
         @Environment(\.moroTheme) private var theme
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @State private var state = TimelinePullRefreshVisualState.idle
 
         private var progress: CGFloat {
@@ -215,7 +220,11 @@ extension TimelineHomeView {
                 if slotHeight <= 0.5 { bridge.pullRefreshSlotDidCollapse(for: timeline) }
             }
             .onReceive(subject) { nextState in
-                if isCollapsing(to: nextState) {
+                if isExpandingFromRest(to: nextState) {
+                    // A tab re-tap pins the slot with no pull before it: open it smoothly
+                    // so the rows visibly make room, like a released pull.
+                    withAnimation(reduceMotion ? nil : .spring(duration: 0.35)) { state = nextState }
+                } else if isCollapsing(to: nextState) {
                     // The slot is off screen while reading. An immediate layout
                     // lets the bridge restore the anchor once, without animating
                     // the entire timeline upward under the reader.
@@ -230,6 +239,10 @@ extension TimelineHomeView {
             .animation(.easeOut(duration: 0.16), value: state.isRefreshing)
         }
 
+        private func isExpandingFromRest(to nextState: TimelinePullRefreshVisualState) -> Bool {
+            !state.isPinned && state.distance <= 0 && nextState.isPinned
+        }
+
         private func isCollapsing(to nextState: TimelinePullRefreshVisualState) -> Bool {
             state.isPinned
                 && !nextState.isPinned
@@ -239,52 +252,16 @@ extension TimelineHomeView {
 
         @ViewBuilder
         private var indicator: some View {
-            TimelinePetalProgress(
+            MoroPetalSpinner(
                 progress: progress,
                 isAnimating: state.isRefreshing,
-                activeColor: theme.colors.textSecondary,
-                inactiveColor: theme.colors.borderSubtle
+                style: .timeline,
+                tint: .twoTone(active: theme.colors.textSecondary, inactive: theme.colors.borderSubtle)
             )
             .opacity(iconOpacity)
             .scaleEffect(0.78 + 0.22 * entryProgress)
             .frame(width: 28, height: 28)
-        }
-    }
-
-    private struct TimelinePetalProgress: View {
-        let progress: CGFloat
-        let isAnimating: Bool
-        let activeColor: Color
-        let inactiveColor: Color
-
-        private let petalCount = 12
-
-        var body: some View {
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimating)) { context in
-                let rotation = isAnimating
-                    ? context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.9) / 0.9 * 360
-                    : 0
-
-                ZStack {
-                    ForEach(0..<petalCount, id: \.self) { index in
-                        Capsule(style: .continuous)
-                            .fill(color(for: index))
-                            .frame(width: 2.4, height: 6.5)
-                            .offset(y: -8.5)
-                            .rotationEffect(.degrees(Double(index) * 360 / Double(petalCount)))
-                    }
-                }
-                .rotationEffect(.degrees(rotation))
-            }
             .accessibilityHidden(true)
-        }
-
-        private func color(for index: Int) -> Color {
-            if isAnimating {
-                return activeColor.opacity(0.28 + Double(index + 1) / Double(petalCount) * 0.72)
-            }
-            let visiblePetals = Int(ceil(min(max(progress, 0), 1) * CGFloat(petalCount)))
-            return index < visiblePetals ? activeColor : inactiveColor.opacity(0.45)
         }
     }
 
@@ -326,8 +303,13 @@ extension TimelineHomeView {
         -> some View
     {
         let pageSession = pageSessionStore.session(for: timelineType)
+        // Grouped once per pass instead of filtering every gap for every row.
+        let retryGapsByAfterID = Dictionary(
+            grouping: viewModel.gaps.filter { viewModel.failedGapIDs.contains($0.id) },
+            by: \.afterID
+        )
 
-        ForEach(Array(viewModel.statuses.enumerated()), id: \.element.id) { index, status in
+        ForEach(viewModel.statuses.indexed(), id: \.element.id) { index, status in
             let context = threadContext(for: status)
             let prefetchWindowSize = 2
             let canRunPrefetch = hasFinishedInitialLoad(for: timelineType)
@@ -402,7 +384,7 @@ extension TimelineHomeView {
 
             // Unverified intervals are resolved quietly. Only a failed request
             // needs an action in the timeline; its appearance is anchor-preserved.
-            ForEach(viewModel.gaps.filter { $0.afterID == status.id && viewModel.failedGapIDs.contains($0.id) }) { gap in
+            ForEach(retryGapsByAfterID[status.id] ?? []) { gap in
                 Button {
                     Task { await viewModel.loadGap(id: gap.id) }
                 } label: {
@@ -452,24 +434,23 @@ extension TimelineHomeView {
         ForEach(0..<6, id: \.self) { _ in
             HStack(alignment: .top, spacing: theme.spacing.m) {
                 Circle()
-                    .fill(theme.colors.surfaceSubtle)
+                    .fill(theme.colors.skeleton)
                     .frame(width: 36, height: 36)
 
                 VStack(alignment: .leading, spacing: theme.spacing.s) {
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(theme.colors.surfaceSubtle)
+                        .fill(theme.colors.skeleton)
                         .frame(width: 122, height: 12)
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(theme.colors.surfaceSubtle)
+                        .fill(theme.colors.skeleton)
                         .frame(height: 11)
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(theme.colors.surfaceSubtle)
+                        .fill(theme.colors.skeleton)
                         .frame(width: 190, height: 11)
                 }
             }
             .padding(.horizontal, theme.spacing.timelinePadding)
             .padding(.vertical, theme.spacing.timelineVertical)
-            .redacted(reason: .placeholder)
 
             MoroDivider()
                 .padding(.leading, theme.spacing.timelinePadding)

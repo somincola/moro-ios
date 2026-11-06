@@ -260,6 +260,7 @@ struct ProfileConnectionsView: View {
             .listRowBackground(theme.colors.surfaceBase)
         }
         .listStyle(.plain)
+        .moroReadableListMargins()
         .listRowSeparatorTint(theme.colors.divider)
         .contentMargins(.top, 0, for: .scrollContent)
         .scrollContentBackground(.hidden)

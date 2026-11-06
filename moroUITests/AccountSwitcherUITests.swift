@@ -39,9 +39,18 @@ final class AccountSwitcherUITests: XCTestCase {
         let app = launch(dark: false)
         defer { app.terminate() }
         let me = meTab(app)
-        // Release one avatar to the left of the current account: the most recent other account.
+        // Find the most recent other account first: one avatar along from the current one
+        // over a bottom bar, and further out beside iPhone Duo's vertical bar.
         let start = me.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
-        start.press(forDuration: 0.6, thenDragTo: start.withOffset(CGVector(dx: -58, dy: 0)))
+        me.press(forDuration: 0.6)
+        let next = app.descendants(matching: .any)["accountSwitcher.account.push-c"]
+        XCTAssertTrue(next.waitForExistence(timeout: 3))
+        let dx = next.frame.midX - start.screenPoint.x
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).tap()
+        XCTAssertTrue(next.waitForNonExistence(timeout: 3))
+
+        // Then hold the Me tab, slide onto it and release.
+        start.press(forDuration: 0.6, thenDragTo: start.withOffset(CGVector(dx: dx, dy: 0)))
         XCTAssertTrue(me.waitForExistence(timeout: 5))
         sleep(2)
 
@@ -87,12 +96,14 @@ final class AccountSwitcherUITests: XCTestCase {
         app.launchEnvironment["UITEST_PUSH_SCENARIO"] = "inbox"
         app.launchEnvironment["UITEST_SWITCHER_ACCOUNTS"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = dark ? "dark" : "light"
-        app.launch()
+        app.launch(isolatedFor: self)
         return app
     }
 
     private func meTab(_ app: XCUIApplication) -> XCUIElement {
-        let me = app.tabBars.buttons["mainTab.me"]
+        // Any button, not just tab bar buttons: on iPhone Duo the tabs sit in a vertical
+        // system bar that accessibility reports as a toolbar.
+        let me = app.buttons["mainTab.me"]
         XCTAssertTrue(me.waitForExistence(timeout: 10))
         return me
     }

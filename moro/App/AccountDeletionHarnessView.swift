@@ -5,6 +5,7 @@
 //  Deterministic UI-test and review-screenshot harness for account deletion.
 //
 
+#if DEBUG
 import SwiftUI
 
 struct AccountDeletionHarnessView: View {
@@ -44,3 +45,4 @@ struct AccountDeletionHarnessView: View {
         .environmentObject(appState)
     }
 }
+#endif

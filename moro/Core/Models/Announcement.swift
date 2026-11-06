@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct Announcement: Identifiable, Codable, Hashable {
+nonisolated struct Announcement: Identifiable, Codable, Hashable {
     let id: String
     let content: String
     let startsAt: Date?
@@ -21,7 +21,7 @@ struct Announcement: Identifiable, Codable, Hashable {
     let emojis: [AnnouncementEmoji]
     let reactions: [AnnouncementReaction]
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case id
         case content
         case startsAt = "starts_at"
@@ -53,14 +53,14 @@ struct Announcement: Identifiable, Codable, Hashable {
     }
 }
 
-struct AnnouncementReaction: Codable, Hashable {
+nonisolated struct AnnouncementReaction: Codable, Hashable {
     let name: String
     let count: Int
     let me: Bool
     let url: URL?
     let staticURL: URL?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case name
         case count
         case me
@@ -69,24 +69,24 @@ struct AnnouncementReaction: Codable, Hashable {
     }
 }
 
-struct AnnouncementMention: Codable, Hashable {
+nonisolated struct AnnouncementMention: Codable, Hashable {
     let id: String
     let username: String
     let url: URL
     let acct: String
 }
 
-struct AnnouncementTag: Codable, Hashable {
+nonisolated struct AnnouncementTag: Codable, Hashable {
     let name: String
     let url: URL
 }
 
-struct AnnouncementEmoji: Codable, Hashable {
+nonisolated struct AnnouncementEmoji: Codable, Hashable {
     let shortcode: String
     let url: URL
     let staticURL: URL
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case shortcode
         case url
         case staticURL = "static_url"

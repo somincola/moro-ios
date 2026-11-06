@@ -31,7 +31,7 @@ actor DateFormatterCache {
     /// Relative date formatter for "2 hours ago" style
     private lazy var _relativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
+        formatter.unitsStyle = RelativeDateTimeFormatter.compactUnitsStyle
         return formatter
     }()
 
@@ -160,7 +160,7 @@ actor DateFormatterCache {
 // MARK: - Non-Actor Convenience Wrappers
 
 /// Thread-local ISO8601 parser used in high-frequency decode paths.
-private enum APIISO8601DateParser {
+nonisolated private enum APIISO8601DateParser {
     private static let withFractionalKey = "com.moro.date.iso8601.with-fractional"
     private static let withoutFractionalKey = "com.moro.date.iso8601.no-fractional"
 
@@ -196,12 +196,14 @@ private enum APIISO8601DateParser {
 }
 
 /// Synchronous date formatting utilities using cached formatters
-/// Use these for quick formatting in synchronous contexts
-enum DateFormatting {
+/// Use these for quick formatting in synchronous contexts. Nonisolated: model decoding
+/// calls `parseISO8601` on the background decode queue. The shared formatters are only
+/// used to format, which Foundation formatters support from any thread.
+nonisolated enum DateFormatting {
 
-    private static let relative: RelativeDateTimeFormatter = {
+    nonisolated(unsafe) private static let relative: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
+        formatter.unitsStyle = RelativeDateTimeFormatter.compactUnitsStyle
         return formatter
     }()
 
@@ -276,5 +278,16 @@ extension Date {
     /// Get a smart relative string (relative for recent, absolute for older)
     func smartRelativeString(cutoff: TimeInterval = 86400) -> String {
         DateFormatting.smartRelativeString(for: self, cutoff: cutoff)
+    }
+}
+
+nonisolated extension RelativeDateTimeFormatter {
+    /// The compact style for timestamps in lists. French and Portuguese abbreviate the past as
+    /// "-38 min", which reads like a negative number, so they use the short "il y a 38 min".
+    static var compactUnitsStyle: UnitsStyle {
+        switch Locale.current.language.languageCode?.identifier {
+        case "fr", "pt": .short
+        default: .abbreviated
+        }
     }
 }

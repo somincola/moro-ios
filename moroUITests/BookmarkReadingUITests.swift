@@ -11,7 +11,7 @@ final class BookmarkReadingUITests: XCTestCase {
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = scheme
         app.launchEnvironment["UITEST_BOOKMARK_RESET"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
         defer { app.terminate() }
         let first = app.buttons["bookmarks.actions.b1"]
         XCTAssertTrue(first.waitForExistence(timeout: 10), app.debugDescription)
@@ -49,7 +49,7 @@ final class BookmarkReadingUITests: XCTestCase {
         app.terminate()
         app.launchEnvironment["UITEST_BOOKMARK_RESET"] = "0"
         app.launchEnvironment["UITEST_BOOKMARK_OFFLINE"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
         XCTAssertTrue(app.buttons["bookmarks.retry"].waitForExistence(timeout: 10))
         filter("read", app: app)
         XCTAssertTrue(first.waitForExistence(timeout: 5))
@@ -62,8 +62,8 @@ final class BookmarkReadingUITests: XCTestCase {
         app.buttons["bookmarks.filter.\(value)"].tap()
     }
     @MainActor private func reveal(_ element: XCUIElement, app: XCUIApplication) {
-        for _ in 0..<5 where !element.isHittable { app.collectionViews.firstMatch.swipeUp() }
-        XCTAssertTrue(element.isHittable, app.debugDescription)
+        for _ in 0..<5 where !element.isReachable(in: app) { app.collectionViews.firstMatch.swipeUp() }
+        XCTAssertTrue(element.isReachable(in: app), app.debugDescription)
     }
     @MainActor private func attach(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())

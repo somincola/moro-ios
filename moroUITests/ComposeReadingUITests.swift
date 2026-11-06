@@ -10,7 +10,7 @@ final class ComposeReadingUITests: XCTestCase {
         app.launchArguments = ["UITEST_COMPOSE_READING", "UITEST_DISABLE_ANIMATIONS", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = scheme
-        app.launch()
+        app.launch(isolatedFor: self)
         defer { app.terminate() }
         let editor = app.textViews["compose.textInput"]
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
@@ -31,15 +31,15 @@ final class ComposeReadingUITests: XCTestCase {
         XCTAssertTrue(app.buttons["compose.audienceMenu"].exists)
         XCTAssertEqual(editor.value as? String, expanded)
         select("compose.preview", app: app)
-        XCTAssertTrue(app.buttons["compose.previewDone"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.toolbarButton("compose.previewDone", labels: ["完成", "Done"]).waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["compose.previewCW"].exists)
         XCTAssertFalse(app.buttons["compose.media.remove.reading-1"].isHittable)
         attach(app, "compose-preview-\(scheme)")
-        app.buttons["compose.previewDone"].tap()
+        app.toolbarButton("compose.previewDone", labels: ["完成", "Done"]).tap()
         XCTAssertTrue(editor.waitForExistence(timeout: 3))
         XCTAssertEqual(editor.value as? String, expanded)
         select("compose.mediaOrder", app: app)
-        XCTAssertTrue(app.buttons["compose.orderDone"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.toolbarButton("compose.orderDone", labels: ["完成", "Done"]).waitForExistence(timeout: 5))
         let rows = app.cells.containing(NSPredicate(format: "identifier BEGINSWITH %@", "compose.order."))
         XCTAssertEqual(rows.count, 3, app.debugDescription)
         let first = rows.element(boundBy: 0)
@@ -49,9 +49,9 @@ final class ComposeReadingUITests: XCTestCase {
         XCTAssertTrue(rows.element(boundBy: 0).descendants(matching: .any)["compose.order.reading-2"].exists)
         XCTAssertTrue(rows.element(boundBy: 2).descendants(matching: .any)["compose.order.reading-1"].exists)
         attach(app, "compose-media-order-\(scheme)")
-        app.buttons["compose.orderDone"].tap()
+        app.toolbarButton("compose.orderDone", labels: ["完成", "Done"]).tap()
         select("compose.mediaOrder", app: app)
-        XCTAssertTrue(app.buttons["compose.orderDone"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.toolbarButton("compose.orderDone", labels: ["完成", "Done"]).waitForExistence(timeout: 5))
         XCTAssertTrue(app.cells.containing(NSPredicate(format: "identifier BEGINSWITH %@", "compose.order.")).element(boundBy: 0).descendants(matching: .any)["compose.order.reading-2"].exists)
     }
 

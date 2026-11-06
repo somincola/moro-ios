@@ -18,10 +18,10 @@ final class ComposeEditSourceUITests: XCTestCase {
         app.launchArguments = ["UITEST_EDIT_SOURCE", "UITEST_DISABLE_ANIMATIONS", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = colorScheme
-        app.launch()
+        app.launch(isolatedFor: self)
         defer { app.terminate() }
 
-        let post = app.buttons["compose.postButton"]
+        let post = app.composePostButton
         XCTAssertTrue(post.waitForExistence(timeout: 8))
         XCTAssertFalse(post.isEnabled)
         XCTAssertFalse(app.textViews["compose.textInput"].exists)

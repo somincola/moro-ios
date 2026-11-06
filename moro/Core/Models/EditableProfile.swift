@@ -1,7 +1,7 @@
 import Foundation
 
 /// Authoring data, deliberately separate from Account's rendered HTML.
-struct EditableProfile: Decodable {
+nonisolated struct EditableProfile: Decodable {
     let id: String
     let displayName: String
     let note: String
@@ -11,7 +11,7 @@ struct EditableProfile: Decodable {
     var showFeatured: Bool?
     var hideCollections: Bool?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case id, note, fields
         case displayName = "display_name"
         case showMedia = "show_media"
@@ -29,13 +29,13 @@ struct EditableProfile: Decodable {
     }
 }
 
-struct ProfileDisplayUpdate: Encodable {
+nonisolated struct ProfileDisplayUpdate: Encodable {
     var showMedia: Bool?
     var showMediaReplies: Bool?
     var showFeatured: Bool?
     var hideCollections: Bool?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case showMedia = "show_media"
         case showMediaReplies = "show_media_replies"
         case showFeatured = "show_featured"
@@ -43,7 +43,7 @@ struct ProfileDisplayUpdate: Encodable {
     }
 }
 
-struct ProfileLimits: Codable {
+nonisolated struct ProfileLimits: Codable {
     var maxProfileFields: Int? = nil
     var profileFieldNameLimit: Int? = nil
     var profileFieldValueLimit: Int? = nil
@@ -58,7 +58,7 @@ struct ProfileLimits: Codable {
     var displayNameLength: Int { max(1, maxDisplayNameLength ?? 30) }
     var featuredTagCount: Int { max(0, maxFeaturedTags ?? 10) }
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case maxProfileFields = "max_profile_fields"
         case profileFieldNameLimit = "profile_field_name_limit"
         case profileFieldValueLimit = "profile_field_value_limit"
@@ -68,12 +68,12 @@ struct ProfileLimits: Codable {
     }
 }
 
-struct FeaturedTag: Decodable, Identifiable, Equatable {
+nonisolated struct FeaturedTag: Decodable, Identifiable, Equatable {
     let id: String
     let name: String
     let statusesCount: Int
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case id, name
         case statusesCount = "statuses_count"
     }
@@ -96,7 +96,7 @@ struct FeaturedTag: Decodable, Identifiable, Equatable {
     }
 }
 
-enum ProfileEditingError: LocalizedError {
+nonisolated enum ProfileEditingError: LocalizedError {
     case sourceUnavailable
     case fieldsChangedElsewhere
     case unsupported

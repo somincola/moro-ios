@@ -8,7 +8,7 @@
 import Foundation
 
 /// Marker content for a specific timeline
-struct MarkerContent: Codable, Sendable {
+nonisolated struct MarkerContent: Codable, Sendable {
     /// The ID of the most recently viewed entity
     let lastReadId: String
 
@@ -18,7 +18,7 @@ struct MarkerContent: Codable, Sendable {
     /// The version of the marker (used for optimistic concurrency)
     let version: Int
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case lastReadId = "last_read_id"
         case updatedAt = "updated_at"
         case version
@@ -26,14 +26,14 @@ struct MarkerContent: Codable, Sendable {
 }
 
 /// Container for all timeline markers
-struct Marker: Codable, Sendable {
+nonisolated struct Marker: Codable, Sendable {
     /// Marker for the home timeline
     let home: MarkerContent?
 
     /// Marker for notifications
     let notifications: MarkerContent?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case home
         case notifications
     }
@@ -46,7 +46,7 @@ struct Marker: Codable, Sendable {
 
 // MARK: - Marker Timeline Types
 
-enum MarkerTimeline: String, Sendable {
+nonisolated enum MarkerTimeline: String, Sendable {
     case home
     case notifications
 
@@ -55,7 +55,7 @@ enum MarkerTimeline: String, Sendable {
 
 // MARK: - Convenience Methods
 
-extension Marker {
+nonisolated extension Marker {
     /// Get marker content for a specific timeline
     func content(for timeline: MarkerTimeline) -> MarkerContent? {
         switch timeline {

@@ -1,0 +1,16 @@
+{
+  "slug": "power-users",
+  "name": "Power Users",
+  "audience": "每天都用、有多个账号的重度用户",
+  "screenshots": [
+    "04",
+    "05",
+    "06",
+    "07",
+    "03"
+  ],
+  "promotionalText": {
+    "zh-Hans": "多个账号、不同服务器，长按「我」即可切换。主题色、帖子字号、深浅色随你调，个人资料一页改好。为每天都在长毛象上的你而做。",
+    "en-US": "Several accounts on different servers? Long-press Me to switch. Pick a theme color, tune the post text size, go light or dark, and edit your whole profile on one page."
+  }
+}

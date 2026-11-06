@@ -24,15 +24,20 @@ struct StatusDetailView: View {
     @StateObject private var postMenuActionCenter: PostMenuActionCenter
     private let threadCache: ThreadCache
     private let accountCache: AccountCache
+    /// Shown in a column next to the timeline rather than as a pushed page: the title and
+    /// actions go in the view's own header instead of the shared navigation bar.
+    private let isEmbedded: Bool
 
     @MainActor
     init(
         status: Status,
         apiClient: MastodonAPI,
         threadCache: ThreadCache? = nil,
-        accountCache: AccountCache? = nil
+        accountCache: AccountCache? = nil,
+        isEmbedded: Bool = false
     ) {
         self.apiClient = apiClient
+        self.isEmbedded = isEmbedded
         _postMenuActionCenter = StateObject(
             wrappedValue: PostMenuActionCenter(apiClient: apiClient))
         // Use provided caches or fall back to shared instance
@@ -54,42 +59,16 @@ struct StatusDetailView: View {
                 .ignoresSafeArea()
 
             conversationView
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if isEmbedded { embeddedHeader }
+                }
         }
-        .navigationTitle(MoroL10n.StatusDetail.headerTitle)
-        .navigationBarTitleDisplayMode(.inline)
+        .modifier(PageNavigationTitle(isEnabled: !isEmbedded))
         .toolbar {
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                if viewModel.focusedStatus.editedAt != nil {
-                    Button {
-                        showingEditHistorySheet = true
-                        Task { await viewModel.loadStatusHistory() }
-                    } label: {
-                        Image(systemName: "clock.arrow.circlepath")
-                    }
-                    .accessibilityLabel(Text(MoroL10n.StatusDetail.editHistory))
+            if !isEmbedded {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    headerActions
                 }
-
-                Menu {
-                    Button {
-                        readingState.setAuthorOnly(!readingState.authorOnly)
-                        jumpToPost(viewModel.focusedStatus.id)
-                    } label: {
-                        Label(MoroL10n.ThreadReading.authorOnly, systemImage: readingState.authorOnly ? "checkmark" : "person")
-                    }
-                    .accessibilityIdentifier("thread.authorOnly")
-                    Button(MoroL10n.ThreadReading.returnToPost) { jumpToPost(viewModel.focusedStatus.id) }
-                        .accessibilityIdentifier("thread.returnToPost")
-                    if !readingState.collapsedIDs.isEmpty {
-                        Button(MoroL10n.ThreadReading.expandAll) { readingState.expandAll() }
-                    }
-                } label: {
-                    Image(systemName: "text.book.closed")
-                        .frame(minWidth: 44, minHeight: 44)
-                }
-                .accessibilityLabel(MoroL10n.ThreadReading.options)
-                .accessibilityIdentifier("thread.readingOptions")
-
-                detailHeaderMoreButton
             }
         }
         .task {
@@ -198,6 +177,63 @@ struct StatusDetailView: View {
         }
     }
 
+    /// Edit history, reading options and more: in the navigation bar, or in the embedded header.
+    @ViewBuilder
+    private var headerActions: some View {
+        if viewModel.focusedStatus.editedAt != nil {
+            Button {
+                showingEditHistorySheet = true
+                Task { await viewModel.loadStatusHistory() }
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
+            }
+            .accessibilityLabel(Text(MoroL10n.StatusDetail.editHistory))
+        }
+
+        Menu {
+            Button {
+                readingState.setAuthorOnly(!readingState.authorOnly)
+                jumpToPost(viewModel.focusedStatus.id)
+            } label: {
+                Label(MoroL10n.ThreadReading.authorOnly, systemImage: readingState.authorOnly ? "checkmark" : "person")
+            }
+            .accessibilityIdentifier("thread.authorOnly")
+            Button(MoroL10n.ThreadReading.returnToPost) { jumpToPost(viewModel.focusedStatus.id) }
+                .accessibilityIdentifier("thread.returnToPost")
+            if !readingState.collapsedIDs.isEmpty {
+                Button(MoroL10n.ThreadReading.expandAll) { readingState.expandAll() }
+            }
+        } label: {
+            Image(systemName: "text.book.closed")
+                .frame(minWidth: 44, minHeight: 44)
+        }
+        .accessibilityLabel(MoroL10n.ThreadReading.options)
+        .accessibilityIdentifier("thread.readingOptions")
+
+        detailHeaderMoreButton
+    }
+
+    /// The column header used when embedded: the same title and actions as the navigation bar.
+    private var embeddedHeader: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: theme.spacing.s) {
+                Text(MoroL10n.StatusDetail.headerTitle)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(theme.colors.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+                headerActions
+                    .foregroundStyle(theme.colors.textPrimary)
+            }
+            .padding(.horizontal, theme.spacing.contentHorizontalInset)
+            .frame(height: 44)
+            Rectangle()
+                .fill(theme.colors.borderSubtle)
+                .frame(height: 0.5)
+        }
+        .background(sceneCanvasColor)
+    }
+
     private var sceneCanvasColor: Color {
         (sceneDescriptor?.canvas ?? .content).backgroundColor(in: theme)
     }
@@ -245,7 +281,7 @@ struct StatusDetailView: View {
                 if viewModel.threadModel == nil {
                     threadLoadingState
                 } else {
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    ForEach(rows.indexed(), id: \.element.id) { index, row in
                         let isLast = index == rows.count - 1
                         let endsGroup = isLast || rows[index + 1].item.replyGroup != row.item.replyGroup
                         ThreadDiscussionRow(
@@ -263,6 +299,7 @@ struct StatusDetailView: View {
                 }
             }
             .scrollTargetLayout()
+            .moroReadableColumn()
         }
         .scrollPosition(id: $visibleStatusID, anchor: .top)
     }
@@ -442,4 +479,19 @@ struct ThreadPostRow: View {
     }
     .environmentObject(state)
     .moroTheme(MoroTheme())
+}
+
+/// Pushed pages title the navigation bar; an embedded column leaves the bar to its host.
+private struct PageNavigationTitle: ViewModifier {
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content
+                .navigationTitle(MoroL10n.StatusDetail.headerTitle)
+                .navigationBarTitleDisplayMode(.inline)
+        } else {
+            content
+        }
+    }
 }

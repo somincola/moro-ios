@@ -19,7 +19,7 @@ final class ComposeReplyUITests: XCTestCase {
         let app = launch(mode: "missing", language: "en", dark: true, largeText: true)
         defer { app.terminate() }
         let editor = readyEditor(in: app, prefix: "@bob@example.com ")
-        XCTAssertTrue(app.buttons["compose.postButton"].isEnabled)
+        XCTAssertTrue(app.composePostButton.isEnabled)
         attach(app, name: "reply-offline-dark-accessibility")
         app.navigationBars.buttons["Cancel"].tap()
         assertNoRecipientRequests(in: app)
@@ -68,7 +68,7 @@ final class ComposeReplyUITests: XCTestCase {
         let app = launch(mode: mode)
         defer { app.terminate() }
         let editor = readyEditor(in: app, prefix: prefix)
-        XCTAssertTrue(app.buttons["compose.postButton"].isEnabled)
+        XCTAssertTrue(app.composePostButton.isEnabled)
         focusAtEnd(editor)
         editor.typeText("Hello")
         XCTAssertEqual(editor.value as? String, prefix + "Hello")
@@ -97,7 +97,7 @@ final class ComposeReplyUITests: XCTestCase {
         app.launchEnvironment["UITEST_REPLY_MODE"] = mode
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = dark ? "dark" : "light"
         if largeText { app.launchEnvironment["UITEST_DYNAMIC_TYPE_SIZE"] = "accessibilityXXXL" }
-        app.launch()
+        app.launch(isolatedFor: self)
         XCTAssertTrue(app.buttons["replyHarness.open"].waitForExistence(timeout: 6))
         app.buttons["replyHarness.open"].tap()
         return app

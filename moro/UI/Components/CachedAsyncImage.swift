@@ -2,12 +2,9 @@
 //  CachedAsyncImage.swift
 //  moro
 //
-//  Enhanced async image view with caching, retry logic, and blur hash support.
+//  Async image view over the shared ImageCache (SDWebImage), with retry and blur hash.
 //
 
-import Combine
-import CryptoKit
-import ImageIO
 import SwiftUI
 
 /// Configuration for CachedAsyncImage behavior
@@ -28,7 +25,7 @@ public struct ImageCacheConfiguration {
     public static var `default` = ImageCacheConfiguration()
 }
 
-/// An improved AsyncImage with disk caching, retry logic, and blur hash support
+/// An AsyncImage backed by the shared ImageCache, with retry and blur hash support
 public struct CachedAsyncImage<Content: View, Placeholder: View>: View {
 
     private let url: URL?
@@ -114,75 +111,39 @@ public struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             return
         }
 
+        let configuration = configuration
         loadTask = Task {
-            // Disk-cache read + decode OFF the main thread. This used to run synchronously
-            // in `.onAppear` (Data(contentsOf:) + UIImage(data:)), stalling the main thread
-            // for every image cell that appeared — a per-cell hitch that compounded into a
-            // freeze on the profile feed (far worse on the Simulator's software pipeline).
-            let diskImage = await Task.detached(priority: .userInitiated) {
-                ImageCache.shared.imageFromDisk(for: url)
-            }.value
-
-            if let diskImage {
-                if !Task.isCancelled {
-                    await MainActor.run { phase = .success(Image(uiImage: diskImage)) }
-                }
-                return
-            }
-
-            do {
-                let image = try await downloadImage(from: url)
-
-                if !Task.isCancelled {
-                    await MainActor.run {
+            // Disk then network through the shared SDWebImage pipeline: one download per URL
+            // however many views ask, disk read and decode off the main thread. Retries live
+            // inside this task, so they stop when the view goes away or its URL changes.
+            var attempt = 0
+            while !Task.isCancelled {
+                if let loaded = await ImageCache.shared.loadReportingSource(from: url) {
+                    guard !Task.isCancelled else { return }
+                    // Fade in downloads only; a disk hit appears at once, as before.
+                    if loaded.downloaded {
                         withAnimation(.easeIn(duration: 0.2)) {
-                            phase = .success(Image(uiImage: image))
+                            phase = .success(Image(uiImage: loaded.image))
                         }
+                    } else {
+                        phase = .success(Image(uiImage: loaded.image))
                     }
+                    return
                 }
-            } catch {
-                if !Task.isCancelled {
-                    await MainActor.run {
-                        if configuration.retryOnFailure
-                            && retryCount < configuration.maxRetryAttempts
-                        {
-                            retryCount += 1
-                            // Schedule retry
-                            Task {
-                                try? await Task.sleep(
-                                    nanoseconds: UInt64(configuration.retryDelay * 1_000_000_000))
-                                loadImage()
-                            }
-                        } else {
-                            phase = .failure(error)
-                        }
-                    }
+                guard !Task.isCancelled else { return }
+                guard configuration.retryOnFailure, attempt < configuration.maxRetryAttempts else {
+                    phase = .failure(URLError(.cannotLoadFromNetwork))
+                    return
+                }
+                attempt += 1
+                retryCount = attempt
+                do {
+                    try await Task.sleep(for: .seconds(configuration.retryDelay))
+                } catch {
+                    return
                 }
             }
         }
-    }
-
-    private func downloadImage(from url: URL) async throws -> UIImage {
-        let generation = ImageCache.shared.writeGeneration
-        var request = URLRequest(url: url)
-        request.cachePolicy = .returnCacheDataElseLoad
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse,
-            200..<300 ~= httpResponse.statusCode
-        else {
-            throw URLError(.badServerResponse)
-        }
-
-        guard let image = UIImage(data: data) else {
-            throw URLError(.cannotDecodeContentData)
-        }
-
-        // Cache the image
-        ImageCache.shared.setImage(image, for: url, data: data, generation: generation)
-
-        return image
     }
 }
 
@@ -216,187 +177,6 @@ private struct BlurHashPlaceholder: View {
             }
         }
     }
-}
-
-// MARK: - Image Cache
-
-/// Simple in-memory and disk image cache
-nonisolated public final class ImageCache: @unchecked Sendable {
-    public static let shared = ImageCache()
-
-    private let memoryCache = NSCache<NSURL, UIImage>()
-    /// Separate cache for viewer-sized downsampled images, so re-opening / swiping
-    /// doesn't re-read disk and re-run ImageIO, and so it can't collide with the
-    /// full-size entry for the same URL.
-    private let downsampledCache = NSCache<NSURL, UIImage>()
-    /// Small, size-keyed thumbnails used by dense grids such as the emoji picker.
-    /// Keeping this separate prevents full-size media and tiny icons from evicting
-    /// each other from the general image cache.
-    private let thumbnailCache = NSCache<NSString, UIImage>()
-    private let disk = ImageDiskCache(directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("ImageCache", isDirectory: true))
-
-    public var writeGeneration: UUID { disk.writeGeneration }
-
-    private init() {
-        memoryCache.countLimit = 100
-        memoryCache.totalCostLimit = 50 * 1024 * 1024  // 50 MB
-
-        downsampledCache.countLimit = 6
-
-        thumbnailCache.countLimit = 300
-        thumbnailCache.totalCostLimit = 24 * 1024 * 1024
-
-
-    }
-
-    public func image(for url: URL) -> UIImage? {
-        memoryCache.object(forKey: url as NSURL)
-    }
-
-    public func imageFromDisk(for url: URL) -> UIImage? {
-        guard let data = disk.data(for: url), let image = UIImage(data: data) else { return nil }
-
-        // Also add to memory cache
-        memoryCache.setObject(image, forKey: url as NSURL, cost: Self.memoryCost(of: image))
-        return image
-    }
-
-    /// Decoded-bitmap byte size, so NSCache's `totalCostLimit` (50 MB) can actually evict.
-    /// Without a cost every entry counts as 0 and the limit never fires.
-    private static func memoryCost(of image: UIImage) -> Int {
-        guard let cg = image.cgImage else { return 0 }
-        return cg.bytesPerRow * cg.height
-    }
-
-    public func setImage(_ image: UIImage, for url: URL, data: Data? = nil, generation: UUID? = nil) {
-        let expected = generation ?? writeGeneration
-        guard expected == writeGeneration else { return }
-        memoryCache.setObject(image, forKey: url as NSURL, cost: Self.memoryCost(of: image))
-        if let data { disk.store(data, for: url, generation: expected) }
-    }
-
-    /// Memory -> disk -> network load for callers that aren't SwiftUI views
-    /// (e.g. UIKit cells). Mirrors CachedAsyncImage's own load path so everything
-    /// shares one cache.
-    public func load(from url: URL) async -> UIImage? {
-        let generation = writeGeneration
-        if let cached = image(for: url) { return cached }
-        if let disk = imageFromDisk(for: url) { return disk }
-
-        var request = URLRequest(url: url)
-        request.cachePolicy = .returnCacheDataElseLoad
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-            let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode,
-            let image = UIImage(data: data)
-        else { return nil }
-
-        setImage(image, for: url, data: data, generation: generation)
-        return image
-    }
-
-    /// Loads `url` downsampled so its longest edge is at most `maxPixelSize` pixels.
-    /// The full-screen viewer uses this so a high-megapixel original never becomes a
-    /// giant in-memory bitmap (the cause of the viewer freeze + runaway memory). The
-    /// raw bytes reuse the on-disk cache; the decoded thumbnail is deliberately NOT
-    /// stored in the memory cache (it would collide with the full-size entry for the
-    /// same URL).
-    public func loadDownsampled(from url: URL, maxPixelSize: CGFloat) async -> UIImage? {
-        if let cached = downsampledCache.object(forKey: url as NSURL) {
-            return cached
-        }
-
-        let generation = writeGeneration
-        let data: Data
-        if let onDisk = disk.data(for: url), !onDisk.isEmpty {
-            data = onDisk
-        } else {
-            var request = URLRequest(url: url)
-            request.cachePolicy = .returnCacheDataElseLoad
-            guard let (downloaded, response) = try? await URLSession.shared.data(for: request),
-                let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode
-            else { return nil }
-            data = downloaded
-            disk.store(downloaded, for: url, generation: generation)
-        }
-        guard let image = Self.downsample(data: data, maxPixelSize: maxPixelSize) else {
-            return nil
-        }
-        if generation == writeGeneration { downsampledCache.setObject(image, forKey: url as NSURL) }
-        return image
-    }
-
-    /// Loads a compact thumbnail for dense icon grids. The cache key includes the
-    /// requested pixel size, and ImageIO decodes only the pixels the grid needs.
-    public func loadThumbnail(from url: URL, maxPixelSize: CGFloat) async -> UIImage? {
-        let normalizedPixelSize = max(1, maxPixelSize.rounded(.up))
-        let cacheKey = "\(url.absoluteString)#\(Int(normalizedPixelSize))" as NSString
-        if let cached = thumbnailCache.object(forKey: cacheKey) {
-            return cached
-        }
-
-        let generation = writeGeneration
-        let data: Data
-        if let onDisk = disk.data(for: url), !onDisk.isEmpty {
-            data = onDisk
-        } else {
-            var request = URLRequest(url: url)
-            request.cachePolicy = .returnCacheDataElseLoad
-            guard let (downloaded, response) = try? await URLSession.shared.data(for: request),
-                  let http = response as? HTTPURLResponse,
-                  200..<300 ~= http.statusCode else {
-                return nil
-            }
-            data = downloaded
-            disk.store(downloaded, for: url, generation: generation)
-        }
-
-        guard !Task.isCancelled,
-              let image = Self.downsample(data: data, maxPixelSize: normalizedPixelSize) else {
-            return nil
-        }
-        if generation == writeGeneration { thumbnailCache.setObject(image, forKey: cacheKey, cost: Self.memoryCost(of: image)) }
-        return image
-    }
-
-    nonisolated private static func downsample(data: Data, maxPixelSize: CGFloat) -> UIImage? {
-        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
-        guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else {
-            return nil
-        }
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: Int(max(1, maxPixelSize)),
-        ]
-        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
-        else { return nil }
-        return UIImage(cgImage: cgImage)
-    }
-
-    public func clearMemoryCache() {
-        memoryCache.removeAllObjects()
-        downsampledCache.removeAllObjects()
-        thumbnailCache.removeAllObjects()
-    }
-
-    public func diskSize() async -> Int64 { await disk.size() }
-
-    public func clearDiskCache() {
-        Task { try? await disk.clear() }
-    }
-
-    public func clearAllAndWait() async throws {
-        try await disk.clear()
-        clearMemoryCache()
-    }
-
-    public func clearAll() {
-        clearMemoryCache()
-        clearDiskCache()
-    }
-
 }
 
 // MARK: - BlurHash Decoder

@@ -113,6 +113,8 @@ struct MediaGridImageView: View {
             .accessibilityLabel(mediaAccessibilityLabel)
             .accessibilityAddTraits(onTap != nil ? [.isImage, .isButton] : .isImage)
         }
+        // Zoom source for the UIKit-presented viewer; the matched source serves the fallback cover.
+        .background(MediaPreviewSource(id: attachment.id))
         .matchedTransitionSource(id: attachment.id, in: transitionNamespace)
     }
 

@@ -135,8 +135,8 @@ struct AccountDisplayNameView: View {
     }
 }
 
-struct AccountDisplayNameContent: Equatable {
-    enum Segment: Equatable {
+nonisolated struct AccountDisplayNameContent: Equatable {
+    nonisolated enum Segment: Equatable {
         case text(String)
         case emoji(Account.Emoji)
     }
@@ -165,8 +165,10 @@ struct AccountDisplayNameContent: Equatable {
     }
 }
 
-enum AccountDisplayNameParser {
-    private final class CachedContentBox {
+/// Nonisolated: `Account.displayNameContent` is a model property and can be read off the
+/// main actor. NSCache and NSRegularExpression matching are thread-safe.
+nonisolated enum AccountDisplayNameParser {
+    nonisolated private final class CachedContentBox {
         // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
         nonisolated deinit {}
 
@@ -177,7 +179,7 @@ enum AccountDisplayNameParser {
         }
     }
 
-    private static let cache: NSCache<NSString, CachedContentBox> = {
+    nonisolated(unsafe) private static let cache: NSCache<NSString, CachedContentBox> = {
         let cache = NSCache<NSString, CachedContentBox>()
         cache.countLimit = 1200
         return cache

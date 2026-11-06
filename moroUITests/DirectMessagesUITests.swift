@@ -80,7 +80,7 @@ final class DirectMessagesUITests: XCTestCase {
         let add = app.buttons["directMessages.newConversation"]
         XCTAssertTrue(add.waitForExistence(timeout: 8))
         add.tap()
-        let cancel = app.buttons["newConversation.cancel"]
+        let cancel = app.toolbarButton("newConversation.cancel", labels: ["取消", "Cancel"])
         XCTAssertTrue(cancel.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["newConversation.account.dm-alice"].isHittable)
         XCTAssertGreaterThan(app.buttons["newConversation.account.dm-alice"].frame.height, 80)
@@ -108,7 +108,7 @@ final class DirectMessagesUITests: XCTestCase {
             // Native sheet presentation also reads UIKit's content-size category.
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
-        app.launch()
+        app.launch(isolatedFor: self)
         return app
     }
 

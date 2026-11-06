@@ -104,18 +104,19 @@ final class ReportViewModel: ObservableObject {
 
     init(
         apiClient: MastodonAPI, account: Account, status: Status? = nil,
-        feedCoordinator: FeedCoordinator = .shared
+        feedCoordinator: FeedCoordinator? = nil
     ) {
         self.apiClient = apiClient
         self.account = account
-        self.feedCoordinator = feedCoordinator
+        // Resolved here: a `.shared` default argument is evaluated off the main actor.
+        self.feedCoordinator = feedCoordinator ?? .shared
         if let status = status?.displayStatus, status.account.id == account.id {
             userStatuses = [status]
             selectedStatusIDs = [status.id]
         }
     }
 
-    convenience init(apiClient: MastodonAPI, status: Status, feedCoordinator: FeedCoordinator = .shared) {
+    convenience init(apiClient: MastodonAPI, status: Status, feedCoordinator: FeedCoordinator? = nil) {
         let original = status.displayStatus
         self.init(
             apiClient: apiClient, account: original.account, status: original,

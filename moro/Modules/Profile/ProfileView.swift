@@ -40,6 +40,7 @@ struct ProfileView: View {
     @StateObject private var postMenuActionCenter: PostMenuActionCenter
 
     @State private var chromeState = ProfileChromeState()
+    @State private var scrollPosition = ScrollPosition(edge: .top)
     @State private var actionPresentation = ProfileActionPresentationState()
     @StateObject private var actionSurface = PostActionSurfaceCenter()
 
@@ -49,6 +50,10 @@ struct ProfileView: View {
     private let pullRefreshIndicatorSize: CGFloat = 34
     // Used only before the native navigation bar has completed its first layout.
     @State private var navigationBarHeight: CGFloat = 44
+    /// The native bar's bottom edge in window coordinates, once measured.
+    @State private var navigationBarBottom: CGFloat?
+    /// iPhone Duo with the bar in the vertical side bar: the page draws its own title band.
+    @State private var navigationBarIsVertical = false
 
     private var profileChromeProgress: CGFloat {
         chromeState.headerProgress(
@@ -85,20 +90,16 @@ struct ProfileView: View {
         account: Account?,
         accountID: String? = nil,
         onLogout: @escaping () -> Void,
-        apiClient: MastodonAPI? = nil
+        apiClient: MastodonAPI
     ) {
         self.account = account
         self.accountID = accountID
         self.onLogout = onLogout
 
         let resolvedAccountID = accountID ?? account?.id ?? ""
-        let resolvedClient =
-            apiClient
-            ?? {
-                let state = AppState()
-                let interceptor = AuthInterceptor(tokenProvider: state)
-                return MastodonClient(authInterceptor: interceptor)
-            }()
+        // Required: a fallback client built here had no token, so every request on the
+        // page failed silently.
+        let resolvedClient = apiClient
 
         self.apiClient = resolvedClient
         _postMenuActionCenter = StateObject(
@@ -129,6 +130,9 @@ struct ProfileView: View {
                     pullDistance: chromeState.pullDistance
                 )
                 .allowsHitTesting(false)
+                // The cover runs to the display edges, under a landscape notch or iPhone Duo's
+                // vertical side bar, instead of stopping beside them.
+                .ignoresSafeArea(.container, edges: .horizontal)
 
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -157,10 +161,13 @@ struct ProfileView: View {
                             apiClient: apiClient,
                             postActions: postActions
                         )
+                            .equatable()
+                            .moroReadableColumn()
                             .frame(minHeight: chromeLayout.pinnedContentHeight, alignment: .top)
                             .background(theme.colors.surfaceBase)
                     }
                 }
+                .scrollPosition($scrollPosition)
                 .scrollIndicators(.hidden)
                 .scrollBounceBehavior(.always, axes: .vertical)
                 .ignoresSafeArea(.container, edges: .top)
@@ -186,6 +193,7 @@ struct ProfileView: View {
                     topChromeHeight: topChromeHeight,
                     progress: profileChromeProgress
                 )
+                .ignoresSafeArea(.container, edges: .horizontal)
                 .zIndex(1)
 
                 if let tabOverlayOffset = chromeLayout.tabOverlayOffset {
@@ -203,17 +211,17 @@ struct ProfileView: View {
         .ignoresSafeArea(.container, edges: .top)
         .background(sceneCanvasColor)
         .background {
-            ProfileNavigationBarHeightReader(tint: UIColor(navigationForeground)) { navigationBarHeight = $0 }
+            ProfileNavigationBarHeightReader(tint: UIColor(navigationForeground)) { metrics in
+                navigationBarHeight = metrics.height
+                navigationBarBottom = metrics.bottom
+                navigationBarIsVertical = metrics.isVertical
+            }
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
-        .navigationTitle(
-            navChromeVisible
-                ? (viewModel.account?.displayName
-                    ?? account?.displayName
-                    ?? MoroL10n.Profile.navTitle)
-                : ""
-        )
+        // With the bar in the vertical side bar the system floats the title at the top leading
+        // corner; the page's own band already shows the name, so the system title stays empty.
+        .navigationTitle(navChromeVisible && !navigationBarIsVertical ? collapsedTitle : "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(
@@ -247,6 +255,15 @@ struct ProfileView: View {
         }
         .onChange(of: currentAccountSyncKey) { _, _ in
             syncCurrentUserProfileFromAppState()
+        }
+        // Only the Me tab's root profile receives re-tap events (pushed profiles don't).
+        .onTabReselect(.me) {
+            if chromeState.scrollOffset > 1 {
+                withAnimation(.snappy) { scrollPosition.scrollTo(edge: .top) }
+            } else if chromeState.beginRefresh() {
+                MoroRefreshFeedback.armed()
+                runRefresh()
+            }
         }
         .profileActionPresentations(
             presentation: $actionPresentation,
@@ -294,8 +311,13 @@ struct ProfileView: View {
     }
 
     private func refreshProfileData() async {
-        await viewModel.refresh()
+        _ = await refreshProfileDataReportingResult()
+    }
+
+    private func refreshProfileDataReportingResult() async -> Bool {
+        let succeeded = await viewModel.refresh()
         syncAppStateFromCurrentProfileIfNeeded()
+        return succeeded
     }
 
     private func updateScrollState(_ scrolled: CGFloat) {
@@ -304,18 +326,23 @@ struct ProfileView: View {
             pullRefreshThreshold: pullRefreshVisualThreshold
         )
         if didArm {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            MoroRefreshFeedback.armed(.light)
         }
     }
 
     private func startPullRefreshIfNeeded() {
         guard chromeState.beginRefreshIfArmed() else { return }
+        MoroRefreshFeedback.armed()
+        runRefresh()
+    }
 
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-
+    /// Shared by pull and tab re-tap: same result feedback as Home, then the spinner stays
+    /// up for at least `refreshFeedbackMinimumDuration` so a fast answer doesn't flicker.
+    private func runRefresh() {
         Task { @MainActor in
             let started = Date()
-            await refreshProfileData()
+            let succeeded = await refreshProfileDataReportingResult()
+            MoroRefreshFeedback.deliver(succeeded ? .succeeded : .failed)
 
             let remaining = refreshFeedbackMinimumDuration - Date().timeIntervalSince(started)
             if remaining > 0 {
@@ -359,8 +386,12 @@ struct ProfileView: View {
         max(geometryTopSafeInset, Self.activeKeyWindow?.safeAreaInsets.top ?? 0)
     }
 
+    /// Where the solid bar background, its hairline and the pinned tabs end: the native bar's
+    /// measured bottom. Safe area + bar height is only the first-layout fallback; on Dynamic
+    /// Island iPhones the bar starts above the safe-area top, so that sum left a strip below
+    /// the real bar (about 6 pt on iPhone 16 Pro).
     private func navigationChromeHeight(topSafeInset: CGFloat) -> CGFloat {
-        topSafeInset + navigationBarHeight
+        navigationBarBottom ?? (topSafeInset + navigationBarHeight)
     }
 
     @ViewBuilder
@@ -371,6 +402,19 @@ struct ProfileView: View {
         VStack(spacing: 0) {
             theme.colors.surfaceBase
                 .frame(height: topChromeHeight)
+                .overlay(alignment: .bottom) {
+                    // The collapsed name goes in the band (the system title is left empty).
+                    if navigationBarIsVertical {
+                        Text(collapsedTitle)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(theme.colors.textPrimary)
+                            .lineLimit(1)
+                            .padding(.horizontal, theme.spacing.contentHorizontalInset)
+                            .frame(height: navigationBarHeight)
+                            .opacity(navChromeVisible ? 1 : 0)
+                            .animation(.easeOut(duration: 0.15), value: navChromeVisible)
+                    }
+                }
 
             Rectangle()
                 .fill(theme.colors.borderSubtle)
@@ -382,10 +426,12 @@ struct ProfileView: View {
         .accessibilityHidden(true)
     }
 
+    private var collapsedTitle: String {
+        viewModel.account?.displayName ?? account?.displayName ?? MoroL10n.Profile.navTitle
+    }
+
     private static var activeKeyWindow: UIWindow? {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        let activeScene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
-        return activeScene?.windows.first { $0.isKeyWindow } ?? activeScene?.windows.first
+        UIApplication.shared.moroActiveKeyWindow
     }
 
     @ViewBuilder
@@ -398,10 +444,11 @@ struct ProfileView: View {
         )
 
         if chromeState.pullDistance > 6 || chromeState.isRefreshing {
-            ProfilePullRefreshSpinner(
+            MoroPetalSpinner(
                 progress: chromeState.isRefreshing ? 1 : progress,
-                isRefreshing: chromeState.isRefreshing,
-                color: .white
+                isAnimating: chromeState.isRefreshing,
+                style: .profile,
+                tint: .fading(.white)
             )
                 .frame(width: pullRefreshIndicatorSize, height: pullRefreshIndicatorSize)
                 .background(.black.opacity(0.12), in: Circle())
@@ -445,6 +492,7 @@ struct ProfileView: View {
             }
             MoroDivider()
         }
+        .moroReadableColumn()
         .background(theme.colors.surfaceBase)
     }
 
@@ -504,11 +552,10 @@ struct ProfileView: View {
 
         let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
 
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-            let rootViewController = windowScene.windows.first?.rootViewController
-        {
-            rootViewController.present(activityVC, animated: true)
-        }
+        // Present from the top of the window the person is using: the first connected
+        // scene may be another Moro window on iPhone Duo, and the root controller may
+        // already be presenting a sheet.
+        UIApplication.shared.moroTopViewController()?.present(activityVC, animated: true)
     }
 
     private func copyUserLink() {
@@ -550,6 +597,7 @@ struct ProfileView: View {
 
                     statsSection(account: acc)
                 }
+                .moroReadableColumn()
                 .background(theme.colors.surfaceBase)
 
                 VStack(alignment: .leading, spacing: 0) {
@@ -557,12 +605,14 @@ struct ProfileView: View {
 
                     profileInfoSection(account: acc)
                 }
+                .moroReadableColumn()
                 .background(theme.colors.surfaceBase)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
                     avatarAndActionsRow
                     profileContent
                 }
+                .moroReadableColumn()
                 .background(theme.colors.surfaceBase)
             }
         }
@@ -1127,7 +1177,11 @@ struct ProfileView: View {
     let state = AppState()
     state.currentAccount = sampleAccount
 
-    return ProfileView(account: sampleAccount, onLogout: {})
+    return ProfileView(
+        account: sampleAccount,
+        onLogout: {},
+        apiClient: MastodonClient(authInterceptor: AuthInterceptor(tokenProvider: state))
+    )
         .environmentObject(state)
         .moroTheme(MoroTheme())
 }

@@ -37,18 +37,22 @@ final class NetworkMonitor: ObservableObject {
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
-                
-                self.isConnected = path.status == .satisfied
-                
+
+                let connected = path.status == .satisfied
+                let type: NetworkType
                 if path.usesInterfaceType(.wifi) {
-                    self.networkType = .wifi
+                    type = .wifi
                 } else if path.usesInterfaceType(.cellular) {
-                    self.networkType = .cellular
-                } else if path.status == .satisfied {
-                    self.networkType = .unknown // Connected but type unknown
+                    type = .cellular
+                } else if connected {
+                    type = .unknown // Connected but type unknown
                 } else {
-                    self.networkType = .none
+                    type = .none
                 }
+                // NWPathMonitor reports every path update (interface churn, cost changes);
+                // publish only real changes so observers don't re-render for nothing.
+                if self.isConnected != connected { self.isConnected = connected }
+                if self.networkType != type { self.networkType = type }
             }
         }
         

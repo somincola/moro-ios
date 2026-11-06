@@ -11,7 +11,7 @@ import Foundation
 /// `.followers` keeps a clearer Swift name while mapping to the API's "private".
 /// `_other` preserves any value the server introduces in future so decoding never
 /// fails and the original value round-trips on edit.
-enum MastodonVisibility: RawRepresentable, Codable, Hashable {
+nonisolated enum MastodonVisibility: RawRepresentable, Codable, Hashable {
     case `public`
     case unlisted
     case followers
@@ -90,7 +90,7 @@ enum StatusPublishResult {
 }
 
 /// The exact creation payload, shared by transport encoding and retry identity.
-struct StatusPublishPayload: Encodable {
+nonisolated struct StatusPublishPayload: Encodable {
     let status: String
     let visibility: MastodonVisibility
     let mediaIDs: [String]?

@@ -246,7 +246,7 @@ final class SearchFlowUITests: XCTestCase {
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = colorScheme
         if accessibilitySize { app.launchEnvironment["UITEST_DYNAMIC_TYPE_SIZE"] = "accessibilityXXXL" }
         if nativeShell { app.launchEnvironment["UITEST_SEARCH_NATIVE_SHELL"] = "1" }
-        app.launch()
+        app.launch(isolatedFor: self)
         return app
     }
 

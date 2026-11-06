@@ -151,9 +151,7 @@ struct ProfileChromeState: Equatable {
     }
 
     func didReleasePull(oldPhase: ScrollPhase, newPhase: ScrollPhase) -> Bool {
-        let wasTouching = oldPhase == .tracking || oldPhase == .interacting
-        let isTouching = newPhase == .tracking || newPhase == .interacting
-        return wasTouching && !isTouching
+        ScrollPhase.releasedTouch(from: oldPhase, to: newPhase)
     }
 
     mutating func beginRefreshIfArmed() -> Bool {
@@ -162,6 +160,14 @@ struct ProfileChromeState: Equatable {
             return false
         }
 
+        isPullRefreshArmed = false
+        isRefreshing = true
+        return true
+    }
+
+    /// A refresh not started by pulling (tab re-tap). False while one is already running.
+    mutating func beginRefresh() -> Bool {
+        guard !isRefreshing else { return false }
         isPullRefreshArmed = false
         isRefreshing = true
         return true
@@ -212,53 +218,5 @@ struct ProfileChromeState: Equatable {
                 tabBarHeight: tabBarHeight
             )
         )
-    }
-}
-
-struct ProfilePullRefreshSpinner: View {
-    let progress: CGFloat
-    let isRefreshing: Bool
-    let color: Color
-
-    @State private var rotation: Double = 0
-
-    private let petalCount = 12
-
-    var body: some View {
-        ZStack {
-            ForEach(0..<petalCount, id: \.self) { index in
-                Capsule(style: .continuous)
-                    .fill(color.opacity(petalOpacity(at: index)))
-                    .frame(width: 3, height: 8)
-                    .offset(y: -10)
-                    .rotationEffect(.degrees(Double(index) * 360 / Double(petalCount)))
-            }
-        }
-        .frame(width: 34, height: 34)
-        .rotationEffect(.degrees(isRefreshing ? rotation : Double(progress) * 180))
-        .onAppear { updateRotation() }
-        .onChange(of: isRefreshing) { _, _ in
-            updateRotation()
-        }
-    }
-
-    private func petalOpacity(at index: Int) -> Double {
-        if isRefreshing {
-            return 0.2 + 0.8 * Double(index + 1) / Double(petalCount)
-        }
-
-        let visibleAmount = min(max(progress * Double(petalCount) - Double(index), 0), 1)
-        return 0.18 + 0.82 * visibleAmount
-    }
-
-    private func updateRotation() {
-        if isRefreshing {
-            rotation = 0
-            withAnimation(.linear(duration: 0.8).repeatForever(autoreverses: false)) {
-                rotation = 360
-            }
-        } else {
-            rotation = 0
-        }
     }
 }

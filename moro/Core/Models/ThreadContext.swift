@@ -11,7 +11,7 @@ import Combine
 // MARK: - API Response Model
 
 /// Response from GET /api/v1/statuses/{id}/context
-struct StatusContext: Codable {
+nonisolated struct StatusContext: Codable {
     let ancestors: [Status]
     let descendants: [Status]
 }
@@ -19,7 +19,7 @@ struct StatusContext: Codable {
 // MARK: - Thread Position Context
 
 /// Represents the position of a status within a conversation thread
-enum ThreadPosition: Equatable {
+nonisolated enum ThreadPosition: Equatable {
     /// Root post of a conversation (no parent, has replies below)
     case root(connectedBelow: Bool)
     
@@ -89,13 +89,13 @@ enum ThreadPosition: Equatable {
 
 // MARK: - Thread Item
 
-enum ThreadReplyGroup: Equatable {
+nonisolated enum ThreadReplyGroup: Equatable {
     case authorContinuation(rootID: String)
     case discussion(rootID: String)
 }
 
 /// A status with its thread context information
-struct ThreadItem: Identifiable {
+nonisolated struct ThreadItem: Identifiable {
     let status: Status
     let position: ThreadPosition
     let replyDepth: Int
@@ -387,7 +387,7 @@ final class ThreadedConversationModel: ObservableObject {
 // MARK: - Timeline Thread Detection
 
 /// Helper to detect self-reply threads in a timeline
-struct TimelineThreadDetector {
+nonisolated struct TimelineThreadDetector {
     /// Group statuses by their thread relationships in a timeline
     /// Returns statuses with optional thread context (for self-reply chains)
     static func detectThreads(in statuses: [Status], currentUserID: String?) -> [(Status, ThreadPosition?)] {

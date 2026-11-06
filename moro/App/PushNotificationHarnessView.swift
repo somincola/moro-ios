@@ -241,14 +241,24 @@ private final class PushNotificationFixtureProtocol: URLProtocol, @unchecked Sen
         } else {
             payload = []
         }
-        do {
-            let data = try JSONSerialization.data(withJSONObject: payload)
-            let response = HTTPURLResponse(url: url, statusCode: code, httpVersion: nil,
-                headerFields: ["Content-Type": "application/json"])!
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch { client?.urlProtocol(self, didFailWithError: error) }
+        let deliver = { [self] in
+            do {
+                let data = try JSONSerialization.data(withJSONObject: payload)
+                let response = HTTPURLResponse(url: url, statusCode: code, httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"])!
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didLoad: data)
+                client?.urlProtocolDidFinishLoading(self)
+            } catch { client?.urlProtocol(self, didFailWithError: error) }
+        }
+        // UITEST_NOTIFICATIONS_DELAY slows the newest notifications page (initial load and
+        // refreshes, not older pages) so a test can watch the refresh in progress.
+        if url.path == "/api/v1/notifications", !url.absoluteString.contains("max_id"),
+            let delay = ProcessInfo.processInfo.environment["UITEST_NOTIFICATIONS_DELAY"].flatMap(Double.init) {
+            DispatchQueue.global().asyncAfter(deadline: .now() + delay, execute: deliver)
+        } else {
+            deliver()
+        }
     }
 
     private static func inboxNotifications(for url: URL) -> [[String: Any]] {

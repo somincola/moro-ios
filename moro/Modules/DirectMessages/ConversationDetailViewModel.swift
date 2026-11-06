@@ -29,6 +29,7 @@ final class ConversationDetailViewModel: ObservableObject {
     @Published private(set) var lastFailedDraft: String?
 
     private let apiClient: MastodonAPI
+    private let refreshRunner = CoalescedRefresh()
 
     init(conversation: Conversation, apiClient: MastodonAPI) {
         self.conversation = conversation
@@ -38,11 +39,14 @@ final class ConversationDetailViewModel: ObservableObject {
     func loadInitial() async {
         guard case .idle = loadingState else { return }
         loadingState = .loading
-        await load()
+        await refresh()
     }
 
+    /// Pull, foreground, appear and stream events can all ask at once. They share one
+    /// context request (plus one follow-up pass), so an older reply can't land last and
+    /// drop a message that just arrived.
     func refresh() async {
-        await load()
+        await refreshRunner.run { [weak self] in await self?.load() }
     }
 
     var canSendMessage: Bool {

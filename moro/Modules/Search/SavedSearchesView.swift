@@ -100,10 +100,10 @@ private struct SavedSearchNameSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(MoroL10n.Common.cancel) { dismiss() }
+                    MoroToolbarButton(MoroL10n.Common.cancel, kind: .close) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(MoroL10n.Common.save, action: save)
+                    MoroToolbarButton(MoroL10n.Common.save, kind: .confirm, action: save)
                 }
             }
             .task { isFocused = true }

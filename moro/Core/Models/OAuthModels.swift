@@ -9,17 +9,17 @@ import Foundation
 
 /// `/api/v1/instance/extended_description` — the server's long-form "about this site"
 /// page. `content` is server-rendered HTML (the admin authors it in Markdown).
-struct ExtendedInstanceDescription: Codable {
+nonisolated struct ExtendedInstanceDescription: Codable {
     let updatedAt: String?
     let content: String
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case updatedAt = "updated_at"
         case content
     }
 }
 
-struct MastodonInstance: Codable {
+nonisolated struct MastodonInstance: Codable {
     let uri: String
     let title: String
     let description: String
@@ -35,7 +35,7 @@ struct MastodonInstance: Codable {
     let rules: [MastodonInstanceRule]?
     let languages: [String]?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case uri
         case title
         case description
@@ -53,15 +53,15 @@ struct MastodonInstance: Codable {
     }
 }
 
-struct InstanceURLs: Codable {
+nonisolated struct InstanceURLs: Codable {
     let streamingAPI: String?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case streamingAPI = "streaming_api"
     }
 }
 
-struct OAuthApp: Codable {
+nonisolated struct OAuthApp: Codable {
     let id: String
     let name: String
     let website: String?
@@ -69,7 +69,7 @@ struct OAuthApp: Codable {
     let clientID: String
     let clientSecret: String
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case id
         case name
         case website
@@ -79,13 +79,13 @@ struct OAuthApp: Codable {
     }
 }
 
-struct OAuthTokenResponse: Codable {
+nonisolated struct OAuthTokenResponse: Codable {
     let accessToken: String
     let tokenType: String
     let scope: String?
     let createdAt: Date?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
         case tokenType = "token_type"
         case scope
@@ -112,8 +112,8 @@ struct OAuthTokenResponse: Codable {
     }
 }
 
-struct MastodonInstanceRule: Codable, Identifiable, Hashable {
-    struct Translation: Codable, Hashable {
+nonisolated struct MastodonInstanceRule: Codable, Identifiable, Hashable {
+    nonisolated struct Translation: Codable, Hashable {
         let text: String?
         let hint: String?
     }
@@ -123,7 +123,7 @@ struct MastodonInstanceRule: Codable, Identifiable, Hashable {
     let hint: String?
     let translations: [String: Translation]?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case id
         case text
         case hint
@@ -250,21 +250,21 @@ struct MastodonInstanceRule: Codable, Identifiable, Hashable {
     }
 }
 
-private extension Optional where Wrapped == String {
+nonisolated private extension Optional where Wrapped == String {
     var nonEmpty: String? {
         guard let self, !self.isEmpty else { return nil }
         return self
     }
 }
 
-private extension Array where Element: Hashable {
+nonisolated private extension Array where Element: Hashable {
     func removingDuplicates() -> [Element] {
         var seen: Set<Element> = []
         return filter { seen.insert($0).inserted }
     }
 }
 
-struct MastodonInstanceV2: Codable {
+nonisolated struct MastodonInstanceV2: Codable {
     let domain: String?
     let title: String
     let version: String?
@@ -276,7 +276,7 @@ struct MastodonInstanceV2: Codable {
     let languages: [String]?
     let configuration: InstanceConfiguration?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case domain
         case title
         case version
@@ -315,41 +315,41 @@ struct MastodonInstanceV2: Codable {
 }
 
 /// The subset of `GET /api/v2/instance` `configuration` that we use.
-struct InstanceConfiguration: Codable {
+nonisolated struct InstanceConfiguration: Codable {
     let statuses: Statuses?
     var accounts: ProfileLimits? = nil
 
-    struct Statuses: Codable {
+    nonisolated struct Statuses: Codable {
         let maxCharacters: Int?
 
-        enum CodingKeys: String, CodingKey {
+        nonisolated enum CodingKeys: String, CodingKey {
             case maxCharacters = "max_characters"
         }
     }
 }
 
-struct MastodonInstanceContact: Codable {
+nonisolated struct MastodonInstanceContact: Codable {
     let email: String?
     let account: Account?
 }
 
-struct InstanceThumbnail: Codable {
+nonisolated struct InstanceThumbnail: Codable {
     let url: String?
     let staticURL: String?
     let blurhash: String?
     let versions: Versions?
 
-    struct Versions: Codable {
+    nonisolated struct Versions: Codable {
         let oneX: String?
         let twoX: String?
 
-        enum CodingKeys: String, CodingKey {
+        nonisolated enum CodingKeys: String, CodingKey {
             case oneX = "@1x"
             case twoX = "@2x"
         }
     }
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case url
         case staticURL = "static"
         case blurhash
@@ -396,14 +396,14 @@ struct InstanceThumbnail: Codable {
     }
 }
 
-struct MastodonInstanceRegistrations: Codable {
+nonisolated struct MastodonInstanceRegistrations: Codable {
     let enabled: Bool?
     let approvalRequired: Bool?
     let message: String?
     let minAge: Int?
     let reasonRequired: Bool?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case enabled
         case approvalRequired = "approval_required"
         case message
@@ -412,7 +412,7 @@ struct MastodonInstanceRegistrations: Codable {
     }
 }
 
-struct InstanceRegistrationInfo {
+nonisolated struct InstanceRegistrationInfo {
     let domain: String
     let title: String
     let description: String
@@ -424,7 +424,7 @@ struct InstanceRegistrationInfo {
     let rules: [MastodonInstanceRule]
 }
 
-struct AccountRegistrationRequest {
+nonisolated struct AccountRegistrationRequest {
     let username: String
     let email: String
     let password: String
@@ -434,7 +434,7 @@ struct AccountRegistrationRequest {
     let locale: String
 }
 
-enum RegistrationResult {
+nonisolated enum RegistrationResult {
     case authenticated(token: String, account: Account, instanceURL: URL)
     case pending(email: String, requiresApproval: Bool, hint: String?)
 }

@@ -7,14 +7,14 @@
 
 import Foundation
 
-enum NotificationLayoutFamily: Equatable {
+nonisolated enum NotificationLayoutFamily: Equatable {
     case postAction
     case personEvent
     case contentEvent
     case systemEvent
 }
 
-enum NotificationFilterCategory: Equatable {
+nonisolated enum NotificationFilterCategory: Equatable {
     case mentions
     case interactions
     case follows
@@ -22,7 +22,7 @@ enum NotificationFilterCategory: Equatable {
     case allOnly
 }
 
-enum NotificationAccent: Equatable {
+nonisolated enum NotificationAccent: Equatable {
     case favourite
     case reblog
     case quote
@@ -30,7 +30,7 @@ enum NotificationAccent: Equatable {
     case warning
 }
 
-struct NotificationPresentationDescriptor: Equatable {
+nonisolated struct NotificationPresentationDescriptor: Equatable {
     let layoutFamily: NotificationLayoutFamily
     let filterCategory: NotificationFilterCategory
     let iconName: String
@@ -39,7 +39,7 @@ struct NotificationPresentationDescriptor: Equatable {
     let canGroupActors: Bool
 }
 
-enum NotificationKind: Hashable {
+nonisolated enum NotificationKind: Hashable {
     case follow
     case followRequest
     case mention

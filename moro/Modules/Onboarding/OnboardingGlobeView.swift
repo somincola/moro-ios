@@ -61,6 +61,11 @@ struct OnboardingGlobeView: View {
                 .accessibilityHidden(true)
 
                 overlay
+                    // The scene fills the whole display, so center the words and controls on
+                    // it too. On iPhone Duo the status bar sits down one side, which makes the
+                    // safe area lopsided: even out the smaller side to match.
+                    .padding(.leading, max(0, proxy.safeAreaInsets.trailing - proxy.safeAreaInsets.leading))
+                    .padding(.trailing, max(0, proxy.safeAreaInsets.leading - proxy.safeAreaInsets.trailing))
             }
             .contentShape(Rectangle())
             .gesture(dragGesture(height: proxy.size.height))
@@ -70,10 +75,17 @@ struct OnboardingGlobeView: View {
             .accessibilityElement(children: .contain)
             .onAppear { sceneSize = fullSize }
             .onChange(of: fullSize) { _, size in sceneSize = size }
-            .overlay(alignment: .topTrailing) { skipButton }
         }
         .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: formed)
         .accessibilityAction(named: MoroL10n.Registration.continueButton) { gather() }
+        #if DEBUG
+        // Store captures driven by simctl can't tap: gather on their own after a beat.
+        .task {
+            guard ProcessInfo.processInfo.environment["UITEST_ONBOARDING_GATHER"] == "1" else { return }
+            try? await Task.sleep(for: .seconds(2))
+            gather()
+        }
+        #endif
     }
 
     // MARK: Timing
@@ -158,27 +170,11 @@ struct OnboardingGlobeView: View {
                     }
                 }
                 .frame(height: 54)
+                // A full-width button reads as a banner on a wide display.
+                .frame(maxWidth: 420)
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 12)
-        }
-    }
-
-    /// Skips straight to login. Kept outside the scene's gestures so a tap on it is only
-    /// ever a tap on it.
-    @ViewBuilder private var skipButton: some View {
-        if formed == nil && dive == nil {
-            Button { finish(.login) } label: {
-                Text(MoroL10n.Login.login)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .padding(.horizontal, 20)
-                    .frame(height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("onboarding.skip")
-            .transition(.opacity.animation(.easeOut(duration: 0.4)))
         }
     }
 

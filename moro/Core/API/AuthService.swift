@@ -22,6 +22,17 @@ final class AuthService: ObservableObject {
         let instanceURL: URL
     }
 
+    /// A stored session chosen to become active. `isVerified` is false when the server could
+    /// not be reached: the stored identity is used and the caller revalidates later.
+    struct RestoredSession {
+        let token: String
+        let account: Account
+        let instanceURL: URL
+        let isVerified: Bool
+    }
+
+    typealias CredentialVerifier = @MainActor (_ instanceURL: URL, _ token: String) async throws -> Account
+
     enum AuthState {
         case idle
         case validatingInstance
@@ -47,10 +58,25 @@ final class AuthService: ObservableObject {
     // token exchange / callback validation.
     private var pendingOAuthState: String?
     private var pendingCodeVerifier: String?
+    private let verifyCredentials: CredentialVerifier
 
-    init(keychain: KeychainService = KeychainService()) {
+    init(
+        keychain: KeychainService = KeychainService(),
+        sessionStore: AccountSessionStore? = nil,
+        verifyCredentials: CredentialVerifier? = nil
+    ) {
         self.keychain = keychain
-        self.sessionStore = AccountSessionStore(keychain: keychain)
+        self.sessionStore = sessionStore ?? AccountSessionStore(keychain: keychain)
+        self.verifyCredentials = verifyCredentials ?? { instanceURL, token in
+            try await AuthService.makeAuthenticatedClient(baseURL: instanceURL, token: token)
+                .verifyCredentials()
+        }
+    }
+
+    private static func makeAuthenticatedClient(baseURL: URL, token: String) -> MastodonClient {
+        let appState = AppState()
+        appState.authToken = token
+        return MastodonClient(baseURL: baseURL, authInterceptor: AuthInterceptor(tokenProvider: appState))
     }
 
     // MARK: - Public API
@@ -341,27 +367,36 @@ final class AuthService: ObservableObject {
         }
     }
 
-    func restoreSession() async throws -> (token: String, account: Account, instanceURL: URL)? {
-        while let payload = try sessionStore.activePayload() {
-            let appState = AppState()
-            appState.authToken = payload.token
-            let interceptor = AuthInterceptor(tokenProvider: appState)
-            let client = MastodonClient(baseURL: payload.instanceURL, authInterceptor: interceptor)
-
+    /// Activates the next usable stored session.
+    ///
+    /// A session is deleted only when its server rejects the token (401). Offline, timeouts,
+    /// 5xx and account-state answers (403) keep every stored account: the stored identity is
+    /// returned unverified so removing one account while offline never wipes the others.
+    func restoreSession() async throws -> RestoredSession? {
+        var attemptedSessionIDs = Set<String>()
+        while let payload = try sessionStore.activePayload(),
+            attemptedSessionIDs.insert(payload.session.id).inserted
+        {
             do {
-                let account = try await client.verifyCredentials()
+                let account = try await verifyCredentials(payload.instanceURL, payload.token)
                 _ = try sessionStore.saveSession(
                     token: payload.token,
                     account: account,
                     instanceURL: payload.instanceURL,
                     activate: true
                 )
-                self.baseURL = payload.instanceURL
-                self.apiClient = client
-                return (token: payload.token, account: account, instanceURL: payload.instanceURL)
-            } catch {
-                // Token may be invalid - drop this session and continue with fallback.
+                adoptActiveClient(baseURL: payload.instanceURL, token: payload.token)
+                return RestoredSession(
+                    token: payload.token, account: account,
+                    instanceURL: payload.instanceURL, isVerified: true)
+            } catch let error as APIError where error.requiresReauthentication {
+                // The server says this token is dead: drop it and try the next account.
                 try? sessionStore.removeSession(id: payload.session.id)
+            } catch {
+                adoptActiveClient(baseURL: payload.instanceURL, token: payload.token)
+                return RestoredSession(
+                    token: payload.token, account: payload.session.account,
+                    instanceURL: payload.instanceURL, isVerified: false)
             }
         }
 
@@ -370,30 +405,34 @@ final class AuthService: ObservableObject {
             let instanceURLString = try keychain.get(forKey: "instance_url"),
             let instanceURL = URL(string: instanceURLString)
         {
-            let appState = AppState()
-            appState.authToken = token
-            let interceptor = AuthInterceptor(tokenProvider: appState)
-            let client = MastodonClient(baseURL: instanceURL, authInterceptor: interceptor)
-
             do {
-                let account = try await client.verifyCredentials()
+                let account = try await verifyCredentials(instanceURL, token)
                 _ = try sessionStore.saveSession(
                     token: token,
                     account: account,
                     instanceURL: instanceURL,
                     activate: true
                 )
-                self.baseURL = instanceURL
-                self.apiClient = client
-                return (token: token, account: account, instanceURL: instanceURL)
-            } catch {
+                adoptActiveClient(baseURL: instanceURL, token: token)
+                return RestoredSession(
+                    token: token, account: account, instanceURL: instanceURL, isVerified: true)
+            } catch let error as APIError where error.requiresReauthentication {
                 try? keychain.delete(forKey: "access_token")
                 try? keychain.delete(forKey: "instance_url")
+                AppEnvironment.invalidateInstanceURL()
+                return nil
+            } catch {
+                // No stored identity to fall back on; keep the credentials for the next launch.
                 return nil
             }
         }
 
         return nil
+    }
+
+    private func adoptActiveClient(baseURL: URL, token: String) {
+        self.baseURL = baseURL
+        self.apiClient = Self.makeAuthenticatedClient(baseURL: baseURL, token: token)
     }
 
     func cachedActiveSession() -> CachedActiveSession? {
@@ -498,7 +537,7 @@ final class AuthService: ObservableObject {
             return true
         }
         if case .serverError(let serverError) = error {
-            let message = (serverError.serverDescription ?? serverError.error).lowercased()
+            let message = serverError.combinedMessage.lowercased()
             if message.contains("confirm your email")
                 || message.contains("awaiting")
                 || message.contains("approved")
@@ -512,7 +551,7 @@ final class AuthService: ObservableObject {
 
     private func pendingHint(for error: APIError) -> String? {
         if case .serverError(let serverError) = error {
-            let raw = (serverError.serverDescription ?? serverError.error).lowercased()
+            let raw = serverError.combinedMessage.lowercased()
             if raw.contains("confirm your email") || raw.contains("confirmation") {
                 return MoroL10n.Auth.confirmEmail
             }

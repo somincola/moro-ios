@@ -201,7 +201,8 @@ struct InlineEmojiText: View {
 /// Shared pieces for drawing custom emoji inline (SwiftUI text, TextKit bios, names).
 @MainActor
 enum InlineEmojiRendering {
-    nonisolated private static let imageCache: NSCache<NSURL, UIImage> = {
+    // NSCache is thread-safe; it just isn't annotated Sendable.
+    nonisolated(unsafe) private static let imageCache: NSCache<NSURL, UIImage> = {
         let cache = NSCache<NSURL, UIImage>()
         cache.countLimit = 240
         return cache

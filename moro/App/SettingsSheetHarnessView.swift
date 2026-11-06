@@ -5,6 +5,7 @@
 //  Deterministic UI-test harness for the root Settings sheet contract.
 //
 
+#if DEBUG
 import SwiftUI
 
 struct SettingsSheetHarnessView: View {
@@ -109,3 +110,4 @@ struct SettingsSheetHarnessView: View {
         )
     }
 }
+#endif

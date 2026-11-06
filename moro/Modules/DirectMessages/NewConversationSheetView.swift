@@ -154,10 +154,9 @@ struct NewConversationSheetView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(MoroL10n.Common.cancel) {
+                    MoroToolbarButton(MoroL10n.Common.cancel, kind: .close, identifier: "newConversation.cancel") {
                         dismiss()
                     }
-                    .accessibilityIdentifier("newConversation.cancel")
                 }
             }
         }

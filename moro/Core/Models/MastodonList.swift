@@ -7,8 +7,8 @@
 
 import Foundation
 
-struct MastodonList: Identifiable, Codable, Hashable {
-    enum RepliesPolicy: String, Codable, CaseIterable, Hashable {
+nonisolated struct MastodonList: Identifiable, Codable, Hashable {
+    nonisolated enum RepliesPolicy: String, Codable, CaseIterable, Hashable {
         case followed = "followed"
         case list = "list"
         case none = "none"
@@ -19,7 +19,7 @@ struct MastodonList: Identifiable, Codable, Hashable {
     let repliesPolicy: RepliesPolicy?
     let exclusive: Bool?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case id
         case title
         case repliesPolicy = "replies_policy"

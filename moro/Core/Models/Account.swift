@@ -7,13 +7,13 @@
 
 import Foundation
 
-struct Account: Identifiable, Codable, Hashable {
-    struct Emoji: Codable, Hashable {
+nonisolated struct Account: Identifiable, Codable, Hashable {
+    nonisolated struct Emoji: Codable, Hashable {
         let shortcode: String
         let url: URL
         let staticURL: URL
 
-        enum CodingKeys: String, CodingKey {
+        nonisolated enum CodingKeys: String, CodingKey {
             case shortcode
             case url
             case staticURL = "static_url"
@@ -23,7 +23,7 @@ struct Account: Identifiable, Codable, Hashable {
     /// Account preferences, returned only by `verify_credentials`. Holds the
     /// server-side defaults the user set on their instance — notably the
     /// default posting language and visibility.
-    struct Source: Codable, Hashable {
+    nonisolated struct Source: Codable, Hashable {
         let language: String?
         let note: String?
         let fields: [AccountField]?
@@ -32,7 +32,7 @@ struct Account: Identifiable, Codable, Hashable {
         let discoverable: Bool?
         let indexable: Bool?
 
-        enum CodingKeys: String, CodingKey {
+        nonisolated enum CodingKeys: String, CodingKey {
             case language, note, fields
             case privacy
             case hideCollections = "hide_collections"
@@ -238,7 +238,7 @@ struct Account: Identifiable, Codable, Hashable {
         noteContentElements.normalizedInlinePlainText
     }
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case id
         case username
         case acct
@@ -463,7 +463,7 @@ struct Account: Identifiable, Codable, Hashable {
 
 // MARK: - Account Field
 
-struct AccountField: Codable, Hashable, Identifiable {
+nonisolated struct AccountField: Codable, Hashable, Identifiable {
     let name: String
     let value: String
     let verifiedAt: Date?
@@ -513,7 +513,7 @@ struct AccountField: Codable, Hashable, Identifiable {
         return nil
     }
     
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case name
         case value
         case verifiedAt = "verified_at"

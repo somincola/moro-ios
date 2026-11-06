@@ -33,6 +33,10 @@ final class DirectMessagesViewModel: ObservableObject {
     private var currentMaxID: String?
     private var hasMore: Bool = true
     private var inFlightConversationRefreshIDs: Set<String> = []
+    private let refreshRunner = CoalescedRefresh()
+    /// Bumped when a first-page load starts and when it lands; a load-more page that
+    /// overlapped either is stale.
+    private var listGeneration = 0
 
     init(apiClient: MastodonAPI) {
         self.apiClient = apiClient
@@ -42,11 +46,12 @@ final class DirectMessagesViewModel: ObservableObject {
         guard case .idle = loadingState else { return }
 
         loadingState = .loading
-        await load(reset: true)
+        await refresh()
     }
 
+    /// Pull, foreground and appear can all ask at once; they share one request.
     func refresh() async {
-        await load(reset: true)
+        await refreshRunner.run { [weak self] in await self?.load(reset: true) }
     }
 
     func loadMore() async {
@@ -55,12 +60,16 @@ final class DirectMessagesViewModel: ObservableObject {
         loadingState = .loadingMore
         loadMoreFailed = false
 
+        let generation = listGeneration
         do {
             let requestedMaxID = currentMaxID
             let page = try await apiClient.fetchConversationsPage(
                 maxID: currentMaxID,
                 limit: pageSize
             )
+            // A refresh replaced the list meanwhile: this page continues the old one and
+            // would leave a gap and a stale cursor. The refresh owns loadingState now.
+            guard generation == listGeneration else { return }
             let existingIDs = Set(conversations.map(\.id))
             let newItems = page.conversations.filter { !existingIDs.contains($0.id) }
             conversations.append(contentsOf: newItems)
@@ -72,6 +81,7 @@ final class DirectMessagesViewModel: ObservableObject {
             loadingState = .loaded
             transientErrorMessage = nil
         } catch {
+            guard generation == listGeneration else { return }
             // Keep already loaded data visible.
             loadingState = .loaded
             loadMoreFailed = true
@@ -136,6 +146,7 @@ final class DirectMessagesViewModel: ObservableObject {
     }
 
     private func load(reset: Bool) async {
+        if reset { listGeneration += 1 }
         do {
             let page = try await apiClient.fetchConversationsPage(
                 maxID: nil,
@@ -143,6 +154,9 @@ final class DirectMessagesViewModel: ObservableObject {
             )
             let items = uniqueConversations(page.conversations)
             if reset {
+                // Also bumped here: a load-more that started while this request was in
+                // flight read the old cursor.
+                listGeneration += 1
                 conversations = items
             } else {
                 let existingIDs = Set(conversations.map(\.id))

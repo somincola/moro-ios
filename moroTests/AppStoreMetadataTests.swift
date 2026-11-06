@@ -34,8 +34,22 @@ final class AppStoreMetadataTests: XCTestCase {
         let localizations: [String: CatalogLocalization]
     }
 
+    /// One locale's translation: a single string, or one string per plural category.
     private struct CatalogLocalization: Decodable {
-        let stringUnit: CatalogStringUnit
+        let units: [CatalogStringUnit]
+
+        private enum CodingKeys: String, CodingKey { case stringUnit, variations }
+        private struct Variation: Decodable { let stringUnit: CatalogStringUnit }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            if let unit = try container.decodeIfPresent(CatalogStringUnit.self, forKey: .stringUnit) {
+                units = [unit]
+            } else {
+                let variations = try container.decode([String: [String: Variation]].self, forKey: .variations)
+                units = variations.values.flatMap { $0.values.map(\.stringUnit) }
+            }
+        }
     }
 
     private struct CatalogStringUnit: Decodable {
@@ -163,13 +177,14 @@ final class AppStoreMetadataTests: XCTestCase {
             XCTAssertEqual(Set(entry.localizations.keys), expectedAppLocales, key)
 
             for (locale, localization) in entry.localizations {
-                XCTAssertEqual(localization.stringUnit.state, "translated", "\(key) [\(locale)]")
-                XCTAssertFalse(
-                    localization.stringUnit.value
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                        .isEmpty,
-                    "\(key) [\(locale)]"
-                )
+                XCTAssertFalse(localization.units.isEmpty, "\(key) [\(locale)]")
+                for unit in localization.units {
+                    XCTAssertEqual(unit.state, "translated", "\(key) [\(locale)]")
+                    XCTAssertFalse(
+                        unit.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                        "\(key) [\(locale)]"
+                    )
+                }
             }
         }
     }
@@ -182,16 +197,17 @@ final class AppStoreMetadataTests: XCTestCase {
                 entry.localizations[catalog.sourceLanguage],
                 "\(key) is missing its source localization"
             )
-            let expectedPlaceholders = try formatPlaceholders(
-                in: sourceLocalization.stringUnit.value
-            )
+            let sourceUnit = try XCTUnwrap(sourceLocalization.units.first, key)
+            let expectedPlaceholders = try formatPlaceholders(in: sourceUnit.value)
 
             for (locale, localization) in entry.localizations {
-                XCTAssertEqual(
-                    try formatPlaceholders(in: localization.stringUnit.value),
-                    expectedPlaceholders,
-                    "\(key) [\(locale)]"
-                )
+                for unit in localization.units {
+                    XCTAssertEqual(
+                        try formatPlaceholders(in: unit.value),
+                        expectedPlaceholders,
+                        "\(key) [\(locale)]"
+                    )
+                }
             }
         }
     }

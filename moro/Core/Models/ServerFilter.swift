@@ -7,8 +7,8 @@
 
 import Foundation
 
-struct ServerFilter: Identifiable, Codable, Hashable {
-    enum Action: String, Codable, CaseIterable {
+nonisolated struct ServerFilter: Identifiable, Codable, Hashable {
+    nonisolated enum Action: String, Codable, CaseIterable {
         case warn
         case hide
         case unknown
@@ -31,7 +31,7 @@ struct ServerFilter: Identifiable, Codable, Hashable {
         }
     }
 
-    enum Context: String, Codable, CaseIterable, Hashable {
+    nonisolated enum Context: String, Codable, CaseIterable, Hashable {
         case home
         case notifications
         case `public` = "public"
@@ -63,12 +63,12 @@ struct ServerFilter: Identifiable, Codable, Hashable {
         }
     }
 
-    struct Keyword: Identifiable, Codable, Hashable {
+    nonisolated struct Keyword: Identifiable, Codable, Hashable {
         let id: String
         let keyword: String
         let wholeWord: Bool
 
-        enum CodingKeys: String, CodingKey {
+        nonisolated enum CodingKeys: String, CodingKey {
             case id
             case keyword
             case wholeWord = "whole_word"
@@ -89,7 +89,7 @@ struct ServerFilter: Identifiable, Codable, Hashable {
     let filterAction: Action
     let keywords: [Keyword]
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case id
         case title
         case context

@@ -388,7 +388,7 @@ final class EditProfileViewModel: ObservableObject {
         account = appliedAccount
         appState.currentAccount = appliedAccount
         CacheManager.shared.accountCache.set(appliedAccount)
-        invalidateImageCachesForProfileUpdate()
+        invalidateImageCachesForProfileUpdate(updatedAccount)
     }
 
     private func resolveLatestAccountAfterProfileUpdate(
@@ -452,9 +452,14 @@ final class EditProfileViewModel: ObservableObject {
             || (headerChangeRequested && headerUnchanged)
     }
 
-    private func invalidateImageCachesForProfileUpdate() {
+    /// Drops this account's avatar and header (original URLs) from the image cache, so a
+    /// screen that still uses them can't show the old picture. Other images stay cached.
+    private func invalidateImageCachesForProfileUpdate(_ account: Account) {
         URLCache.shared.removeAllCachedResponses()
-        ImageCache.shared.clearMemoryCache()
+        ImageCache.shared.removeImages(
+            for: [account.avatar, account.avatarStatic, account.header, account.headerStatic]
+                .compactMap { $0.isEmpty ? nil : URL(string: $0) }
+        )
     }
 
     private var hasAnyChanges: Bool {

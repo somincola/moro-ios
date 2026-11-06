@@ -15,29 +15,20 @@ final class OnboardingUITests: XCTestCase {
             "UITEST_ONBOARDING_VARIANT": variant,
             "UITEST_COLOR_SCHEME": "dark",
         ]) { $1 }
-        app.launch()
+        app.launch(isolatedFor: self)
         return app
     }
 
     func testOneTapGathersTheGlobeAndGetStartedFinishes() {
         let app = launch("globe")
         let start = app.buttons["onboarding.start"]
-        XCTAssertTrue(app.buttons["onboarding.skip"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
         XCTAssertFalse(start.exists, "Get started waits for the globe")
 
         app.tap()
         XCTAssertTrue(start.waitForExistence(timeout: 10), "Get started fades in after the wordmark")
-        XCTAssertFalse(app.buttons["onboarding.skip"].exists, "Skipping is moot once the globe has gathered")
         sleep(2) // the button fades in
         start.tap()
-        XCTAssertTrue(app.buttons["onboarding.replay"].waitForExistence(timeout: 6))
-    }
-
-    func testSkipGoesStraightToLogin() {
-        let app = launch("globe")
-        let skip = app.buttons["onboarding.skip"]
-        XCTAssertTrue(skip.waitForExistence(timeout: 10))
-        skip.tap()
         XCTAssertTrue(app.buttons["onboarding.replay"].waitForExistence(timeout: 6))
     }
 

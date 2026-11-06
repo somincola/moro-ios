@@ -56,6 +56,10 @@ struct MainTabView: View {
     let onSwitchAccount: (String) -> Void
     let onRemoveAccount: (String) -> Void
     let onAccountAuthenticated: (String, Account, URL) -> Void
+    #if DEBUG
+    /// Store screenshots: the tab to open and a post to open in it.
+    var showcaseStart: ShowcaseStart? = nil
+    #endif
 
     @StateObject private var coordinator = RootTabCoordinator()
     @ObservedObject private var notificationUnreadStore = NotificationUnreadStore.shared
@@ -128,9 +132,11 @@ struct MainTabView: View {
             )
 
         }
-        // UIKit owns both system bars and their safe-area backgrounds. Give the shell the
-        // full window so pushed scenes can carry their canvas through the bottom inset.
-        .ignoresSafeArea(.container, edges: [.top, .bottom])
+        // UIKit owns the system bars and their safe-area backgrounds. Give the shell the
+        // full window so pushed scenes can carry their canvas through the bottom inset, and
+        // so the tab bar controller reaches the display edge: on iPhone Duo the status bar
+        // sits on the side, and a shell inset from that edge keeps its bars horizontal.
+        .ignoresSafeArea(.container)
         .fullScreenCover(item: $coordinator.composeContext) { wrapper in
             ComposeView(
                 context: wrapper.context,
@@ -142,7 +148,7 @@ struct MainTabView: View {
             ) { _ in }
             .environmentObject(appState)
         }
-        .sheet(item: $coordinator.presentedSheet) { destination in
+        .sheet(item: $coordinator.presentedSheet, onDismiss: coordinator.runActionsAfterSheetDismiss) { destination in
             switch destination {
             case .settings:
                 SettingsSheetView(apiClient: apiClient)
@@ -164,6 +170,9 @@ struct MainTabView: View {
             consumePendingSharedDraftIfNeeded()
             ensureInboxStreamSubscription()
             updateNotificationListVisibility()
+            #if DEBUG
+            applyShowcaseStart()
+            #endif
         }
         .task(id: activeSessionID) {
             async let instanceMetadataLoad: Void = refreshInstanceMetadataIfNeeded()
@@ -186,6 +195,8 @@ struct MainTabView: View {
             consumePendingWidgetHandoffIfNeeded()
             consumePendingSharedDraftIfNeeded()
             ensureInboxStreamSubscription()
+            // The socket may have died or given up while suspended; don't wait out a backoff.
+            StreamWatcher.shared.ensureConnected(skipBackoff: true)
             Task {
                 async let instanceMetadataRefresh: Void = refreshInstanceMetadataIfNeeded()
                 async let notificationRefresh: Void = notificationUnreadStore.reconcileActiveCount()
@@ -232,28 +243,19 @@ struct MainTabView: View {
             accountSessions: accountSessions,
             activeSessionID: activeSessionID,
             onSwitchAccount: { sessionID in
-                coordinator.dismissPresentedSheet()
                 coordinator.popAllToRoot()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    onSwitchAccount(sessionID)
-                }
+                coordinator.dismissPresentedSheet { onSwitchAccount(sessionID) }
             },
             onAddAccount: {
-                coordinator.dismissPresentedSheet()
                 coordinator.popAllToRoot()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    coordinator.showAddAccountLogin = true
-                }
+                coordinator.dismissPresentedSheet { coordinator.showAddAccountLogin = true }
             },
             onRemoveAccount: { sessionID in
                 onRemoveAccount(sessionID)
             },
             onOpenAccount: { acct in
-                coordinator.dismissPresentedSheet()
-                // Push after the sheet starts dismissing so the profile lands on the visible stack.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    coordinator.navigate(to: .accountLookup(acct))
-                }
+                // Push once the sheet is gone so the profile lands on the visible stack.
+                coordinator.dismissPresentedSheet { coordinator.navigate(to: .accountLookup(acct)) }
             }
         )
     }
@@ -280,7 +282,13 @@ struct MainTabView: View {
 
     private var inboxRootView: AnyView {
         routedView(
-            AnyView(InboxView(coordinator: coordinator, apiClient: apiClient, sessionID: activeSessionID)),
+            AnyView(
+                ThreadSplitView(
+                    coordinator: coordinator, tab: .inbox, router: coordinator.inboxRouter, apiClient: apiClient
+                ) {
+                    InboxView(coordinator: coordinator, apiClient: apiClient, sessionID: activeSessionID)
+                }
+            ),
             router: coordinator.inboxRouter
         )
     }
@@ -289,6 +297,7 @@ struct MainTabView: View {
         routedView(
             AnyView(
                 MeTabRootView(
+                    coordinator: coordinator,
                     apiClient: apiClient,
                     accountSessions: accountSessions,
                     activeSessionID: activeSessionID
@@ -336,6 +345,18 @@ struct MainTabView: View {
                 )
         )
     }
+
+    #if DEBUG
+    private func applyShowcaseStart() {
+        guard let start = showcaseStart else { return }
+        coordinator.selectTab(start.tab)
+        guard let status = start.status else { return }
+        // After the tab's list has laid out (and, on iPhone Duo's wide display, its split).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            coordinator.router(for: start.tab).navigate(to: .statusDetail(status))
+        }
+    }
+    #endif
 
     private func consumePendingSharedDraftIfNeeded() {
         guard coordinator.composeContext == nil else { return }
@@ -425,11 +446,7 @@ struct MainTabView: View {
     }
 
     private func ensureInboxStreamSubscription() {
-        guard let token = appState.authToken else { return }
-        let streamWatcher = StreamWatcher.shared
-        streamWatcher.configure(baseURL: AppEnvironment.apiBaseURL, accessToken: token)
-        streamWatcher.addStream(.user)
-        streamWatcher.addStream(.direct)
+        StreamWatcher.shared.ensureUserSession(accessToken: appState.authToken)
     }
 
 }
@@ -446,6 +463,24 @@ private struct HomeTabRootView: View {
     private let composeButtonTabBarSpacing: CGFloat = 10
 
     var body: some View {
+        ThreadSplitView(coordinator: coordinator, tab: .home, router: coordinator.homeRouter, apiClient: apiClient) {
+            timelineColumn
+        }
+        // The whole root's corner: with two columns that is the thread column, clear of the
+        // fold between them (the system's guidance for book-style half open).
+        .overlay(alignment: .bottomTrailing) {
+            composeButton
+                .padding(.trailing, theme.spacing.l)
+                .padding(.bottom, composeButtonTabBarSpacing)
+                // Steps aside for the account switcher, which floats in the same corner.
+                .scaleEffect(coordinator.isAccountSwitcherPresented ? 0.6 : 1)
+                .opacity(coordinator.isAccountSwitcherPresented ? 0 : 1)
+                .allowsHitTesting(!coordinator.isAccountSwitcherPresented)
+                .animation(.snappy(duration: 0.22), value: coordinator.isAccountSwitcherPresented)
+        }
+    }
+
+    private var timelineColumn: some View {
         TimelineHomeView(
             apiClient: apiClient,
             cacheClientID: cacheClientID,
@@ -464,22 +499,13 @@ private struct HomeTabRootView: View {
                 coordinator.timelineSelection = timeline
             },
             onChromeFraction: nil,
+            usesSystemNavigationBar: coordinator.usesSystemHomeBar,
             isActive: coordinator.selectedTab == .home && coordinator.isAtRoot(.home)
                 && coordinator.presentedSheet == nil && coordinator.composeContext == nil
                 && !coordinator.showAddAccountLogin,
             bottomContentInset: coordinator.tabBarHeight + composeButtonClearance
         )
-        .environment(\.selectedTabScrollToTop, coordinator.selectedTabScrollToTop)
-        .overlay(alignment: .bottomTrailing) {
-            composeButton
-                .padding(.trailing, theme.spacing.l)
-                .padding(.bottom, composeButtonTabBarSpacing)
-                // Steps aside for the account switcher, which floats in the same corner.
-                .scaleEffect(coordinator.isAccountSwitcherPresented ? 0.6 : 1)
-                .opacity(coordinator.isAccountSwitcherPresented ? 0 : 1)
-                .allowsHitTesting(!coordinator.isAccountSwitcherPresented)
-                .animation(.snappy(duration: 0.22), value: coordinator.isAccountSwitcherPresented)
-        }
+        .environment(\.tabReselection, coordinator.tabReselection)
     }
 
     private var composeButtonClearance: CGFloat {
@@ -514,16 +540,33 @@ private struct ExploreTabRootView: View {
 
     var body: some View {
         SearchView(apiClient: apiClient, onEntryStateChanged: coordinator.setExploreSearchEntryActive)
-            .environment(\.selectedTabScrollToTop, coordinator.selectedTabScrollToTop)
+            .environment(\.tabReselection, coordinator.tabReselection)
     }
 }
 
 private struct MeTabRootView: View {
+    /// Not observed: the profile only needs re-tap events, not every shell change.
+    let coordinator: RootTabCoordinator
+    @State private var tabReselection: TabReselection?
     @EnvironmentObject private var appState: AppState
 
     let apiClient: MastodonAPI
     let accountSessions: [StoredAccountSession]
     let activeSessionID: String?
+
+    init(
+        coordinator: RootTabCoordinator,
+        apiClient: MastodonAPI,
+        accountSessions: [StoredAccountSession],
+        activeSessionID: String?
+    ) {
+        self.coordinator = coordinator
+        self.apiClient = apiClient
+        self.accountSessions = accountSessions
+        self.activeSessionID = activeSessionID
+        // Start from the current event so an earlier re-tap is not mistaken for a new one.
+        _tabReselection = State(initialValue: coordinator.tabReselection)
+    }
 
     private var currentAccount: Account? {
         appState.currentAccount
@@ -540,6 +583,10 @@ private struct MeTabRootView: View {
                     onLogout: {},
                     apiClient: apiClient
                 )
+                // The page's view models are created once per identity. While switching,
+                // `currentAccount` can resolve to a fallback first; without this the real
+                // account would then render with the fallback's loaded profile and posts.
+                .id(account.id)
             } else {
                 EmptyStateView(
                     spec: EmptyStateSpec(
@@ -550,6 +597,8 @@ private struct MeTabRootView: View {
                 )
             }
         }
+        .environment(\.tabReselection, tabReselection)
+        .onReceive(coordinator.$tabReselection.removeDuplicates()) { tabReselection = $0 }
     }
 }
 
@@ -561,8 +610,8 @@ private struct AddAccountLoginContainer: View {
         NavigationStack {
             LoginView(authService: AuthService(), onAuthSuccess: onAuthSuccess)
                 .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button(MoroL10n.Common.cancel) {
+                    ToolbarItem(placement: .cancellationAction) {
+                        MoroToolbarButton(MoroL10n.Common.cancel, kind: .close) {
                             onCancel()
                         }
                     }
@@ -584,3 +633,11 @@ private struct AddAccountLoginContainer: View {
     .environmentObject(AppState())
     .moroTheme(MoroTheme())
 }
+
+#if DEBUG
+/// Store screenshots: where `MainTabView` starts, set by the screenshot harness.
+struct ShowcaseStart {
+    let tab: MainTab
+    let status: Status?
+}
+#endif

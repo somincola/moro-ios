@@ -67,9 +67,7 @@ enum MediaExportService {
     static func saveToPhotos(_ file: ImageFile) async throws {
         var status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
         if status == .notDetermined {
-            status = await PrivacyProtectionCenter.shared.whilePresentingSystemPrompt {
-                await PHPhotoLibrary.requestAuthorization(for: .addOnly)
-            }
+            status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         }
         guard status == .authorized || status == .limited else { throw ExportError.photoAccessDenied }
         do {
@@ -124,13 +122,7 @@ enum MediaExportService {
     }
 
     private static func topViewController() -> UIViewController? {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        let window = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
-        var top = window?.rootViewController
-        while let presented = top?.presentedViewController, !presented.isBeingDismissed {
-            top = presented
-        }
-        return top
+        UIApplication.shared.moroTopViewController()
     }
 }
 

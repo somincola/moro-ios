@@ -27,7 +27,7 @@ final class ThreadReadingUITests: XCTestCase {
         app.launchArguments = settingsArguments
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = scheme
-        app.launch()
+        app.launch(isolatedFor: self)
         XCTAssertTrue(app.buttons["settings.posting"].waitForExistence(timeout: 5))
         app.buttons["settings.posting"].tap()
         let confirmation = app.switches["Ask before boosting posts"]
@@ -42,7 +42,7 @@ final class ThreadReadingUITests: XCTestCase {
             if changedPreference {
                 app.launchArguments = settingsArguments
                 app.launchEnvironment["UITEST_DYNAMIC_TYPE_SIZE"] = nil
-                app.launch()
+                app.launch(isolatedFor: self)
                 XCTAssertTrue(app.buttons["settings.posting"].waitForExistence(timeout: 5))
                 app.buttons["settings.posting"].tap()
                 XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
@@ -59,7 +59,7 @@ final class ThreadReadingUITests: XCTestCase {
         if largeText {
             app.launchEnvironment["UITEST_DYNAMIC_TYPE_SIZE"] = "accessibilityXXXL"
         }
-        app.launch()
+        app.launch(isolatedFor: self)
         let trigger = app.buttons.matching(identifier: "转发").element(boundBy: 1)
         XCTAssertTrue(trigger.waitForExistence(timeout: 10))
         reveal(trigger, app: app)
@@ -103,7 +103,7 @@ final class ThreadReadingUITests: XCTestCase {
         if largeText {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
         }
-        app.launch()
+        app.launch(isolatedFor: self)
         defer { app.terminate() }
         let menu = app.buttons["thread.readingOptions"]
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
@@ -164,7 +164,7 @@ final class ThreadReadingUITests: XCTestCase {
         app.launchArguments = ["UITEST_THREAD_READING", "UITEST_THREAD_REAL_SAMPLE", "UITEST_DISABLE_ANIMATIONS", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = scheme
-        app.launch()
+        app.launch(isolatedFor: self)
         defer { app.terminate() }
         let menu = app.buttons["thread.readingOptions"]
         XCTAssertTrue(menu.waitForExistence(timeout: 10))

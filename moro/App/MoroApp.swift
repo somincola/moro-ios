@@ -17,6 +17,10 @@ struct MoroApp: App {
     @StateObject private var settings = AppSettings.shared
 
     init() {
+        #if DEBUG
+        // First, before anything reads a setting.
+        UITestDefaultsIsolation.applyIfRequested()
+        #endif
         StorageManagementStore.configureImageCache()
         let appState = AppState()
         let interceptor = AuthInterceptor(tokenProvider: appState)
@@ -42,15 +46,15 @@ struct MoroApp: App {
                 } else if shouldUsePushHarness {
                     pushHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseSettingsSheetHarness {
-                    SettingsSheetHarnessView()
+                    settingsSheetHarness
                         .moroTheme(MoroTheme(accent: .monochrome))
                         .preferredColorScheme(colorScheme)
                 } else if shouldUseAccountDeletionHarness {
-                    AccountDeletionHarnessView()
+                    accountDeletionHarness
                         .moroTheme(MoroTheme(accent: .monochrome))
                         .preferredColorScheme(colorScheme)
                 } else if shouldUseComposeMediaHarness {
-                    ComposeMediaGridHarnessView()
+                    composeMediaHarness
                         .moroTheme(MoroTheme(accent: .monochrome))
                         .preferredColorScheme(colorScheme)
                 } else if shouldUseTimelineLiveHarness {
@@ -80,11 +84,11 @@ struct MoroApp: App {
                     editSourceHarness
                         .preferredColorScheme(colorScheme)
                 } else if shouldUseComposeCounterHarness {
-                    ComposeCounterHarnessView()
+                    composeCounterHarness
                         .moroTheme(MoroTheme(accent: .monochrome))
                         .preferredColorScheme(colorScheme)
                 } else if shouldUseNotificationTapHarness {
-                    NotificationRowTapHarnessView()
+                    notificationTapHarness
                         .moroTheme(
                             MoroTheme(
                                 accent: .monochrome
@@ -126,7 +130,6 @@ struct MoroApp: App {
                 \.dynamicTypeSize,
                 uiTestDynamicTypeSizeOverride ?? systemDynamicTypeSize
             )
-            .privacyProtectedWhenInactive()
         }
     }
 
@@ -208,16 +211,22 @@ struct MoroApp: App {
     }
 
     private var shouldUseNotificationTapHarness: Bool {
+        #if DEBUG
         if isNotificationTapHarnessMode { return true }
         if isRunningUITests && launchEnvironment["UITEST_USE_FULL_APP"] != "1" {
             return true
         }
+        #endif
         return false
     }
 
     private var shouldUseComposeCounterHarness: Bool {
+        #if DEBUG
         launchArguments.contains("UITEST_COMPOSE_COUNTER")
             || launchEnvironment["UITEST_COMPOSE_COUNTER"] == "1"
+        #else
+        false
+        #endif
     }
 
     private var shouldUseTimelineLiveHarness: Bool {
@@ -397,18 +406,61 @@ struct MoroApp: App {
     }
 
     private var shouldUseComposeMediaHarness: Bool {
+        #if DEBUG
         launchArguments.contains("UITEST_COMPOSE_MEDIA")
             || launchEnvironment["UITEST_COMPOSE_MEDIA"] == "1"
+        #else
+        false
+        #endif
     }
 
     private var shouldUseAccountDeletionHarness: Bool {
+        #if DEBUG
         launchArguments.contains("UITEST_ACCOUNT_DELETION")
             || launchEnvironment["UITEST_ACCOUNT_DELETION"] == "1"
+        #else
+        false
+        #endif
     }
 
     private var shouldUseSettingsSheetHarness: Bool {
+        #if DEBUG
         launchArguments.contains("UITEST_SETTINGS_SHEET")
             || launchEnvironment["UITEST_SETTINGS_SHEET"] == "1"
+        #else
+        false
+        #endif
+    }
+
+    // Test-only harnesses are compiled into Debug builds only.
+    @ViewBuilder private var settingsSheetHarness: some View {
+        #if DEBUG
+        SettingsSheetHarnessView()
+        #endif
+    }
+
+    @ViewBuilder private var accountDeletionHarness: some View {
+        #if DEBUG
+        AccountDeletionHarnessView()
+        #endif
+    }
+
+    @ViewBuilder private var composeMediaHarness: some View {
+        #if DEBUG
+        ComposeMediaGridHarnessView()
+        #endif
+    }
+
+    @ViewBuilder private var composeCounterHarness: some View {
+        #if DEBUG
+        ComposeCounterHarnessView()
+        #endif
+    }
+
+    @ViewBuilder private var notificationTapHarness: some View {
+        #if DEBUG
+        NotificationRowTapHarnessView()
+        #endif
     }
 
     /// Get the color scheme based on settings

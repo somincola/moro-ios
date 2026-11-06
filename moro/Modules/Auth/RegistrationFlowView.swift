@@ -869,7 +869,7 @@ struct RegistrationFlowView: View {
     private func userFriendlyRegistrationError(_ error: Error) -> String {
         if let apiError = error as? APIError {
             if case .serverError(let serverError) = apiError {
-                let raw = (serverError.serverDescription ?? serverError.error).lowercased()
+                let raw = serverError.combinedMessage.lowercased()
                 if raw.contains("username") && raw.contains("taken") {
                     return MoroL10n.Registration.errorUsernameTaken
                 }

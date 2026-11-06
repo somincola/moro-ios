@@ -1133,10 +1133,6 @@ public enum MoroL10n {
         public static var toastSyncFailed: String { text("privacy.toast.syncFailed") }
     }
 
-    public enum PrivacyProtection {
-        public static var message: String { text("privacyProtection.message") }
-    }
-
     public enum Filters {
         public static var title: String { text("filters.title") }
         public static var newFilter: String { text("filters.newFilter") }
@@ -1780,6 +1776,7 @@ public enum MoroL10n {
 
     public enum StatusDetail {
         public static var headerTitle: String { text("statusDetail.headerTitle") }
+        public static var splitPlaceholder: String { text("statusDetail.splitPlaceholder") }
         public static var editHistory: String { text("statusDetail.editHistory") }
         public static var confirmBoostTitle: String { text("statusDetail.confirmBoostTitle") }
         public static var confirmBoostMessage: String { text("statusDetail.confirmBoostMessage") }

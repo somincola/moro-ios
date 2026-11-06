@@ -74,7 +74,7 @@ final class ComposePublishingUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_PUBLISHING", "-moro.debug.logs", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launchEnvironment = ["UITEST_USE_FULL_APP": "1", "UITEST_PUBLISH_SCENARIO": scenario]
-        app.launch()
+        app.launch(isolatedFor: self)
         let open = app.buttons["publishFixture.open"]
         XCTAssertTrue(open.waitForExistence(timeout: 10))
         open.tap()
@@ -86,7 +86,7 @@ final class ComposePublishingUITests: XCTestCase {
     }
 
     private func publishButton(_ app: XCUIApplication) -> XCUIElement {
-        app.buttons["compose.postButton"]
+        app.composePostButton
     }
 
     private func assertPublished(_ app: XCUIApplication, requests: Int) {
@@ -98,9 +98,10 @@ final class ComposePublishingUITests: XCTestCase {
         XCTAssertEqual(result.label, "Published posts: 1; requests: \(requests)")
         XCTAssertFalse(publishButton(app).exists)
         XCTAssertEqual(app.staticTexts["publishFixture.presentation"].label, "Presentation closed")
-        let body = app.textViews.matching(NSPredicate(format: "value CONTAINS %@", "Publish once")).firstMatch
+        // Post bodies render as SwiftUI Text (custom emoji inline), not a text view.
+        let body = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Publish once")).firstMatch
         XCTAssertTrue(body.waitForExistence(timeout: 2))
-        XCTAssertTrue((body.value as? String)?.contains("文字应该立即出现") == true)
+        XCTAssertTrue(body.label.contains("文字应该立即出现"))
     }
 
     private func assertPublishing(_ app: XCUIApplication) {

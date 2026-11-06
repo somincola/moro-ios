@@ -118,6 +118,7 @@ struct ScheduledStatusesView: View {
                     onRetry: { Task { await viewModel.loadMore() } }
                 )
             }
+            .moroReadableColumn()
             .padding(.vertical, theme.spacing.s)
         }
         .refreshable {

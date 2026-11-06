@@ -42,8 +42,8 @@ struct RegistrationServerPickerView: View {
         .navigationTitle(MoroL10n.Login.Server.navTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button(MoroL10n.Common.close) { onClose() }
+            ToolbarItem(placement: .cancellationAction) {
+                MoroToolbarButton(MoroL10n.Common.close, kind: .close) { onClose() }
             }
         }
     }

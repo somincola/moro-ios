@@ -59,7 +59,7 @@ final class SettingsVisualAuditUITests: XCTestCase {
         app.launchEnvironment["UITEST_DISABLE_ANIMATIONS"] = "1"
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = dark ? "dark" : "light"
-        app.launch()
+        app.launch(isolatedFor: self)
         XCTAssertTrue(app.navigationBars.firstMatch.waitForExistence(timeout: 10))
         return app
     }

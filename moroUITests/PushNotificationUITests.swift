@@ -7,7 +7,7 @@ final class PushNotificationUITests: XCTestCase {
         defer { app.terminate() }
         assertPost(in: app, session: "push-a")
         attach(app, "push-post-detail")
-        app.navigationBars.buttons["BackButton"].firstMatch.tap()
+        backButton(in: app).tap()
         expectation(for: NSPredicate(format: "exists == false"),
             evaluatedWith: targetPost(in: app, session: "push-a"))
         waitForExpectations(timeout: 5)
@@ -116,7 +116,7 @@ final class PushNotificationUITests: XCTestCase {
 
         app.launchEnvironment["UITEST_PRESERVE_NOTIFICATION_SNAPSHOT"] = "1"
         app.launchEnvironment["UITEST_NOTIFICATIONS_OFFLINE"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
         app.buttons["mainTab.inbox"].tap()
         XCTAssertTrue(text("Recent activity 330", in: app).waitForExistence(timeout: 5),
             "A cold offline launch must restore notification content after clearing disposable caches")
@@ -128,12 +128,66 @@ final class PushNotificationUITests: XCTestCase {
 
         app.launchEnvironment.removeValue(forKey: "UITEST_NOTIFICATIONS_OFFLINE")
         app.launchEnvironment["UITEST_NOTIFICATIONS_UPDATED"] = "1"
-        app.launch()
+        app.launch(isolatedFor: self)
         app.buttons["mainTab.inbox"].tap()
         XCTAssertTrue(text("New activity after restart", in: app).waitForExistence(timeout: 5),
             "Restoring a snapshot must also trigger one automatic network refresh")
         XCTAssertTrue(text("Recent activity 330", in: app).exists)
         attach(app, "inbox-restored-and-refreshed")
+    }
+
+    func testReTappingInboxAtTheTopStartsThePullToRefresh() {
+        let app = launch("inbox", environment: ["UITEST_NOTIFICATIONS_DELAY": "4"])
+        defer { app.terminate() }
+        let inboxTab = app.buttons["mainTab.inbox"]
+        inboxTab.tap()
+        XCTAssertTrue(text("Recent activity 330", in: app).waitForExistence(timeout: 10))
+        let pullRefresh = pullRefreshRunning(in: app)
+        XCTAssertFalse(pullRefresh.exists)
+
+        inboxTab.tap()
+        XCTAssertTrue(pullRefresh.waitForExistence(timeout: 3),
+            "Re-tapping Inbox at the top must start the list's own pull to refresh (spinner, rows pushed down)")
+        attach(app, "inbox-retap-pull-spinner")
+        XCTAssertTrue(text("New activity 331", in: app).waitForExistence(timeout: 8))
+        XCTAssertTrue(pullRefresh.waitForNonExistence(timeout: 5), "The spinner ends with the refresh")
+    }
+
+    func testOpeningInboxOverSavedNotificationsRefreshesQuietly() {
+        let app = launch("inbox")
+        inboxTabAndWait(in: app, for: "Recent activity 330")
+        // Rows show before the snapshot is written; loading another filter lets it finish.
+        app.buttons["inbox.filter.mentions"].tap()
+        XCTAssertTrue(text("Private initial mention", in: app).waitForExistence(timeout: 5))
+        app.buttons["inbox.filter.all"].tap()
+        app.terminate()
+
+        app.launchEnvironment["UITEST_PRESERVE_NOTIFICATION_SNAPSHOT"] = "1"
+        app.launchEnvironment["UITEST_NOTIFICATIONS_UPDATED"] = "1"
+        app.launchEnvironment["UITEST_NOTIFICATIONS_DELAY"] = "4"
+        app.launch(isolatedFor: self)
+        defer { app.terminate() }
+        app.buttons["mainTab.inbox"].tap()
+        XCTAssertTrue(text("Recent activity 330", in: app).waitForExistence(timeout: 5))
+        XCTAssertFalse(pullRefreshRunning(in: app).waitForExistence(timeout: 2),
+            "An automatic refresh must not start the pull spinner")
+        XCTAssertFalse(app.staticTexts["Refreshing..."].exists)
+        XCTAssertTrue(text("New activity after restart", in: app).waitForExistence(timeout: 8),
+            "The automatic refresh still runs")
+    }
+
+    func testReTappingInboxAwayFromTheTopOnlyScrollsBack() {
+        let app = launch("inbox")
+        defer { app.terminate() }
+        inboxTabAndWait(in: app, for: "Recent activity 330")
+        let newest = text("Recent activity 330", in: app)
+        app.scrollViews.firstMatch.swipeUp()
+        XCTAssertTrue(waitUntil(timeout: 3) { !newest.isHittable })
+
+        app.buttons["mainTab.inbox"].tap()
+        XCTAssertTrue(waitUntil(timeout: 3) { newest.isHittable }, "Re-tapping away from the top scrolls back up")
+        XCTAssertFalse(text("New activity 331", in: app).waitForExistence(timeout: 2),
+            "Scrolling back up must not also refresh")
     }
 
     func testGroupedNotificationsContinuePagingWithoutAnotherScrollAppearance() {
@@ -152,7 +206,7 @@ final class PushNotificationUITests: XCTestCase {
         let body = app.descendants(matching: .any)["conversation.body.push-post"].firstMatch
         assertRemainsVisible(body, seconds: 3)
         attach(app, "push-message-detail-stable")
-        app.navigationBars.buttons["BackButton"].firstMatch.tap()
+        backButton(in: app).tap()
         let mentions = app.buttons["inbox.filter.mentions"]
         XCTAssertTrue(mentions.waitForExistence(timeout: 5))
         XCTAssertTrue(mentions.isSelected)
@@ -191,8 +245,14 @@ final class PushNotificationUITests: XCTestCase {
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_PUSH_SCENARIO"] = scenario
         app.launchEnvironment.merge(environment) { _, new in new }
-        app.launch()
+        app.launch(isolatedFor: self)
         return app
+    }
+
+    /// The system back button no longer carries the "BackButton" identifier; match its label too.
+    private func backButton(in app: XCUIApplication) -> XCUIElement {
+        app.navigationBars.buttons.matching(
+            NSPredicate(format: "identifier == 'BackButton' OR label == 'Back'")).firstMatch
     }
 
     private func targetPost(in app: XCUIApplication, session: String) -> XCUIElement {
@@ -202,7 +262,7 @@ final class PushNotificationUITests: XCTestCase {
 
     private func assertPost(in app: XCUIApplication, session: String) {
         XCTAssertTrue(targetPost(in: app, session: session).waitForExistence(timeout: 12))
-        XCTAssertTrue(app.navigationBars.buttons["BackButton"].firstMatch.exists)
+        XCTAssertTrue(backButton(in: app).exists)
     }
 
     private func assertInbox(in app: XCUIApplication) {
@@ -210,6 +270,20 @@ final class PushNotificationUITests: XCTestCase {
         XCTAssertTrue(notifications.waitForExistence(timeout: 12))
         XCTAssertTrue(notifications.isSelected)
         XCTAssertTrue(app.buttons["mainTab.inbox"].isSelected)
+    }
+
+    private func pullRefreshRunning(in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)["notifications.pullRefreshRunning"].firstMatch
+    }
+
+    private func waitUntil(timeout: TimeInterval, _ condition: @escaping () -> Bool) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: nil)
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    private func inboxTabAndWait(in app: XCUIApplication, for value: String) {
+        app.buttons["mainTab.inbox"].tap()
+        XCTAssertTrue(text(value, in: app).waitForExistence(timeout: 10))
     }
 
     private func text(_ value: String, in app: XCUIApplication) -> XCUIElement {

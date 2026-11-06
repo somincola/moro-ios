@@ -167,7 +167,7 @@ struct ConversationDetailView: View {
                 Section {
                     let replyMessages = viewModel.replyMessages
 
-                    ForEach(Array(replyMessages.enumerated()), id: \.element.id) { index, status in
+                    ForEach(replyMessages.indexed(), id: \.element.id) { index, status in
                         let previousStatus = index > 0 ? replyMessages[index - 1] : nil
                         let nextStatus =
                             index + 1 < replyMessages.count ? replyMessages[index + 1] : nil
@@ -206,6 +206,7 @@ struct ConversationDetailView: View {
                     }
                 }
             }
+            .moroReadableColumn()
             .padding(.bottom, theme.spacing.s)
         }
         .scrollDismissesKeyboard(.interactively)
@@ -404,14 +405,7 @@ struct ConversationDetailView: View {
     }
 
     private func ensureDirectStreamSubscription() {
-        if streamWatcher.hasActiveConnection {
-            streamWatcher.addStream(.direct)
-            return
-        }
-
-        guard let token = appState.authToken else { return }
-        streamWatcher.configure(baseURL: AppEnvironment.apiBaseURL, accessToken: token)
-        streamWatcher.watch(streams: [.user, .direct])
+        streamWatcher.ensureUserSession(accessToken: appState.authToken)
     }
 
     private func sendDraftMessage(proxy: ScrollViewProxy, retryFailed: Bool) {

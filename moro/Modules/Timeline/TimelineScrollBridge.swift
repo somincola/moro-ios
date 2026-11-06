@@ -17,7 +17,7 @@ import Combine
 import SwiftUI
 import UIKit
 
-struct TimelinePullRefreshVisualState {
+struct TimelinePullRefreshVisualState: Equatable {
     let distance: CGFloat
     let threshold: CGFloat
     let isRefreshing: Bool
@@ -498,14 +498,15 @@ final class TimelineScrollBridge: ObservableObject {
             state.phase = .pulling
         }
         pullRefreshStates[timeline] = state
-        pullRefreshSubject(for: timeline).send(
-            TimelinePullRefreshVisualState(
-                distance: state.distance,
-                threshold: threshold,
-                isRefreshing: false,
-                isPinned: false
-            )
+        let visual = TimelinePullRefreshVisualState(
+            distance: state.distance,
+            threshold: threshold,
+            isRefreshing: false,
+            isPinned: false
         )
+        // Called on every scroll frame; while reading (distance 0) nothing changes.
+        let subject = pullRefreshSubject(for: timeline)
+        if subject.value != visual { subject.send(visual) }
         return state.phase == .armed && !wasArmed
     }
 
@@ -521,6 +522,30 @@ final class TimelineScrollBridge: ObservableObject {
             return false
         }
 
+        state.phase = .refreshing
+        state.distance = threshold
+        pullRefreshStates[timeline] = state
+        pullRefreshSubject(for: timeline).send(
+            TimelinePullRefreshVisualState(
+                distance: threshold,
+                threshold: threshold,
+                isRefreshing: true,
+                isPinned: true
+            )
+        )
+        return true
+    }
+
+    /// Re-tapping the tab at the top: the same pinned slot a released pull leaves, so the
+    /// refresh looks and finishes exactly like a pull. False while one is already running.
+    func beginProgrammaticPullRefresh(
+        for timeline: TimelineType,
+        threshold: CGFloat,
+        isSelected: Bool
+    ) -> Bool {
+        guard isSelected else { return false }
+        var state = pullRefreshStates[timeline] ?? TimelinePullRefreshState()
+        guard state.phase != .refreshing else { return false }
         state.phase = .refreshing
         state.distance = threshold
         pullRefreshStates[timeline] = state

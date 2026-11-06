@@ -7,8 +7,8 @@
 
 import Foundation
 
-struct ServerNotificationPolicy: Codable, Equatable {
-    enum Disposition: String, Codable, CaseIterable, Identifiable {
+nonisolated struct ServerNotificationPolicy: Codable, Equatable {
+    nonisolated enum Disposition: String, Codable, CaseIterable, Identifiable {
         case accept
         case filter
         case drop
@@ -16,11 +16,11 @@ struct ServerNotificationPolicy: Codable, Equatable {
         var id: String { rawValue }
     }
 
-    struct Summary: Codable, Equatable {
+    nonisolated struct Summary: Codable, Equatable {
         let pendingRequestsCount: Int
         let pendingNotificationsCount: Int
 
-        enum CodingKeys: String, CodingKey {
+        nonisolated enum CodingKeys: String, CodingKey {
             case pendingRequestsCount = "pending_requests_count"
             case pendingNotificationsCount = "pending_notifications_count"
         }
@@ -34,7 +34,7 @@ struct ServerNotificationPolicy: Codable, Equatable {
     var forBots: Disposition?
     var summary: Summary
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case forNotFollowing = "for_not_following"
         case forNotFollowers = "for_not_followers"
         case forNewAccounts = "for_new_accounts"
@@ -45,7 +45,7 @@ struct ServerNotificationPolicy: Codable, Equatable {
     }
 }
 
-struct ServerNotificationRequest: Codable, Identifiable, Equatable {
+nonisolated struct ServerNotificationRequest: Codable, Identifiable, Equatable {
     let id: String
     let createdAt: Date
     let updatedAt: Date
@@ -53,7 +53,7 @@ struct ServerNotificationRequest: Codable, Identifiable, Equatable {
     let account: Account
     let lastStatus: Status?
 
-    enum CodingKeys: String, CodingKey {
+    nonisolated enum CodingKeys: String, CodingKey {
         case id
         case createdAt = "created_at"
         case updatedAt = "updated_at"

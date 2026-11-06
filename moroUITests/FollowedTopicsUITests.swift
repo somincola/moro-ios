@@ -10,7 +10,7 @@ final class FollowedTopicsUITests: XCTestCase {
         app.launchArguments = ["UITEST_TOPICS", "UITEST_DISABLE_ANIMATIONS", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = scheme
-        app.launch()
+        app.launch(isolatedFor: self)
         defer { app.terminate() }
         let open = app.buttons["topics.openMoro"]
         XCTAssertTrue(open.waitForExistence(timeout: 10))

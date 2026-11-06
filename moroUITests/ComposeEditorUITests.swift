@@ -56,7 +56,7 @@ final class ComposeEditorUITests: XCTestCase {
         XCTAssertEqual(editor.value as? String, prefix + "Hello @hanna@remote.example #SwiftUI done")
         XCTAssertFalse(hashtag.exists)
         XCTAssertTrue(app.keyboards.firstMatch.exists)
-        XCTAssertTrue(app.buttons["compose.postButton"].isEnabled)
+        XCTAssertTrue(app.composePostButton.isEnabled)
         attach(app, name: "composer-\(mode)-completed-tokens")
     }
 
@@ -169,7 +169,7 @@ final class ComposeEditorUITests: XCTestCase {
             app.launchEnvironment["UITEST_DYNAMIC_TYPE_SIZE"] = "accessibilityXXXL"
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
-        app.launch()
+        app.launch(isolatedFor: self)
         XCTAssertTrue(app.buttons["replyHarness.open"].waitForExistence(timeout: 6))
         app.buttons["replyHarness.open"].tap()
         return app

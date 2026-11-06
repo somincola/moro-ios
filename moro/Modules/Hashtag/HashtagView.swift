@@ -48,7 +48,7 @@ struct HashtagView: View {
         ContentStateContainer(state: contentState) {
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(viewModel.statuses.enumerated()), id: \.element.id) { index, status in
+                    ForEach(viewModel.statuses.indexed(), id: \.element.id) { index, status in
                         let prefetchWindowSize = 6
                         let isNearBottom = viewModel.statuses.count - index <= 3
                         TimelinePostRow(
@@ -82,6 +82,7 @@ struct HashtagView: View {
                         onRetry: { Task { await viewModel.loadMore() } }
                     )
                 }
+                .moroReadableColumn()
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
