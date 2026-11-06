@@ -38,6 +38,29 @@ final class ThreadSplitUITests: XCTestCase {
         attach(app, "split-closed")
     }
 
+    /// One post wanted on its own: it leaves the panel and pushes full screen; going back
+    /// returns to the full-width list.
+    func testAPanelPostOpensFullScreen() throws {
+        let app = launch()
+        defer { app.terminate() }
+        app.buttons["mainTab.inbox"].tap()
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Recent activity 330")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        try requireSplit(in: app)
+
+        row.tap()
+        assertThreadOpenedBeside(listRow: row, in: app)
+        let fullScreen = app.buttons["threadSplit.fullScreen"]
+        XCTAssertTrue(fullScreen.waitForExistence(timeout: 5))
+        fullScreen.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["threadSplit.detail"].waitForNonExistence(timeout: 5),
+            "The post leaves the panel")
+        let covered = XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in !row.exists || !row.isHittable }, object: nil)], timeout: 5)
+        XCTAssertEqual(covered, .completed, "…and is pushed over the list")
+        attach(app, "split-full-screen")
+    }
+
     func testExploreOpensThreadsInTheSecondColumn() throws {
         let app = launch()
         defer { app.terminate() }
