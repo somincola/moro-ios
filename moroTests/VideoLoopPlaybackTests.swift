@@ -48,9 +48,17 @@ struct VideoLoopPlaybackTests {
         try await Task.sleep(for: .milliseconds(600))
         #expect(player.currentTime() == end, "A manual GIF must stay stopped after its first pass")
         observer.play()
-        try await Task.sleep(for: .milliseconds(100))
         #expect(!observer.didReachEnd)
-        #expect(player.currentTime() < end)
+        #expect(observer.isPlaybackRequested)
+        // Replay rewinds to the start. Watch for the rewind rather than checking after a fixed
+        // pause: on a busy runner the half-second clip can play through again within it.
+        let rewindDeadline = ContinuousClock.now + .seconds(15)
+        var rewound = false
+        while !rewound, ContinuousClock.now < rewindDeadline {
+            rewound = player.currentTime() < end
+            if !rewound { try await Task.sleep(for: .milliseconds(5)) }
+        }
+        #expect(rewound, "Replaying a GIF that played through starts it over")
     }
 
     @Test func aLocalGIFVideoContinuesThroughFourLoopBoundaries() async throws {
