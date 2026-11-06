@@ -188,6 +188,9 @@ struct ThreadSplitView<ListColumn: View>: View {
     /// links inside it (a post on that profile, say) push within the column, with a back
     /// button, and leave the list where it was.
     @StateObject private var columnRouter = AppRouter()
+    /// What has been opened inside the panel on top of `detailRoute`, in order, so the page
+    /// on screen can be taken full screen.
+    @State private var columnRoutes: [Route] = []
     @StateObject private var panelBar = ThreadSplitPanelBar()
 
     /// On iPhone Duo every tab keeps its controls in the system bar (down the side when held
@@ -274,6 +277,21 @@ struct ThreadSplitView<ListColumn: View>: View {
         .onChange(of: isSplit, initial: true) { _, split in
             updateThreadRouting(isSplit: split)
         }
+        .onAppear {
+            // Note what opens inside the panel; the column's own stack still pushes it.
+            // Captures the router weakly and the list through a binding: the router keeps
+            // this closure, so holding either strongly would keep the router alive forever.
+            let column = columnRouter
+            let tracked = $columnRoutes
+            column.inPlaceRouteHandler = { [weak column] route in
+                let depth = column?.path.count ?? 0
+                tracked.wrappedValue = Array(tracked.wrappedValue.prefix(depth)) + [route]
+                return false
+            }
+        }
+        .onChange(of: columnRouter.path.count) { _, count in
+            if columnRoutes.count > count { columnRoutes = Array(columnRoutes.prefix(count)) }
+        }
         .onChange(of: detailRoute, initial: true) { _, route in
             if case .statusDetail(let status) = route {
                 ThreadSplitSelection.shared.set(status.id, for: tab)
@@ -289,8 +307,34 @@ struct ThreadSplitView<ListColumn: View>: View {
             detailRoute = nil
         }
         columnRouter.path = NavigationPath()
+        columnRoutes = []
         isPendingClose = false
         draggedListWidth = nil
+    }
+
+    /// The page on screen in the panel: the last one opened inside it, else what the list opened.
+    private var panelTopRoute: Route? {
+        columnRoutes.prefix(columnRouter.path.count).last ?? detailRoute
+    }
+
+    /// This one post (or page) wanted on its own: it leaves the panel and pushes full screen,
+    /// and going back returns to the full-width list. A choice per page rather than a setting.
+    private func openPanelPageFullScreen() {
+        guard let route = panelTopRoute else { return }
+        let handler = router.inPlaceRouteHandler
+        router.inPlaceRouteHandler = nil
+        closePanel()
+        router.navigate(to: route)
+        router.inPlaceRouteHandler = handler
+    }
+
+    private var fullScreenButton: some View {
+        Button(action: openPanelPageFullScreen) {
+            Label(MoroL10n.StatusDetail.openFullScreen, systemImage: "arrow.up.left.and.arrow.down.right")
+                .labelStyle(.iconOnly)
+        }
+        .keyboardShortcut(.return, modifiers: [.command, .shift])
+        .accessibilityIdentifier("threadSplit.fullScreen")
     }
 
     @ToolbarContentBuilder
@@ -299,6 +343,7 @@ struct ThreadSplitView<ListColumn: View>: View {
         ToolbarItem(placement: .topBarLeading) {
             if columnRouter.path.isEmpty { closeButton } else { panelBackButton }
         }
+        ToolbarItem(placement: .topBarLeading) { fullScreenButton }
         ToolbarItemGroup(placement: .topBarTrailing) {
             if let actions = panelBar.actions {
                 if let editHistory = actions.editHistory { editHistory }
@@ -542,6 +587,7 @@ struct ThreadSplitView<ListColumn: View>: View {
                 Self.opensInColumn(route, opensProfilesAndTopics: opensProfilesAndTopics)
             else { return false }
             columnRouter.path = NavigationPath()
+            columnRoutes = []
             withAnimation(.snappy(duration: 0.32)) { detailRoute = route }
             return true
         }
