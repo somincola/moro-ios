@@ -6280,6 +6280,100 @@ struct moroTests {
         #expect(draftStore.pendingSharedStagingItems().first?.attachments.map(\.id) == ["second"])
     }
 
+    /// A share whose image can't be imported must not reopen as a draft on every return
+    /// to the app, even after the draft is deleted (reported against 1.2).
+    @Test @MainActor func aFailedSharedImportDoesNotReopenItsDraft() async throws {
+        let draftSuiteName = "shared-compose-failed-drafts-\(UUID().uuidString)"
+        let stagingSuiteName = "shared-compose-failed-staging-\(UUID().uuidString)"
+        let draftDefaults = try #require(UserDefaults(suiteName: draftSuiteName))
+        let stagingDefaults = try #require(UserDefaults(suiteName: stagingSuiteName))
+        let stagingDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shared-compose-failed-\(UUID().uuidString)", isDirectory: true)
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shared-compose-failed-\(UUID().uuidString).png")
+        defer {
+            draftDefaults.removePersistentDomain(forName: draftSuiteName)
+            stagingDefaults.removePersistentDomain(forName: stagingSuiteName)
+            try? FileManager.default.removeItem(at: stagingDirectoryURL)
+            try? FileManager.default.removeItem(at: source)
+        }
+        // Not an image: preparing it fails, like the unreadable photo in the report.
+        try Data("not a png".utf8).write(to: source)
+
+        let draftStore = ComposeDraftStore(
+            userDefaults: draftDefaults,
+            stagingStore: SharedComposeDraftStagingStore(
+                userDefaults: stagingDefaults, baseDirectoryURL: stagingDirectoryURL)
+        )
+        _ = try draftStore.stageSharedDraft(
+            accountID: "me",
+            target: ComposeDraftTarget(kind: .newPost),
+            payload: makeComposeDraftPayload(content: "shared with a broken photo"),
+            attachments: [SharedComposeDraftAttachmentInput(sourceURL: source, mimeType: "image/png")]
+        )
+        let coordinator = SharedComposeImportCoordinator(draftStore: draftStore)
+        let resolution = try #require(coordinator.consumeNextImportableDraft(activeAccountID: "me"))
+        let sharedImport = try #require(resolution.sharedImport)
+        let viewModel = ComposeViewModel(
+            context: resolution.draft.target.composeContext,
+            apiClient: MockMastodonAPI(),
+            currentUserID: "me",
+            initialDraft: resolution.draft
+        )
+
+        let outcome = await viewModel.importSharedAttachments(from: sharedImport, draftStore: draftStore)
+
+        #expect(outcome == .failed)
+        #expect(draftStore.pendingSharedStagingItems().isEmpty, "The failed share is given up on")
+        #expect(draftStore.draft(id: resolution.draft.id)?.payload.content == "shared with a broken photo",
+            "Its text stays as a draft")
+        #expect(draftStore.removeDraft(id: resolution.draft.id))
+        #expect(coordinator.consumeNextImportableDraft(activeAccountID: "me") == nil,
+            "Deleting the draft ends it: coming back to the app opens nothing")
+    }
+
+    /// Deleting (or sending) a shared draft while some of its share is still staged, say
+    /// after the import was interrupted, finishes the share too.
+    @Test @MainActor func removingASharedDraftDropsWhatIsStillStaged() throws {
+        let draftSuiteName = "shared-compose-remove-drafts-\(UUID().uuidString)"
+        let stagingSuiteName = "shared-compose-remove-staging-\(UUID().uuidString)"
+        let draftDefaults = try #require(UserDefaults(suiteName: draftSuiteName))
+        let stagingDefaults = try #require(UserDefaults(suiteName: stagingSuiteName))
+        let stagingDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shared-compose-remove-\(UUID().uuidString)", isDirectory: true)
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shared-compose-remove-\(UUID().uuidString).txt")
+        defer {
+            draftDefaults.removePersistentDomain(forName: draftSuiteName)
+            stagingDefaults.removePersistentDomain(forName: stagingSuiteName)
+            try? FileManager.default.removeItem(at: stagingDirectoryURL)
+            try? FileManager.default.removeItem(at: source)
+        }
+        try Data("staged".utf8).write(to: source)
+
+        let draftStore = ComposeDraftStore(
+            userDefaults: draftDefaults,
+            stagingStore: SharedComposeDraftStagingStore(
+                userDefaults: stagingDefaults, baseDirectoryURL: stagingDirectoryURL)
+        )
+        let staged = try draftStore.stageSharedDraft(
+            accountID: "me",
+            target: ComposeDraftTarget(kind: .newPost),
+            payload: makeComposeDraftPayload(content: "interrupted"),
+            attachments: [SharedComposeDraftAttachmentInput(sourceURL: source, mimeType: "text/plain")]
+        )
+        let coordinator = SharedComposeImportCoordinator(draftStore: draftStore)
+        let resolution = try #require(coordinator.consumeNextImportableDraft(activeAccountID: "me"))
+        #expect(draftStore.pendingSharedStagingItems().map(\.id) == [staged.id])
+
+        #expect(draftStore.removeDraft(id: resolution.draft.id))
+
+        #expect(draftStore.pendingSharedStagingItems().isEmpty)
+        #expect(coordinator.consumeNextImportableDraft(activeAccountID: "me") == nil)
+        #expect(!FileManager.default.fileExists(
+            atPath: stagingDirectoryURL.appendingPathComponent(staged.id, isDirectory: true).path))
+    }
+
     @Test @MainActor func sharedComposeImportCoordinatorSkipsSharedDraftForDifferentActiveAccount() async throws {
         let draftSuiteName = "shared-compose-import-skip-drafts-\(UUID().uuidString)"
         let stagingSuiteName = "shared-compose-import-skip-staging-\(UUID().uuidString)"
