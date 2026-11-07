@@ -331,7 +331,7 @@ nonisolated struct SharedComposeDraftStagingItem: Codable, Equatable, Identifiab
 
     func asManualDraft(now: Date = Date()) -> ComposeDraft {
         ComposeDraft(
-            id: "shared-\(id)",
+            id: ComposeDraftStore.sharedDraftIDPrefix + id,
             accountID: accountID,
             category: .manual,
             target: target,
@@ -718,15 +718,24 @@ final class ComposeDraftStore {
         }
     }
 
+    /// A draft made from a share is named after its staging item.
+    static let sharedDraftIDPrefix = "shared-"
+
     @discardableResult
     func removeDraft(id: String) -> Bool {
-        withLock {
+        let removed = withLock {
             var drafts = loadDraftsLocked()
             let beforeCount = drafts.count
             drafts.removeAll { $0.id == id }
             guard drafts.count != beforeCount else { return false }
             return saveDraftsLocked(drafts)
         }
+        // Deleted or sent, a shared draft is finished with: whatever of the share is still
+        // staged must not turn it back into a draft the next time the app comes forward.
+        if id.hasPrefix(Self.sharedDraftIDPrefix) {
+            stagingStore.removeItem(id: String(id.dropFirst(Self.sharedDraftIDPrefix.count)))
+        }
+        return removed
     }
 
     func pendingSharedStagingItems() -> [SharedComposeDraftStagingItem] {

@@ -693,6 +693,13 @@ final class ComposeViewModel: ObservableObject {
             progressPersistenceFailed = progressPersistenceFailed || !didAcknowledgeAttachment
         }
 
+        // Every attachment has been tried. One that failed (an unreadable file, an unsupported
+        // type, a rejected upload) is given up on: a staging item left behind reopens this
+        // draft on every return to the app, even after the draft is deleted or sent. The
+        // draft keeps its text and whatever did import; the person can add the rest again.
+        if encounteredFailure {
+            draftStore.removePendingSharedStagingItem(id: sharedImport.stagingItemID)
+        }
         guard successfulUploadCount > 0 else { return .failed }
         if !encounteredFailure
             && !progressPersistenceFailed
