@@ -1,283 +1,187 @@
-//
-//  ShareSupport.swift
-//  moroShareExtension
-//
-//  Shared-container helpers for the Share Extension MVP.
-//
-
+import Darwin
 import Foundation
 import UniformTypeIdentifiers
 
 enum MoroShareExtensionSharedContainer {
     static let appGroupIdentifier = "group.com.somincola.moro.app"
-    static let composeDraftStagingDirectoryName = "ComposeDraftStaging"
-
     static func sharedUserDefaults() -> UserDefaults {
         UserDefaults(suiteName: appGroupIdentifier) ?? .standard
     }
-
-    static func sharedContainerURL(fileManager: FileManager = .default) -> URL? {
-        fileManager.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
+    static func stagingDirectory() -> URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)?
+            .appendingPathComponent("ComposeDraftStaging", isDirectory: true)
     }
 
-    static func composeDraftStagingDirectoryURL(fileManager: FileManager = .default) -> URL {
-        let baseURL = sharedContainerURL(fileManager: fileManager)
-            ?? fileManager.temporaryDirectory.appendingPathComponent("moro-shared", isDirectory: true)
-        return baseURL.appendingPathComponent(composeDraftStagingDirectoryName, isDirectory: true)
+    /// Must match `SharedComposeDraftStagingStore.cancelledMarkerPrefix` in the app.
+    static let cancelledMarkerPrefix = ".cancelled-"
+
+    /// The critical section is a few milliseconds, so ordinary contention between the app
+    /// and the extension is retried briefly instead of surfacing as a failure. The wait is
+    /// bounded and never blocks indefinitely while the process could be suspended.
+    static func acquireIndexLock(_ descriptor: Int32, attempts: Int = 20, interval: useconds_t = 10_000) -> Bool {
+        for attempt in 0..<attempts {
+            if flock(descriptor, LOCK_EX | LOCK_NB) == 0 { return true }
+            let code = errno
+            guard code == EWOULDBLOCK || code == EINTR else { return false }
+            if attempt + 1 < attempts { usleep(interval) }
+        }
+        return false
     }
 }
 
 struct MoroShareExtensionBootstrapSnapshot: Decodable {
-    struct SnapshotAccount: Decodable {
-        let id: String
-    }
-
+    struct SnapshotAccount: Decodable { let id: String }
     let account: SnapshotAccount
 }
 
 final class MoroShareExtensionSessionBootstrapReader {
-    private enum Keys {
-        static let snapshot = "shared_active_account_session_snapshot_v1"
-    }
-
     private let userDefaults: UserDefaults
-    private let decoder = JSONDecoder()
-
     init(userDefaults: UserDefaults = MoroShareExtensionSharedContainer.sharedUserDefaults()) {
         self.userDefaults = userDefaults
     }
-
     func loadActiveAccountID() -> String? {
-        guard let data = userDefaults.data(forKey: Keys.snapshot),
-              let snapshot = try? decoder.decode(MoroShareExtensionBootstrapSnapshot.self, from: data) else {
-            return nil
+        guard let data = userDefaults.data(forKey: "shared_active_account_session_snapshot_v1") else { return nil }
+        return (try? JSONDecoder().decode(MoroShareExtensionBootstrapSnapshot.self, from: data))?.account.id
+    }
+}
+
+enum MoroShareExtensionInputError: Error {
+    case noContent, tooManyImages, unreadableImage, sharedContainerUnavailable
+    var message: String {
+        switch self {
+        case .noContent: return L("share.error.noContent")
+        case .tooManyImages: return L("share.error.tooManyImages")
+        case .unreadableImage: return L("share.error.unreadableImage")
+        case .sharedContainerUnavailable: return L("share.error.importFailed")
         }
-        return snapshot.account.id
     }
 }
 
 struct MoroShareExtensionPreparedAttachment {
-    let data: Data
+    let sourceURL: URL
     let fileName: String
     let mimeType: String
     let id: String
-
-    init(
-        data: Data,
-        fileName: String,
-        mimeType: String,
-        id: String = UUID().uuidString
-    ) {
-        self.data = data
-        self.fileName = fileName
-        self.mimeType = mimeType
-        self.id = id
-    }
 }
 
 struct MoroShareExtensionLoadedContent {
     let text: String
     let attachments: [MoroShareExtensionPreparedAttachment]
+    let temporaryDirectoryURL: URL
 
     var hasSubstantivePayload: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
     }
-
-    var summaryText: String {
-        var parts: [String] = []
-
-        if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            parts.append(L("share.summary.text"))
-        }
-
-        if !attachments.isEmpty {
-            parts.append(L("share.summary.images", Int64(attachments.count)))
-        }
-
-        return parts.isEmpty ? L("share.error.noContent") : parts.joined(separator: L("share.summary.separator"))
-    }
+    func removeTemporaryFiles() { try? FileManager.default.removeItem(at: temporaryDirectoryURL) }
 }
 
 enum MoroShareExtensionInputLoader {
-    static func load(from inputItems: [Any]) async -> MoroShareExtensionLoadedContent {
-        let extensionItems = inputItems.compactMap { $0 as? NSExtensionItem }
-        let itemProviders = extensionItems.flatMap { $0.attachments ?? [] }
-
-        let textProvider = itemProviders.first {
-            $0.hasItemConformingToTypeIdentifier(UTType.plainText.identifier)
-        }
-        let urlProvider = itemProviders.first {
-            $0.hasItemConformingToTypeIdentifier(UTType.url.identifier)
-        }
-        let imageProviders = itemProviders.filter {
-            $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
-        }
-
-        async let text = loadPlainText(from: textProvider)
-        async let url = loadURLString(from: urlProvider)
-        let attachments = await loadImageAttachments(from: Array(imageProviders.prefix(4)))
-
-        var parts: [String] = []
-        if let text = await text?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !text.isEmpty {
-            parts.append(text)
-        }
-
-        if let url = await url?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !url.isEmpty,
-           !parts.contains(url) {
-            parts.append(url)
-        }
-
-        return MoroShareExtensionLoadedContent(
-            text: parts.joined(separator: "\n"),
-            attachments: attachments
-        )
-    }
-
-    private static func loadPlainText(from provider: NSItemProvider?) async -> String? {
-        guard let provider else { return nil }
-
+    static func load(from inputItems: [Any]) async throws -> MoroShareExtensionLoadedContent {
+        let items = inputItems.compactMap { $0 as? NSExtensionItem }
+        let providers = items.flatMap { $0.attachments ?? [] }
+        let images = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }
+        guard images.count <= 4 else { throw MoroShareExtensionInputError.tooManyImages }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("moro-share-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         do {
-            let item = try await provider.moro_loadItem(forTypeIdentifier: UTType.plainText.identifier)
-            if let text = item as? String {
-                return text
+            var textParts = items.compactMap { $0.attributedContentText?.string }
+            // A Photos file URL is transport metadata, never a post's body.
+            if let provider = providers.first(where: {
+                !$0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
+                    && $0.hasItemConformingToTypeIdentifier(UTType.plainText.identifier)
+            }), let text = await loadString(provider, type: UTType.plainText.identifier) {
+                textParts.append(text)
             }
-            if let attributed = item as? NSAttributedString {
-                return attributed.string
+            if let provider = providers.first(where: {
+                !$0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
+                    && !$0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+                    && $0.hasItemConformingToTypeIdentifier(UTType.url.identifier)
+            }), let text = await loadString(provider, type: UTType.url.identifier) {
+                textParts.append(text)
             }
-            if let url = item as? URL {
-                return url.absoluteString
+            var attachments: [MoroShareExtensionPreparedAttachment] = []
+            // Copy one original at a time. Never decode previews or retain four full-size images.
+            for (index, provider) in images.enumerated() {
+                try Task.checkCancellation()
+                let identifier =
+                    provider.registeredTypeIdentifiers.first {
+                        guard let type = UTType($0) else { return false }
+                        return type.conforms(to: .image) && type.preferredMIMEType != nil
+                    } ?? UTType.image.identifier
+                let type = UTType(identifier)
+                let id = UUID().uuidString
+                let ext = type?.preferredFilenameExtension ?? "jpg"
+                let suggested = (provider.suggestedName ?? "image-\(index + 1)") as NSString
+                let name = suggested.deletingPathExtension
+                    .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: "\\", with: "-")
+                let fileName = "\(name.isEmpty ? "image-\(index + 1)" : name).\(ext)"
+                let destination = directory.appendingPathComponent("\(id).\(ext)")
+                do {
+                    try await provider.moro_copyFileRepresentation(type: identifier, to: destination)
+                } catch {
+                    try Task.checkCancellation()
+                    let data: Data
+                    do { data = try await provider.moro_loadDataRepresentation(type: identifier) } catch {
+                        throw MoroShareExtensionInputError.unreadableImage
+                    }
+                    try data.write(to: destination, options: .atomic)
+                }
+                let size = try destination.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard size > 0 else { throw MoroShareExtensionInputError.unreadableImage }
+                attachments.append(
+                    .init(
+                        sourceURL: destination, fileName: fileName,
+                        mimeType: type?.preferredMIMEType ?? "image/jpeg", id: id))
             }
-            return nil
+            var distinctText: [String] = []
+            for text in textParts.map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+            where !text.isEmpty && !distinctText.contains(text) { distinctText.append(text) }
+            let content = MoroShareExtensionLoadedContent(
+                text: distinctText.joined(separator: "\n"),
+                attachments: attachments, temporaryDirectoryURL: directory)
+            guard content.hasSubstantivePayload else { throw MoroShareExtensionInputError.noContent }
+            return content
         } catch {
-            return nil
+            try? FileManager.default.removeItem(at: directory)
+            throw error
         }
     }
 
-    private static func loadURLString(from provider: NSItemProvider?) async -> String? {
-        guard let provider else { return nil }
-
-        do {
-            let item = try await provider.moro_loadItem(forTypeIdentifier: UTType.url.identifier)
-            if let url = item as? URL {
-                return url.absoluteString
-            }
-            if let text = item as? String {
-                return text
-            }
-            return nil
-        } catch {
-            return nil
-        }
-    }
-
-    private static func loadImageAttachments(
-        from providers: [NSItemProvider]
-    ) async -> [MoroShareExtensionPreparedAttachment] {
-        var attachments: [MoroShareExtensionPreparedAttachment] = []
-
-        for (index, provider) in providers.enumerated() {
-            guard let attachment = await loadImageAttachment(from: provider, index: index) else {
-                continue
-            }
-            attachments.append(attachment)
-        }
-
-        return attachments
-    }
-
-    private static func loadImageAttachment(
-        from provider: NSItemProvider,
-        index: Int
-    ) async -> MoroShareExtensionPreparedAttachment? {
-        let typeIdentifier = provider.registeredTypeIdentifiers.first {
-            UTType($0)?.conforms(to: .image) == true
-        } ?? UTType.image.identifier
-        let type = UTType(typeIdentifier)
-        let mimeType = type?.preferredMIMEType ?? "image/jpeg"
-        let fileExtension = type?.preferredFilenameExtension ?? "jpg"
-        let baseName = sanitizedFileBaseName(provider.suggestedName, fallback: "shared-image-\(index + 1)")
-        let fileName = "\(baseName).\(fileExtension)"
-
-        do {
-            let data = try await provider.moro_loadDataRepresentation(forTypeIdentifier: typeIdentifier)
-            return MoroShareExtensionPreparedAttachment(
-                data: data,
-                fileName: fileName,
-                mimeType: mimeType
-            )
-        } catch {
-            do {
-                let data = try await provider.moro_loadFileDataRepresentation(forTypeIdentifier: typeIdentifier)
-                return MoroShareExtensionPreparedAttachment(
-                    data: data,
-                    fileName: fileName,
-                    mimeType: mimeType
-                )
-            } catch {
-                return nil
+    private static func loadString(_ provider: NSItemProvider, type: String) async -> String? {
+        await withCheckedContinuation { continuation in
+            provider.loadItem(forTypeIdentifier: type, options: nil) { item, _ in
+                let value = (item as? String) ?? (item as? NSAttributedString)?.string ?? (item as? URL)?.absoluteString
+                continuation.resume(returning: value)
             }
         }
-    }
-
-    private static func sanitizedFileBaseName(_ value: String?, fallback: String) -> String {
-        let rawValue = (value ?? fallback).trimmingCharacters(in: .whitespacesAndNewlines)
-        let strippedExtension = (rawValue as NSString).deletingPathExtension
-        let candidate = strippedExtension.isEmpty ? fallback : strippedExtension
-        let invalidScalars = CharacterSet(charactersIn: "/:\\")
-        let sanitized = candidate.unicodeScalars.map { scalar in
-            invalidScalars.contains(scalar) ? "-" : Character(scalar)
-        }
-        return String(sanitized)
     }
 }
 
-private struct MoroShareExtensionDraftMediaAttachment: Codable {}
-
-private struct MoroShareExtensionDraftTarget: Codable {
-    let kind: String
-    let referenceStatus: String?
-    let inReplyToID: String?
-    let quotingID: String?
-
-    init(
-        kind: String,
-        referenceStatus: String? = nil,
-        inReplyToID: String? = nil,
-        quotingID: String? = nil
-    ) {
-        self.kind = kind
-        self.referenceStatus = referenceStatus
-        self.inReplyToID = inReplyToID
-        self.quotingID = quotingID
-    }
-}
-
-private struct MoroShareExtensionDraftPayload: Codable {
+/// Mirrors the app's additive Codable staging schema. No credentials cross this boundary.
+private struct MoroShareExtensionDraftMediaAttachment: Encodable {}
+private struct MoroShareExtensionDraftTarget: Encodable { let kind: String }
+private struct MoroShareExtensionDraftPayload: Encodable {
     let content: String
-    let contentWarning: String
-    let isContentWarningActive: Bool
-    let visibility: String
-    let mediaAttachments: [MoroShareExtensionDraftMediaAttachment]
-    let isPollActive: Bool
-    let pollOptions: [String]
-    let pollMultiple: Bool
-    let pollExpiresIn: Int
-    let isSchedulingEnabled: Bool
-    let scheduledAt: Date?
-    let selectedLanguageCode: String
-    let quotePolicyRawValue: String
+    let contentWarning = ""
+    let isContentWarningActive = false
+    let visibility = "public"
+    let mediaAttachments: [MoroShareExtensionDraftMediaAttachment] = []
+    let isPollActive = false
+    let pollOptions: [String] = []
+    let pollMultiple = false
+    let pollExpiresIn = 86400
+    let isSchedulingEnabled = false
+    let selectedLanguageCode = ""
+    let quotePolicyRawValue = "public"
 }
-
-private struct MoroShareExtensionAttachmentReference: Codable {
+private struct MoroShareExtensionAttachmentReference: Encodable {
     let id: String
     let fileName: String
     let mimeType: String
     let relativePath: String
 }
-
-private struct MoroShareExtensionStagingItem: Codable {
+private struct MoroShareExtensionStagingItem: Encodable {
     let id: String
     let accountID: String?
     let sourceApplication: String?
@@ -288,213 +192,168 @@ private struct MoroShareExtensionStagingItem: Codable {
 }
 
 final class MoroShareExtensionDraftStagingStore {
-    private enum Keys {
-        static let items = "shared_compose_draft_staging_items_v1"
-    }
-
     private let userDefaults: UserDefaults
-    private let baseDirectoryURL: URL
+    private let baseDirectoryURL: URL?
     private let fileManager: FileManager
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
+    private let transferFile: (URL, URL) throws -> Void
+    private let key = "shared_compose_draft_staging_items_v1"
+    private let corruptBackupKey = "shared_compose_draft_staging_items_v1_corrupt_backup"
 
     init(
         userDefaults: UserDefaults = MoroShareExtensionSharedContainer.sharedUserDefaults(),
-        baseDirectoryURL: URL = MoroShareExtensionSharedContainer.composeDraftStagingDirectoryURL(),
-        fileManager: FileManager = .default
+        baseDirectoryURL: URL? = MoroShareExtensionSharedContainer.stagingDirectory(),
+        fileManager: FileManager = .default, transferFile: ((URL, URL) throws -> Void)? = nil
     ) {
         self.userDefaults = userDefaults
         self.baseDirectoryURL = baseDirectoryURL
         self.fileManager = fileManager
+        self.transferFile = transferFile ?? { try fileManager.moveItem(at: $0, to: $1) }
     }
 
-    func stage(
-        accountID: String?,
-        sourceApplication: String?,
-        content: MoroShareExtensionLoadedContent,
-        now: Date = Date()
-    ) throws {
-        try ensureBaseDirectory()
-
-        let itemID = UUID().uuidString
-        let itemDirectoryURL = baseDirectoryURL.appendingPathComponent(itemID, isDirectory: true)
-        try fileManager.createDirectory(
-            at: itemDirectoryURL,
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
-
-        var attachmentReferences: [MoroShareExtensionAttachmentReference] = []
+    func stage(accountID: String?, content: MoroShareExtensionLoadedContent) throws -> String {
+        guard let baseDirectoryURL else { throw MoroShareExtensionInputError.sharedContainerUnavailable }
+        try Task.checkCancellation()
+        let id = UUID().uuidString
+        let directory = baseDirectoryURL.appendingPathComponent(id, isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         do {
+            var references: [MoroShareExtensionAttachmentReference] = []
             for attachment in content.attachments {
-                let destinationURL = try writeAttachment(
-                    attachment,
-                    into: itemDirectoryURL
-                )
-                attachmentReferences.append(
-                    MoroShareExtensionAttachmentReference(
-                        id: attachment.id,
-                        fileName: destinationURL.lastPathComponent,
-                        mimeType: attachment.mimeType,
-                        relativePath: "\(itemID)/\(destinationURL.lastPathComponent)"
-                    )
-                )
+                try Task.checkCancellation()
+                // IDs make duplicate filenames and cross-directory paths impossible.
+                let ext = attachment.sourceURL.pathExtension
+                let name = attachment.id + (ext.isEmpty ? "" : "." + ext)
+                // These are owned temporary copies, never the provider's originals.
+                // Moving them avoids a second full-size copy and never holds the index lock.
+                try transferFile(attachment.sourceURL, directory.appendingPathComponent(name))
+                try Task.checkCancellation()
+                references.append(
+                    .init(
+                        id: attachment.id, fileName: attachment.fileName,
+                        mimeType: attachment.mimeType, relativePath: "\(id)/\(name)"))
             }
+            let item = MoroShareExtensionStagingItem(
+                id: id, accountID: accountID, sourceApplication: "ShareExtension",
+                target: .init(kind: "newPost"), payload: .init(content: content.text),
+                attachments: references, createdAt: Date())
+            let encoded = try JSONEncoder().encode(item)
+            guard let object = try JSONSerialization.jsonObject(with: encoded) as? [String: Any] else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            try withIndexLock {
+                try Task.checkCancellation()
+                var items = try loadItems()
+                items.append(object)
+                try saveItems(items)
+            }
+            return id
         } catch {
-            try? fileManager.removeItem(at: itemDirectoryURL)
+            try? fileManager.removeItem(at: directory)
             throw error
         }
-
-        let item = MoroShareExtensionStagingItem(
-            id: itemID,
-            accountID: accountID,
-            sourceApplication: sourceApplication,
-            target: MoroShareExtensionDraftTarget(kind: "newPost"),
-            payload: MoroShareExtensionDraftPayload(
-                content: content.text,
-                contentWarning: "",
-                isContentWarningActive: false,
-                visibility: "public",
-                mediaAttachments: [],
-                isPollActive: false,
-                pollOptions: [],
-                pollMultiple: false,
-                pollExpiresIn: 86400,
-                isSchedulingEnabled: false,
-                scheduledAt: nil,
-                selectedLanguageCode: "",
-                quotePolicyRawValue: "public"
-            ),
-            attachments: attachmentReferences,
-            createdAt: now
-        )
-
-        var items = loadItems()
-        items.append(item)
-        saveItems(items)
     }
 
-    private func loadItems() -> [MoroShareExtensionStagingItem] {
-        guard let data = userDefaults.data(forKey: Keys.items) else { return [] }
-        return (try? decoder.decode([MoroShareExtensionStagingItem].self, from: data)) ?? []
-    }
-
-    private func saveItems(_ items: [MoroShareExtensionStagingItem]) {
-        guard let data = try? encoder.encode(items) else { return }
-        userDefaults.set(data, forKey: Keys.items)
-    }
-
-    private func ensureBaseDirectory() throws {
-        try fileManager.createDirectory(
-            at: baseDirectoryURL,
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
-    }
-
-    private func writeAttachment(
-        _ attachment: MoroShareExtensionPreparedAttachment,
-        into directoryURL: URL
-    ) throws -> URL {
-        let destinationURL = uniqueDestinationURL(
-            preferredFileName: sanitizedFileName(attachment.fileName),
-            in: directoryURL
-        )
-        try attachment.data.write(to: destinationURL, options: .atomic)
-        return destinationURL
-    }
-
-    private func uniqueDestinationURL(
-        preferredFileName: String,
-        in directoryURL: URL
-    ) -> URL {
-        let nsFileName = preferredFileName as NSString
-        let baseName = nsFileName.deletingPathExtension
-        let pathExtension = nsFileName.pathExtension
-
-        var candidateURL = directoryURL.appendingPathComponent(preferredFileName, isDirectory: false)
-        var suffix = 1
-
-        while fileManager.fileExists(atPath: candidateURL.path) {
-            let candidateName = pathExtension.isEmpty
-                ? "\(baseName)-\(suffix)"
-                : "\(baseName)-\(suffix).\(pathExtension)"
-            candidateURL = directoryURL.appendingPathComponent(candidateName, isDirectory: false)
-            suffix += 1
+    func remove(itemID: String) throws {
+        guard UUID(uuidString: itemID) != nil else { return }
+        defer {
+            if let baseDirectoryURL { try? fileManager.removeItem(at: baseDirectoryURL.appendingPathComponent(itemID)) }
         }
-
-        return candidateURL
+        do {
+            try withIndexLock {
+                try saveItems(try loadItems().filter { ($0["id"] as? String) != itemID })
+            }
+        } catch {
+            // A cancelled share must never reach the editor later. When the index
+            // cannot be updated, leave a tombstone the app honours and purges.
+            markCancelled(itemID: itemID)
+            throw error
+        }
     }
 
-    private func sanitizedFileName(_ fileName: String) -> String {
-        let trimmed = fileName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return UUID().uuidString }
+    private func markCancelled(itemID: String) {
+        guard let baseDirectoryURL else { return }
+        let marker = baseDirectoryURL.appendingPathComponent(MoroShareExtensionSharedContainer.cancelledMarkerPrefix + itemID)
+        _ = fileManager.createFile(atPath: marker.path, contents: Data())
+    }
 
-        let invalidScalars = CharacterSet(charactersIn: "/:\\")
-        let sanitized = trimmed.unicodeScalars.map { scalar in
-            invalidScalars.contains(scalar) ? "-" : Character(scalar)
+    private func loadItems() throws -> [[String: Any]] {
+        guard let data = userDefaults.data(forKey: key) else { return [] }
+        guard let items = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else {
+            // An unreadable index would otherwise block every future share. Keep the
+            // first unreadable copy for diagnosis and continue with a fresh index.
+            if userDefaults.data(forKey: corruptBackupKey) == nil {
+                userDefaults.set(data, forKey: corruptBackupKey)
+            }
+            return []
         }
+        return items
+    }
+    private func saveItems(_ items: [[String: Any]]) throws {
+        let data = try JSONSerialization.data(withJSONObject: items, options: [.sortedKeys])
+        userDefaults.set(data, forKey: key)
+        userDefaults.synchronize()
+        guard userDefaults.data(forKey: key) == data else { throw CocoaError(.fileWriteUnknown) }
+    }
 
-        return String(sanitized)
+    private func withIndexLock<T>(_ operation: () throws -> T) throws -> T {
+        guard let baseDirectoryURL else { throw MoroShareExtensionInputError.sharedContainerUnavailable }
+        try fileManager.createDirectory(at: baseDirectoryURL, withIntermediateDirectories: true)
+        let descriptor = Darwin.open(
+            baseDirectoryURL.appendingPathComponent(".index.lock").path, O_CREAT | O_RDWR, 0o600)
+        guard descriptor >= 0 else { throw CocoaError(.fileWriteUnknown) }
+        defer { Darwin.close(descriptor) }
+        guard MoroShareExtensionSharedContainer.acquireIndexLock(descriptor) else { throw CocoaError(.fileWriteUnknown) }
+        defer { flock(descriptor, LOCK_UN) }
+        userDefaults.synchronize()
+        return try operation()
     }
 }
 
-private extension NSItemProvider {
-    func moro_loadItem(forTypeIdentifier typeIdentifier: String) async throws -> NSSecureCoding {
-        try await withCheckedThrowingContinuation { continuation in
-            loadItem(forTypeIdentifier: typeIdentifier, options: nil) { item, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-
-                guard let item else {
-                    continuation.resume(throwing: CocoaError(.fileReadUnknown))
-                    return
-                }
-
-                continuation.resume(returning: item)
-            }
-        }
+actor MoroShareExtensionImportService {
+    private let store = MoroShareExtensionDraftStagingStore()
+    private var isCancelled = false
+    private var stagedItemID: String?
+    func prepare(inputItems: [Any], accountID: String?) async throws -> String {
+        guard !isCancelled else { throw CancellationError() }
+        let content = try await MoroShareExtensionInputLoader.load(from: inputItems)
+        defer { content.removeTemporaryFiles() }
+        try Task.checkCancellation()
+        guard !isCancelled else { throw CancellationError() }
+        let id = try store.stage(accountID: accountID, content: content)
+        stagedItemID = id
+        return id
     }
-
-    func moro_loadDataRepresentation(forTypeIdentifier typeIdentifier: String) async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
-            loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-
-                guard let data else {
-                    continuation.resume(throwing: CocoaError(.fileReadUnknown))
-                    return
-                }
-
-                continuation.resume(returning: data)
-            }
-        }
+    func cancel(itemID: String? = nil) {
+        isCancelled = true
+        // The actor owns the ID before it is delivered to the controller. Cancellation
+        // can therefore clean a just-committed item without awaiting a slow provider.
+        if let id = itemID ?? stagedItemID { try? store.remove(itemID: id) }
     }
+}
 
-    func moro_loadFileDataRepresentation(forTypeIdentifier typeIdentifier: String) async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
-            loadFileRepresentation(forTypeIdentifier: typeIdentifier) { url, error in
-                if let error {
-                    continuation.resume(throwing: error)
+extension NSItemProvider {
+    fileprivate func moro_copyFileRepresentation(type: String, to destination: URL) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            loadFileRepresentation(forTypeIdentifier: type) { url, error in
+                guard let url, error == nil else {
+                    continuation.resume(throwing: error ?? CocoaError(.fileReadUnknown))
                     return
                 }
-
-                guard let url else {
-                    continuation.resume(throwing: CocoaError(.fileReadUnknown))
-                    return
-                }
-
                 do {
-                    let data = try Data(contentsOf: url)
-                    continuation.resume(returning: data)
-                } catch {
-                    continuation.resume(throwing: error)
+                    try FileManager.default.copyItem(at: url, to: destination)
+                    continuation.resume()
+                } catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+    fileprivate func moro_loadDataRepresentation(type: String) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            loadDataRepresentation(forTypeIdentifier: type) { data, error in
+                guard let data, error == nil else {
+                    continuation.resume(throwing: error ?? CocoaError(.fileReadUnknown))
+                    return
                 }
+                continuation.resume(returning: data)
             }
         }
     }

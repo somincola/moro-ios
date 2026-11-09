@@ -137,7 +137,7 @@ struct MainTabView: View {
         // so the tab bar controller reaches the display edge: on iPhone Duo the status bar
         // sits on the side, and a shell inset from that edge keeps its bars horizontal.
         .ignoresSafeArea(.container)
-        .fullScreenCover(item: $coordinator.composeContext) { wrapper in
+        .fullScreenCover(item: $coordinator.composeContext, onDismiss: consumePendingSharedDraftIfNeeded) { wrapper in
             ComposeView(
                 context: wrapper.context,
                 apiClient: apiClient,
@@ -173,6 +173,10 @@ struct MainTabView: View {
             #if DEBUG
             applyShowcaseStart()
             #endif
+        }
+        .onReceive(NotificationCenter.default.publisher(for: SharedComposeHandoff.received)) { _ in
+            guard scenePhase == .active else { return }
+            consumePendingSharedDraftIfNeeded()
         }
         .task(id: activeSessionID) {
             async let instanceMetadataLoad: Void = refreshInstanceMetadataIfNeeded()
@@ -371,19 +375,12 @@ struct MainTabView: View {
     #endif
 
     private func consumePendingSharedDraftIfNeeded() {
-        guard coordinator.composeContext == nil else { return }
-
-        guard let resolution = sharedComposeImportCoordinator.consumeNextImportableDraft(
-            activeAccountID: activeAccountIDForSharedImport
+        guard scenePhase == .active,
+              let resolution = coordinator.presentPendingSharedImport(
+            using: sharedComposeImportCoordinator, accountID: activeAccountIDForSharedImport
         ) else {
             return
         }
-
-        coordinator.composeContext = ComposeContextWrapper(
-            context: resolution.draft.target.composeContext,
-            draft: resolution.draft,
-            sharedImport: resolution.sharedImport
-        )
 
         if resolution.sharedImport == nil {
             AppFeedbackCenter.shared.showInfo(MoroL10n.MainTab.sharedContent)

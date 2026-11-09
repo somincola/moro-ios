@@ -156,7 +156,15 @@ private struct ComposeMediaTileView: View {
                             .frame(width: geometry.size.width, height: geometry.size.height)
                             .clipped()
                     } placeholder: {
-                        placeholderView
+                        if let localPreview = attachment.previewImage {
+                            Image(uiImage: localPreview)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: geometry.size.width, height: geometry.size.height)
+                                .clipped()
+                        } else {
+                            placeholderView
+                        }
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height)
                 } else if case .uploading = attachment.uploadState,

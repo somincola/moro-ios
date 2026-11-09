@@ -139,6 +139,7 @@ final class ComposeViewModel: ObservableObject {
         case publishing
         case mediaUploading
         case mediaUploadFailed
+        case sharedImportIncomplete
         case characterLimitExceeded
         case pollNeedsMoreOptions
         case pollCannotIncludeMedia
@@ -164,6 +165,10 @@ final class ComposeViewModel: ObservableObject {
         case partial
         case failed
         case cancelled
+        case blocked
+        /// The share was cancelled in the extension (its staging item is gone) after the
+        /// app had already read it. Nothing of it should remain in the editor.
+        case withdrawn
     }
 
     private enum MediaUploadResult {
@@ -184,6 +189,96 @@ final class ComposeViewModel: ObservableObject {
     private var publishReplyToID: String?
     private var publishQuotingID: String?
     private(set) var activeDraftID: String?
+    private var activeSharedImportItemIDs: Set<String> = []
+    @Published private(set) var isImportingSharedMedia = false
+    private var sharedImportDraftStore: ComposeDraftStore?
+    private var sharedImportGeneration = UUID()
+    private(set) var sharedImportFailureMessage: String?
+    var sharedImportAccountID: String? { currentUserID }
+    func cancelSharedImports() { sharedImportGeneration = UUID() }
+    func configureSharedImportRecovery(using draftStore: ComposeDraftStore) {
+        sharedImportDraftStore = draftStore
+        refreshPendingSharedMedia()
+    }
+
+    /// Last known staging state for this draft's shares. Rendering reads this snapshot;
+    /// it never takes the cross-process index lock. Starts conservative (pending) until
+    /// the recovery store is bound and read.
+    @Published private var stagedSharedMediaPending = true
+
+    var hasPendingSharedMedia: Bool {
+        if isImportingSharedMedia { return true }
+        guard !activeSharedImportItemIDs.isEmpty else { return false }
+        return stagedSharedMediaPending
+    }
+
+    /// Reads the shared index once and updates the snapshot. Called after imports, retry,
+    /// ignore, draft changes and on returning to the foreground, and authoritatively right
+    /// before publishing. A transient read failure keeps the draft "incomplete".
+    @discardableResult
+    func refreshPendingSharedMedia() -> Bool {
+        let pending: Bool
+        var unreadable = false
+        if activeSharedImportItemIDs.isEmpty {
+            pending = false
+        } else if let sharedImportDraftStore {
+            do {
+                pending = try sharedImportDraftStore.pendingSharedStagingItemsForPublishing().contains {
+                    activeSharedImportItemIDs.contains($0.id) && !$0.attachments.isEmpty
+                }
+            } catch SharedComposeDraftStagingStore.PersistenceError.indexCorrupt {
+                pending = true
+                unreadable = true
+            } catch { pending = true }
+        } else {
+            pending = true
+        }
+        if stagedSharedMediaPending != pending { stagedSharedMediaPending = pending }
+        if sharedStagingUnreadable != unreadable { sharedStagingUnreadable = unreadable }
+        return isImportingSharedMedia || pending
+    }
+
+    /// Only a readable index that no longer lists the item counts as withdrawn (cancelled in
+    /// the extension, or tombstoned). A busy or unreadable index is not evidence of that.
+    private func isWithdrawn(_ itemID: String, draftStore: ComposeDraftStore) -> Bool {
+        guard let items = try? draftStore.pendingSharedStagingItemsForPublishing() else { return false }
+        return !items.contains { $0.id == itemID }
+    }
+
+    /// Drops reserved tiles of a batch that never began preparing. Tiles that failed keep
+    /// their failed state (and retry button); uploaded tiles are untouched.
+    private func releaseUnstartedSharedReservations(itemID: String) {
+        let unstarted = mediaAttachments.filter { attachment in
+            guard attachment.sharedImportItemID == itemID, attachment.url.scheme == "temp",
+                  attachment.sourceUploadData == nil, attachment.previewImage == nil else { return false }
+            if case .uploading = attachment.uploadState { return true }
+            return false
+        }
+        for attachment in unstarted { _ = removeMedia(id: attachment.id) }
+    }
+
+    private func removeSharedPlaceholders(itemID: String) {
+        let placeholders = mediaAttachments.filter { $0.sharedImportItemID == itemID && !$0.uploadState.isUploaded }
+        for attachment in placeholders { _ = removeMedia(id: attachment.id) }
+    }
+
+    /// The draft's share queue cannot be decoded. Publishing stays blocked, and the editor
+    /// offers the explicit discard, which repairs the index.
+    @Published private(set) var sharedStagingUnreadable = false
+
+    /// Drops this draft's remaining shared files after the person chose to discard them.
+    /// Works even when the shared index is unreadable. Uploaded attachments are kept.
+    @discardableResult
+    func discardRemainingSharedImports(using draftStore: ComposeDraftStore) -> Bool {
+        guard !activeSharedImportItemIDs.isEmpty else { return true }
+        guard draftStore.discardSharedStagingItems(ids: activeSharedImportItemIDs) else { return false }
+        for attachment in mediaAttachments where !attachment.uploadState.isUploaded
+            && attachment.sharedImportItemID.map({ activeSharedImportItemIDs.contains($0) }) == true {
+            _ = removeMedia(id: attachment.id)
+        }
+        refreshPendingSharedMedia()
+        return true
+    }
     private var activeDraftCreatedAt: Date?
     private var activeDraftCategory: ComposeDraftCategory?
     private var editSource: StatusSource?
@@ -444,6 +539,7 @@ final class ComposeViewModel: ObservableObject {
     }
     
     func applyRestoredDraft(_ draft: ComposeDraft) {
+        cancelSharedImports()
         applyDraft(draft)
     }
 
@@ -453,6 +549,11 @@ final class ComposeViewModel: ObservableObject {
         activeDraftID = draft.id
         activeDraftCreatedAt = draft.createdAt
         activeDraftCategory = draft.category
+        activeSharedImportItemIDs = Set(draft.sharedImportItemIDs ?? [])
+        if draft.id.hasPrefix(ComposeDraftStore.sharedDraftIDPrefix) {
+            activeSharedImportItemIDs.insert(String(draft.id.dropFirst(ComposeDraftStore.sharedDraftIDPrefix.count)))
+        }
+        refreshPendingSharedMedia()
         publishReplyToID = draft.target.inReplyToID
         publishQuotingID = draft.target.quotingID
         originalStatus = draft.target.referenceStatus
@@ -644,32 +745,133 @@ final class ComposeViewModel: ObservableObject {
         from sharedImport: SharedComposeAttachmentImportPayload,
         draftStore: ComposeDraftStore
     ) async -> SharedImportOutcome {
+        configureSharedImportRecovery(using: draftStore)
+        guard !Task.isCancelled else { return .cancelled }
+        guard !isImportingSharedMedia else { return .cancelled }
+        guard let failure = sharedImportBlocker(for: sharedImport) else {
+            return await performSharedImport(sharedImport, draftStore: draftStore)
+        }
+        sharedImportFailureMessage = failure
+        return .blocked
+    }
+
+    func sharedImportBlocker(for sharedImport: SharedComposeAttachmentImportPayload) -> String? {
+        if isPublishing || hasPublished || !isEditingSourceReady { return MoroL10n.ShareImport.busy }
+        if case .edit = context { return MoroL10n.ShareImport.editingPost }
+        if isPollActive, !sharedImport.attachments.isEmpty { return MoroL10n.Compose.validationPollCannotIncludeMedia }
+        let newCount = sharedImport.attachments.filter { reference in
+            !mediaAttachments.contains { $0.sharedImportItemID == sharedImport.stagingItemID
+                && $0.sharedImportAttachmentID == reference.id }
+        }.count
+        if newCount > remainingMediaAttachmentSlots { return MoroL10n.ShareImport.mediaLimit }
+        return nil
+    }
+
+    private func performSharedImport(
+        _ sharedImport: SharedComposeAttachmentImportPayload, draftStore: ComposeDraftStore
+    ) async -> SharedImportOutcome {
+        isImportingSharedMedia = true
+        let generation = sharedImportGeneration
+        defer {
+            isImportingSharedMedia = false
+            refreshPendingSharedMedia()
+        }
+        sharedImportFailureMessage = nil
+        // A share this editor already took in may legitimately be gone from staging once fully
+        // consumed (a repeated URL/foreground delivery). Only a new one can be "withdrawn".
+        if !activeSharedImportItemIDs.contains(sharedImport.stagingItemID),
+           isWithdrawn(sharedImport.stagingItemID, draftStore: draftStore) {
+            SharedComposeHandoff.shared.acknowledge(sharedImport.stagingItemID)
+            return .withdrawn
+        }
+        let previousContent = content
+        let previousIDs = activeSharedImportItemIDs
+        if activeSharedImportItemIDs.insert(sharedImport.stagingItemID).inserted {
+            let incomingText = sharedImport.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !incomingText.isEmpty {
+                content = content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? incomingText : content + "\n\n" + incomingText
+            }
+        }
+        guard draftStore.save(makeDraft(category: .auto)) else {
+            content = previousContent
+            activeSharedImportItemIDs = previousIDs
+            sharedImportFailureMessage = MoroL10n.ComposeDrafts.saveFailed
+            return .failed
+        }
+        SharedComposeHandoff.shared.acknowledge(sharedImport.stagingItemID)
+        if sharedImport.attachments.isEmpty {
+            draftStore.removePendingSharedStagingItem(id: sharedImport.stagingItemID)
+            return .complete
+        }
         var successfulUploadCount = 0
         var encounteredFailure = false
         var progressPersistenceFailed = false
+
+        // Reserve every tile of the batch up front, like the photo picker does, so the grid
+        // settles on its final layout once instead of reflowing after each upload.
+        for attachment in sharedImport.attachments where !mediaAttachments.contains(where: {
+            $0.sharedImportItemID == sharedImport.stagingItemID && $0.sharedImportAttachmentID == attachment.id
+        }) {
+            guard let id = reservePhotoImports(count: 1).first,
+                  let index = mediaAttachments.firstIndex(where: { $0.id == id }) else { break }
+            mediaAttachments[index].sharedImportItemID = sharedImport.stagingItemID
+            mediaAttachments[index].sharedImportAttachmentID = attachment.id
+        }
+        // A tile that never started (cancelled, discarded or withdrawn mid-batch) must not
+        // stay behind as an endless spinner; its file remains staged for a later retry.
+        defer { releaseUnstartedSharedReservations(itemID: sharedImport.stagingItemID) }
 
         for attachment in sharedImport.attachments {
             if Task.isCancelled {
                 return successfulUploadCount > 0 ? .partial : .cancelled
             }
-
-            let fileURL = draftStore.sharedAttachmentFileURL(for: attachment)
-            let mediaType = attachment.mimeType.lowercased().hasPrefix("video/") ? "video" : "image"
-            let prepared: ComposeMediaProcessor.PreparedMedia
-            do {
-                prepared = try await ComposeMediaProcessor.shared.prepareFile(
-                    at: fileURL,
-                    mimeType: attachment.mimeType,
-                    mediaType: mediaType
-                )
-            } catch is CancellationError {
-                return successfulUploadCount > 0 ? .partial : .cancelled
-            } catch {
-                encounteredFailure = true
-                continue
+            let alreadyUploaded = mediaAttachments.contains {
+                $0.sharedImportItemID == sharedImport.stagingItemID && $0.sharedImportAttachmentID == attachment.id
+                    && $0.uploadState.isUploaded
+            }
+            if !alreadyUploaded, isWithdrawn(sharedImport.stagingItemID, draftStore: draftStore) {
+                removeSharedPlaceholders(itemID: sharedImport.stagingItemID)
+                activeSharedImportItemIDs.remove(sharedImport.stagingItemID)
+                sharedImportFailureMessage = nil
+                _ = draftStore.save(makeDraft(category: .auto))
+                return .withdrawn
             }
 
-            let outcome = await importPreparedMedia(prepared)
+            let existing = mediaAttachments.first {
+                $0.sharedImportItemID == sharedImport.stagingItemID && $0.sharedImportAttachmentID == attachment.id
+            }
+            let outcome: MediaImportOutcome
+            if existing?.uploadState.isUploaded == true {
+                outcome = .uploaded
+            } else if let existing, existing.sourceUploadData != nil {
+                outcome = await retryMediaUpload(attachmentID: existing.id)
+            } else {
+                let reservationID: String
+                if let existing { reservationID = existing.id }
+                else if let id = reservePhotoImports(count: 1).first { reservationID = id }
+                else { encounteredFailure = true; continue }
+                if let index = mediaAttachments.firstIndex(where: { $0.id == reservationID }) {
+                    mediaAttachments[index].sharedImportItemID = sharedImport.stagingItemID
+                    mediaAttachments[index].sharedImportAttachmentID = attachment.id
+                }
+                let fileURL = draftStore.sharedAttachmentFileURL(for: attachment)
+                do {
+                    let prepared = try await ComposeMediaProcessor.shared.prepareFile(
+                        at: fileURL, mimeType: attachment.mimeType,
+                        mediaType: attachment.mimeType.lowercased().hasPrefix("video/") ? "video" : "image")
+                    try Task.checkCancellation()
+                    outcome = await importPreparedMedia(prepared, reservationID: reservationID)
+                } catch is CancellationError {
+                    return successfulUploadCount > 0 ? .partial : .cancelled
+                } catch {
+                    updateMediaUploadState(id: reservationID, state: .failed(error: error))
+                    encounteredFailure = true
+                    continue
+                }
+            }
+            // Even a transport that ignores cancellation cannot recreate a discarded draft.
+            guard generation == sharedImportGeneration else { return .cancelled }
             guard outcome == .uploaded else {
                 encounteredFailure = true
                 continue
@@ -679,27 +881,28 @@ final class ComposeViewModel: ObservableObject {
             // Persist the uploaded server attachment before consuming its staged file.
             // This keeps completed work recoverable if the import task is cancelled
             // before the remaining attachments finish.
-            let didSaveDraftProgress = draftStore.save(makeDraft(category: .manual))
+            let didSaveDraftProgress = draftStore.save(makeDraft(category: .auto))
             guard didSaveDraftProgress else {
                 progressPersistenceFailed = true
                 encounteredFailure = true
                 continue
             }
 
-            let didAcknowledgeAttachment = draftStore.acknowledgeImportedSharedAttachment(
-                stagingItemID: sharedImport.stagingItemID,
-                attachmentID: attachment.id
-            )
-            progressPersistenceFailed = progressPersistenceFailed || !didAcknowledgeAttachment
+            do {
+                let needsAcknowledgement = try draftStore.pendingSharedStagingItemsForPublishing()
+                    .first(where: { $0.id == sharedImport.stagingItemID })?
+                    .attachments.contains(where: { $0.id == attachment.id }) == true
+                let didAcknowledgeAttachment = !needsAcknowledgement || draftStore.acknowledgeImportedSharedAttachment(
+                    stagingItemID: sharedImport.stagingItemID, attachmentID: attachment.id)
+                progressPersistenceFailed = progressPersistenceFailed || !didAcknowledgeAttachment
+            } catch {
+                progressPersistenceFailed = true
+            }
         }
 
-        // Every attachment has been tried. One that failed (an unreadable file, an unsupported
-        // type, a rejected upload) is given up on: a staging item left behind reopens this
-        // draft on every return to the app, even after the draft is deleted or sent. The
-        // draft keeps its text and whatever did import; the person can add the rest again.
-        if encounteredFailure {
-            draftStore.removePendingSharedStagingItem(id: sharedImport.stagingItemID)
-        }
+        // Failed or unacknowledged files stay recoverable. The editor offers an explicit
+        // retry; publishing/discarding the owning draft cleans up all remaining staging.
+        if encounteredFailure || progressPersistenceFailed { sharedImportFailureMessage = MoroL10n.ShareImport.retryMessage }
         guard successfulUploadCount > 0 else { return .failed }
         if !encounteredFailure
             && !progressPersistenceFailed
@@ -802,6 +1005,8 @@ final class ComposeViewModel: ObservableObject {
             updateMediaUploadState(id: tempID, state: .uploading(progress: 0.9))
             let existingDescription = mediaAttachments[index].description
             let existingFocus = mediaAttachments[index].focus
+            let sharedItemID = mediaAttachments[index].sharedImportItemID
+            let sharedAttachmentID = mediaAttachments[index].sharedImportAttachmentID
             mediaAttachments[index] = MediaAttachment(
                 id: attachment.id,
                 url: attachment.url,
@@ -812,10 +1017,14 @@ final class ComposeViewModel: ObservableObject {
                 originalDescription: attachment.description,
                 originalFocus: nil,
                 uploadState: .uploaded,
-                previewImage: nil,
+                // Keep the downsampled local preview: the server copy may still be processing
+                // or loading, and the tile must never flash blank after a successful upload.
+                previewImage: mediaAttachments[index].previewImage,
                 sourceUploadData: nil,
                 sourceMimeType: nil
             )
+            mediaAttachments[index].sharedImportItemID = sharedItemID
+            mediaAttachments[index].sharedImportAttachmentID = sharedAttachmentID
             mediaUploadStates[attachment.id] = .uploaded
             mediaUploadStates.removeValue(forKey: tempID)
             return .uploaded
@@ -848,6 +1057,10 @@ final class ComposeViewModel: ObservableObject {
 
         guard !hasFailedMedia else {
             throw ComposeError.uploadFailed
+        }
+
+        guard !refreshPendingSharedMedia() else {
+            throw ComposeError.sharedImportIncomplete
         }
 
         guard characterCount <= maxCharacters else {
@@ -988,6 +1201,10 @@ final class ComposeViewModel: ObservableObject {
             return .mediaUploadFailed
         }
 
+        if hasPendingSharedMedia {
+            return .sharedImportIncomplete
+        }
+
         if characterCount > maxCharacters {
             return .characterLimitExceeded
         }
@@ -1024,6 +1241,8 @@ final class ComposeViewModel: ObservableObject {
             return MoroL10n.Compose.validationMediaUploading
         case .mediaUploadFailed:
             return MoroL10n.Compose.validationMediaUploadFailed
+        case .sharedImportIncomplete:
+            return MoroL10n.ShareImport.unfinished
         case .pollCannotIncludeMedia:
             return MoroL10n.Compose.validationPollCannotIncludeMedia
         case .scheduledDateTooSoon:
@@ -1062,8 +1281,10 @@ final class ComposeViewModel: ObservableObject {
         if hasUploadingMedia {
             return MoroL10n.Compose.validationMediaUploading
         }
-        if hasFailedMedia {
-            return MoroL10n.Compose.validationMediaUploadFailed
+        for attachment in mediaAttachments where attachment.sharedImportItemID == nil {
+            if case .failed = attachment.uploadState {
+                return MoroL10n.Compose.validationMediaUploadFailed
+            }
         }
         return nil
     }
@@ -1166,7 +1387,7 @@ final class ComposeViewModel: ObservableObject {
         activeDraftCreatedAt = resolvedCreatedAt
         activeDraftCategory = resolvedCategory
 
-        return ComposeDraft(
+        var draft = ComposeDraft(
             id: resolvedID,
             accountID: currentUserID,
             category: resolvedCategory,
@@ -1176,12 +1397,17 @@ final class ComposeViewModel: ObservableObject {
             updatedAt: now,
             publishAttempt: publishAttempt
         )
+        draft.sharedImportItemIDs = activeSharedImportItemIDs.isEmpty ? nil : activeSharedImportItemIDs.sorted()
+        return draft
     }
 
     func clearActiveDraftReference() {
         activeDraftID = nil
         activeDraftCreatedAt = nil
         activeDraftCategory = nil
+        activeSharedImportItemIDs.removeAll()
+        stagedSharedMediaPending = false
+        sharedStagingUnreadable = false
     }
 }
 
@@ -1216,6 +1442,8 @@ struct MediaAttachment: Identifiable {
     // Keep original upload payload for retry when upload fails.
     var sourceUploadData: Data? = nil
     var sourceMimeType: String? = nil
+    var sharedImportItemID: String? = nil
+    var sharedImportAttachmentID: String? = nil
 
     private static func normalizedMetadata(_ value: String?) -> String? {
         guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1237,6 +1465,7 @@ enum ComposeError: LocalizedError {
     case alreadyPublishing
     case mediaUploading
     case uploadFailed
+    case sharedImportIncomplete
     case characterLimitExceeded
     case invalidPoll
     case pollCannotIncludeMedia
@@ -1254,6 +1483,8 @@ enum ComposeError: LocalizedError {
             return MoroL10n.Compose.errorMediaUploading
         case .uploadFailed:
             return MoroL10n.Compose.errorUploadFailed
+        case .sharedImportIncomplete:
+            return MoroL10n.ShareImport.unfinished
         case .characterLimitExceeded:
             return MoroL10n.Compose.errorCharacterLimitExceeded
         case .invalidPoll:

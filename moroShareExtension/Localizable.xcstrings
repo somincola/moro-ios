@@ -1,183 +1,6 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
-    "share.summary.text": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Text"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Text"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Texto"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Texte"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Testo"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "テキスト"
-          }
-        },
-        "pt-PT": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Texto"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文字"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文字"
-          }
-        }
-      }
-    },
-    "share.summary.images": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bilder: %lld"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Images: %lld"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Imágenes: %lld"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Images : %lld"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Immagini: %lld"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "画像：%lld 枚"
-          }
-        },
-        "pt-PT": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Imagens: %lld"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "图片：%lld 张"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "圖片：%lld 張"
-          }
-        }
-      }
-    },
-    "share.summary.separator": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": ", "
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": ", "
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": ", "
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": ", "
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": ", "
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "、"
-          }
-        },
-        "pt-PT": {
-          "stringUnit": {
-            "state": "translated",
-            "value": ", "
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "，"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "，"
-          }
-        }
-      }
-    },
     "share.action.cancel": {
       "extractionState": "manual",
       "localizations": {
@@ -237,61 +60,120 @@
         }
       }
     },
-    "share.action.import": {
+    "share.action.open": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Save to drafts"
+            "value": "Open Moro"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "保存到草稿"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enregistrer dans les brouillons"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "下書きに保存"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Als Entwurf speichern"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Salva nelle bozze"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Guardar en borradores"
-          }
-        },
-        "pt-PT": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Guardar em rascunhos"
+            "value": "打开 Moro"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "儲存至草稿"
+            "value": "開啟 Moro"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moroを開く"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir Moro"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moro öffnen"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri Moro"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir Moro"
+          }
+        },
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir Moro"
+          }
+        }
+      }
+    },
+    "share.action.retry": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重试"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重試"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再試行"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réessayer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erneut versuchen"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riprova"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reintentar"
+          }
+        },
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tentar novamente"
           }
         }
       }
@@ -302,55 +184,55 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Save failed. Please try again."
+            "value": "Could not prepare this share. Try again."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "保存失败，请重试。"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "L'enregistrement a échoué. Veuillez réessayer."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "保存できませんでした。もう一度お試しください。"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Speichern fehlgeschlagen. Bitte versuche es erneut."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Salvataggio non riuscito. Riprova."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Error al guardar. Inténtalo de nuevo."
-          }
-        },
-        "pt-PT": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Falha ao guardar. Tente novamente."
+            "value": "分享内容准备失败，请重试。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "儲存失敗，請重試。"
+            "value": "分享內容準備失敗，請重試。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "共有内容を準備できませんでした。再試行してください。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de préparer ce partage. Réessayez."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Freigabe konnte nicht vorbereitet werden. Versuche es erneut."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile preparare la condivisione. Riprova."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo preparar el contenido. Vuelve a intentarlo."
+          }
+        },
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível preparar a partilha. Tente novamente."
           }
         }
       }
@@ -414,238 +296,179 @@
         }
       }
     },
-    "share.error.notLoggedIn": {
+    "share.error.openFailed": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Please sign in to Moro before using share import."
+            "value": "Could not open Moro automatically. Your content is ready. Retry, or switch to Moro to continue."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "请先登录 Moro，再使用分享导入。"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Veuillez vous connecter à Moro avant d'utiliser l'importation par partage."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "共有インポートを使用する前に、Moro にサインインしてください。"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bitte melde dich zuerst in Moro an, bevor du die Teilen-Funktion verwendest."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Accedi a Moro prima di usare l'importazione dalla condivisione."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Inicia sesión en Moro antes de usar la importación compartida."
-          }
-        },
-        "pt-PT": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Inicie sessão no Moro antes de utilizar a importação por partilha."
+            "value": "未能自动打开 Moro。分享内容已准备好，可重试或切回 Moro 继续发帖。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "請先登入 Moro，再使用分享匯入。"
+            "value": "未能自動開啟 Moro。分享內容已準備好，可重試或切回 Moro 繼續發文。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moroを自動的に開けませんでした。内容は準備できています。再試行するか、Moroに切り替えてください。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible d’ouvrir Moro automatiquement. Le contenu est prêt. Réessayez ou passez à Moro pour continuer."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moro konnte nicht automatisch geöffnet werden. Die Inhalte sind bereit. Versuche es erneut oder wechsle zu Moro."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile aprire Moro automaticamente. Il contenuto è pronto. Riprova o passa a Moro per continuare."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo abrir Moro automáticamente. El contenido está listo. Reintenta o cambia a Moro para continuar."
+          }
+        },
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível abrir o Moro automaticamente. O conteúdo está pronto. Tente novamente ou mude para o Moro."
           }
         }
       }
     },
-    "share.error.notReady": {
+    "share.error.tooManyImages": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Shared content isn't ready yet. Please try again."
+            "value": "You can share up to 4 images at a time. Select fewer images and try again."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "共享内容还未准备完成，请稍后重试。"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Le contenu partagé n'est pas encore prêt. Veuillez réessayer."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "共有コンテンツの準備がまだ完了していません。後でもう一度お試しください。"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Der geteilte Inhalt ist noch nicht bereit. Bitte versuche es erneut."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Il contenuto condiviso non è ancora pronto. Riprova."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "El contenido compartido aún no está listo. Inténtalo de nuevo."
-          }
-        },
-        "pt-PT": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "O conteúdo partilhado ainda não está pronto. Tente novamente."
+            "value": "一次最多分享 4 张图片，请减少图片后重试。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "共享內容尚未準備完成，請稍後重試。"
+            "value": "一次最多分享 4 張圖片，請減少圖片後重試。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一度に共有できる画像は4枚までです。枚数を減らして再試行してください。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous pouvez partager jusqu’à 4 images à la fois. Réduisez la sélection et réessayez."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du kannst bis zu 4 Bilder gleichzeitig teilen. Wähle weniger Bilder und versuche es erneut."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puoi condividere fino a 4 immagini alla volta. Riduci la selezione e riprova."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puedes compartir hasta 4 imágenes a la vez. Selecciona menos imágenes y vuelve a intentarlo."
+          }
+        },
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pode partilhar até 4 imagens de cada vez. Reduza a seleção e tente novamente."
           }
         }
       }
     },
-    "share.state.importComplete": {
+    "share.error.unreadableImage": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Saved to Moro drafts.\nYour draft will be restored in the post editor when you return."
+            "value": "Could not read one of the images. Try sharing again."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已保存到 Moro 草稿。\n返回 Moro 后，草稿会恢复到发帖页面。"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enregistré dans les brouillons Moro.\nVotre brouillon sera restauré dans l’éditeur de publication à votre retour."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Moro の下書きに保存しました。\nアプリに戻ると、投稿作成画面に下書きが復元されます。"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "In Moro-Entwürfen gespeichert.\nWenn du zu Moro zurückkehrst, wird der Entwurf im Beitragseditor wiederhergestellt."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Salvato nelle bozze di Moro.\nLa bozza verrà ripristinata nell’editor dei post al tuo ritorno."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Guardado en los borradores de Moro.\nAl volver, se restaurará en el editor de publicaciones."
-          }
-        },
-        "pt-PT": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Guardado nos rascunhos do Moro.\nO rascunho será restaurado no editor de publicações quando regressares."
+            "value": "有图片无法读取，请重新分享。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "已儲存至 Moro 草稿。\n返回 Moro 後，草稿會還原至發文頁面。"
-          }
-        }
-      }
-    },
-    "share.state.importing": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Saving to Moro drafts…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在保存到 Moro 草稿…"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enregistrement dans les brouillons Moro…"
+            "value": "有圖片無法讀取，請重新分享。"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Moro の下書きに保存中…"
+            "value": "読み込めない画像があります。もう一度共有してください。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une image n’a pas pu être lue. Réessayez de partager."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wird in Moro-Entwürfen gespeichert …"
+            "value": "Ein Bild konnte nicht gelesen werden. Versuche es erneut zu teilen."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Salvataggio nelle bozze di Moro…"
+            "value": "Impossibile leggere un’immagine. Prova a condividerla di nuovo."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Guardando en los borradores de Moro…"
+            "value": "No se pudo leer una imagen. Vuelve a compartirla."
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "A guardar nos rascunhos do Moro…"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在儲存至 Moro 草稿…"
+            "value": "Não foi possível ler uma imagem. Tente partilhá-la novamente."
           }
         }
       }
@@ -656,114 +479,114 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Reading shared content…"
+            "value": "Preparing shared content…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在读取共享内容…"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Lecture du contenu partagé…"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "共有コンテンツを読み込み中…"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Geteilter Inhalt wird geladen …"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Lettura del contenuto condiviso…"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Leyendo contenido compartido…"
-          }
-        },
-        "pt-PT": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A ler o conteúdo partilhado…"
+            "value": "正在准备分享内容…"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在讀取共享內容…"
+            "value": "正在準備分享內容…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "共有内容を準備中…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Préparation du contenu partagé…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geteilte Inhalte werden vorbereitet …"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparazione del contenuto condiviso…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparando contenido compartido…"
+          }
+        },
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A preparar o conteúdo partilhado…"
           }
         }
       }
     },
-    "share.state.ready": {
+    "share.state.opening": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ready: %@\nSave, then switch back to Moro to keep editing."
+            "value": "Opening Moro…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已准备：%@\n保存后，请切回 Moro 继续编辑。"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Prêt : %@\nEnregistrez, puis revenez sur Moro pour continuer à éditer."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "準備完了：%@\n保存後、Moro に戻って編集を続けてください。"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bereit: %@\nSpeichern und dann zu Moro wechseln, um weiterzubearbeiten."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pronto: %@\nSalva, poi torna a Moro per continuare a modificare."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Listo: %@\nGuarda y vuelve a Moro para seguir editando."
-          }
-        },
-        "pt-PT": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pronto: %@\nGuarde e regresse ao Moro para continuar a editar."
+            "value": "正在打开 Moro…"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "已就緒：%@\n儲存後，請切回 Moro 繼續編輯。"
+            "value": "正在開啟 Moro…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moroを開いています…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouverture de Moro…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moro wird geöffnet …"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apertura di Moro…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abriendo Moro…"
+          }
+        },
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A abrir o Moro…"
           }
         }
       }
@@ -774,55 +597,55 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Import to Moro"
+            "value": "Moro"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "导入到 Moro"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Importer dans Moro"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Moro にインポート"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "In Moro importieren"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Importa in Moro"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Importar a Moro"
-          }
-        },
-        "pt-PT": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Importar para o Moro"
+            "value": "Moro"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "匯入至 Moro"
+            "value": "Moro"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moro"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moro"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moro"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moro"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moro"
+          }
+        },
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moro"
           }
         }
       }
