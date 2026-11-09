@@ -37,12 +37,11 @@ struct ComposeMediaGridHarnessView: View {
     }
 
     private static func makeAttachments() -> [MediaAttachment] {
-        [
-            ("media-1", "image"),
-            ("media-2", "video"),
-            ("media-3", "image"),
-            ("media-4", "image"),
-        ].map { id, type in
+        // Instances may allow more than 4 attachments; UITEST_COMPOSE_MEDIA_COUNT exercises that grid.
+        let count = Int(ProcessInfo.processInfo.environment["UITEST_COMPOSE_MEDIA_COUNT"] ?? "") ?? 4
+        return (1...max(1, count)).map { index in
+            ("media-\(index)", index == 2 ? "video" : "image")
+        }.map { id, type in
             MediaAttachment(
                 id: id,
                 url: URL(string: "about:blank#\(id)")!,

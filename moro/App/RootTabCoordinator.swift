@@ -135,6 +135,18 @@ final class RootTabCoordinator: ObservableObject {
         )
     }
 
+    @discardableResult
+    func presentPendingSharedImport(
+        using importer: SharedComposeImportCoordinator, accountID: String?
+    ) -> SharedComposeImportResolution? {
+        guard composeContext == nil, presentedSheet == nil, !showAddAccountLogin,
+              !SharedComposeHandoff.shared.hasPresentedEditor,
+              let resolution = importer.consumeNextImportableDraft(activeAccountID: accountID) else { return nil }
+        composeContext = ComposeContextWrapper(context: resolution.draft.target.composeContext,
+            draft: resolution.draft, sharedImport: resolution.sharedImport)
+        return resolution
+    }
+
     func presentSettings() {
         guard composeContext == nil, !showAddAccountLogin else { return }
         presentedSheet = .settings

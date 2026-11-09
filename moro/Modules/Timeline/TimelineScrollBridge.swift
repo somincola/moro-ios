@@ -73,6 +73,25 @@ final class TimelineScrollBridge: ObservableObject {
     private var scheduledLayoutEvents: Set<TimelineType> = []
     private var waitingForTop: Set<TimelineType> = []
     private var frozenTimelines: Set<TimelineType> = []
+    /// After returning from the background, a timeline left at the very top keeps the post
+    /// that was showing instead of following the newest one; new posts wait behind the
+    /// notice. Released per timeline as soon as the reader scrolls or jumps to the latest.
+    private var holdsPositionAfterResume = false
+    private var releasedFromResumeHold: Set<TimelineType> = []
+    /// Timelines whose saved reading position was just restored; same release rules.
+    private var heldTimelines: Set<TimelineType> = []
+    /// After an anchored update, rows above the reader can still change height for a
+    /// moment (newly inserted rows finishing layout, a gap marker, media sizing). Keep the
+    /// reading anchor in place for a short settle window, until the reader touches the list.
+    private var settlingAnchors: [TimelineType: (anchor: TimelineReadingAnchor, until: Date)] = [:]
+    private let anchorSettleDuration: TimeInterval = 1.0
+    /// The same settle window for a jump to the latest: rows at the top can still grow
+    /// (media, cards) right after the jump, which would leave the list a little short of it.
+    private var settlingTop: [TimelineType: Date] = [:]
+    /// SwiftUI can re-apply its own scroll position after ours without any row
+    /// re-laying out, so a settle window is checked every frame, not only on layout
+    /// events. It runs only while a window is open (about a second).
+    private var settleTicker: CADisplayLink?
     private var suppressChrome: Set<TimelineType> = []
     private var active = false
     private var playbackScopes: [TimelineType: MediaPlaybackScope] = [:]
@@ -176,12 +195,38 @@ final class TimelineScrollBridge: ObservableObject {
         updatePlaybackScopes()
     }
 
+    /// A saved reading position was restored on this timeline: until the reader scrolls,
+    /// new posts must not pull the view to the latest, even if the restore briefly
+    /// reported the top.
+    func holdReadingPosition(for timeline: TimelineType) {
+        heldTimelines.insert(timeline)
+    }
+
+    private func releaseHold(for timeline: TimelineType) {
+        releasedFromResumeHold.insert(timeline)
+        heldTimelines.remove(timeline)
+        settlingAnchors[timeline] = nil
+        settlingTop[timeline] = nil
+    }
+
+    /// Called when the app returns to the foreground.
+    func holdReadingPositionAfterResume() {
+        holdsPositionAfterResume = true
+        releasedFromResumeHold.removeAll()
+    }
+
+    private func followsLatestAtTop(_ timeline: TimelineType) -> Bool {
+        isAtTop(timeline) && !heldTimelines.contains(timeline)
+            && !(holdsPositionAfterResume && !releasedFromResumeHold.contains(timeline))
+    }
+
     func updatePhase(_ phase: ScrollPhase, for timeline: TimelineType) {
         phases[timeline] = phase
         updatePlaybackScopes()
         if phase == .tracking || phase == .interacting {
             pendingLayouts[timeline] = nil
             waitingForTop.remove(timeline)
+            releaseHold(for: timeline)
         }
         if phase == .interacting, active, isPresented(timeline) {
             userScrollEvents.send(timeline)
@@ -243,13 +288,14 @@ final class TimelineScrollBridge: ObservableObject {
     func prepareContentUpdate(for timeline: TimelineType, revision: UInt64, jumpToLatest: Bool = false, retainedIDs: Set<String>? = nil) -> Bool {
         guard active, isPresented(timeline) else { return false }
         if !jumpToLatest && !canPresentUpdates(for: timeline) { return false }
-        let followsLatest = jumpToLatest || isAtTop(timeline)
+        let followsLatest = jumpToLatest || followsLatestAtTop(timeline)
         let candidates = readingAnchors(for: timeline, onlyVisible: false)
         let visibleIDs = Set(readingAnchors(for: timeline).map(\.statusID))
         let survivors = candidates.filter { retainedIDs?.contains($0.statusID) ?? true }
         let visible = survivors.filter { visibleIDs.contains($0.statusID) }
         let anchors = visible.isEmpty ? Array(survivors.sorted { abs($0.viewportOffset) < abs($1.viewportOffset) }.prefix(1)) : visible
         guard followsLatest || !anchors.isEmpty || retainedIDs?.isEmpty == true else { return false }
+        settlingAnchors[timeline] = nil
         pendingLayouts[timeline] = PendingLayout(revision: revision, anchors: anchors,
             followsLatest: followsLatest)
         scheduleLayoutEvent(for: timeline)
@@ -278,8 +324,71 @@ final class TimelineScrollBridge: ObservableObject {
 
     func rowDidLayout(_ row: TimelineRowAnchorView, for timeline: TimelineType) {
         rows[timeline, default: [:]][row.statusID] = WeakRow(row)
+        #if DEBUG
+        startCommitProbeIfRequested()
+        #endif
         scheduleLayoutEvent(for: timeline)
     }
+
+    #if DEBUG
+    /// UI-test probe: the largest reading-anchor displacement that was actually committed
+    /// to the screen while a content update was still waiting for its offset correction.
+    static var probeEnabled = false
+    static private(set) var maxCommittedAnchorDisplacement: CGFloat = 0
+    static func resetCommitProbe() { maxCommittedAnchorDisplacement = 0 }
+    private var commitObserver: CFRunLoopObserver?
+
+    private func startCommitProbeIfRequested() {
+        guard Self.probeEnabled, commitObserver == nil else { return }
+        // Core Animation commits in a before-waiting observer of order 2_000_000; running
+        // right after it sees exactly what was handed to the render server this frame.
+        let observer = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue,
+            true, 2_000_001) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.probeCommittedDisplacement() }
+        }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+        commitObserver = observer
+    }
+
+    /// Watches one visible post across arbitrary transitions (e.g. background → foreground)
+    /// and records how far it ever moved on screen, frame by frame.
+    static private var watchRequested = false
+    static private var watched: TimelineReadingAnchor?
+    static private(set) var maxWatchedDeviation: CGFloat = 0
+    static private(set) var watchedFrames = 0
+    static func beginWatch() { watchRequested = true; watched = nil; maxWatchedDeviation = 0; watchedFrames = 0 }
+
+    private func probeWatchedPost() {
+        guard Self.watchRequested else { return }
+        let timeline = presentedTimeline
+        guard let watched = Self.watched else {
+            Self.watched = readingAnchors(for: timeline).first
+            return
+        }
+        guard let row = rows[timeline]?[watched.statusID]?.value, row.window != nil,
+            let scrollView = nativeScrollViews[timeline]?.value else { return }
+        let y = row.convert(row.bounds, to: scrollView).minY - scrollView.contentOffset.y
+            - headerHeights[timeline, default: 48]
+        Self.watchedFrames += 1
+        Self.maxWatchedDeviation = max(Self.maxWatchedDeviation, abs(y - CGFloat(watched.viewportOffset)))
+    }
+
+    private func probeCommittedDisplacement() {
+        probeWatchedPost()
+        for (timeline, pending) in pendingLayouts where !pending.followsLatest {
+            guard let scrollView = nativeScrollViews[timeline]?.value else { continue }
+            let header = headerHeights[timeline, default: 48]
+            for anchor in pending.anchors {
+                guard let row = rows[timeline]?[anchor.statusID]?.value, row.window != nil,
+                    row.laidOutRevision >= pending.revision else { continue }
+                let y = row.convert(row.bounds, to: scrollView).minY - scrollView.contentOffset.y - header
+                Self.maxCommittedAnchorDisplacement = max(Self.maxCommittedAnchorDisplacement,
+                    abs(y - CGFloat(anchor.viewportOffset)))
+                break
+            }
+        }
+    }
+    #endif
 
     private func scheduleLayoutEvent(for timeline: TimelineType) {
         guard scheduledLayoutEvents.insert(timeline).inserted else { return }
@@ -289,6 +398,7 @@ final class TimelineScrollBridge: ObservableObject {
             self.scheduledLayoutEvents.remove(timeline)
             self.rows[timeline] = self.rows[timeline]?.filter { $0.value.value?.window != nil }
             self.completeLayout(for: timeline)
+            self.settleAnchorIfNeeded(for: timeline)
             // Native scrolling can settle after SwiftUI's last geometry callback.
             // Recheck on the existing idle/layout completion before acknowledging
             // the latest batch; reading the position must not enqueue another event.
@@ -302,6 +412,56 @@ final class TimelineScrollBridge: ObservableObject {
             }
             self.layoutEvents.send(timeline)
         }
+    }
+
+    private func settleAnchorIfNeeded(for timeline: TimelineType) {
+        settleTopIfNeeded(for: timeline)
+        guard let settling = settlingAnchors[timeline] else { return }
+        guard Date() < settling.until, active, isPresented(timeline),
+            !frozenTimelines.contains(timeline), pendingLayouts[timeline] == nil,
+            !isUserDragging(timeline),
+            let row = rows[timeline]?[settling.anchor.statusID]?.value, row.window != nil,
+            let scrollView = nativeScrollViews[timeline]?.value else {
+            if Date() >= settling.until { settlingAnchors[timeline] = nil }
+            return
+        }
+        let y = row.convert(row.bounds, to: scrollView).minY - scrollView.contentOffset.y
+            - headerHeights[timeline, default: 48]
+        guard abs(y - CGFloat(settling.anchor.viewportOffset)) > 0.5 else { return }
+        restoreReadingAnchor(settling.anchor, for: timeline)
+    }
+
+    private func startSettleTicker() {
+        guard settleTicker == nil else { return }
+        let target = TimelineSettleTickTarget { [weak self] in self?.settleTick() }
+        let link = CADisplayLink(target: target, selector: #selector(TimelineSettleTickTarget.tick))
+        link.add(to: .main, forMode: .common)
+        settleTicker = link
+    }
+
+    private func settleTick() {
+        for timeline in Set(settlingAnchors.keys).union(settlingTop.keys) {
+            settleAnchorIfNeeded(for: timeline)
+        }
+        let now = Date()
+        settlingAnchors = settlingAnchors.filter { $0.value.until > now }
+        settlingTop = settlingTop.filter { $0.value > now }
+        if settlingAnchors.isEmpty, settlingTop.isEmpty {
+            settleTicker?.invalidate()
+            settleTicker = nil
+        }
+    }
+
+    private func settleTopIfNeeded(for timeline: TimelineType) {
+        guard let until = settlingTop[timeline] else { return }
+        guard Date() < until else { settlingTop[timeline] = nil; return }
+        guard active, isPresented(timeline), !frozenTimelines.contains(timeline),
+            pendingLayouts[timeline] == nil, !isUserDragging(timeline),
+            let view = nativeScrollViews[timeline]?.value, !view.isDecelerating else { return }
+        let top = -view.adjustedContentInset.top
+        guard abs(view.contentOffset.y - top) > 0.5 else { return }
+        view.setContentOffset(CGPoint(x: view.contentOffset.x, y: top), animated: false)
+        updateTopPosition(for: timeline, scrollView: view)
     }
 
     private func completeLayout(for timeline: TimelineType) {
@@ -322,6 +482,8 @@ final class TimelineScrollBridge: ObservableObject {
         }) {
             pendingLayouts[timeline] = nil
             restoreReadingAnchor(anchor, for: timeline)
+            settlingAnchors[timeline] = (anchor, Date().addingTimeInterval(anchorSettleDuration))
+            startSettleTicker()
         } else if !pending.requestedAnchorLayout, let anchor = pending.anchors.first,
             let proxy = proxies[timeline] {
             // Prepending a large batch may evict every old visible lazy row.
@@ -492,6 +654,9 @@ final class TimelineScrollBridge: ObservableObject {
     /// so it always scrolls the visible page (not whichever one registered last).
     func scrollToTop(_ timeline: TimelineType) {
         guard active, isPresented(timeline) else { return }
+        releaseHold(for: timeline) // The reader asked for the latest.
+        settlingTop[timeline] = Date().addingTimeInterval(anchorSettleDuration)
+        startSettleTicker()
         waitingForTop.insert(timeline)
         resetChrome()
         if let view = nativeScrollViews[timeline]?.value {
@@ -733,4 +898,16 @@ struct TimelineScrollViewResolver: UIViewRepresentable {
         uiView.timeline = timeline
         uiView.bridge = bridge
     }
+}
+
+
+/// CADisplayLink retains its target; this small target keeps the bridge itself out of
+/// that cycle and is released when the settle ticker is invalidated.
+private final class TimelineSettleTickTarget: NSObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
+    private let action: () -> Void
+    init(_ action: @escaping () -> Void) { self.action = action }
+    @objc func tick() { action() }
 }

@@ -321,9 +321,12 @@ nonisolated struct InstanceConfiguration: Codable {
 
     nonisolated struct Statuses: Codable {
         let maxCharacters: Int?
+        /// Mastodon's default is 4; forks (Glitch, Akkoma, …) may allow more.
+        var maxMediaAttachments: Int? = nil
 
         nonisolated enum CodingKeys: String, CodingKey {
             case maxCharacters = "max_characters"
+            case maxMediaAttachments = "max_media_attachments"
         }
     }
 }

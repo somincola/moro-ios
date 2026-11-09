@@ -94657,6 +94657,419 @@
           }
         }
       }
+    },
+    "shareImport.busy" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finish the current operation, then retry importing your shared content."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先完成当前操作，再重试导入分享内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請先完成目前操作，再重試匯入分享內容。"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在の操作を完了してから、共有内容の読み込みを再試行してください。"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminez l’opération en cours, puis réessayez d’importer le contenu partagé."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließe den aktuellen Vorgang ab und versuche dann erneut, die geteilten Inhalte zu importieren."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completa l’operazione in corso, poi riprova a importare il contenuto condiviso."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termina la operación actual y vuelve a intentar importar el contenido compartido."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conclua a operação atual e volte a tentar importar o conteúdo partilhado."
+          }
+        }
+      }
+    },
+    "shareImport.editingPost" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your shared content is ready. Finish editing this published post before importing it into a new post."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享内容已保留。请先完成当前帖子的编辑，再导入到新帖子。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享內容已保留。請先完成目前貼文的編輯，再匯入新貼文。"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有内容は保持されています。公開済みの投稿の編集を完了してから、新しい投稿に読み込んでください。"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le contenu partagé est conservé. Terminez la modification de cette publication avant de l’importer dans une nouvelle."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die geteilten Inhalte bleiben erhalten. Beende die Bearbeitung dieses veröffentlichten Beitrags, bevor du sie in einen neuen importierst."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il contenuto condiviso è conservato. Termina la modifica del post pubblicato prima di importarlo in uno nuovo."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El contenido compartido se conserva. Termina de editar esta publicación antes de importarlo a una nueva."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O conteúdo partilhado foi preservado. Termine a edição desta publicação antes de o importar para uma nova."
+          }
+        }
+      }
+    },
+    "shareImport.ignore" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilen verwerfen (ausstehende Bilder entfernen)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Discard share (removes pending images)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descartar (elimina las imágenes pendientes)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ignorer (supprime les images en attente)"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scarta (elimina le immagini in attesa)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有を破棄（未読み込みの画像を削除）"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descartar (remove as imagens pendentes)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "丢弃分享（移除待导入图片）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "捨棄分享（移除待匯入圖片）"
+          }
+        }
+      }
+    },
+    "shareImport.mediaLimit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A post supports up to %lld attachments here. Remove some and retry, discard this share, or publish the current post first — the share then opens in a new post."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器每篇帖子最多 %lld 个附件。可以移除部分附件后重试、丢弃这次分享，或先发布当前帖子——发布后分享会在新帖子中打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此伺服器每篇貼文最多 %lld 個附件。可以移除部分附件後重試、捨棄這次分享，或先發佈目前貼文——發佈後分享會在新貼文中開啟。"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このサーバーでは1件の投稿に添付できるのは%lld個までです。添付を減らして再試行するか、この共有を破棄するか、現在の投稿を先に公開してください。公開後、共有は新しい投稿で開きます。"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce serveur accepte jusqu’à %lld pièces jointes par publication. Retirez-en et réessayez, abandonnez ce partage, ou publiez d’abord la publication en cours : le partage s’ouvrira alors dans une nouvelle publication."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Server erlaubt bis zu %lld Anhänge pro Beitrag. Entferne Anhänge und versuche es erneut, verwirf diese Freigabe oder veröffentliche zuerst den aktuellen Beitrag – die Freigabe öffnet sich dann in einem neuen Beitrag."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo server consente fino a %lld allegati per post. Rimuovine alcuni e riprova, scarta questa condivisione oppure pubblica prima il post corrente: la condivisione si aprirà poi in un nuovo post."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor admite hasta %lld archivos adjuntos por publicación. Quita algunos y vuelve a intentarlo, descarta este contenido compartido o publica primero la publicación actual: después se abrirá en una nueva publicación."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor aceita até %lld anexos por publicação. Remova alguns e tente novamente, descarte esta partilha ou publique primeiro a publicação atual — a partilha abre depois numa nova publicação."
+          }
+        }
+      }
+    },
+    "shareImport.retry" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry import"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试导入"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重試匯入"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込みを再試行"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réessayer l’importation"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import erneut versuchen"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riprova importazione"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reintentar importación"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tentar importar novamente"
+          }
+        }
+      }
+    },
+    "shareImport.retryMessage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Some shared content could not be imported. The originals are kept so you can retry."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分分享内容未能导入，原文件已保留，可以重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分分享內容未能匯入，原始檔案已保留，可以重試。"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一部の共有内容を読み込めませんでした。元のファイルは保持されているため、再試行できます。"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une partie du contenu partagé n’a pas pu être importée. Les originaux sont conservés pour réessayer."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einige geteilte Inhalte konnten nicht importiert werden. Die Originale bleiben für einen erneuten Versuch erhalten."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non è stato possibile importare parte del contenuto condiviso. Gli originali sono conservati per riprovare."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo importar parte del contenido compartido. Los originales se conservan para que puedas reintentarlo."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível importar parte do conteúdo partilhado. Os originais foram preservados para poder tentar novamente."
+          }
+        }
+      }
+    },
+    "shareImport.unfinished" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einige geteilte Bilder sind noch nicht importiert. Wiederhole den Import oder verwirf die ausstehenden Bilder vor dem Posten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Some shared images are still pending. Retry or discard the pending images before posting."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quedan imágenes compartidas por importar. Reintenta o descarta las imágenes pendientes antes de publicar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Certaines images partagées restent à importer. Réessayez ou supprimez les images en attente avant de publier."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alcune immagini condivise sono ancora da importare. Riprova o elimina le immagini in attesa prima di pubblicare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未読み込みの共有画像があります。投稿前に再試行するか、未読み込みの画像を破棄してください。"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ainda há imagens partilhadas por importar. Tenta novamente ou descarta as imagens pendentes antes de publicar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享图片尚未全部导入。请重试，或移除待导入图片后再发布。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享圖片尚未全部匯入。請重試，或移除待匯入圖片後再發佈。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
