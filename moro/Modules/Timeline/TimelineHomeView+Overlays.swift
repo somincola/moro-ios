@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 extension TimelineHomeView {
@@ -39,6 +40,7 @@ extension TimelineHomeView {
         if !session.hasRestoredReadingAnchor, !target.statuses.isEmpty {
             session.hasRestoredReadingAnchor = true
             if let saved = target.savedReadingAnchor {
+                scrollBridge.holdReadingPosition(for: timeline)
                 scrollBridge.restoreReadingAnchor(saved, for: timeline)
                 return
             }
@@ -101,6 +103,9 @@ private struct TimelineNewPostsNotice: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isAtTop: Bool
     @State private var compactTimelines: Set<TimelineType> = []
+    /// A pull to refresh is in progress: it brings the new posts in itself, so the notice
+    /// steps aside instead of flashing a count that the refresh is about to clear.
+    @State private var isPullRefreshing = false
 
     init(
         timeline: TimelineType,
@@ -124,7 +129,7 @@ private struct TimelineNewPostsNotice: View {
 
     var body: some View {
         VStack {
-            if isEnabled, !isAtTop, hasPendingPosts {
+            if isEnabled, !isAtTop, !isPullRefreshing, hasPendingPosts {
                 HStack(spacing: 0) {
                     Spacer(minLength: 0)
                     Button(action: onTap) {
@@ -158,6 +163,12 @@ private struct TimelineNewPostsNotice: View {
         }
         .onChange(of: timeline) { _, newTimeline in
             isAtTop = bridge.isAtTop(newTimeline)
+            isPullRefreshing = Self.isPulling(bridge.pullRefreshSubject(for: newTimeline).value)
+        }
+        .onReceive(bridge.pullRefreshSubject(for: timeline)) { state in
+            let pulling = Self.isPulling(state)
+            guard isPullRefreshing != pulling else { return }
+            isPullRefreshing = pulling
         }
         .onReceive(bridge.userScrollEvents) { source in
             guard source == timeline, hasPendingPosts else { return }
@@ -170,6 +181,10 @@ private struct TimelineNewPostsNotice: View {
                 compactTimelines.insert(timeline)
             }
         }
+    }
+
+    private static func isPulling(_ state: TimelinePullRefreshVisualState) -> Bool {
+        state.distance > 0 || state.isPinned || state.isRefreshing
     }
 
     private var compactText: String {

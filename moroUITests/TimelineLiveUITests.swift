@@ -106,6 +106,38 @@ final class TimelineLiveUITests: XCTestCase {
         XCTAssertTrue(post(in: app, id: 140).isHittable)
     }
 
+    /// Tapping the notice (full or compact) must land exactly on the latest post at the
+    /// top, not a few points short of it.
+    @MainActor func testTappingTheNoticeLandsExactlyOnTheLatestPost() throws {
+        let app = launch(scheme: "light", disableAnimations: false)
+        let count = app.staticTexts["timeline.fixture.count"]
+        let first = post(in: app, id: 100)
+        XCTAssertTrue(first.waitForExistence(timeout: 10))
+        XCTAssertTrue(wait { count.label == "60/0" })
+        let topY = first.frame.minY
+
+        _ = try beginReading(in: app)
+        app.buttons["timeline.fixture.insert"].tap()
+        XCTAssertTrue(wait { count.label == "80/20" })
+        app.buttons["timeline.newPosts"].tap()
+        let latest = post(in: app, id: 120)
+        XCTAssertTrue(wait { latest.exists && abs(latest.frame.minY - topY) <= 1 },
+            "Full notice: latest at y=\(latest.exists ? latest.frame.minY : -1), top is \(topY)")
+
+        // New posts arrive while reading; reading on turns the notice compact.
+        app.swipeUp(velocity: .slow)
+        app.buttons["timeline.fixture.insert"].tap()
+        XCTAssertTrue(wait { count.label == "100/20" })
+        app.swipeUp(velocity: .slow)
+        XCTAssertTrue(wait { app.buttons["timeline.newPosts"].frame.width <= 64 })
+        app.buttons["timeline.newPosts"].tap()
+        let newest = post(in: app, id: 140)
+        XCTAssertTrue(wait { newest.exists && abs(newest.frame.minY - topY) <= 1 },
+            "Compact badge: latest at y=\(newest.exists ? newest.frame.minY : -1), top is \(topY)")
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertEqual(newest.frame.minY, topY, accuracy: 1, "It must stay at the top once there")
+    }
+
     @MainActor func testInsertionPreservesReadingPositionAndPillJumpsToLatest() throws {
         try exerciseTimeline(scheme: "light")
     }

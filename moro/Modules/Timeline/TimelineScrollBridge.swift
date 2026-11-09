@@ -78,6 +78,16 @@ final class TimelineScrollBridge: ObservableObject {
     /// notice. Released per timeline as soon as the reader scrolls or jumps to the latest.
     private var holdsPositionAfterResume = false
     private var releasedFromResumeHold: Set<TimelineType> = []
+    /// Timelines whose saved reading position was just restored; same release rules.
+    private var heldTimelines: Set<TimelineType> = []
+    /// After an anchored update, rows above the reader can still change height for a
+    /// moment (newly inserted rows finishing layout, a gap marker, media sizing). Keep the
+    /// reading anchor in place for a short settle window, until the reader touches the list.
+    private var settlingAnchors: [TimelineType: (anchor: TimelineReadingAnchor, until: Date)] = [:]
+    private let anchorSettleDuration: TimeInterval = 1.0
+    /// The same settle window for a jump to the latest: rows at the top can still grow
+    /// (media, cards) right after the jump, which would leave the list a little short of it.
+    private var settlingTop: [TimelineType: Date] = [:]
     private var suppressChrome: Set<TimelineType> = []
     private var active = false
     private var playbackScopes: [TimelineType: MediaPlaybackScope] = [:]
@@ -181,6 +191,20 @@ final class TimelineScrollBridge: ObservableObject {
         updatePlaybackScopes()
     }
 
+    /// A saved reading position was restored on this timeline: until the reader scrolls,
+    /// new posts must not pull the view to the latest, even if the restore briefly
+    /// reported the top.
+    func holdReadingPosition(for timeline: TimelineType) {
+        heldTimelines.insert(timeline)
+    }
+
+    private func releaseHold(for timeline: TimelineType) {
+        releasedFromResumeHold.insert(timeline)
+        heldTimelines.remove(timeline)
+        settlingAnchors[timeline] = nil
+        settlingTop[timeline] = nil
+    }
+
     /// Called when the app returns to the foreground.
     func holdReadingPositionAfterResume() {
         holdsPositionAfterResume = true
@@ -188,7 +212,8 @@ final class TimelineScrollBridge: ObservableObject {
     }
 
     private func followsLatestAtTop(_ timeline: TimelineType) -> Bool {
-        isAtTop(timeline) && !(holdsPositionAfterResume && !releasedFromResumeHold.contains(timeline))
+        isAtTop(timeline) && !heldTimelines.contains(timeline)
+            && !(holdsPositionAfterResume && !releasedFromResumeHold.contains(timeline))
     }
 
     func updatePhase(_ phase: ScrollPhase, for timeline: TimelineType) {
@@ -197,7 +222,7 @@ final class TimelineScrollBridge: ObservableObject {
         if phase == .tracking || phase == .interacting {
             pendingLayouts[timeline] = nil
             waitingForTop.remove(timeline)
-            releasedFromResumeHold.insert(timeline)
+            releaseHold(for: timeline)
         }
         if phase == .interacting, active, isPresented(timeline) {
             userScrollEvents.send(timeline)
@@ -266,6 +291,7 @@ final class TimelineScrollBridge: ObservableObject {
         let visible = survivors.filter { visibleIDs.contains($0.statusID) }
         let anchors = visible.isEmpty ? Array(survivors.sorted { abs($0.viewportOffset) < abs($1.viewportOffset) }.prefix(1)) : visible
         guard followsLatest || !anchors.isEmpty || retainedIDs?.isEmpty == true else { return false }
+        settlingAnchors[timeline] = nil
         pendingLayouts[timeline] = PendingLayout(revision: revision, anchors: anchors,
             followsLatest: followsLatest)
         scheduleLayoutEvent(for: timeline)
@@ -368,6 +394,7 @@ final class TimelineScrollBridge: ObservableObject {
             self.scheduledLayoutEvents.remove(timeline)
             self.rows[timeline] = self.rows[timeline]?.filter { $0.value.value?.window != nil }
             self.completeLayout(for: timeline)
+            self.settleAnchorIfNeeded(for: timeline)
             // Native scrolling can settle after SwiftUI's last geometry callback.
             // Recheck on the existing idle/layout completion before acknowledging
             // the latest batch; reading the position must not enqueue another event.
@@ -381,6 +408,35 @@ final class TimelineScrollBridge: ObservableObject {
             }
             self.layoutEvents.send(timeline)
         }
+    }
+
+    private func settleAnchorIfNeeded(for timeline: TimelineType) {
+        settleTopIfNeeded(for: timeline)
+        guard let settling = settlingAnchors[timeline] else { return }
+        guard Date() < settling.until, active, isPresented(timeline),
+            !frozenTimelines.contains(timeline), pendingLayouts[timeline] == nil,
+            !isUserDragging(timeline),
+            let row = rows[timeline]?[settling.anchor.statusID]?.value, row.window != nil,
+            let scrollView = nativeScrollViews[timeline]?.value else {
+            if Date() >= settling.until { settlingAnchors[timeline] = nil }
+            return
+        }
+        let y = row.convert(row.bounds, to: scrollView).minY - scrollView.contentOffset.y
+            - headerHeights[timeline, default: 48]
+        guard abs(y - CGFloat(settling.anchor.viewportOffset)) > 0.5 else { return }
+        restoreReadingAnchor(settling.anchor, for: timeline)
+    }
+
+    private func settleTopIfNeeded(for timeline: TimelineType) {
+        guard let until = settlingTop[timeline] else { return }
+        guard Date() < until else { settlingTop[timeline] = nil; return }
+        guard active, isPresented(timeline), !frozenTimelines.contains(timeline),
+            pendingLayouts[timeline] == nil, !isUserDragging(timeline),
+            let view = nativeScrollViews[timeline]?.value, !view.isDecelerating else { return }
+        let top = -view.adjustedContentInset.top
+        guard abs(view.contentOffset.y - top) > 0.5 else { return }
+        view.setContentOffset(CGPoint(x: view.contentOffset.x, y: top), animated: false)
+        updateTopPosition(for: timeline, scrollView: view)
     }
 
     private func completeLayout(for timeline: TimelineType) {
@@ -401,6 +457,7 @@ final class TimelineScrollBridge: ObservableObject {
         }) {
             pendingLayouts[timeline] = nil
             restoreReadingAnchor(anchor, for: timeline)
+            settlingAnchors[timeline] = (anchor, Date().addingTimeInterval(anchorSettleDuration))
         } else if !pending.requestedAnchorLayout, let anchor = pending.anchors.first,
             let proxy = proxies[timeline] {
             // Prepending a large batch may evict every old visible lazy row.
@@ -571,7 +628,8 @@ final class TimelineScrollBridge: ObservableObject {
     /// so it always scrolls the visible page (not whichever one registered last).
     func scrollToTop(_ timeline: TimelineType) {
         guard active, isPresented(timeline) else { return }
-        releasedFromResumeHold.insert(timeline) // The reader asked for the latest.
+        releaseHold(for: timeline) // The reader asked for the latest.
+        settlingTop[timeline] = Date().addingTimeInterval(anchorSettleDuration)
         waitingForTop.insert(timeline)
         resetChrome()
         if let view = nativeScrollViews[timeline]?.value {

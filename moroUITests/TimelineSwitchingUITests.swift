@@ -175,7 +175,40 @@ final class TimelineSwitchingUITests: XCTestCase {
         XCTAssertFalse(app.buttons["timeline.newPosts"].exists)
     }
 
-    @MainActor private func launch(controlSource: String = "home") -> XCUIApplication {
+    /// Launch, read federated, leave; relaunch after new federated posts were published
+    /// and switch to it: the cached reading position must hold, not jump to the top.
+    @MainActor func testColdLaunchSwitchToFederatedKeepsTheCachedReadingPosition() throws {
+        let session = "timeline-cold-\(UUID().uuidString)"
+        var app = launch(controlSource: "none", session: session)
+        select("federated", in: app)
+        scrollUp(in: app)
+        scrollUp(in: app)
+        let anchor = try visibleAnchor(in: app)
+        _ = try revealSwitcherIfHidden(in: app)
+        select("home", in: app)
+        XCUIDevice.shared.press(.home) // flushes the reading state to the cache
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 5))
+        Thread.sleep(forTimeInterval: 3)
+        app.terminate()
+
+        // The network answers only after the cached position is on screen, as on a device.
+        app = launch(controlSource: "federated", session: session, extraFederatedPosts: 30, delayFirst: true)
+        select("federated", in: app)
+        let row = app.staticTexts[anchor.0]
+        XCTAssertTrue(wait { row.exists && row.isHittable }, "The cached reading position must be restored")
+        let restoredY = settledMinY(of: row)
+        app.buttons["timeline.switch.release"].tap()
+        XCTAssertTrue(app.buttons["timeline.newPosts"].waitForExistence(timeout: 10),
+            "The 30 new posts are announced")
+        for _ in 0..<12 {
+            Thread.sleep(forTimeInterval: 0.5)
+            XCTAssertTrue(row.exists && row.isHittable && abs(row.frame.minY - restoredY) <= 3,
+                "Jumped away from the reading position: y=\(row.exists ? row.frame.minY : -1), was \(restoredY)")
+        }
+    }
+
+    @MainActor private func launch(controlSource: String = "home", session: String? = nil,
+        extraFederatedPosts: Int = 0, delayFirst: Bool = false) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_TIMELINE_LIVE", "UITEST_TIMELINE_SWITCHING",
@@ -185,6 +218,9 @@ final class TimelineSwitchingUITests: XCTestCase {
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_DISABLE_ANIMATIONS"] = "1"
         app.launchEnvironment["UITEST_TIMELINE_CONTROL_SOURCE"] = controlSource
+        if let session { app.launchEnvironment["UITEST_TIMELINE_SESSION"] = session }
+        app.launchEnvironment["UITEST_TIMELINE_EXTRA_FEDERATED"] = String(extraFederatedPosts)
+        app.launchEnvironment["UITEST_TIMELINE_DELAY_FIRST"] = delayFirst ? "1" : "0"
         app.launch(isolatedFor: self)
         XCTAssertTrue(post(1060, in: app).waitForExistence(timeout: 15))
         return app

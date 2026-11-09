@@ -7,7 +7,9 @@ import SwiftUI
 struct TimelineSwitchingHarnessView: View {
     @StateObject private var appState = AppState()
     @ObservedObject private var fixture = TimelineSwitchingFixtureProtocol.state
-    @State private var sessionID = "timeline-switch-\(UUID().uuidString)"
+    /// A fixed session lets a test relaunch onto the same on-disk timeline cache.
+    @State private var sessionID = ProcessInfo.processInfo.environment["UITEST_TIMELINE_SESSION"]
+        ?? "timeline-switch-\(UUID().uuidString)"
     private let client = TimelineSwitchingFixtureProtocol.makeClient()
 
     var body: some View {
@@ -46,8 +48,12 @@ final class TimelineSwitchingFixtureState: ObservableObject {
     private var lastRequests: [String: String] = [:]
     private var olderPages: [String: Int] = [:]
     private var heldRequests: [UUID: AsyncStream<Void>.Continuation] = [:]
-    private(set) var latest = ["home": 60, "local": 60, "federated": 60]
-    var delayNext = false
+    /// UITEST_TIMELINE_EXTRA_FEDERATED: posts published on the federated timeline while
+    /// the app was closed, so a relaunch finds new posts above its cached position.
+    private(set) var latest = ["home": 60, "local": 60,
+        "federated": 60 + (Int(ProcessInfo.processInfo.environment["UITEST_TIMELINE_EXTRA_FEDERATED"] ?? "") ?? 0)]
+    /// UITEST_TIMELINE_DELAY_FIRST=1 holds the controlled source's first request until released.
+    var delayNext = ProcessInfo.processInfo.environment["UITEST_TIMELINE_DELAY_FIRST"] == "1"
     var failNext = false
 
     func addPosts() {
