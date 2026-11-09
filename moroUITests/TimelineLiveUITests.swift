@@ -39,6 +39,73 @@ final class TimelineLiveUITests: XCTestCase {
         add(screenshot)
     }
 
+    /// Not only the final position: no intermediate frame may show the reading position
+    /// displaced while the inserted rows wait for their offset correction.
+    @MainActor func testInsertionNeverShowsAFrameWithTheReadingPositionDisplaced() throws {
+        let app = launch(scheme: "light", disableAnimations: false)
+        let anchor = try beginReading(in: app)
+        let count = app.staticTexts["timeline.fixture.count"]
+        let jump = app.staticTexts["timeline.fixture.jump"]
+        for batch in 1...3 {
+            app.buttons["timeline.fixture.insert"].tap()
+            XCTAssertTrue(wait { count.label == "\(60 + batch * 20)/\(batch * 20)" })
+            assertReadingPosition(anchor, in: app)
+            XCTAssertTrue(jump.waitForExistence(timeout: 2))
+            Thread.sleep(forTimeInterval: 0.5) // let the periodic label catch up
+            XCTAssertEqual(jump.label, "jump:0", "Batch \(batch) showed a displaced frame")
+        }
+    }
+
+    /// Returning from the background must not move the post being read, not even for a frame.
+    @MainActor func testReturningFromBackgroundNeverMovesTheReadingPosition() throws {
+        let app = launch(scheme: "light", disableAnimations: false)
+        let anchor = try beginReading(in: app)
+        let watch = app.staticTexts["timeline.fixture.watchResult"]
+        app.buttons["timeline.fixture.watch"].tap()
+        Thread.sleep(forTimeInterval: 0.5)
+        for round in 1...3 {
+            XCUIDevice.shared.press(.home)
+            XCTAssertTrue(app.wait(for: .runningBackground, timeout: 5))
+            Thread.sleep(forTimeInterval: 2)
+            app.activate()
+            XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5))
+            Thread.sleep(forTimeInterval: 1.5)
+            assertReadingPosition(anchor, in: app)
+        }
+        XCTAssertEqual(watch.label, "watch:0", "The reading position moved on screen while returning")
+    }
+
+    /// Left at the very top, then away: on return new posts must not take over the screen.
+    /// The post that was showing stays put behind the notice until the reader asks for more.
+    @MainActor func testReturningAtTheTopKeepsThePostThatWasShowing() throws {
+        let app = launch(scheme: "light", disableAnimations: false)
+        let count = app.staticTexts["timeline.fixture.count"]
+        let first = post(in: app, id: 100)
+        XCTAssertTrue(first.waitForExistence(timeout: 10))
+        XCTAssertTrue(wait { count.label == "60/0" })
+        let topY = first.frame.minY
+
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 5))
+        app.activate()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5))
+        Thread.sleep(forTimeInterval: 1) // let the scene settle so the tap is delivered
+
+        app.buttons["timeline.fixture.insert"].tap()
+        XCTAssertTrue(wait { count.label == "80/20" }, "New posts are announced, not jumped to")
+        XCTAssertTrue(wait { first.isHittable && abs(first.frame.minY - topY) <= 3 })
+        XCTAssertFalse(post(in: app, id: 120).isHittable)
+
+        app.buttons["timeline.newPosts"].tap()
+        XCTAssertTrue(wait { count.label == "80/0" })
+        XCTAssertTrue(post(in: app, id: 120).isHittable)
+
+        // Back to live: at the top, the next batch follows the latest again.
+        app.buttons["timeline.fixture.insert"].tap()
+        XCTAssertTrue(wait { count.label == "100/0" })
+        XCTAssertTrue(post(in: app, id: 140).isHittable)
+    }
+
     @MainActor func testInsertionPreservesReadingPositionAndPillJumpsToLatest() throws {
         try exerciseTimeline(scheme: "light")
     }

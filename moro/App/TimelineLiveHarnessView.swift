@@ -17,6 +17,7 @@ struct TimelineLiveHarnessView: View {
     init() {
         let key = "timeline-live-ui-\(UUID().uuidString)"
         let testsGaps = ProcessInfo.processInfo.arguments.contains("UITEST_TIMELINE_GAPS")
+        TimelineScrollBridge.probeEnabled = true
         let client = TimelineLiveFixtureProtocol.makeClient(testsGaps: testsGaps)
         self.testsGaps = testsGaps
         self.key = key
@@ -43,7 +44,25 @@ struct TimelineLiveHarnessView: View {
                             }
                             .accessibilityIdentifier("timeline.fixture.gapFailure")
                         } else {
-                            Button("+20") { insert(20) }.accessibilityIdentifier("timeline.fixture.insert")
+                            Button("+20") {
+                                TimelineScrollBridge.resetCommitProbe()
+                                insert(20)
+                            }.accessibilityIdentifier("timeline.fixture.insert")
+                            // Largest reading-position displacement ever shown on screen
+                            // during the last insertion (0 = no visible jump).
+                            SwiftUI.TimelineView(.periodic(from: .now, by: 0.2)) { _ in
+                                Text("jump:\(Int(TimelineScrollBridge.maxCommittedAnchorDisplacement.rounded()))")
+                                    .font(.caption2)
+                                    .accessibilityIdentifier("timeline.fixture.jump")
+                            }
+                            Button("观察") { TimelineScrollBridge.beginWatch() }
+                                .accessibilityIdentifier("timeline.fixture.watch")
+                            SwiftUI.TimelineView(.periodic(from: .now, by: 0.2)) { _ in
+                                Text("watch:\(Int(TimelineScrollBridge.maxWatchedDeviation.rounded()))")
+                                    .font(.caption2)
+                                    .accessibilityIdentifier("timeline.fixture.watchResult")
+                                    .accessibilityValue("frames:\(TimelineScrollBridge.watchedFrames)")
+                            }
                             Button("覆盖") { covered.toggle() }.accessibilityIdentifier("timeline.fixture.cover")
                         }
                         Text("\(model.statuses.count)/\(model.newPostCount)")
