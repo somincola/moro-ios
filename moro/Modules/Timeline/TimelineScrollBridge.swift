@@ -88,6 +88,10 @@ final class TimelineScrollBridge: ObservableObject {
     /// The same settle window for a jump to the latest: rows at the top can still grow
     /// (media, cards) right after the jump, which would leave the list a little short of it.
     private var settlingTop: [TimelineType: Date] = [:]
+    /// SwiftUI can re-apply its own scroll position after ours without any row
+    /// re-laying out, so a settle window is checked every frame, not only on layout
+    /// events. It runs only while a window is open (about a second).
+    private var settleTicker: CADisplayLink?
     private var suppressChrome: Set<TimelineType> = []
     private var active = false
     private var playbackScopes: [TimelineType: MediaPlaybackScope] = [:]
@@ -427,6 +431,27 @@ final class TimelineScrollBridge: ObservableObject {
         restoreReadingAnchor(settling.anchor, for: timeline)
     }
 
+    private func startSettleTicker() {
+        guard settleTicker == nil else { return }
+        let target = TimelineSettleTickTarget { [weak self] in self?.settleTick() }
+        let link = CADisplayLink(target: target, selector: #selector(TimelineSettleTickTarget.tick))
+        link.add(to: .main, forMode: .common)
+        settleTicker = link
+    }
+
+    private func settleTick() {
+        for timeline in Set(settlingAnchors.keys).union(settlingTop.keys) {
+            settleAnchorIfNeeded(for: timeline)
+        }
+        let now = Date()
+        settlingAnchors = settlingAnchors.filter { $0.value.until > now }
+        settlingTop = settlingTop.filter { $0.value > now }
+        if settlingAnchors.isEmpty, settlingTop.isEmpty {
+            settleTicker?.invalidate()
+            settleTicker = nil
+        }
+    }
+
     private func settleTopIfNeeded(for timeline: TimelineType) {
         guard let until = settlingTop[timeline] else { return }
         guard Date() < until else { settlingTop[timeline] = nil; return }
@@ -458,6 +483,7 @@ final class TimelineScrollBridge: ObservableObject {
             pendingLayouts[timeline] = nil
             restoreReadingAnchor(anchor, for: timeline)
             settlingAnchors[timeline] = (anchor, Date().addingTimeInterval(anchorSettleDuration))
+            startSettleTicker()
         } else if !pending.requestedAnchorLayout, let anchor = pending.anchors.first,
             let proxy = proxies[timeline] {
             // Prepending a large batch may evict every old visible lazy row.
@@ -630,6 +656,7 @@ final class TimelineScrollBridge: ObservableObject {
         guard active, isPresented(timeline) else { return }
         releaseHold(for: timeline) // The reader asked for the latest.
         settlingTop[timeline] = Date().addingTimeInterval(anchorSettleDuration)
+        startSettleTicker()
         waitingForTop.insert(timeline)
         resetChrome()
         if let view = nativeScrollViews[timeline]?.value {
@@ -871,4 +898,16 @@ struct TimelineScrollViewResolver: UIViewRepresentable {
         uiView.timeline = timeline
         uiView.bridge = bridge
     }
+}
+
+
+/// CADisplayLink retains its target; this small target keeps the bridge itself out of
+/// that cycle and is released when the settle ticker is invalidated.
+private final class TimelineSettleTickTarget: NSObject {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
+    private let action: () -> Void
+    init(_ action: @escaping () -> Void) { self.action = action }
+    @objc func tick() { action() }
 }
