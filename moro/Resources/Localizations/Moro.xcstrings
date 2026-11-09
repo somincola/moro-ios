@@ -94841,55 +94841,55 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A post supports up to 4 attachments. Remove an attachment, or finish this post before importing the share."
+            "value" : "A post supports up to %lld attachments here. Remove some and retry, discard this share, or publish the current post first — the share then opens in a new post."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每篇帖子最多添加 4 个附件。请移除附件，或完成当前帖子后再导入分享内容。"
+            "value" : "此服务器每篇帖子最多 %lld 个附件。可以移除部分附件后重试、丢弃这次分享，或先发布当前帖子——发布后分享会在新帖子中打开。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每篇貼文最多加入 4 個附件。請移除附件，或完成目前貼文後再匯入分享內容。"
+            "value" : "此伺服器每篇貼文最多 %lld 個附件。可以移除部分附件後重試、捨棄這次分享，或先發佈目前貼文——發佈後分享會在新貼文中開啟。"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添付できるのは1件の投稿につき4個までです。添付を削除するか、現在の投稿を完了してから読み込んでください。"
+            "value" : "このサーバーでは1件の投稿に添付できるのは%lld個までです。添付を減らして再試行するか、この共有を破棄するか、現在の投稿を先に公開してください。公開後、共有は新しい投稿で開きます。"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Une publication accepte jusqu’à 4 pièces jointes. Retirez-en une ou terminez la publication en cours avant l’importation."
+            "value" : "Ce serveur accepte jusqu’à %lld pièces jointes par publication. Retirez-en et réessayez, abandonnez ce partage, ou publiez d’abord la publication en cours : le partage s’ouvrira alors dans une nouvelle publication."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ein Beitrag unterstützt bis zu 4 Anhänge. Entferne einen Anhang oder beende den aktuellen Beitrag vor dem Import."
+            "value" : "Dieser Server erlaubt bis zu %lld Anhänge pro Beitrag. Entferne Anhänge und versuche es erneut, verwirf diese Freigabe oder veröffentliche zuerst den aktuellen Beitrag – die Freigabe öffnet sich dann in einem neuen Beitrag."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un post può contenere fino a 4 allegati. Rimuovine uno o completa il post corrente prima dell’importazione."
+            "value" : "Questo server consente fino a %lld allegati per post. Rimuovine alcuni e riprova, scarta questa condivisione oppure pubblica prima il post corrente: la condivisione si aprirà poi in un nuovo post."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Una publicación admite hasta 4 archivos adjuntos. Elimina uno o termina la publicación actual antes de importar."
+            "value" : "Este servidor admite hasta %lld archivos adjuntos por publicación. Quita algunos y vuelve a intentarlo, descarta este contenido compartido o publica primero la publicación actual: después se abrirá en una nueva publicación."
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Uma publicação aceita até 4 anexos. Remova um anexo ou conclua a publicação atual antes de importar."
+            "value" : "Este servidor aceita até %lld anexos por publicação. Remova alguns e tente novamente, descarte esta partilha ou publique primeiro a publicação atual — a partilha abre depois numa nova publicação."
           }
         }
       }

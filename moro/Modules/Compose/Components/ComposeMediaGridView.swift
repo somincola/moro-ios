@@ -36,8 +36,32 @@ struct ComposeMediaGridView: View {
             twoItemLayout(items)
         case 3:
             threeItemLayout(items)
-        default:
+        case 4:
             fourPlusItemLayout(items)
+        default:
+            // Instances that allow more than 4 attachments: every tile stays visible so each
+            // one can still be removed, retried or given ALT text (no "+N" overflow).
+            manyItemLayout(items)
+        }
+    }
+
+    @ViewBuilder
+    private func manyItemLayout(_ items: [MediaAttachment]) -> some View {
+        let columns = 3
+        let rows = stride(from: 0, to: items.count, by: columns).map {
+            Array(items[$0..<min($0 + columns, items.count)])
+        }
+        VStack(spacing: 2) {
+            ForEach(rows.indices, id: \.self) { rowIndex in
+                HStack(spacing: 2) {
+                    ForEach(rows[rowIndex]) { mediaTile($0) }
+                    // Keep tiles the same width in a short last row.
+                    ForEach(0..<(columns - rows[rowIndex].count), id: \.self) { _ in
+                        Color.clear
+                    }
+                }
+                .frame(height: 120)
+            }
         }
     }
     

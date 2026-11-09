@@ -449,6 +449,64 @@ struct SharedComposeHandoffTests {
         #expect(model.canPublish)
     }
 
+    @Test func anInstanceThatAllowsMoreAttachmentsTakesASecondFullBatch() async throws {
+        let fixture = try StoreFixture()
+        defer { fixture.cleanup() }
+        let api = MockMastodonAPI()
+        api.instanceMetadataCacheKey = "test://\(UUID().uuidString)"
+        api.fetchInstanceV2Handler = { Self.instance(maxMediaAttachments: 8) }
+        var uploads = 0
+        api.uploadMediaHandler = { _, _, _ in
+            uploads += 1
+            return Self.serverAttachment("upload-\(uploads)")
+        }
+        let model = ComposeViewModel(context: .newPost, apiClient: api, currentUserID: "me")
+        model.mediaAttachments = (1...4).map { Self.serverMedia("existing-\($0)") }
+        let item = try fixture.stage(text: "Four more", count: 4)
+        // The share arrives before the editor's limits task ran: the import must load them itself.
+        #expect(await model.importSharedAttachments(from: Self.importPayload(item), draftStore: fixture.store) == .complete)
+        #expect(model.maxMediaAttachments == 8 && model.mediaAttachments.count == 8)
+        #expect(model.remainingMediaAttachmentSlots == 0 && model.canPublish)
+    }
+
+    @Test func onAStandardInstanceAnOverflowingShareWaitsAndOpensAfterPublishingTheCurrentPost() async throws {
+        let fixture = try StoreFixture()
+        defer { fixture.cleanup() }
+        let api = MockMastodonAPI()
+        api.instanceMetadataCacheKey = "test://\(UUID().uuidString)"
+        api.fetchInstanceV2Handler = { Self.instance(maxMediaAttachments: 4) }
+        let model = ComposeViewModel(context: .newPost, apiClient: api, currentUserID: "me")
+        model.content = "Current post"
+        model.mediaAttachments = (1...4).map { Self.serverMedia("existing-\($0)") }
+        #expect(fixture.store.save(model.makeDraft(category: .auto)))
+        let item = try fixture.stage(text: "Four more", count: 4)
+        #expect(await model.importSharedAttachments(from: Self.importPayload(item), draftStore: fixture.store) == .blocked)
+        #expect(model.sharedImportFailureMessage == MoroL10n.ShareImport.mediaLimit(4))
+        #expect(model.mediaAttachments.count == 4 && model.content == "Current post", "Nothing is truncated or overwritten")
+        // The current post stays publishable; the waiting share is not part of it.
+        #expect(model.canPublish && !model.hasPendingSharedMedia)
+        // Once that editor closes (published or discarded), the root opens the share in a new post.
+        let resolution = try #require(SharedComposeImportCoordinator(draftStore: fixture.store)
+            .consumeNextImportableDraft(activeAccountID: "me"))
+        #expect(resolution.sharedImport?.stagingItemID == item.id)
+        #expect(resolution.sharedImport?.attachments.count == 4)
+    }
+
+    @Test func instanceAttachmentLimitIsSanitized() {
+        #expect(ComposeMediaSelectionPolicy.attachmentLimit(reportedByInstance: nil) == 4)
+        #expect(ComposeMediaSelectionPolicy.attachmentLimit(reportedByInstance: 0) == 4)
+        #expect(ComposeMediaSelectionPolicy.attachmentLimit(reportedByInstance: 8) == 8)
+        #expect(ComposeMediaSelectionPolicy.attachmentLimit(reportedByInstance: 500) == 20)
+        #expect(ComposeMediaSelectionPolicy.remainingSlots(existingCount: 4, limit: 8) == 4)
+    }
+
+    private static func instance(maxMediaAttachments: Int) -> MastodonInstanceV2 {
+        MastodonInstanceV2(
+            domain: "x", title: "X", description: nil, thumbnail: nil, contact: nil,
+            registrations: nil, rules: nil, languages: nil,
+            configuration: InstanceConfiguration(statuses: .init(maxCharacters: 500, maxMediaAttachments: maxMediaAttachments)))
+    }
+
     @Test func aShareCancelledWhileTheIndexIsBusyNeverReachesTheEditor() throws {
         let fixture = try StoreFixture()
         defer { fixture.cleanup() }

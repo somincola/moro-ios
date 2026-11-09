@@ -10,15 +10,26 @@ import Combine
 import SwiftUI
 
 enum ComposeMediaSelectionPolicy {
+    /// Mastodon's limit, used until (or unless) the instance reports its own.
     static let maximumAttachmentCount = 4
+    /// Guards the layout against an implausible instance value.
+    static let largestSupportedAttachmentCount = 20
     static let maximumConcurrentImports = 2
 
-    static func remainingSlots(existingCount: Int) -> Int {
-        max(0, maximumAttachmentCount - max(0, existingCount))
+    /// The instance's `configuration.statuses.max_media_attachments`, sanitized.
+    static func attachmentLimit(reportedByInstance value: Int?) -> Int {
+        guard let value, value > 0 else { return maximumAttachmentCount }
+        return min(value, largestSupportedAttachmentCount)
     }
 
-    static func acceptedSelectionCount(requestedCount: Int, existingCount: Int) -> Int {
-        min(max(0, requestedCount), remainingSlots(existingCount: existingCount))
+    static func remainingSlots(existingCount: Int, limit: Int = maximumAttachmentCount) -> Int {
+        max(0, limit - max(0, existingCount))
+    }
+
+    static func acceptedSelectionCount(
+        requestedCount: Int, existingCount: Int, limit: Int = maximumAttachmentCount
+    ) -> Int {
+        min(max(0, requestedCount), remainingSlots(existingCount: existingCount, limit: limit))
     }
 }
 
@@ -97,8 +108,12 @@ final class ComposeViewModel: ObservableObject {
     // Media upload state tracking
     @Published var mediaUploadStates: [String: MediaAttachment.UploadState] = [:] // attachmentID -> upload state
 
+    /// Attachments per post on this instance (4 on standard Mastodon).
+    @Published var maxMediaAttachments = ComposeMediaSelectionPolicy.maximumAttachmentCount
+    private var hasLoadedInstanceLimits = false
+
     var remainingMediaAttachmentSlots: Int {
-        ComposeMediaSelectionPolicy.remainingSlots(existingCount: mediaAttachments.count)
+        ComposeMediaSelectionPolicy.remainingSlots(existingCount: mediaAttachments.count, limit: maxMediaAttachments)
     }
 
     var canAddMedia: Bool {
@@ -427,12 +442,15 @@ final class ComposeViewModel: ObservableObject {
     /// Reads the authenticated server's shared v2 metadata; keeps the 500 fallback when
     /// the server is unavailable or doesn't advertise a positive limit.
     func loadInstanceLimits() async {
-        guard let instance = try? await instanceMetadataStore.load(apiClient: apiClient),
-            let limit = instance.configuration?.statuses?.maxCharacters,
-            limit > 0
-        else { return }
-        if maxCharacters != limit {
+        guard let instance = try? await instanceMetadataStore.load(apiClient: apiClient) else { return }
+        hasLoadedInstanceLimits = true
+        let statuses = instance.configuration?.statuses
+        if let limit = statuses?.maxCharacters, limit > 0, maxCharacters != limit {
             maxCharacters = limit
+        }
+        let mediaLimit = ComposeMediaSelectionPolicy.attachmentLimit(reportedByInstance: statuses?.maxMediaAttachments)
+        if maxMediaAttachments != mediaLimit {
+            maxMediaAttachments = mediaLimit
         }
     }
 
@@ -609,7 +627,8 @@ final class ComposeViewModel: ObservableObject {
     func reservePhotoImports(count: Int) -> [String] {
         let acceptedCount = ComposeMediaSelectionPolicy.acceptedSelectionCount(
             requestedCount: count,
-            existingCount: mediaAttachments.count
+            existingCount: mediaAttachments.count,
+            limit: maxMediaAttachments
         )
 
         return (0..<acceptedCount).map { _ in
@@ -746,6 +765,9 @@ final class ComposeViewModel: ObservableObject {
         draftStore: ComposeDraftStore
     ) async -> SharedImportOutcome {
         configureSharedImportRecovery(using: draftStore)
+        // A share can arrive before the editor's own limits task finishes; judge the batch
+        // against this instance's real attachment limit, not the 4-attachment fallback.
+        if !hasLoadedInstanceLimits { await loadInstanceLimits() }
         guard !Task.isCancelled else { return .cancelled }
         guard !isImportingSharedMedia else { return .cancelled }
         guard let failure = sharedImportBlocker(for: sharedImport) else {
@@ -763,7 +785,7 @@ final class ComposeViewModel: ObservableObject {
             !mediaAttachments.contains { $0.sharedImportItemID == sharedImport.stagingItemID
                 && $0.sharedImportAttachmentID == reference.id }
         }.count
-        if newCount > remainingMediaAttachmentSlots { return MoroL10n.ShareImport.mediaLimit }
+        if newCount > remainingMediaAttachmentSlots { return MoroL10n.ShareImport.mediaLimit(maxMediaAttachments) }
         return nil
     }
 
