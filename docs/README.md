@@ -19,6 +19,7 @@
 ## 架构与系统集成
 
 - [系统集成边界](系统集成边界.md)：App、Share、Widget、Push 和共享存储的职责。
+- [相册分享与发帖交接](相册分享与发帖交接.md)：直接打开编辑器、批量追加、自动恢复、失败重试与系统启动限制。
 - [Widget 架构与安全边界](Widget架构与安全边界.md)：四种 Widget、快照、handoff 和凭证隔离。
 - [认证与 URL 回调](认证与URL回调.md)：OAuth、PKCE、会话持久化和 callback 所有权。
 - [Push 通知与订阅契约](Push通知与订阅契约.md)：Web Push 订阅、解密、badge 与请求边界。

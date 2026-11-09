@@ -44,6 +44,8 @@ struct MoroApp: App {
                     imagePreviewHarness.preferredColorScheme(colorScheme)
                 } else if shouldUsePublishingHarness {
                     publishingHarness.preferredColorScheme(colorScheme)
+                } else if shouldUseSharedComposeHarness {
+                    sharedComposeHarness.preferredColorScheme(colorScheme)
                 } else if shouldUsePushHarness {
                     pushHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseSettingsSheetHarness {
@@ -118,6 +120,9 @@ struct MoroApp: App {
                         }
                 }
             }
+            .onOpenURL { url in
+                SharedComposeHandoff.shared.receive(url)
+            }
             .onChange(of: scenePhase, initial: true) { _, newPhase in
                 guard newPhase == .active else { return }
                 Task { @MainActor in
@@ -187,6 +192,20 @@ struct MoroApp: App {
     @ViewBuilder private var publishingHarness: some View {
         #if DEBUG
         ComposePublishingHarnessView().moroTheme(MoroTheme(accent: .monochrome))
+        #endif
+    }
+
+    private var shouldUseSharedComposeHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_SHARED_COMPOSE")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var sharedComposeHarness: some View {
+        #if DEBUG
+        SharedComposeImportHarnessView().moroTheme(MoroTheme(accent: .monochrome))
         #endif
     }
 

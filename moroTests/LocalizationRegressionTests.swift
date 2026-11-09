@@ -28,7 +28,8 @@ final class LocalizationRegressionTests: XCTestCase {
         let share = try XCTUnwrap(Bundle(url: plugins.appendingPathComponent("moroShareExtension.appex")))
         for (bundle, table, keys) in [
             (widget, "Localizable", ["widget.action.search", "widget.profile.followers", "widget.comfort.message"]),
-            (share, "Localizable", ["share.summary.text", "share.summary.images", "share.state.importComplete"]),
+            (share, "Localizable", ["share.state.loading", "share.state.opening", "share.action.open", "share.action.retry",
+                "share.error.openFailed", "share.error.tooManyImages", "share.error.unreadableImage"]),
             (widget, "AppIntents", ["Open Moro", "Destination", "Profile"]),
             (Bundle.main, "AppIntents", ["Open Moro", "Destination", "Profile"]),
         ] {
@@ -38,7 +39,7 @@ final class LocalizationRegressionTests: XCTestCase {
                 let strings = try XCTUnwrap(PropertyListSerialization.propertyList(from: Data(contentsOf: url), format: nil) as? [String: String])
                 for key in keys { XCTAssertFalse(try XCTUnwrap(strings[key], "\(table): \(key) [\(locale)]").isEmpty) }
                 if locale.hasPrefix("zh") && table == "Localizable" && bundle == share {
-                    XCTAssertFalse(try XCTUnwrap(strings["share.state.importComplete"]).contains("Compose"))
+                    XCTAssertFalse(try XCTUnwrap(strings["share.error.openFailed"]).contains("Compose"))
                 }
             }
         }

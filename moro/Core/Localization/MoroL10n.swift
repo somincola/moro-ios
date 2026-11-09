@@ -8,6 +8,15 @@
 import Foundation
 
 public enum MoroL10n {
+    public enum ShareImport {
+        public static var unfinished: String { text("shareImport.unfinished") }
+        public static var busy: String { text("shareImport.busy") }
+        public static var editingPost: String { text("shareImport.editingPost") }
+        public static func mediaLimit(_ count: Int) -> String { format("shareImport.mediaLimit", count) }
+        public static var retryMessage: String { text("shareImport.retryMessage") }
+        public static var retry: String { text("shareImport.retry") }
+        public static var ignore: String { text("shareImport.ignore") }
+    }
     private static let tableName = "Moro"
     private static let moduleBundle = Bundle.module
 

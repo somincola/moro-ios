@@ -6133,7 +6133,7 @@ struct moroTests {
             coordinator.consumeNextImportableDraft(activeAccountID: "me")
         )
 
-        #expect(resolution.draft.category == .manual)
+        #expect(resolution.draft.category == .auto)
         #expect(resolution.draft.id == "shared-\(stagedItem.id)")
         #expect(resolution.draft.payload.content == "shared import body")
         #expect(resolution.sharedImport?.stagingItemID == stagedItem.id)
@@ -6280,9 +6280,8 @@ struct moroTests {
         #expect(draftStore.pendingSharedStagingItems().first?.attachments.map(\.id) == ["second"])
     }
 
-    /// A share whose image can't be imported must not reopen as a draft on every return
-    /// to the app, even after the draft is deleted (reported against 1.2).
-    @Test @MainActor func aFailedSharedImportDoesNotReopenItsDraft() async throws {
+    /// A failed source remains retryable, but discarding its editor must finish the share.
+    @Test @MainActor func aFailedSharedImportKeepsSourceUntilTheOwningDraftIsDiscarded() async throws {
         let draftSuiteName = "shared-compose-failed-drafts-\(UUID().uuidString)"
         let stagingSuiteName = "shared-compose-failed-staging-\(UUID().uuidString)"
         let draftDefaults = try #require(UserDefaults(suiteName: draftSuiteName))
@@ -6324,7 +6323,7 @@ struct moroTests {
         let outcome = await viewModel.importSharedAttachments(from: sharedImport, draftStore: draftStore)
 
         #expect(outcome == .failed)
-        #expect(draftStore.pendingSharedStagingItems().isEmpty, "The failed share is given up on")
+        #expect(draftStore.pendingSharedStagingItems().count == 1, "Keep the source for an explicit retry")
         #expect(draftStore.draft(id: resolution.draft.id)?.payload.content == "shared with a broken photo",
             "Its text stays as a draft")
         #expect(draftStore.removeDraft(id: resolution.draft.id))
