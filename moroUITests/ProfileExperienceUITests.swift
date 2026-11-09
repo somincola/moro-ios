@@ -5,6 +5,82 @@ import XCTest
 final class ProfileExperienceUITests: XCTestCase {
     private let rawLink = "https://example.com/a/long/path?first=1&second=2"
 
+    func testAvatarOpensTheZoomableViewerAndReturnsToTheProfile() {
+        let app = launch(extra: ["UITEST_PROFILE_ANIMATED_MEDIA": "1"], animations: true)
+        defer { app.terminate() }
+        let avatar = app.buttons["profile.avatar"]
+        XCTAssertTrue(avatar.waitForExistence(timeout: 5))
+        attach(app, "profile-animated-media")
+        avatar.tap()
+        let close = app.buttons["imagePreview.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        let image = app.images["imagePreview.image"]
+        XCTAssertTrue(image.waitForExistence(timeout: 5))
+        let originalWidth = image.frame.width
+        image.doubleTap()
+        let zoomed = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in image.frame.width > originalWidth * 1.1 }, object: image)
+        XCTAssertEqual(XCTWaiter.wait(for: [zoomed], timeout: 4), .completed)
+        attach(app, "profile-avatar-zoomed")
+        // Zooming hides the controls; a single tap makes Close available again.
+        image.tap()
+        XCTAssertTrue(close.waitForExistence(timeout: 3))
+        close.tap()
+        XCTAssertTrue(avatar.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["profile.editButton"].exists)
+    }
+
+    func testPlaceholderAvatarDoesNotOfferAnEmptyImageViewer() {
+        let app = launch()
+        defer { app.terminate() }
+        XCTAssertFalse(app.buttons["profile.avatar"].exists)
+        XCTAssertFalse(app.buttons["imagePreview.close"].exists)
+    }
+
+    func testAnimatedAvatarAndCoverRespectAutoplay() {
+        for autoplay in [true, false] {
+            var environment = ["UITEST_PROFILE_ANIMATED_MEDIA": "1"]
+            if !autoplay { environment["UITEST_PROFILE_AUTOPLAY_OFF"] = "1" }
+            let app = launch(extra: environment, animations: true)
+            let avatar = app.buttons["profile.avatar"]
+            XCTAssertTrue(avatar.waitForExistence(timeout: 5))
+            let avatarPoint = CGPoint(x: avatar.frame.minX + avatar.frame.width * 0.25,
+                y: avatar.frame.midY)
+            let coverPoint = CGPoint(x: app.frame.width * 0.8, y: avatar.frame.minY - 35)
+            let first = mediaColors(app, at: [avatarPoint, coverPoint])
+            var changed = [false, false]
+            for _ in 0..<8 {
+                Thread.sleep(forTimeInterval: 0.15)
+                let next = mediaColors(app, at: [avatarPoint, coverPoint])
+                for index in 0..<2 {
+                    let difference = zip(first[index], next[index]).map { abs($0 - $1) }.max() ?? 0
+                    changed[index] = changed[index] || difference > 25
+                }
+                if autoplay && changed.allSatisfy({ $0 }) { break }
+            }
+            XCTAssertEqual(changed, [autoplay, autoplay],
+                "Both the visible avatar and the cover must follow the GIF autoplay preference")
+            attach(app, autoplay ? "profile-playing-media" : "profile-static-media")
+            app.terminate()
+        }
+    }
+
+    private func mediaColors(_ app: XCUIApplication, at points: [CGPoint]) -> [[Int]] {
+        guard let image = app.screenshot().image.cgImage,
+              let data = image.dataProvider?.data, let pixels = CFDataGetBytePtr(data) else {
+            XCTFail("Unable to inspect animated profile media")
+            return points.map { _ in [] }
+        }
+        let scale = CGFloat(image.width) / app.frame.width
+        let channels = image.bitsPerPixel / 8
+        return points.map { point in
+            let x = min(max(Int(point.x * scale), 0), image.width - 1)
+            let y = min(max(Int(point.y * scale), 0), image.height - 1)
+            let offset = y * image.bytesPerRow + x * channels
+            return (0..<min(channels, 3)).map { Int(pixels[offset + $0]) }
+        }
+    }
+
     func testHiddenConnectionsRemainAccessibleToTheAccountOwner() {
         let app = launch(extra: ["UITEST_PROFILE_HIDE_COLLECTIONS": "1"])
         defer { app.terminate() }
@@ -222,7 +298,9 @@ final class ProfileExperienceUITests: XCTestCase {
         XCTAssertEqual(input(app, "profile.field.0.name").value as? String, "About")
         XCTAssertEqual(input(app, "profile.field.1.value").value as? String, rawLink)
         let moved = input(app, "profile.field.1.name")
-        moved.tap()
+        // The menu is still closing and the rows reordering; a tap then can land without
+        // focusing the field, so make sure it has the keyboard before typing.
+        focus(moved)
         moved.typeText(" Link")
         attach(app, "profile-fields-reordered")
         save(app)
@@ -573,6 +651,16 @@ final class ProfileExperienceUITests: XCTestCase {
     /// Multi-line inputs surface as text views, single-line ones as text fields.
     private func input(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
+    private func focus(_ field: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        func hasFocus() -> Bool { field.value(forKey: "hasKeyboardFocus") as? Bool == true }
+        let focused = NSPredicate { _, _ in hasFocus() }
+        for _ in 0..<3 where !hasFocus() {
+            field.tap()
+            _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: focused, object: nil)], timeout: 2)
+        }
+        XCTAssertTrue(hasFocus(), "The field never took the keyboard", file: file, line: line)
     }
 
     private func save(_ app: XCUIApplication) {

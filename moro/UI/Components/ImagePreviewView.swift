@@ -15,6 +15,7 @@ struct ImagePreviewView: View {
     @State private var isExporting = false
     @State private var exportNotice: String?
     @State private var noticeTask: Task<Void, Never>?
+    @State private var playbackToken: UUID?
     /// iPhone Duo half open like a laptop: the fold across the screen, in screen space. The
     /// image then stays above it and the controls move below it, onto the flat half.
     @State private var tabletopFold: CGRect?
@@ -170,6 +171,14 @@ struct ImagePreviewView: View {
             .ignoresSafeArea()
         }
         .statusBar(hidden: true)
+        .onAppear {
+            if playbackToken == nil { playbackToken = MediaPlaybackPresentation.shared.begin() }
+        }
+        .onDisappear {
+            if let playbackToken { MediaPlaybackPresentation.shared.end(playbackToken) }
+            playbackToken = nil
+            noticeTask?.cancel()
+        }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
         .onReceive(NotificationCenter.default.publisher(for: UIAccessibility.voiceOverStatusDidChangeNotification)) { _ in
             if UIAccessibility.isVoiceOverRunning { showsControls = true }
@@ -204,9 +213,15 @@ struct ImagePreviewView: View {
     /// The active fold running across the screen (tabletop), or nil when flat, closed, held
     /// the other way (the fold then runs top to bottom) or on a device without one.
     private static func tabletopFold(in proxy: GeometryProxy) -> CGRect? {
+        // Reserved regions are an iOS 27.1 SDK API (Swift 6.4); older toolchains, such as
+        // CI's Xcode 26, build without them.
+        #if compiler(>=6.4)
         guard #available(iOS 27.1, *) else { return nil }
         return proxy.reservedRegions(kind: .division)
             .first { $0.isActive && $0.frame.width > $0.frame.height }?.frame
+        #else
+        return nil
+        #endif
     }
 
     private func run(_ action: MediaExportAction, on attachment: Status.Attachment) {
@@ -255,10 +270,16 @@ private struct HingeChangeObserver: ViewModifier {
     let action: () -> Void
 
     func body(content: Content) -> some View {
+        // onHingeChange is an iOS 27.1 SDK API (Swift 6.4); older toolchains, such as CI's
+        // Xcode 26, build without it.
+        #if compiler(>=6.4)
         if #available(iOS 27.1, *) {
             content.onHingeChange { _, _ in action() }
         } else {
             content
         }
+        #else
+        content
+        #endif
     }
 }

@@ -67,7 +67,8 @@ extension TimelineHomeView {
     /// The same three controls as toolbar items, used when the system bar replaces the header.
     @ToolbarContentBuilder
     var systemBarToolbar: some ToolbarContent {
-        if usesSystemNavigationBar {
+        // iPhone Duo with the panel open: the bar shows the panel's controls instead.
+        if usesSystemNavigationBar && !panelOwnsSystemBar {
             // In the side bar the Me tab's avatar sits in the same column, so settings shows as
             // a gear there instead of a second avatar.
             if let onAvatarTap, toolbarIsVertical {
@@ -227,11 +228,17 @@ struct VerticalPreferredToolbarItem<Content: View>: ToolbarContent {
     @ViewBuilder let content: () -> Content
 
     var body: some ToolbarContent {
+        // axisBehavior is an iOS 27.1 SDK API (Swift 6.4); older toolchains, such as CI's
+        // Xcode 26, build the plain item.
+        #if compiler(>=6.4)
         if #available(iOS 27.1, *) {
             ToolbarItem(placement: placement, content: content)
                 .axisBehavior(.verticalPreferred)
         } else {
             ToolbarItem(placement: placement, content: content)
         }
+        #else
+        ToolbarItem(placement: placement, content: content)
+        #endif
     }
 }

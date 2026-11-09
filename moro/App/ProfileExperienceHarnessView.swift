@@ -15,6 +15,9 @@ struct ProfileExperienceHarnessView: View {
     }
 
     private static func makeState() -> AppState {
+        if ProcessInfo.processInfo.environment["UITEST_PROFILE_ANIMATED_MEDIA"] == "1" {
+            ProfileMediaFixture.prepare()
+        }
         let state = AppState()
         state.currentAccount = ProfileFixtureProtocol.account(
             id: ProcessInfo.processInfo.environment["UITEST_OTHER_PROFILE"] == "1" ? "fixture-viewer" : nil)
@@ -50,6 +53,8 @@ struct ProfileExperienceHarnessView: View {
         .ignoresSafeArea(.container, edges: [.top, .bottom])
         .environmentObject(appState)
         .environment(\.activeAccountKey, Self.accountKey)
+        .environment(\.moroMediaPrefs, MoroMediaPreferences(
+            autoplayGIFs: ProcessInfo.processInfo.environment["UITEST_PROFILE_AUTOPLAY_OFF"] != "1"))
         .moroTheme(theme)
         .sheet(isPresented: $showsSettings) {
             SettingsSheetView(apiClient: client)
@@ -169,6 +174,12 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             for (key, file) in [("avatar", "avatar"), ("avatar_static", "avatar"), ("header", "header"), ("header_static", "header")] {
                 payload[key] = "https://profile-fixture.invalid/\(file).png"
             }
+        }
+        if ProcessInfo.processInfo.environment["UITEST_PROFILE_ANIMATED_MEDIA"] == "1" {
+            payload["avatar"] = ProfileMediaFixture.avatarURL.absoluteString
+            payload["avatar_static"] = ProfileMediaFixture.staticAvatarURL.absoluteString
+            payload["header"] = ProfileMediaFixture.headerURL.absoluteString
+            payload["header_static"] = ProfileMediaFixture.staticHeaderURL.absoluteString
         }
         return payload
     }

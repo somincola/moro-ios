@@ -39,6 +39,7 @@ struct RegistrationServerPickerView: View {
             }
             .background(theme.colors.surfaceBase)
         }
+        .moroReadableListMargins()
         .navigationTitle(MoroL10n.Login.Server.navTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

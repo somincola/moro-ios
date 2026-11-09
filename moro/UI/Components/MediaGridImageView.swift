@@ -61,29 +61,17 @@ struct MediaGridImageView: View {
         GeometryReader { geometry in
             ZStack {
                 // Image content - constrained to geometry size
-                MoroNetworkImage(
-                    url: imageURL,
-                    contentMode: contentMode,
-                    playAnimations: isGIF && mediaPrefs.autoplayGIFs
-                )
+                Group {
+                    if isGIF {
+                        InlineGIFImageView(attachment: attachment, contentMode: contentMode,
+                                           isConcealed: isConcealed)
+                    } else {
+                        MoroNetworkImage(url: imageURL, contentMode: contentMode, playAnimations: false)
+                    }
+                }
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .clipped()
                     .blur(radius: isConcealed ? 25 : 0)
-
-                // GIF play indicator if autoplay is disabled
-                if isGIF && !mediaPrefs.autoplayGIFs {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            Image(systemName: "play.circle.fill")
-                                .moroScaledFont(size: 32)
-                                .foregroundStyle(.white)
-                                .background(Circle().fill(.black.opacity(0.5)))
-                                .padding(8)
-                        }
-                    }
-                }
 
                 // Sensitive content overlay
                 if isConcealed {
@@ -109,7 +97,7 @@ struct MediaGridImageView: View {
                     }
                 }
             }
-            .accessibilityElement(children: .ignore)
+            .accessibilityElement(children: isGIF ? .contain : .ignore)
             .accessibilityLabel(mediaAccessibilityLabel)
             .accessibilityAddTraits(onTap != nil ? [.isImage, .isButton] : .isImage)
         }

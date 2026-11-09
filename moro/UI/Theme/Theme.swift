@@ -15,7 +15,7 @@ enum MoroAccentStyle: String {
 enum MoroThemeColor: String, CaseIterable {
     case blue, yellow, pink, purple, orange, green, custom
 
-    static let defaultCustomRGB: UInt32 = 0x0066CC
+    static let defaultCustomRGB: UInt32 = 0x0052A3
 
     var title: String {
         switch self {

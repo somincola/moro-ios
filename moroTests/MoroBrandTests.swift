@@ -10,10 +10,10 @@ import XCTest
 
 final class MoroBrandTests: XCTestCase {
     func testCanonicalProductURLs() {
-        XCTAssertEqual(MoroBrand.websiteURL.absoluteString, "https://moro.somincola.com/")
-        XCTAssertEqual(MoroBrand.privacyPolicyURL.absoluteString, "https://moro.somincola.com/privacy")
-        XCTAssertEqual(MoroBrand.termsOfUseURL.absoluteString, "https://moro.somincola.com/terms")
-        XCTAssertEqual(MoroBrand.supportURL.absoluteString, "https://moro.somincola.com/support")
+        XCTAssertEqual(MoroBrand.websiteURL.absoluteString, "https://getmoro.app/")
+        XCTAssertEqual(MoroBrand.privacyPolicyURL.absoluteString, "https://getmoro.app/privacy")
+        XCTAssertEqual(MoroBrand.termsOfUseURL.absoluteString, "https://getmoro.app/terms")
+        XCTAssertEqual(MoroBrand.supportURL.absoluteString, "https://getmoro.app/support")
 
         for url in [
             MoroBrand.websiteURL,
@@ -22,7 +22,7 @@ final class MoroBrandTests: XCTestCase {
             MoroBrand.supportURL,
         ] {
             XCTAssertEqual(url.scheme, "https")
-            XCTAssertEqual(url.host, "moro.somincola.com")
+            XCTAssertEqual(url.host, "getmoro.app")
         }
     }
 

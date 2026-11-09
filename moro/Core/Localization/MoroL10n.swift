@@ -345,7 +345,6 @@ public enum MoroL10n {
         public static var postVisibilityMentionedOnly: String {
             text("appsettings.postVisibility.mentionedOnly")
         }
-        public static var densitySection: String { text("appsettings.density.section") }
         public static var densityComfortable: String { text("appsettings.density.comfortable") }
         public static var densityComfortableSubtitle: String {
             text("appsettings.density.comfortable.subtitle")
@@ -578,6 +577,9 @@ public enum MoroL10n {
     public enum Notifications {
         // Page
         public static var title: String { text("notifications.title") }
+        public static func newNotifications(_ count: Int) -> String {
+            format("notifications.newNotifications", Int64(count))
+        }
         public static var notificationToggleEnable: String { text("notificationToggle.enable") }
         public static var notificationToggleDisable: String { text("notificationToggle.disable") }
 
@@ -1241,10 +1243,13 @@ public enum MoroL10n {
         public static var formNameSection: String { text("lists.form.nameSection") }
         public static var formNamePlaceholder: String { text("lists.form.namePlaceholder") }
         public static var formReplySection: String { text("lists.form.replySection") }
-        public static var formReplyLabel: String { text("lists.form.replyLabel") }
         public static var formReplyFollowed: String { text("lists.form.replyFollowed") }
         public static var formReplyList: String { text("lists.form.replyList") }
         public static var formReplyNone: String { text("lists.form.replyNone") }
+        public static var formReplyFollowedDetail: String { text("lists.form.replyFollowedDetail") }
+        public static var formReplyListDetail: String { text("lists.form.replyListDetail") }
+        public static var formReplyNoneDetail: String { text("lists.form.replyNoneDetail") }
+        public static var formDraftHint: String { text("lists.form.draftHint") }
         public static var formEditTitle: String { text("lists.form.editTitle") }
         public static var formCancel: String { text("lists.form.cancel") }
         public static var formSave: String { text("lists.form.save") }
@@ -1776,7 +1781,11 @@ public enum MoroL10n {
 
     public enum StatusDetail {
         public static var headerTitle: String { text("statusDetail.headerTitle") }
-        public static var splitPlaceholder: String { text("statusDetail.splitPlaceholder") }
+        public static var openFullScreen: String { text("statusDetail.openFullScreen") }
+        public static var splitDivider: String { text("statusDetail.splitDivider") }
+        public static var splitDividerReset: String { text("statusDetail.splitDividerReset") }
+        public static var splitDividerHint: String { text("statusDetail.splitDividerHint") }
+        public static var splitDividerLocked: String { text("statusDetail.splitDividerLocked") }
         public static var editHistory: String { text("statusDetail.editHistory") }
         public static var confirmBoostTitle: String { text("statusDetail.confirmBoostTitle") }
         public static var confirmBoostMessage: String { text("statusDetail.confirmBoostMessage") }
@@ -2109,6 +2118,11 @@ public enum MoroL10n {
         public static var standardSubtitle: String { text("tabIconTheme.standard.subtitle") }
         public static var modern: String { text("tabIconTheme.modern") }
         public static var modernSubtitle: String { text("tabIconTheme.modern.subtitle") }
+    }
+
+    public enum Tips {
+        public static var tabRetapTitle: String { text("tips.tabRetap.title") }
+        public static var tabRetapMessage: String { text("tips.tabRetap.message") }
     }
 
     public enum NavigationStyle {

@@ -16,23 +16,26 @@ final class NotificationFeedStore: ObservableObject {
     private let apiClient: MastodonAPI
     private let snapshotStore: NotificationSnapshotStore
     private let snapshotSession: NotificationSnapshotStore.Session?
-    private let minimumRefreshInterval: TimeInterval
+    private let automaticRefreshTTL: TimeInterval
+    private let isOffline: @MainActor () -> Bool
     private var models: [MastodonNotificationScope: NotificationsViewModel] = [:]
 
     init(apiClient: MastodonAPI, sessionID: String? = nil,
-        snapshotStore: NotificationSnapshotStore? = nil, minimumRefreshInterval: TimeInterval = 30) {
+        snapshotStore: NotificationSnapshotStore? = nil, automaticRefreshTTL: TimeInterval = 300,
+        isOffline: @escaping @MainActor () -> Bool = { NetworkMonitor.shared.isOffline }) {
         self.apiClient = apiClient
         let snapshotStore = snapshotStore ?? .shared
         self.snapshotStore = snapshotStore
         self.snapshotSession = sessionID.map { snapshotStore.session(for: $0) }
-        self.minimumRefreshInterval = minimumRefreshInterval
+        self.automaticRefreshTTL = automaticRefreshTTL
+        self.isOffline = isOffline
     }
 
     func model(for scope: MastodonNotificationScope) -> NotificationsViewModel {
         if let model = models[scope] { return model }
         let model = NotificationsViewModel(apiClient: apiClient, scope: scope,
             snapshotStore: snapshotStore, snapshotSession: snapshotSession,
-            minimumRefreshInterval: minimumRefreshInterval) { [weak self] item in
+            automaticRefreshTTL: automaticRefreshTTL, isOffline: isOffline) { [weak self] item in
             guard let self else { return }
             for (otherScope, otherModel) in models where otherScope != scope {
                 otherModel.removeDisplayItem(item)
@@ -108,7 +111,12 @@ final class NotificationsViewModel: ObservableObject {
     private let onFollowRequestResolved: ((NotificationDisplayItem) -> Void)?
     private let snapshotStore: NotificationSnapshotStore
     private let snapshotSession: NotificationSnapshotStore.Session?
-    private let minimumRefreshInterval: TimeInterval
+    private let isOffline: @MainActor () -> Bool
+    /// Opening the page, switching back to it or foregrounding refreshes only once the
+    /// content is older than the TTL (or a check skipped offline is owed); unread
+    /// notifications, signals and the reader's own refreshes always run.
+    private var autoRefresh: AutoRefreshSchedule
+    private var currentRefreshIsAutomatic = false
     private var didAttemptSnapshotRestore = false
     private var needsSnapshotRevalidation = false
     private var lastSuccessfulRefresh: Date?
@@ -124,7 +132,8 @@ final class NotificationsViewModel: ObservableObject {
         detailPerfTracker: StatusDetailPerformanceTracker? = nil,
         snapshotStore: NotificationSnapshotStore? = nil,
         snapshotSession: NotificationSnapshotStore.Session? = nil,
-        minimumRefreshInterval: TimeInterval = 30,
+        automaticRefreshTTL: TimeInterval = 300,
+        isOffline: @escaping @MainActor () -> Bool = { NetworkMonitor.shared.isOffline },
         onFollowRequestResolved: ((NotificationDisplayItem) -> Void)? = nil
     ) {
         self.apiClient = apiClient
@@ -134,7 +143,8 @@ final class NotificationsViewModel: ObservableObject {
         self.onFollowRequestResolved = onFollowRequestResolved
         self.snapshotStore = snapshotStore ?? .shared
         self.snapshotSession = snapshotSession
-        self.minimumRefreshInterval = minimumRefreshInterval
+        self.isOffline = isOffline
+        self.autoRefresh = AutoRefreshSchedule(ttl: automaticRefreshTTL)
     }
 
     // MARK: - Public Methods
@@ -149,12 +159,12 @@ final class NotificationsViewModel: ObservableObject {
             case .idle, .error:
                 return await self.loadInitial()
             case .loaded:
-                if !forceRefresh, !self.refreshFailed,
-                    let last = self.lastSuccessfulRefresh,
-                    Date().timeIntervalSince(last) < self.minimumRefreshInterval {
-                    return nil
-                }
-                return await self.refresh()
+                // Unread notifications are a signal: they skip the TTL and the failure
+                // backoff, though not the connection (asking offline only fails).
+                let offline = self.isOffline()
+                let due = self.autoRefresh.shouldRefresh(isOffline: offline)
+                guard due || (forceRefresh && !offline) else { return nil }
+                return await self.startRefresh(automatic: true)
             case .loading, .refreshing, .loadingMore:
                 return nil
             }
@@ -216,6 +226,7 @@ final class NotificationsViewModel: ObservableObject {
             newestNotificationID = items.first?.id
             hasMore = items.count >= 30
             lastSuccessfulRefresh = Date()
+            autoRefresh.recordSuccess()
             await persistSnapshot()
             guard isCurrentSession else { return nil }
             loadingState = .loaded
@@ -226,9 +237,21 @@ final class NotificationsViewModel: ObservableObject {
         }
     }
 
+    /// A refresh the reader asked for (`automatic` false: it also ends any failure backoff)
+    /// or one a signal started while the list is showing.
     @discardableResult
-    func refresh() async -> String? {
+    func refresh(automatic: Bool = false) async -> String? {
+        if !automatic { autoRefresh.resetBackoff() }
         if let refreshTask { return await refreshTask.value }
+        // A pull while opening the page is still loading joins that request instead of
+        // finding the feed busy and ending at once.
+        if let activationTask { return await activationTask.value }
+        return await startRefresh(automatic: automatic)
+    }
+
+    private func startRefresh(automatic: Bool) async -> String? {
+        if let refreshTask { return await refreshTask.value }
+        currentRefreshIsAutomatic = automatic
         // SwiftUI can cancel a refresh action as its content changes. Keep the
         // cached feed's request alive and let concurrent callers share its result.
         let task = Task {
@@ -325,6 +348,7 @@ final class NotificationsViewModel: ObservableObject {
                 hasMore = items.count >= 30
             }
             lastSuccessfulRefresh = Date()
+            autoRefresh.recordSuccess()
             await persistSnapshot()
             guard isCurrentSession else { return nil }
             loadingState = .loaded
@@ -334,6 +358,9 @@ final class NotificationsViewModel: ObservableObject {
             // failure; only show the full error state when there's nothing to display.
             loadingState = notifications.isEmpty ? .error(error) : .loaded
             refreshFailed = true
+            if !(error is CancellationError) {
+                autoRefresh.recordFailure(automatic: currentRefreshIsAutomatic)
+            }
             return nil
         }
     }
@@ -455,6 +482,45 @@ final class NotificationsViewModel: ObservableObject {
 
     private var isCurrentSession: Bool {
         snapshotSession.map { snapshotStore.isCurrent($0) } ?? true
+    }
+
+    // MARK: - Read Boundary
+
+    /// True once this launch has loaded the newest page from the server. Rows restored from
+    /// disk may predate a marker another client saved, so they must not move it.
+    var hasCurrentHead: Bool {
+        lastSuccessfulRefresh != nil && !needsSnapshotRevalidation
+    }
+
+    var isRefreshing: Bool {
+        if case .refreshing = loadingState { return true }
+        return activationTask != nil || refreshTask != nil
+    }
+
+    /// Orders two notification IDs: by value for numeric IDs, otherwise by list position
+    /// (the list is newest first). Nil when neither tells.
+    func isNotification(_ lhs: String, newerThan rhs: String) -> Bool? {
+        if let isNewer = Self.isNewerID(lhs, than: rhs) { return isNewer }
+        guard let lhsIndex = rawNotifications.firstIndex(where: { $0.id == lhs }),
+            let rhsIndex = rawNotifications.firstIndex(where: { $0.id == rhs })
+        else { return nil }
+        return lhsIndex < rhsIndex
+    }
+
+    /// The newest notification a row stands for (a grouped row stands for several).
+    func newestSourceID(of item: NotificationDisplayItem) -> String? {
+        item.sourceNotificationIDs.reduce(nil) { newest, id in
+            guard let newest else { return id }
+            return isNotification(id, newerThan: newest) == true ? id : newest
+        }
+    }
+
+    /// Loaded notifications newer than `notificationID`: what stays unread once it is seen.
+    func loadedNotificationCount(newerThan notificationID: String) -> Int {
+        if let index = rawNotifications.firstIndex(where: { $0.id == notificationID }) {
+            return index
+        }
+        return rawNotifications.filter { Self.isNewerID($0.id, than: notificationID) == true }.count
     }
 
     private static func isNewerID(_ lhs: String, than rhs: String) -> Bool? {

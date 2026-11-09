@@ -37,6 +37,7 @@ enum SensitiveMediaDisplay: String, CaseIterable {
 
 struct MoroMediaPreferences: Equatable {
     var autoplayGIFs: Bool = true
+    var videoAutoplayMode: AppSettings.VideoAutoplayMode = .wifi
     var sensitiveMediaDisplay: SensitiveMediaDisplay = .default
     /// Open content-warning posts by default. Media inside still follows
     /// `sensitiveMediaDisplay`; server filter warnings are never bypassed.
@@ -59,16 +60,19 @@ struct MoroMediaPreferences: Equatable {
     @MainActor
     init(settings: AppSettings) {
         autoplayGIFs = settings.autoplayGIFs
+        videoAutoplayMode = settings.videoAutoplayMode
         sensitiveMediaDisplay = settings.sensitiveMediaDisplay
         expandContentWarnings = settings.expandContentWarnings
     }
 
     init(
         autoplayGIFs: Bool = true,
+        videoAutoplayMode: AppSettings.VideoAutoplayMode = .wifi,
         sensitiveMediaDisplay: SensitiveMediaDisplay = .default,
         expandContentWarnings: Bool = false
     ) {
         self.autoplayGIFs = autoplayGIFs
+        self.videoAutoplayMode = videoAutoplayMode
         self.sensitiveMediaDisplay = sensitiveMediaDisplay
         self.expandContentWarnings = expandContentWarnings
     }

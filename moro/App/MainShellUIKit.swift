@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import TipKit
 
 #if os(iOS)
     import UIKit
@@ -75,6 +76,9 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         private var appliedAvatarURL: URL?
         private var loadedAvatarImage: UIImage?
         private var avatarTask: Task<Void, Never>?
+        private let retapTip = TabRetapRefreshTip()
+        private var retapTipTask: Task<Void, Never>?
+        private weak var retapTipPopover: UIViewController?
         private var accountSwitcherConfiguration: AccountSwitcherConfiguration
         private lazy var accountSwitcher = AccountSwitcherController(
             container: self,
@@ -137,6 +141,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
         deinit {
             avatarTask?.cancel()
+            retapTipTask?.cancel()
         }
 
         override func viewDidLoad() {
@@ -155,6 +160,41 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             super.viewDidAppear(animated)
             // A fresh shell after an account switch: reveal it.
             AccountSwitchTransition.shared.contentDidAppear()
+            observeRetapTip()
+        }
+
+        override func viewDidDisappear(_ animated: Bool) {
+            super.viewDidDisappear(animated)
+            retapTipTask?.cancel()
+            retapTipTask = nil
+        }
+
+        // MARK: - Re-tap hint
+
+        private func observeRetapTip() {
+            guard retapTipTask == nil else { return }
+            retapTipTask = Task { @MainActor [weak self, retapTip] in
+                for await shouldDisplay in retapTip.shouldDisplayUpdates {
+                    self?.updateRetapTip(shouldDisplay: shouldDisplay)
+                }
+            }
+        }
+
+        /// The hint points at the Home tab, so it only shows while Home is on screen with
+        /// nothing presented over it; switching back to Home shows it if it is still due.
+        private func updateRetapTip(shouldDisplay: Bool) {
+            guard shouldDisplay else {
+                retapTipPopover?.dismiss(animated: true)
+                retapTipPopover = nil
+                return
+            }
+            guard retapTipPopover == nil, presentedViewController == nil,
+                coordinator.selectedTab == .home, coordinator.isAtRoot(.home)
+            else { return }
+            let popover = TipUIPopoverViewController(retapTip, sourceItem: homeNavigationController.tabBarItem)
+            popover.view.accessibilityIdentifier = "tip.tabRetapRefresh"
+            present(popover, animated: true)
+            retapTipPopover = popover
         }
 
         override func viewDidLayoutSubviews() {
@@ -219,15 +259,22 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
         /// Only devices with a hinge report one; the first update arrives right after install.
         private func installHingeObserver() {
+            // UIHingeInteraction is an iOS 27.1 SDK API (Swift 6.4); older toolchains, such as
+            // CI's Xcode 26, build without it.
+            #if compiler(>=6.4)
             guard #available(iOS 27.1, *) else { return }
             let interaction = UIHingeInteraction { [weak self] _, update in
                 self?.applyHingePresence(update.hinge != nil)
             }
             view.addInteraction(interaction)
+            #endif
         }
 
         private func applyHingePresence(_ hasHinge: Bool) {
             homeNavigationController.setShowsNavigationBarAtRoot(hasHinge)
+            // Explore and Notifications put their controls in the system bar too.
+            exploreNavigationController.setShowsNavigationBarAtRoot(hasHinge)
+            inboxNavigationController.setShowsNavigationBarAtRoot(hasHinge)
             if coordinator.usesSystemHomeBar != hasHinge {
                 coordinator.usesSystemHomeBar = hasHinge
             }
@@ -550,6 +597,11 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         }
 
         private func applySelectedTabPresentation(_ tab: MainTab) {
+            if tab == .home {
+                updateRetapTip(shouldDisplay: retapTip.shouldDisplay)
+            } else if retapTipPopover != nil {
+                updateRetapTip(shouldDisplay: false)
+            }
             guard let navigationController = navigationController(for: tab) else { return }
             updateTabBarVisibility()
             applyScenePresentation(navigationController.currentSceneDescriptor)

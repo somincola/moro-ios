@@ -212,7 +212,9 @@ private final class PushNotificationFixtureProtocol: URLProtocol, @unchecked Sen
             payload = [["id": "push-conversation", "unread": false,
                 "accounts": [account], "last_status": status]]
         } else if url.path == "/api/v1/notifications/unread_count" {
-            payload = ["count": 0]
+            // UITEST_NOTIFICATIONS_UNREAD opens Inbox with a badge (a prioritized refresh).
+            let unread = ProcessInfo.processInfo.environment["UITEST_NOTIFICATIONS_UNREAD"].flatMap(Int.init)
+            payload = ["count": unread ?? 0]
         } else if url.path == "/api/v1/notifications" {
             if isMessageScenario {
                 payload = [["id": "200", "type": "mention", "created_at": "2026-09-10T01:00:00Z",
@@ -233,7 +235,10 @@ private final class PushNotificationFixtureProtocol: URLProtocol, @unchecked Sen
         } else if url.path.hasPrefix("/api/v1/statuses/") {
             payload = status
         } else if url.path.hasSuffix("/search") {
-            payload = ["accounts": [], "hashtags": [], "statuses": [status]]
+            // One of each, so iPhone Duo's Explore can open a person and a topic beside the list.
+            let topic: [String: Any] = ["name": "pushtopic", "url": "https://\(url.host ?? "")/tags/pushtopic",
+                "history": [] as [Any]]
+            payload = ["accounts": [account], "hashtags": [topic], "statuses": [status]]
         } else if url.path.hasSuffix("/markers") {
             payload = [:]
         } else if url.path.contains("/instance") {

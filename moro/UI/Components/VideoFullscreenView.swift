@@ -48,13 +48,13 @@ struct VideoFullscreenView: View {
             playerObserver.setPlayer(url: attachment.url, isGIF: isGIF)
             // Opened on purpose, so it plays with sound.
             playerObserver.setMuted(false)
-            VideoAudioSession.beginAudiblePlayback()
+            if !isGIF { VideoAudioSession.beginAudiblePlayback() }
             playerObserver.play()
         }
         .onDisappear {
             // Back in the timeline it plays silently again, and other audio resumes.
             playerObserver.setMuted(true)
-            VideoAudioSession.endAudiblePlayback()
+            if !isGIF { VideoAudioSession.endAudiblePlayback() }
             playerObserver.tearDown()
         }
     }
@@ -63,6 +63,8 @@ struct VideoFullscreenView: View {
 /// The system playback controls (scrubber, volume, AirPlay) around a player.
 struct SystemVideoPlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
@@ -76,6 +78,20 @@ struct SystemVideoPlayerView: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
         if controller.player !== player {
             controller.player = player
+        }
+    }
+
+    static func dismantleUIViewController(_ controller: AVPlayerViewController, coordinator: Coordinator) {
+        controller.player = nil
+        coordinator.end()
+    }
+
+    @MainActor final class Coordinator {
+        private let playbackToken = MediaPlaybackPresentation.shared.begin()
+        func end() { MediaPlaybackPresentation.shared.end(playbackToken) }
+        nonisolated deinit {
+            let token = playbackToken
+            Task { @MainActor in MediaPlaybackPresentation.shared.end(token) }
         }
     }
 }

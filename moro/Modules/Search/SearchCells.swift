@@ -515,6 +515,7 @@ final class SearchResultLineCell: UITableViewCell {
     private var leadingTopConstraint: NSLayoutConstraint?
     private var currentContent: ContentModel?
     private var hostedAccount: Account?
+    var makeAccountView: ((Account) -> AnyView)?
     private var appliedTheme = MoroTheme()
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -541,6 +542,7 @@ final class SearchResultLineCell: UITableViewCell {
         accessibilityLabel = nil
         currentContent = nil
         hostedAccount = nil
+        makeAccountView = nil
     }
 
     override func setHighlighted(_ highlighted: Bool, animated: Bool) {
@@ -668,8 +670,7 @@ final class SearchResultLineCell: UITableViewCell {
 
     private func installHostedAccountConfiguration(account: Account, theme: MoroTheme) {
         contentConfiguration = UIHostingConfiguration {
-            SearchAccountRowContentView(account: account)
-                .moroTheme(theme)
+            makeAccountView?(account) ?? AnyView(SearchAccountRowContentView(account: account).moroTheme(theme))
         }
         .margins(.all, 0)
     }
@@ -816,7 +817,8 @@ struct SearchAccountRowContentView: View {
                 imageURL: account.avatarAnimatedURL,
                 staticImageURL: account.avatarURL,
                 initials: account.displayNameInitials, seed: account.placeholderSeed,
-                size: 44
+                size: 44,
+                allowsAnimation: true
             )
 
             VStack(alignment: .leading, spacing: 3) {

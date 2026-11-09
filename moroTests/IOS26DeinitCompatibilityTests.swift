@@ -132,6 +132,9 @@ final class IOS26DeinitCompatibilityTests: XCTestCase {
         assertReleased { FollowedTopicsViewModel(apiClient: api) }
         assertReleased { TopicFollowModel(apiClient: api, name: "swift") }
         assertReleased { ListsViewModel(apiClient: api) }
+        assertReleased { ThreadSplitSelection() }
+        assertReleased { ThreadSplitPanelBar() }
+        assertReleased { SearchChromeBridge() }
         assertReleased { FavouritesViewModel(apiClient: api) }
         assertReleased { BookmarksViewModel(apiClient: api) }
         assertReleased { AnnouncementsViewModel(apiClient: api) }

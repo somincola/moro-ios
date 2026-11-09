@@ -15,12 +15,14 @@ struct MoroAvatar: View {
     /// one colour everywhere. Falls back to the initials.
     var seed: String? = nil
     var size: CGFloat = 36
+    /// Explicit opt-in on supported scrolling surfaces; other avatars stay static.
+    var allowsAnimation = false
 
     @Environment(\.moroTheme) private var theme
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.moroPlaybackScope) private var playbackScope
 
-    /// Avatars stay static in scrolling surfaces. Animated avatars create one display link per
-    /// visible image and can keep SwiftUI/CA laying out continuously on timeline/profile stacks.
+    /// Keep a static base even when a timeline grants the optional animation layer a lease.
     private var effectiveImageURL: URL? {
         staticImageURL ?? imageURL
     }
@@ -44,6 +46,10 @@ struct MoroAvatar: View {
                     thumbnailPixelSize: size * displayScale,
                     allowsAnimation: false
                 )
+                if allowsAnimation, playbackScope.allowsAnimatedAvatars, let animatedURL = imageURL,
+                   animatedURL != staticImageURL || ["gif", "apng", "webp"].contains(animatedURL.pathExtension.lowercased()) {
+                    TimelineAnimatedAvatar(url: animatedURL, size: size)
+                }
             } else {
                 GeneratedAvatar(initials: initials, seed: seed ?? initials, size: size)
             }

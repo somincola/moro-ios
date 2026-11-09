@@ -192,6 +192,7 @@ struct MainTabView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
+            coordinator.noteAppBecameActive()
             consumePendingWidgetHandoffIfNeeded()
             consumePendingSharedDraftIfNeeded()
             ensureInboxStreamSubscription()
@@ -275,7 +276,14 @@ struct MainTabView: View {
 
     private var exploreRootView: AnyView {
         routedView(
-            AnyView(ExploreTabRootView(coordinator: coordinator, apiClient: apiClient)),
+            AnyView(
+                ThreadSplitView(
+                    coordinator: coordinator, tab: .explore, router: coordinator.exploreRouter, apiClient: apiClient,
+                    opensProfilesAndTopics: true
+                ) {
+                    ExploreTabRootView(coordinator: coordinator, apiClient: apiClient)
+                }
+            ),
             router: coordinator.exploreRouter
         )
     }
@@ -296,12 +304,16 @@ struct MainTabView: View {
     private var meRootView: AnyView {
         routedView(
             AnyView(
-                MeTabRootView(
-                    coordinator: coordinator,
-                    apiClient: apiClient,
-                    accountSessions: accountSessions,
-                    activeSessionID: activeSessionID
-                )
+                ThreadSplitView(
+                    coordinator: coordinator, tab: .me, router: coordinator.meRouter, apiClient: apiClient
+                ) {
+                    MeTabRootView(
+                        coordinator: coordinator,
+                        apiClient: apiClient,
+                        accountSessions: accountSessions,
+                        activeSessionID: activeSessionID
+                    )
+                }
             ),
             router: coordinator.meRouter
         )
@@ -539,8 +551,11 @@ private struct ExploreTabRootView: View {
     let apiClient: MastodonAPI
 
     var body: some View {
-        SearchView(apiClient: apiClient, onEntryStateChanged: coordinator.setExploreSearchEntryActive)
+        SearchView(
+            apiClient: apiClient, onEntryStateChanged: coordinator.setExploreSearchEntryActive,
+            usesSystemBar: coordinator.usesSystemHomeBar)
             .environment(\.tabReselection, coordinator.tabReselection)
+            .environment(\.tabActivation, coordinator.tabActivation)
     }
 }
 
@@ -548,6 +563,7 @@ private struct MeTabRootView: View {
     /// Not observed: the profile only needs re-tap events, not every shell change.
     let coordinator: RootTabCoordinator
     @State private var tabReselection: TabReselection?
+    @State private var tabActivation: TabActivation?
     @EnvironmentObject private var appState: AppState
 
     let apiClient: MastodonAPI
@@ -566,6 +582,7 @@ private struct MeTabRootView: View {
         self.activeSessionID = activeSessionID
         // Start from the current event so an earlier re-tap is not mistaken for a new one.
         _tabReselection = State(initialValue: coordinator.tabReselection)
+        _tabActivation = State(initialValue: coordinator.tabActivation)
     }
 
     private var currentAccount: Account? {
@@ -598,7 +615,9 @@ private struct MeTabRootView: View {
             }
         }
         .environment(\.tabReselection, tabReselection)
+        .environment(\.tabActivation, tabActivation)
         .onReceive(coordinator.$tabReselection.removeDuplicates()) { tabReselection = $0 }
+        .onReceive(coordinator.$tabActivation.removeDuplicates()) { tabActivation = $0 }
     }
 }
 

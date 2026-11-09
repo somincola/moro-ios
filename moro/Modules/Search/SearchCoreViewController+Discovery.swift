@@ -30,6 +30,18 @@ extension SearchCoreViewController {
         loadDiscovery(resetAccounts: true, forceRefresh: false)
     }
 
+    /// An automatic, silent refresh of discovery past its TTL. Only at the top of the list: the
+    /// sections are replaced wholesale, which would move whatever a reader further down is on.
+    func refreshDiscoveryIfStale() {
+        guard trimmedQuery.isEmpty, interaction.page != .entry, viewIfLoaded?.window != nil,
+            discovery.hasLoaded, !discovery.isLoading, !discovery.isLoadingMoreAccounts
+        else { return }
+        guard tableView.contentOffset.y <= -tableView.adjustedContentInset.top + 1 else { return }
+        guard discoverySchedule.shouldRefresh(isOffline: NetworkMonitor.shared.isOffline) else { return }
+        discoveryRefreshIsAutomatic = true
+        loadDiscovery(resetAccounts: true)
+    }
+
     func loadDiscovery(resetAccounts: Bool, forceRefresh: Bool = false) {
         guard trimmedQuery.isEmpty else { return }
 
@@ -92,6 +104,8 @@ extension SearchCoreViewController {
 
                 let failures = [tags.error, statuses.error, accounts.result.error].compactMap { $0 }
                 if failures.count == 3, let first = failures.first { throw first }
+                // Some parts loading counts as a refresh; the missing ones are server choices.
+                discoverySchedule.recordSuccess()
                 fetchedTags = tags.value ?? []
                 fetchedStatuses = statuses.value ?? []
                 fetchedAccounts = accounts.result.value ?? []
@@ -128,6 +142,9 @@ extension SearchCoreViewController {
             discovery.hasLoaded = true
         } catch {
             guard !Task.isCancelled, requestID == discoveryRequestID else { return }
+            if resetAccounts {
+                discoverySchedule.recordFailure(automatic: discoveryRefreshIsAutomatic)
+            }
             if resetAccounts && !hasAnyDiscoveryContent {
                 discovery.errorMessage = error.localizedDescription
             }

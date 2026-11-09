@@ -39,6 +39,17 @@ final class NotificationUnreadStore: ObservableObject {
     private var stateRevisionBySession: [String: Int] = [:]
     private var seenNotificationIDsBySession: [String: Set<String>] = [:]
     private var seenNotificationIDOrderBySession: [String: [String]] = [:]
+    /// The read marker this launch last saved, per account; it only moves forward.
+    private var markedNotificationIDBySession: [String: String] = [:]
+    private var markerWriteInFlight: Set<String> = []
+    private var pendingSeenMarkerBySession: [String: SeenMarkerRequest] = [:]
+
+    private struct SeenMarkerRequest {
+        let notificationID: String
+        let remainingUnread: Int
+        let startingGeneration: Int
+        let isNewer: @MainActor (String, String) -> Bool?
+    }
 
     init(
         userDefaults: UserDefaults = MoroSharedContainer.sharedUserDefaults(),
@@ -161,21 +172,73 @@ final class NotificationUnreadStore: ObservableObject {
         pendingOpenRequest = nil
     }
 
+    /// Marks everything up to `notificationID` read, leaving no unread notifications.
     func markActiveNotificationsRead(through notificationID: String) async {
-        guard let sessionID = activeSessionID, let apiClient = activeAPIClient else { return }
-        let startingGeneration = eventGenerationBySession[sessionID, default: 0]
+        await markActiveNotificationsSeen(through: notificationID, remainingUnread: 0)
+    }
 
+    /// Moves the read marker to the newest notification the reader has actually seen.
+    ///
+    /// Downloaded or merged rows don't count; only rows that were on screen do. The marker only
+    /// moves forward (`isNewer` orders two IDs, nil when it can't tell), and `remainingUnread`
+    /// is how many loaded notifications are newer than the seen one, so they stay unread.
+    /// While a write is in flight, later calls collapse into one follow-up write.
+    func markActiveNotificationsSeen(
+        through notificationID: String,
+        remainingUnread: Int,
+        isNewer: @escaping @MainActor (String, String) -> Bool? = { _, _ in nil }
+    ) async {
+        guard let sessionID = activeSessionID else { return }
+        if let marked = markedNotificationIDBySession[sessionID],
+            marked == notificationID || isNewer(notificationID, marked) == false
+        {
+            return
+        }
+        let request = SeenMarkerRequest(
+            notificationID: notificationID,
+            remainingUnread: remainingUnread,
+            startingGeneration: eventGenerationBySession[sessionID, default: 0],
+            isNewer: isNewer
+        )
+        guard !markerWriteInFlight.contains(sessionID) else {
+            pendingSeenMarkerBySession[sessionID] = request
+            return
+        }
+        markerWriteInFlight.insert(sessionID)
+        defer { markerWriteInFlight.remove(sessionID) }
+
+        var next: SeenMarkerRequest? = request
+        while let current = next {
+            next = nil
+            await writeSeenMarker(current, sessionID: sessionID)
+            guard let pending = pendingSeenMarkerBySession.removeValue(forKey: sessionID) else { break }
+            if let marked = markedNotificationIDBySession[sessionID],
+                pending.notificationID == marked || pending.isNewer(pending.notificationID, marked) == false
+            {
+                break
+            }
+            next = pending
+        }
+    }
+
+    private func writeSeenMarker(_ request: SeenMarkerRequest, sessionID: String) async {
+        guard let apiClient = activeAPIClient, activeSessionID == sessionID else { return }
         do {
             try await saveNotificationMarkerWithConflictRetry(
-                notificationID: notificationID,
+                notificationID: request.notificationID,
                 apiClient: apiClient
             )
+            markedNotificationIDBySession[sessionID] = request.notificationID
+            // Notifications that arrived after the reader's view was measured are still unread.
             let newEvents = max(
                 0,
-                eventGenerationBySession[sessionID, default: 0] - startingGeneration
+                eventGenerationBySession[sessionID, default: 0] - request.startingGeneration
             )
-            setCount(newEvents, for: sessionID)
-            await removeDeliveredNotifications(for: sessionID)
+            let remaining = max(0, request.remainingUnread) + newEvents
+            setCount(remaining, for: sessionID)
+            if remaining == 0 {
+                await removeDeliveredNotifications(for: sessionID)
+            }
         } catch {
             // Do not clear the badge until the server accepts the read marker.
             AppLogger.error("[Notifications] failed to save read marker: \(error)")

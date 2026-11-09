@@ -163,6 +163,8 @@ struct RegistrationFlowView: View {
         .safeAreaInset(edge: .bottom) {
             submitFooter
         }
+        // The form and the submit button keep the same reading width on a wide display.
+        .moroReadableListMargins()
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(step == .pending)

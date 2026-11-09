@@ -12,6 +12,9 @@ import SwiftUI
 /// One configured player and the item it plays.
 @MainActor
 final class PooledVideoPlayer {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     let url: URL
     let isGIF: Bool
     let loops: Bool
@@ -26,7 +29,7 @@ final class PooledVideoPlayer {
         // Synchronous setup avoids races introduced by asynchronous asset loading.
         let item = AVPlayerItem(url: url)
         self.item = item
-        if isGIF || loops {
+        if loops {
             // AVQueuePlayer + AVPlayerLooper for looping
             let queuePlayer = AVQueuePlayer(playerItem: item)
             queuePlayer.isMuted = isGIF
@@ -44,7 +47,8 @@ final class PooledVideoPlayer {
     }
 
     var isReusable: Bool {
-        player.currentItem != nil && item.status != .failed
+        player.currentItem != nil && player.currentItem?.status != .failed
+            && item.status != .failed && looper?.status != .failed
     }
 
     func destroy() {
@@ -61,6 +65,10 @@ final class PooledVideoPlayer {
 @MainActor
 enum VideoAudioSession {
     private static var audibleCount = 0
+    /// Category and activation calls talk to the audio server and can block, so they run
+    /// off the main thread (the system warns otherwise). One serial queue keeps a quick
+    /// end-then-begin in order.
+    private static let queue = DispatchQueue(label: "com.somincola.moro.audio-session", qos: .userInitiated)
 
     /// A fullscreen video is playing with sound.
     static var isAudible: Bool { audibleCount > 0 }
@@ -69,9 +77,11 @@ enum VideoAudioSession {
     static func beginAudiblePlayback() {
         audibleCount += 1
         guard audibleCount == 1 else { return }
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .moviePlayback)
-        try? session.setActive(true)
+        queue.async {
+            let session = AVAudioSession.sharedInstance()
+            try? session.setCategory(.playback, mode: .moviePlayback)
+            try? session.setActive(true)
+        }
     }
 
     /// Called when it ends; other apps' audio (music, podcasts) resumes.
@@ -79,17 +89,26 @@ enum VideoAudioSession {
         guard audibleCount > 0 else { return }
         audibleCount -= 1
         guard audibleCount == 0 else { return }
-        let session = AVAudioSession.sharedInstance()
-        try? session.setActive(false, options: .notifyOthersOnDeactivation)
-        try? session.setCategory(.ambient)
+        queue.async {
+            let session = AVAudioSession.sharedInstance()
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+            try? session.setCategory(.ambient)
+        }
+    }
+
+    /// Waits for session changes already queued (tests read the session right after).
+    static func waitForPendingChanges() {
+        queue.sync {}
     }
 
     /// Silent timeline playback mixes with other audio instead of interrupting it.
     static func prepareForSilentPlayback() {
         guard audibleCount == 0 else { return }
-        let session = AVAudioSession.sharedInstance()
-        if session.category != .ambient {
-            try? session.setCategory(.ambient)
+        queue.async {
+            let session = AVAudioSession.sharedInstance()
+            if session.category != .ambient {
+                try? session.setCategory(.ambient)
+            }
         }
     }
 }
@@ -107,16 +126,27 @@ final class TimelineVideoPlayerPool {
     /// Players on screen, with how many views hold each.
     private var active: [(entry: PooledVideoPlayer, holders: Int)] = []
     private var parked: [PooledVideoPlayer] = []
-    private var memoryWarningObserver: NSObjectProtocol?
+    private var lifecycleObservers: [NSObjectProtocol] = []
+    private var parkedExpiries: [ObjectIdentifier: Task<Void, Never>] = [:]
+    private let warmLifetime: TimeInterval
+    private var isSuspended = false
 
-    init(capacity: Int = 3) {
+    init(capacity: Int = 3, warmLifetime: TimeInterval = 2) {
         self.capacity = capacity
-        memoryWarningObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.removeAll() }
+        self.warmLifetime = warmLifetime
+        for name in [UIApplication.didReceiveMemoryWarningNotification,
+                     UIApplication.didEnterBackgroundNotification, UIApplication.willEnterForegroundNotification] {
+            lifecycleObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil,
+                queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if name == UIApplication.willEnterForegroundNotification { self.isSuspended = false }
+                    else {
+                        if name == UIApplication.didEnterBackgroundNotification { self.isSuspended = true }
+                        self.removeAll()
+                    }
+                }
+            })
         }
     }
 
@@ -138,8 +168,8 @@ final class TimelineVideoPlayerPool {
 
     /// The player already showing this video, however it was set up — so fullscreen
     /// continues the timeline video instead of starting a second download.
-    func acquireExisting(url: URL) -> PooledVideoPlayer? {
-        take { $0.url == url }
+    func acquireExisting(url: URL, loops: Bool? = nil) -> PooledVideoPlayer? {
+        take { $0.url == url && (loops == nil || $0.loops == loops) }
     }
 
     /// One holder is done. When nobody holds the player any more it is paused and parked.
@@ -152,6 +182,8 @@ final class TimelineVideoPlayerPool {
     }
 
     func removeAll() {
+        parkedExpiries.values.forEach { $0.cancel() }
+        parkedExpiries.removeAll()
         parked.forEach { $0.destroy() }
         parked.removeAll()
     }
@@ -163,6 +195,7 @@ final class TimelineVideoPlayerPool {
         }
         while let index = parked.firstIndex(where: matches) {
             let entry = parked.remove(at: index)
+            parkedExpiries.removeValue(forKey: ObjectIdentifier(entry))?.cancel()
             if entry.isReusable {
                 active.append((entry: entry, holders: 1))
                 return entry
@@ -174,26 +207,47 @@ final class TimelineVideoPlayerPool {
 
     private func park(_ entry: PooledVideoPlayer) {
         entry.player.pause()
-        guard entry.isReusable else {
+        guard entry.isReusable, !isSuspended, warmLifetime > 0 else {
             entry.destroy()
             return
         }
         // Only one parked player per video.
         parked.removeAll { existing in
             guard existing.url == entry.url else { return false }
+            parkedExpiries.removeValue(forKey: ObjectIdentifier(existing))?.cancel()
             existing.destroy()
             return true
         }
         parked.append(entry)
-        while parked.count > capacity {
-            parked.removeFirst().destroy()
+        let id = ObjectIdentifier(entry)
+        parkedExpiries[id] = Task { [weak self, weak entry] in
+            try? await Task.sleep(for: .seconds(self?.warmLifetime ?? 0))
+            guard !Task.isCancelled, let self, let entry,
+                  let index = self.parked.firstIndex(where: { $0 === entry }) else { return }
+            self.parked.remove(at: index)
+            self.parkedExpiries[id] = nil
+            entry.destroy()
         }
+        while parked.count > capacity {
+            let oldest = parked.removeFirst()
+            parkedExpiries.removeValue(forKey: ObjectIdentifier(oldest))?.cancel()
+            oldest.destroy()
+        }
+    }
+
+    // Nonisolated: an isolated teardown crashes on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {
+        lifecycleObservers.forEach(NotificationCenter.default.removeObserver)
+        parkedExpiries.values.forEach { $0.cancel() }
     }
 }
 
 @MainActor
 class VideoPlayerObserver: ObservableObject {
     @Published var playingState: AVPlayer.TimeControlStatus = .paused
+    /// Playback intent survives the transient paused state AVQueuePlayer can report
+    /// when a loop advances to its next item. An explicit pause or failure clears it.
+    @Published private(set) var isPlaybackRequested = false
     /// The video couldn't be loaded (for example the request timed out).
     @Published private(set) var didFail = false
     @Published var blurImage: UIImage?
@@ -209,27 +263,33 @@ class VideoPlayerObserver: ObservableObject {
     private var playerStatusSubscription: AnyCancellable?
     private var playerItemStatusSubscription: AnyCancellable?
     private var notificationObserver: NSObjectProtocol?
+    private var playbackGeneration = UUID()
+    @Published private(set) var didReachEnd = false
 
     init(pool: TimelineVideoPlayerPool? = nil, continuesExistingPlayer: Bool = false) {
         self.pool = pool
         self.continuesExistingPlayer = continuesExistingPlayer
     }
 
-    func setPlayer(url: URL, isGIF: Bool, shouldLoop: Bool = false) {
-        guard self.player == nil else { return }
+    func setPlayer(url: URL, isGIF: Bool, shouldLoop: Bool? = nil) {
+        let loops = shouldLoop ?? isGIF
+        if let entry, entry.url == url, entry.isGIF == isGIF, entry.loops == loops { return }
+        if self.player != nil { tearDown() }
 
         let entry: PooledVideoPlayer
         if let pool {
-            entry = (continuesExistingPlayer ? pool.acquireExisting(url: url) : nil)
-                ?? pool.acquire(url: url, isGIF: isGIF, loops: shouldLoop)
+            entry = (continuesExistingPlayer ? pool.acquireExisting(url: url, loops: shouldLoop) : nil)
+                ?? pool.acquire(url: url, isGIF: isGIF, loops: loops)
         } else {
-            entry = PooledVideoPlayer(url: url, isGIF: isGIF, loops: shouldLoop)
+            entry = PooledVideoPlayer(url: url, isGIF: isGIF, loops: loops)
         }
         let _player = entry.player
         let playerItem = entry.item
+        let generation = playbackGeneration
         self.entry = entry
         self.player = _player
         didFail = false
+        didReachEnd = false
         // Force UI update
         self.objectWillChange.send()
 
@@ -237,18 +297,28 @@ class VideoPlayerObserver: ObservableObject {
         playerStatusSubscription = _player.publisher(for: \.timeControlStatus, options: [.initial, .new])
             .receive(on: DispatchQueue.main)
             .sink { [weak self] status in
-                self?.playingState = status
+                guard let self, self.playbackGeneration == generation else { return }
+                self.playingState = status
             }
 
         // Observe player item status for error handling
-        playerItemStatusSubscription = playerItem.publisher(for: \.status, options: [.initial, .new])
+        playerItemStatusSubscription = _player.publisher(for: \.currentItem, options: [.initial, .new])
+            .map { item -> AnyPublisher<(AVPlayerItem, AVPlayerItem.Status), Never> in
+                guard let item else { return Empty().eraseToAnyPublisher() }
+                return item.publisher(for: \.status, options: [.initial, .new])
+                    .map { (item, $0) }.eraseToAnyPublisher()
+            }
+            .switchToLatest()
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] status in
+            .sink { [weak self] value in
+                guard let self, self.playbackGeneration == generation else { return }
+                let (playerItem, status) = value
                 switch status {
                 case .failed:
                     // Stop waiting: the view shows a retry button instead of loading forever.
-                    self?.didFail = true
-                    self?.player?.pause()
+                    self.didFail = true
+                    self.isPlaybackRequested = false
+                    self.player?.pause()
                     if let error = playerItem.error {
                         AppLogger.warning(
                             "[VideoPlayerObserver] Player item failed: \(error.localizedDescription)"
@@ -264,7 +334,7 @@ class VideoPlayerObserver: ObservableObject {
             }
 
         // Observe playback end only for non-looping videos
-        if !(entry.isGIF || entry.loops) {
+        if !entry.loops {
             notificationObserver = NotificationCenter.default.addObserver(
                 forName: .AVPlayerItemDidPlayToEndTime,
                 object: playerItem,
@@ -272,7 +342,10 @@ class VideoPlayerObserver: ObservableObject {
             ) { [weak self] _ in
                 let observer = self
                 Task { @MainActor [observer] in
-                    observer?.playingState = .paused
+                    guard let observer, observer.playbackGeneration == generation else { return }
+                    observer.didReachEnd = true
+                    observer.isPlaybackRequested = false
+                    observer.playingState = .paused
                 }
             }
         }
@@ -282,21 +355,39 @@ class VideoPlayerObserver: ObservableObject {
         return player
     }
 
+    /// A looping GIF keeps its playback UI through queue-item handoffs. Regular videos
+    /// still expose their replay button when AVPlayer reaches the end and pauses.
+    var isPlaybackActive: Bool {
+        playingState != .paused || ((entry?.isGIF == true || entry?.loops == true) && isPlaybackRequested)
+    }
+
     /// A video (not a looping GIF) that has played through to its last frame.
     var hasPlayedToEnd: Bool {
-        guard let entry, !(entry.isGIF || entry.loops),
+        if didReachEnd { return true }
+        guard let entry, !entry.loops,
               let item = entry.player.currentItem, item.duration.isNumeric else { return false }
         return entry.player.currentTime().seconds >= item.duration.seconds - 0.1
     }
 
     func play() {
         guard let player else { return }
+        let replay = hasPlayedToEnd
+        didReachEnd = false
+        isPlaybackRequested = true
         // A reused player that already played to the end starts over.
-        if let item = player.currentItem, item.duration.isNumeric,
-           player.currentTime() >= item.duration {
-            player.seek(to: .zero)
+        if replay {
+            player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] finished in
+                let observer = self
+                let replayPlayer = player
+                Task { @MainActor [observer, replayPlayer] in
+                    guard finished, let observer, let player = replayPlayer, observer.player === player,
+                          observer.isPlaybackRequested else { return }
+                    player.play()
+                }
+            }
+        } else {
+            player.play()
         }
-        player.play()
     }
 
     /// GIFs stay silent; they have no sound.
@@ -306,6 +397,7 @@ class VideoPlayerObserver: ObservableObject {
     }
 
     func pause() {
+        isPlaybackRequested = false
         player?.pause()
     }
 
@@ -314,6 +406,7 @@ class VideoPlayerObserver: ObservableObject {
     /// on `deinit` alone keeps decoders, KVO and player items alive unnecessarily.
     /// A shared player goes back to the pool instead, so scrolling back is instant.
     func tearDown() {
+        playbackGeneration = UUID()
         // Take the subscriptions out first and cancel them afterwards: cancelling can call
         // back into this object, which must not happen while a property is being written.
         let statusSubscription = playerStatusSubscription
@@ -343,7 +436,9 @@ class VideoPlayerObserver: ObservableObject {
         entry = nil
         player = nil
         didFail = false
+        didReachEnd = false
         blurImage = nil
+        isPlaybackRequested = false
         playingState = .paused
     }
 

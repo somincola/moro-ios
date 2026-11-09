@@ -44,6 +44,7 @@ extension TimelineHomeView {
                     )
 
                     timelinePrimaryContent(for: viewModel, timelineType: timelineType)
+                        .environment(\.moroPlaybackScope, scrollBridge.playbackScope(for: timelineType))
                 }
                 .scrollTargetLayout()
                 .moroReadableColumn()
@@ -67,7 +68,8 @@ extension TimelineHomeView {
                     max(0, -offsetY),
                     threshold: pullRefreshTriggerDistance,
                     for: timelineType,
-                    isSelected: timelineType == selectedTimeline
+                    isSelected: timelineType == selectedTimeline,
+                    isDragging: scrollBridge.isUserDragging(timelineType)
                 )
                 if crossedThreshold {
                     MoroRefreshFeedback.armed()
@@ -133,6 +135,11 @@ extension TimelineHomeView {
         trigger: TimelineViewModel.RefreshTrigger = .pull
     ) async {
         let indicatorStart = Date()
+        switch trigger {
+        case .pull: TabRetapRefreshTip.notePullToRefresh()
+        case .tabRetap: TabRetapRefreshTip.noteTabRetap()
+        default: break
+        }
         let detectionSnapshot = detectionDimension(for: timelineType).map {
             detectionManager.snapshot(for: $0)
         }

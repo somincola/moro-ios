@@ -6,6 +6,50 @@ import Testing
 
 @MainActor
 struct VideoPlayerPoolTests {
+    @Test func GIFPlaybackIntentCoversFirstFramePreparationEvenWithoutLooping() {
+        let gif = VideoPlayerObserver()
+        gif.setPlayer(url: url("manual-loading"), isGIF: true, shouldLoop: false)
+        gif.play()
+        gif.playingState = .paused
+        #expect(gif.isPlaybackActive)
+        gif.pause()
+        #expect(!gif.isPlaybackActive)
+        gif.tearDown()
+    }
+
+    @Test func fullscreenGIFStaysSilentAndReleasesItsPlaybackOwnership() {
+        let wasAudible = VideoAudioSession.isAudible
+        let wasCovered = MediaPlaybackPresentation.shared.coversInlinePlayback
+        let session = NativeVideoSession(url: url("silent-fullscreen"), isGIF: true)
+        #expect(session.player?.isMuted == true)
+        #expect(VideoAudioSession.isAudible == wasAudible)
+        #expect(MediaPlaybackPresentation.shared.coversInlinePlayback)
+        session.end()
+        #expect(MediaPlaybackPresentation.shared.coversInlinePlayback == wasCovered)
+    }
+    @Test func loopingGIFDoesNotOfferPlayDuringAQueueHandoff() {
+        let gif = VideoPlayerObserver()
+        gif.setPlayer(url: url("handoff"), isGIF: true)
+        #expect(!gif.isPlaybackActive)
+        gif.play()
+        // AVQueuePlayer can transiently publish paused while moving to the next item.
+        gif.playingState = .paused
+        #expect(gif.isPlaybackActive)
+        gif.pause()
+        #expect(!gif.isPlaybackActive)
+        gif.tearDown()
+        #expect(!gif.isPlaybackRequested)
+    }
+
+    @Test func aRegularVideoStillOffersReplayWhenItPausesAtTheEnd() {
+        let video = VideoPlayerObserver()
+        video.setPlayer(url: url("replay"), isGIF: false)
+        video.play()
+        video.playingState = .paused
+        #expect(!video.isPlaybackActive)
+        video.tearDown()
+    }
+
     /// An address that never answers within a test, so the item stays loading. (A missing
     /// local file fails within milliseconds, and a failed player is rightly never reused.)
     private func url(_ name: String) -> URL {
@@ -139,11 +183,13 @@ struct VideoPlayerPoolTests {
         VideoAudioSession.beginAudiblePlayback()
         #expect(row.getPlayer()?.isMuted == false)
         #expect(VideoAudioSession.isAudible)
+        VideoAudioSession.waitForPendingChanges()
         #expect(AVAudioSession.sharedInstance().category == .playback)
 
         fullscreen.setMuted(true)
         VideoAudioSession.endAudiblePlayback()
         #expect(!VideoAudioSession.isAudible)
+        VideoAudioSession.waitForPendingChanges()
         // Back to mixing with other apps' audio.
         #expect(AVAudioSession.sharedInstance().category == .ambient)
         #expect(row.getPlayer()?.isMuted == true)

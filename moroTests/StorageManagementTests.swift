@@ -35,13 +35,16 @@ struct StorageManagementTests {
     @Test func imageCacheLoadEndsWhenItsTaskIsCancelled() async {
         // Never answers; without cancellation this would wait for the request timeout.
         let url = URL(string: "http://10.255.255.1/storage-tests/\(UUID().uuidString).png")!
-        let started = Date()
         let task = Task { await ImageCache.shared.load(from: url) }
         try? await Task.sleep(for: .milliseconds(50))
+        let cancelled = Date()
         task.cancel()
         let image = await task.value
         #expect(image == nil)
-        #expect(Date().timeIntervalSince(started) < 5)
+        // A load that ignored cancellation would wait out the 60 s request timeout. The bound
+        // is generous because CI runs tests in parallel on few cores, and a busy main actor
+        // can delay the resumption by several seconds (12.8 s once on GitHub's runner).
+        #expect(Date().timeIntervalSince(cancelled) < 30)
     }
 
     @Test func timelineClearKeepsUnreadMarkersAcrossColdReloadAndPendingPersistence() async throws {

@@ -75,6 +75,23 @@ final class TimelineScrollBridge: ObservableObject {
     private var frozenTimelines: Set<TimelineType> = []
     private var suppressChrome: Set<TimelineType> = []
     private var active = false
+    private var playbackScopes: [TimelineType: MediaPlaybackScope] = [:]
+
+    func playbackScope(for timeline: TimelineType) -> MediaPlaybackScope {
+        if let scope = playbackScopes[timeline] { return scope }
+        let scope = MediaPlaybackScope(isActive: active && isPresented(timeline) && !frozenTimelines.contains(timeline),
+                                       allowsAnimatedAvatars: true)
+        scope.isScrolling = phases[timeline].map { $0 != .idle } ?? false
+        playbackScopes[timeline] = scope
+        return scope
+    }
+
+    private func updatePlaybackScopes() {
+        for (timeline, scope) in playbackScopes {
+            scope.isActive = active && isPresented(timeline) && !frozenTimelines.contains(timeline)
+            scope.isScrolling = phases[timeline].map { $0 != .idle } ?? false
+        }
+    }
 
     /// Owned by the bridge, not SwiftUI's onChange cycle. The pager reports the
     /// displayed controller before its parent's selection onChange can run.
@@ -138,6 +155,7 @@ final class TimelineScrollBridge: ObservableObject {
 
     func setActive(_ value: Bool) {
         active = value
+        updatePlaybackScopes()
         if !value {
             pendingLayouts = pendingLayouts.filter { $0.value.includesRefreshCollapse }
             waitingForTop.removeAll()
@@ -155,10 +173,12 @@ final class TimelineScrollBridge: ObservableObject {
             frozenTimelines.remove(timeline)
             scheduleLayoutEvent(for: timeline)
         }
+        updatePlaybackScopes()
     }
 
     func updatePhase(_ phase: ScrollPhase, for timeline: TimelineType) {
         phases[timeline] = phase
+        updatePlaybackScopes()
         if phase == .tracking || phase == .interacting {
             pendingLayouts[timeline] = nil
             waitingForTop.remove(timeline)
@@ -167,6 +187,14 @@ final class TimelineScrollBridge: ObservableObject {
             userScrollEvents.send(timeline)
         }
         if phase == .idle { scheduleLayoutEvent(for: timeline) }
+    }
+
+    /// A finger is on the timeline right now (UIKit's own flags, so it does not wait for
+    /// SwiftUI's phase callback).
+    func isUserDragging(_ timeline: TimelineType) -> Bool {
+        if let view = nativeScrollViews[timeline]?.value, view.isTracking || view.isDragging { return true }
+        let phase = phases[timeline, default: .idle]
+        return phase == .tracking || phase == .interacting
     }
 
     func isUserScrolling(_ timeline: TimelineType) -> Bool {
@@ -442,6 +470,7 @@ final class TimelineScrollBridge: ObservableObject {
             chromeNeedsSync = true
         }
         presentedTimeline = timeline
+        updatePlaybackScopes()
     }
 
     func isPresented(_ timeline: TimelineType) -> Bool {
@@ -478,15 +507,21 @@ final class TimelineScrollBridge: ObservableObject {
         proxies[timeline]?.scrollTo(targetID, anchor: .top)
     }
 
+    /// `isDragging`: a finger is on the timeline now (see `isUserDragging`).
     func updatePullRefreshDistance(
         _ distance: CGFloat,
         threshold: CGFloat,
         for timeline: TimelineType,
-        isSelected: Bool
+        isSelected: Bool,
+        isDragging: Bool
     ) -> Bool {
         guard isSelected else { return false }
         var state = pullRefreshStates[timeline] ?? TimelinePullRefreshState()
         guard state.phase != .refreshing else { return false }
+        // Only the reader's finger starts a pull. Jumping to the newest post, a lazy-row height
+        // correction or a bounce can briefly overscroll the top; without this the slot would
+        // open with them and push the rows down under a loading indicator.
+        guard state.phase != .idle || isDragging else { return false }
 
         let wasArmed = state.phase == .armed
         state.distance = max(0, distance)

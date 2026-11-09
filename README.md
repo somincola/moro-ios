@@ -9,10 +9,10 @@
 </p>
 
 <p align="center">
-  <a href="https://moro.somincola.com/">Website</a> ·
+  <a href="https://getmoro.app/">Website</a> ·
   <a href="https://apps.apple.com/app/id6776115614">App Store</a> ·
-  <a href="https://moro.somincola.com/privacy">Privacy</a> ·
-  <a href="https://moro.somincola.com/support">Support</a>
+  <a href="https://getmoro.app/privacy">Privacy</a> ·
+  <a href="https://getmoro.app/support">Support</a>
 </p>
 
 > [!NOTE]
@@ -51,13 +51,13 @@ These promotional previews are real app captures driven by fictional demo accoun
 Moro requires iOS 17 or later and works with any compatible Mastodon instance.
 
 - [Download Moro on the App Store](https://apps.apple.com/app/id6776115614)
-- [Visit the Moro website](https://moro.somincola.com/)
+- [Visit the Moro website](https://getmoro.app/)
 
 Moro is an independent, third-party Mastodon client and is not an official Mastodon app.
 
 ## Privacy
 
-Moro has no ads and does not use behavioral tracking. Account credentials are stored in the iOS Keychain, and your social content remains between your device and the Mastodon server you choose. See the [Privacy Policy](https://moro.somincola.com/privacy) for details.
+Moro has no ads and does not use behavioral tracking. Account credentials are stored in the iOS Keychain, and your social content remains between your device and the Mastodon server you choose. See the [Privacy Policy](https://getmoro.app/privacy) for details.
 
 ## Development
 

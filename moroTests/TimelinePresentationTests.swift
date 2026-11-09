@@ -37,7 +37,7 @@ struct TimelinePresentationTests {
         bridge.scrollToTop(to)
         #expect(scroll.contentOffset.y == -scroll.adjustedContentInset.top)
         #expect(bridge.commitPullRefresh(for: to, threshold: 40, isSelected: true) == false)
-        #expect(bridge.updatePullRefreshDistance(60, threshold: 40, for: to, isSelected: true))
+        #expect(bridge.updatePullRefreshDistance(60, threshold: 40, for: to, isSelected: true, isDragging: true))
         #expect(bridge.commitPullRefresh(for: to, threshold: 40, isSelected: true))
         bridge.finishPullRefresh(for: to)
     }
@@ -92,7 +92,7 @@ struct TimelinePresentationTests {
         let bridge = TimelineScrollBridge()
         bridge.setActive(true)
         bridge.register(scroll, for: .home)
-        #expect(bridge.updatePullRefreshDistance(60, threshold: 40, for: .home, isSelected: true))
+        #expect(bridge.updatePullRefreshDistance(60, threshold: 40, for: .home, isSelected: true, isDragging: true))
         #expect(bridge.commitPullRefresh(for: .home, threshold: 40, isSelected: true))
         bridge.updatePhase(.interacting, for: .home)
         bridge.finishPullRefresh(for: .home)
@@ -132,7 +132,7 @@ struct TimelinePresentationTests {
         defer { subscription.cancel() }
         var iterator = events.stream.makeAsyncIterator()
         let anchor = try #require(bridge.readingAnchors(for: .local).first)
-        #expect(bridge.updatePullRefreshDistance(60, threshold: 40, for: .local, isSelected: true))
+        #expect(bridge.updatePullRefreshDistance(60, threshold: 40, for: .local, isSelected: true, isDragging: true))
         #expect(bridge.commitPullRefresh(for: .local, threshold: 40, isSelected: true))
         if insertsHead {
             #expect(bridge.prepareContentUpdate(for: .local, revision: 1, retainedIDs: ["reader"]))

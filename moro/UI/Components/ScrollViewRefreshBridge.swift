@@ -14,6 +14,9 @@ import UIKit
 /// UIKit can start (Explore's table view does the same).
 @MainActor
 final class ScrollViewRefreshBridge {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
     weak var scrollView: UIScrollView?
 
     var isRefreshing: Bool { scrollView?.refreshControl?.isRefreshing == true }

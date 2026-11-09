@@ -11,13 +11,26 @@ let repository = URL(fileURLWithPath: sourceRoot, isDirectory: true)
 let fileManager = FileManager.default
 var snapshot: [String: Data] = [:]
 
-for directory in ["metadata/app-store/app-info", "metadata/app-store/version/1.0.0"] {
+func addJSONFiles(in directory: String, as snapshotDirectory: String) throws {
     let names = try fileManager.contentsOfDirectory(atPath: repository.appendingPathComponent(directory).path)
     for name in names where name.hasSuffix(".json") {
-        let path = "\(directory)/\(name)"
-        snapshot[path] = try Data(contentsOf: repository.appendingPathComponent(path))
+        snapshot["\(snapshotDirectory)/\(name)"] = try Data(
+            contentsOf: repository.appendingPathComponent("\(directory)/\(name)"))
     }
 }
+
+// Released versions keep the copy and links they shipped with, so the tests check the
+// newest version folder, the one the next submission will use, under a stable name.
+let versionsDirectory = "metadata/app-store/version"
+let versionNumber = { (name: String) in name.split(separator: ".").map { Int($0) ?? 0 } }
+let currentVersion = try fileManager.contentsOfDirectory(
+    atPath: repository.appendingPathComponent(versionsDirectory).path
+).filter { $0.first?.isNumber == true }
+    .max { versionNumber($0).lexicographicallyPrecedes(versionNumber($1)) }
+guard let currentVersion else { fatalError("No App Store version metadata in \(versionsDirectory)") }
+
+try addJSONFiles(in: "metadata/app-store/app-info", as: "metadata/app-store/app-info")
+try addJSONFiles(in: "\(versionsDirectory)/\(currentVersion)", as: "\(versionsDirectory)/current")
 
 for path in [
     "moro/Resources/Localizations/Moro.xcstrings",

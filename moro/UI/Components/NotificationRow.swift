@@ -228,7 +228,8 @@ struct NotificationRow: View {
                     imageURL: account.avatarAnimatedURL,
                     staticImageURL: account.avatarURL,
                     initials: account.displayNameInitials, seed: account.placeholderSeed,
-                    size: Metrics.leadingSize
+                    size: Metrics.leadingSize,
+                    allowsAnimation: true
                 )
             }
             .buttonStyle(.plain)
@@ -246,7 +247,8 @@ struct NotificationRow: View {
                         imageURL: account.avatarAnimatedURL,
                         staticImageURL: account.avatarURL,
                         initials: account.displayNameInitials, seed: account.placeholderSeed,
-                        size: Metrics.actorAvatarSize
+                        size: Metrics.actorAvatarSize,
+                        allowsAnimation: true
                     )
                     .overlay(
                         Circle()
@@ -267,6 +269,7 @@ struct NotificationRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("notifications.actors.\(notification.id)")
         .accessibilityLabel(
             isMultiActorNotification
                 ? MoroL10n.Notifications.accessibilityActorList

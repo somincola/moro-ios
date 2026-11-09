@@ -13,6 +13,15 @@ extension XCUIApplication {
     @MainActor func launch(isolatedFor testCase: XCTestCase) {
         let instance = UInt(bitPattern: ObjectIdentifier(testCase).hashValue)
         launchEnvironment["UITEST_DEFAULTS_SESSION"] = "\(uiTestRunID)|\(testCase.name)|\(instance)"
+        // Every element query makes the accessibility runtime log and emit signposts in the
+        // app. Long tests (large text, many swipes) can push that over the system's rate
+        // limit; the app's log client is then quarantined and XCTAutomationSupport's fault
+        // callback crashes the app (strcmp on NULL, seen with Xcode 27.2 on iOS 18). UI
+        // tests never read the app's logs, so turn its activity logging off.
+        // Set UITEST_KEEP_LOGS=1 in the runner's environment to keep them while debugging.
+        if ProcessInfo.processInfo.environment["UITEST_KEEP_LOGS"] != "1" {
+            launchEnvironment["OS_ACTIVITY_MODE"] = "disable"
+        }
         launch()
     }
 }

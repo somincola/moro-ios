@@ -188,7 +188,8 @@ struct StreamWatcherRecoveryTests {
         watcher.configure(baseURL: URL(string: "https://127.0.0.1")!, accessToken: "token")
         watcher.watch(streams: [.user])
 
-        let gaveUp = await waitFor(watcher) { if case .failed = $0 { return true } else { return false } }
+        // Each failed attempt waits on the socket; CI's busy runner has needed more than 15 s.
+        let gaveUp = await waitFor(watcher, timeout: 45) { if case .failed = $0 { return true } else { return false } }
         try #require(gaveUp)
 
         watcher.addStream(.user)

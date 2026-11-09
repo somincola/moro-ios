@@ -79,7 +79,11 @@ final class SearchCoreViewController: UIViewController {
     var appliedTheme: MoroTheme
 
     typealias PollVoteHandler = (String, [Int]) async -> Bool
+    var makeAccountView: ((Account) -> AnyView)?
     var makeStatusView: ((Status, @escaping PollVoteHandler) -> AnyView)?
+    let playbackScope = MediaPlaybackScope(allowsAnimatedAvatars: true)
+    let avatarVisibility = UIKitScrollVisibility()
+    private var isPlaybackPresented = false
     private var feedSubscription: AnyCancellable?
 
     var onOpenProfile: ((Account) -> Void)?
@@ -108,6 +112,21 @@ final class SearchCoreViewController: UIViewController {
     /// Highest Explore re-tap already handled; earlier events are never replayed.
     private var handledTabReselection = 0
     private var scopeHeightConstraint: NSLayoutConstraint!
+    private var searchBarTopConstraint: NSLayoutConstraint!
+    /// iPhone Duo: the search button and the scopes live in the system bar (the status row
+    /// held upright, the side bar held landscape); the field only shows once search is opened.
+    var usesSystemBar = false {
+        didSet {
+            guard oldValue != usesSystemBar, isViewLoaded else { return }
+            if !usesSystemBar { isSearchExpanded = false }
+            applySystemBarLayout()
+            updateScopePresentation()
+            setCancelButtonVisible(interaction.page == .entry)
+            syncChromeBridge()
+        }
+    }
+    private(set) var isSearchExpanded = false
+    weak var chromeBridge: SearchChromeBridge?
     let entryHost = UIHostingController(rootView: AnyView(EmptyView()))
 
     private lazy var placeholderView: SearchLandingPlaceholderView = {
@@ -158,6 +177,11 @@ final class SearchCoreViewController: UIViewController {
     private var lastRenderedSections: [SectionModel] = []
     var discovery = DiscoveryState()
     var discoveryTask: Task<Void, Never>?
+    /// Trends and suggestions are refreshed on coming back to the tab once older than 15
+    /// minutes; failed automatic refreshes back off.
+    var discoverySchedule = AutoRefreshSchedule(ttl: 15 * 60)
+    var discoveryRefreshIsAutomatic = false
+    var handledTabActivation = 0
     var discoveryRequestID = UUID()
 
     init(apiClient: MastodonAPI, initialQuery: String?, theme: MoroTheme,
@@ -228,6 +252,8 @@ final class SearchCoreViewController: UIViewController {
         library.reload()
         updateSearchChrome()
         if interaction.page == .entry { updateEntryContent() }
+        isPlaybackPresented = true
+        updateMediaPlaybackActivity()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -241,6 +267,7 @@ final class SearchCoreViewController: UIViewController {
     }
 
     func prepareForNavigation() {
+        stopMediaPlayback()
         allowsSearchFocus = false
         view.endEditing(true)
     }
@@ -248,6 +275,28 @@ final class SearchCoreViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         layoutScopeIndicator()
+        avatarVisibility.refresh()
+    }
+
+    func stopMediaPlayback() {
+        isPlaybackPresented = false
+        updateMediaPlaybackActivity()
+    }
+
+    func updateMediaPlaybackActivity() {
+        playbackScope.isActive = isPlaybackPresented && interaction.page != .entry
+        if !playbackScope.isActive { playbackScope.isScrolling = false }
+        avatarVisibility.refresh()
+    }
+
+    func setListContentOffset(_ offset: CGPoint, animated: Bool) {
+        let moves = abs(tableView.contentOffset.y - offset.y) > 0.5
+            || abs(tableView.contentOffset.x - offset.x) > 0.5
+        // A no-op animation has no completion callback. Non-animated restores also
+        // cancel the previous animation, so neither may leave avatars paused.
+        playbackScope.isScrolling = (animated && moves) || tableView.isDragging || tableView.isDecelerating
+        tableView.setContentOffset(offset, animated: animated)
+        avatarVisibility.refresh()
     }
 
     override func didReceiveMemoryWarning() {
@@ -475,8 +524,10 @@ final class SearchCoreViewController: UIViewController {
                 + SearchLayoutMetrics.searchFieldVerticalInset * 2
         )
 
+        searchBarTopConstraint = searchBar.topAnchor.constraint(
+            equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8)
         NSLayoutConstraint.activate([
-            searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            searchBarTopConstraint,
             searchBar.leadingAnchor.constraint(
                 equalTo: readableGuide.leadingAnchor,
                 constant: SearchLayoutMetrics.searchBarOuterHorizontalInset
@@ -576,6 +627,7 @@ final class SearchCoreViewController: UIViewController {
         searchFieldHeightConstraint.constant = fieldHeight
         searchBarHeightConstraint.constant = fieldHeight
             + SearchLayoutMetrics.searchFieldVerticalInset * 2
+        applySystemBarLayout()
         if let glassIconView = searchBar.searchTextField.leftView as? UIImageView {
             glassIconView.tintColor = palette.textSecondary
             glassIconView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(
@@ -650,6 +702,14 @@ final class SearchCoreViewController: UIViewController {
 
         let resolvedPalette = palette ?? appliedTheme.uiKitPalette
         let isEntry = interaction.page == .entry
+        if usesSystemBar {
+            // The system bar shows the scopes.
+            scopeControl.isHidden = true
+            scopeIndicatorView.isHidden = true
+            scopeMenuButton.isHidden = true
+            scopeHeightConstraint.constant = 0
+            return
+        }
         let usesMenu = appliedTheme.dynamicTypeSize.isAccessibilitySize
         scopeControl.isHidden = isEntry || usesMenu
         scopeIndicatorView.isHidden = isEntry || usesMenu
@@ -782,7 +842,76 @@ final class SearchCoreViewController: UIViewController {
 
     @objc
     private func handleEscapeKey() {
-        cancelSearchEntry()
+        if usesSystemBar {
+            collapseSearchFromBar()
+        } else {
+            cancelSearchEntry()
+        }
+    }
+
+    // MARK: - System bar (iPhone Duo)
+
+    /// Collapsed, the field takes no room at all; open, it sits where it always has.
+    func applySystemBarLayout() {
+        guard isViewLoaded, searchBarTopConstraint != nil else { return }
+        let hidesField = usesSystemBar && !isSearchExpanded
+        searchBar.isHidden = hidesField
+        searchBarTopConstraint.constant = hidesField ? 0 : 8
+        searchBarHeightConstraint.constant = hidesField
+            ? 0
+            : searchFieldHeightConstraint.constant + SearchLayoutMetrics.searchFieldVerticalInset * 2
+    }
+
+    func expandSearchFromBar(focus: Bool = true) {
+        guard usesSystemBar else { return }
+        isSearchExpanded = true
+        UIView.animate(withDuration: 0.2) {
+            self.applySystemBarLayout()
+            self.view.layoutIfNeeded()
+        }
+        syncChromeBridge()
+        guard focus else { return }
+        allowsSearchFocus = true
+        searchBar.searchTextField.becomeFirstResponder()
+    }
+
+    /// Close from the bar: back to discovery, field folded away.
+    func collapseSearchFromBar() {
+        guard usesSystemBar else { return }
+        if interaction.page != .discovery { showDiscovery() }
+        searchBar.searchTextField.resignFirstResponder()
+        isSearchExpanded = false
+        UIView.animate(withDuration: 0.2) {
+            self.applySystemBarLayout()
+            self.view.layoutIfNeeded()
+        }
+        syncChromeBridge()
+    }
+
+    func selectScopeFromBar(_ scope: Scope) {
+        guard scopeControl.selectedSegmentIndex != scope.segmentIndex else { return }
+        scopeControl.selectedSegmentIndex = scope.segmentIndex
+        if interaction.page == .entry {
+            // Applies to the search about to be submitted.
+            fireScopeSelectionFeedbackIfNeeded()
+            syncChromeBridge()
+        } else {
+            scopeChanged()
+        }
+    }
+
+    /// Mirrors the controller's state into the bar. Deferred, as it is often reached from
+    /// inside a SwiftUI update of the hosting view.
+    func syncChromeBridge() {
+        guard let chromeBridge else { return }
+        let expanded = isSearchExpanded
+        let scope = selectedScope
+        let hasResults = interaction.page == .results
+        DispatchQueue.main.async {
+            if chromeBridge.isExpanded != expanded { chromeBridge.isExpanded = expanded }
+            if chromeBridge.scope != scope { chromeBridge.scope = scope }
+            if chromeBridge.hasResults != hasResults { chromeBridge.hasResults = hasResults }
+        }
     }
 
     @objc
@@ -816,6 +945,7 @@ final class SearchCoreViewController: UIViewController {
     @objc
     private func scopeChanged() {
         guard interaction.page != .entry else { return }
+        syncChromeBridge()
         fireScopeSelectionFeedbackIfNeeded()
         layoutScopeIndicator()
         updateScopePresentation()
@@ -827,7 +957,7 @@ final class SearchCoreViewController: UIViewController {
             library.record(query: trimmedQuery, scope: selectedScope)
             updateSearchChrome()
             startSearch(reset: true)
-            tableView.setContentOffset(CGPoint(x: 0, y: -tableView.adjustedContentInset.top), animated: false)
+            setListContentOffset(CGPoint(x: 0, y: -tableView.adjustedContentInset.top), animated: false)
         }
     }
 
@@ -1170,7 +1300,9 @@ final class SearchCoreViewController: UIViewController {
         return hasGrowth ? inserted : []
     }
 
-    func setCancelButtonVisible(_ visible: Bool) {
+    func setCancelButtonVisible(_ requested: Bool) {
+        // With the system bar, its close button does this.
+        let visible = requested && !usesSystemBar
         guard isCancelButtonVisible != visible else { return }
         isCancelButtonVisible = visible
         // UISearchBar disables its own cancel control when it resigns first responder.
@@ -1190,11 +1322,27 @@ final class SearchCoreViewController: UIViewController {
 
     @objc
     private func handlePullToRefresh() {
+        discoverySchedule.resetBackoff()
+        discoveryRefreshIsAutomatic = false
         if trimmedQuery.isEmpty {
             loadDiscoveryIfNeeded(forceRefresh: true)
         } else {
             startSearch(reset: true)
         }
+    }
+
+    // MARK: - Tab activation
+
+    func markTabActivationSeen(_ event: TabActivation?) {
+        handledTabActivation = max(handledTabActivation, event?.sequence ?? 0)
+    }
+
+    /// Coming back to Explore (or to the app on it) refreshes stale trends quietly.
+    func handleTabActivation(_ event: TabActivation?) {
+        guard let event, event.sequence > handledTabActivation else { return }
+        handledTabActivation = event.sequence
+        guard event.tab == .explore else { return }
+        refreshDiscoveryIfStale()
     }
 
     // MARK: - Tab re-tap
@@ -1212,11 +1360,11 @@ final class SearchCoreViewController: UIViewController {
 
         let topOffset = -tableView.adjustedContentInset.top
         if tableView.contentOffset.y > topOffset + 1 {
-            tableView.setContentOffset(CGPoint(x: 0, y: topOffset), animated: true)
+            setListContentOffset(CGPoint(x: 0, y: topOffset), animated: true)
         } else if !refreshControl.isRefreshing {
             MoroRefreshFeedback.armed()
             refreshControl.beginRefreshing()
-            tableView.setContentOffset(
+            setListContentOffset(
                 CGPoint(x: 0, y: topOffset - refreshControl.frame.height), animated: true)
             handlePullToRefresh()
         }

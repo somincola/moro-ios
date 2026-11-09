@@ -34,28 +34,35 @@ final class AppStoreMetadataTests: XCTestCase {
         let localizations: [String: CatalogLocalization]
     }
 
-    /// One locale's translation: a single string, or one string per plural category.
+    /// A plain string, or plural variants (one, other, …) that each carry their own unit.
     private struct CatalogLocalization: Decodable {
-        let units: [CatalogStringUnit]
+        let stringUnit: CatalogStringUnit?
+        let variations: CatalogVariations?
 
-        private enum CodingKeys: String, CodingKey { case stringUnit, variations }
-        private struct Variation: Decodable { let stringUnit: CatalogStringUnit }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            if let unit = try container.decodeIfPresent(CatalogStringUnit.self, forKey: .stringUnit) {
-                units = [unit]
-            } else {
-                let variations = try container.decode([String: [String: Variation]].self, forKey: .variations)
-                units = variations.values.flatMap { $0.values.map(\.stringUnit) }
-            }
+        /// Every form a reader can see, keyed by plural category ("" for a plain string).
+        var forms: [(name: String, unit: CatalogStringUnit)] {
+            if let stringUnit { return [("", stringUnit)] }
+            return (variations?.plural ?? [:])
+                .sorted { $0.key < $1.key }
+                .map { ($0.key, $0.value.stringUnit) }
         }
+    }
+
+    private struct CatalogVariations: Decodable {
+        let plural: [String: CatalogPluralForm]?
+    }
+
+    private struct CatalogPluralForm: Decodable {
+        let stringUnit: CatalogStringUnit
     }
 
     private struct CatalogStringUnit: Decodable {
         let state: String
         let value: String
     }
+
+    /// The newest version folder, the one the next submission uses (see the fixture script).
+    private static let currentVersionMetadata = "metadata/app-store/version/current"
 
     private let expectedLocales: Set<String> = [
         "de-DE", "en-US", "es-ES", "fr-FR", "it", "ja", "pt-PT", "zh-Hans", "zh-Hant",
@@ -79,12 +86,13 @@ final class AppStoreMetadataTests: XCTestCase {
             as: AppInfoMetadata.self
         )
         let version = try loadMetadata(
-            at: "metadata/app-store/version/1.0.0",
+            at: Self.currentVersionMetadata,
             as: VersionMetadata.self
         )
 
         XCTAssertEqual(Set(appInfo.keys), expectedLocales)
-        XCTAssertEqual(Set(version.keys), expectedLocales)
+        // A version can add store-only languages (Arabic since 1.0.5) on top of the app's.
+        XCTAssertTrue(Set(version.keys).isSuperset(of: expectedLocales))
 
         for (locale, metadata) in appInfo {
             XCTAssertEqual(
@@ -92,9 +100,11 @@ final class AppStoreMetadataTests: XCTestCase {
                 MoroBrand.privacyPolicyURL.absoluteString,
                 locale
             )
+            // The privacy policy's "Data retention and your choices" section is where users
+            // learn how to manage and delete their data.
             XCTAssertEqual(
                 metadata.privacyChoicesUrl,
-                MoroBrand.termsOfUseURL.absoluteString,
+                MoroBrand.privacyPolicyURL.absoluteString,
                 locale
             )
         }
@@ -111,7 +121,7 @@ final class AppStoreMetadataTests: XCTestCase {
             as: AppInfoMetadata.self
         )
         let version = try loadMetadata(
-            at: "metadata/app-store/version/1.0.0",
+            at: Self.currentVersionMetadata,
             as: VersionMetadata.self
         )
 
@@ -129,7 +139,7 @@ final class AppStoreMetadataTests: XCTestCase {
 
     func testDescriptionsDoNotAdvertiseRemovedThemeColorSwitching() throws {
         let version = try loadMetadata(
-            at: "metadata/app-store/version/1.0.0",
+            at: Self.currentVersionMetadata,
             as: VersionMetadata.self
         )
         let obsoleteClaims = [
@@ -155,6 +165,7 @@ final class AppStoreMetadataTests: XCTestCase {
         let catalog = try sourceText(at: "moro/Resources/Localizations/Moro.xcstrings")
         let obsoleteCopy = [
             "https://somincola.org/moro",
+            "moro.somincola.com",
             "support@somincola.org",
             "privacy@somincola.org",
             "contract@somincola.org",
@@ -177,12 +188,12 @@ final class AppStoreMetadataTests: XCTestCase {
             XCTAssertEqual(Set(entry.localizations.keys), expectedAppLocales, key)
 
             for (locale, localization) in entry.localizations {
-                XCTAssertFalse(localization.units.isEmpty, "\(key) [\(locale)]")
-                for unit in localization.units {
-                    XCTAssertEqual(unit.state, "translated", "\(key) [\(locale)]")
+                XCTAssertFalse(localization.forms.isEmpty, "\(key) [\(locale)] has no string")
+                for form in localization.forms {
+                    XCTAssertEqual(form.unit.state, "translated", "\(key) [\(locale)] \(form.name)")
                     XCTAssertFalse(
-                        unit.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                        "\(key) [\(locale)]"
+                        form.unit.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                        "\(key) [\(locale)] \(form.name)"
                     )
                 }
             }
@@ -197,15 +208,16 @@ final class AppStoreMetadataTests: XCTestCase {
                 entry.localizations[catalog.sourceLanguage],
                 "\(key) is missing its source localization"
             )
-            let sourceUnit = try XCTUnwrap(sourceLocalization.units.first, key)
-            let expectedPlaceholders = try formatPlaceholders(in: sourceUnit.value)
+            let sourceForm = try XCTUnwrap(sourceLocalization.forms.first, "\(key) has no source string")
+            let expectedPlaceholders = try formatPlaceholders(in: sourceForm.unit.value)
 
+            // Every plural form must keep the source's arguments, so any count formats safely.
             for (locale, localization) in entry.localizations {
-                for unit in localization.units {
+                for form in localization.forms {
                     XCTAssertEqual(
-                        try formatPlaceholders(in: unit.value),
+                        try formatPlaceholders(in: form.unit.value),
                         expectedPlaceholders,
-                        "\(key) [\(locale)]"
+                        "\(key) [\(locale)] \(form.name)"
                     )
                 }
             }

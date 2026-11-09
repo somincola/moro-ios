@@ -122,7 +122,7 @@ struct moroTests {
             let range = maxID == nil ? 31...60 : 1...30
             return range.reversed().map { self.makeNotification(id: String($0), type: "mention") }
         }
-        let feeds = NotificationFeedStore(apiClient: api, minimumRefreshInterval: 0)
+        let feeds = NotificationFeedStore(apiClient: api, automaticRefreshTTL: 0)
         let all = feeds.model(for: .everything)
         let mentions = feeds.model(for: .mentions)
         await all.activate()
@@ -6280,6 +6280,100 @@ struct moroTests {
         #expect(draftStore.pendingSharedStagingItems().first?.attachments.map(\.id) == ["second"])
     }
 
+    /// A share whose image can't be imported must not reopen as a draft on every return
+    /// to the app, even after the draft is deleted (reported against 1.2).
+    @Test @MainActor func aFailedSharedImportDoesNotReopenItsDraft() async throws {
+        let draftSuiteName = "shared-compose-failed-drafts-\(UUID().uuidString)"
+        let stagingSuiteName = "shared-compose-failed-staging-\(UUID().uuidString)"
+        let draftDefaults = try #require(UserDefaults(suiteName: draftSuiteName))
+        let stagingDefaults = try #require(UserDefaults(suiteName: stagingSuiteName))
+        let stagingDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shared-compose-failed-\(UUID().uuidString)", isDirectory: true)
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shared-compose-failed-\(UUID().uuidString).png")
+        defer {
+            draftDefaults.removePersistentDomain(forName: draftSuiteName)
+            stagingDefaults.removePersistentDomain(forName: stagingSuiteName)
+            try? FileManager.default.removeItem(at: stagingDirectoryURL)
+            try? FileManager.default.removeItem(at: source)
+        }
+        // Not an image: preparing it fails, like the unreadable photo in the report.
+        try Data("not a png".utf8).write(to: source)
+
+        let draftStore = ComposeDraftStore(
+            userDefaults: draftDefaults,
+            stagingStore: SharedComposeDraftStagingStore(
+                userDefaults: stagingDefaults, baseDirectoryURL: stagingDirectoryURL)
+        )
+        _ = try draftStore.stageSharedDraft(
+            accountID: "me",
+            target: ComposeDraftTarget(kind: .newPost),
+            payload: makeComposeDraftPayload(content: "shared with a broken photo"),
+            attachments: [SharedComposeDraftAttachmentInput(sourceURL: source, mimeType: "image/png")]
+        )
+        let coordinator = SharedComposeImportCoordinator(draftStore: draftStore)
+        let resolution = try #require(coordinator.consumeNextImportableDraft(activeAccountID: "me"))
+        let sharedImport = try #require(resolution.sharedImport)
+        let viewModel = ComposeViewModel(
+            context: resolution.draft.target.composeContext,
+            apiClient: MockMastodonAPI(),
+            currentUserID: "me",
+            initialDraft: resolution.draft
+        )
+
+        let outcome = await viewModel.importSharedAttachments(from: sharedImport, draftStore: draftStore)
+
+        #expect(outcome == .failed)
+        #expect(draftStore.pendingSharedStagingItems().isEmpty, "The failed share is given up on")
+        #expect(draftStore.draft(id: resolution.draft.id)?.payload.content == "shared with a broken photo",
+            "Its text stays as a draft")
+        #expect(draftStore.removeDraft(id: resolution.draft.id))
+        #expect(coordinator.consumeNextImportableDraft(activeAccountID: "me") == nil,
+            "Deleting the draft ends it: coming back to the app opens nothing")
+    }
+
+    /// Deleting (or sending) a shared draft while some of its share is still staged, say
+    /// after the import was interrupted, finishes the share too.
+    @Test @MainActor func removingASharedDraftDropsWhatIsStillStaged() throws {
+        let draftSuiteName = "shared-compose-remove-drafts-\(UUID().uuidString)"
+        let stagingSuiteName = "shared-compose-remove-staging-\(UUID().uuidString)"
+        let draftDefaults = try #require(UserDefaults(suiteName: draftSuiteName))
+        let stagingDefaults = try #require(UserDefaults(suiteName: stagingSuiteName))
+        let stagingDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shared-compose-remove-\(UUID().uuidString)", isDirectory: true)
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shared-compose-remove-\(UUID().uuidString).txt")
+        defer {
+            draftDefaults.removePersistentDomain(forName: draftSuiteName)
+            stagingDefaults.removePersistentDomain(forName: stagingSuiteName)
+            try? FileManager.default.removeItem(at: stagingDirectoryURL)
+            try? FileManager.default.removeItem(at: source)
+        }
+        try Data("staged".utf8).write(to: source)
+
+        let draftStore = ComposeDraftStore(
+            userDefaults: draftDefaults,
+            stagingStore: SharedComposeDraftStagingStore(
+                userDefaults: stagingDefaults, baseDirectoryURL: stagingDirectoryURL)
+        )
+        let staged = try draftStore.stageSharedDraft(
+            accountID: "me",
+            target: ComposeDraftTarget(kind: .newPost),
+            payload: makeComposeDraftPayload(content: "interrupted"),
+            attachments: [SharedComposeDraftAttachmentInput(sourceURL: source, mimeType: "text/plain")]
+        )
+        let coordinator = SharedComposeImportCoordinator(draftStore: draftStore)
+        let resolution = try #require(coordinator.consumeNextImportableDraft(activeAccountID: "me"))
+        #expect(draftStore.pendingSharedStagingItems().map(\.id) == [staged.id])
+
+        #expect(draftStore.removeDraft(id: resolution.draft.id))
+
+        #expect(draftStore.pendingSharedStagingItems().isEmpty)
+        #expect(coordinator.consumeNextImportableDraft(activeAccountID: "me") == nil)
+        #expect(!FileManager.default.fileExists(
+            atPath: stagingDirectoryURL.appendingPathComponent(staged.id, isDirectory: true).path))
+    }
+
     @Test @MainActor func sharedComposeImportCoordinatorSkipsSharedDraftForDifferentActiveAccount() async throws {
         let draftSuiteName = "shared-compose-import-skip-drafts-\(UUID().uuidString)"
         let stagingSuiteName = "shared-compose-import-skip-staging-\(UUID().uuidString)"
@@ -7422,7 +7516,8 @@ private extension moroTests {
                 44,
                 threshold: 40,
                 for: .home,
-                isSelected: true
+                isSelected: true,
+                isDragging: true
             )
         )
         #expect(homeSubject.value.distance == 44)
@@ -7433,7 +7528,8 @@ private extension moroTests {
                 24,
                 threshold: 40,
                 for: .home,
-                isSelected: true
+                isSelected: true,
+                isDragging: true
             ) == false
         )
         #expect(
@@ -7447,6 +7543,37 @@ private extension moroTests {
         #expect(homeSubject.value.isRefreshing == false)
     }
 
+    /// Jumping to the newest posts, a lazy-row height correction or a bounce can push the
+    /// timeline past its top with no finger on it. That must not open the pull slot.
+    @Test @MainActor func timelineOverscrollWithoutAFingerDoesNotOpenThePullSlot() {
+        let bridge = TimelineScrollBridge()
+        let subject = bridge.pullRefreshSubject(for: .home)
+
+        #expect(bridge.updatePullRefreshDistance(
+            180, threshold: 40, for: .home, isSelected: true, isDragging: false) == false)
+        #expect(subject.value == .idle)
+        #expect(bridge.commitPullRefresh(for: .home, threshold: 40, isSelected: true) == false)
+        #expect(subject.value.isRefreshing == false)
+    }
+
+    /// Once a finger has started a pull, the bounce after it lets go still moves the slot,
+    /// so an unarmed pull closes smoothly instead of freezing open.
+    @Test @MainActor func timelinePullStartedByAFingerKeepsFollowingAfterRelease() {
+        let bridge = TimelineScrollBridge()
+        let subject = bridge.pullRefreshSubject(for: .home)
+
+        _ = bridge.updatePullRefreshDistance(30, threshold: 40, for: .home, isSelected: true, isDragging: true)
+        #expect(subject.value.distance == 30)
+        _ = bridge.updatePullRefreshDistance(12, threshold: 40, for: .home, isSelected: true, isDragging: false)
+        #expect(subject.value.distance == 12)
+        _ = bridge.updatePullRefreshDistance(0, threshold: 40, for: .home, isSelected: true, isDragging: false)
+        #expect(subject.value.distance == 0)
+        #expect(bridge.updatePullRefreshDistance(
+            90, threshold: 40, for: .home, isSelected: true, isDragging: false) == false,
+            "back at rest, a later stray overscroll starts nothing")
+        #expect(subject.value.distance == 0)
+    }
+
     @Test @MainActor func timelinePullRefreshCommitsOnceAfterArmedRelease() {
         let bridge = TimelineScrollBridge()
         let subject = bridge.pullRefreshSubject(for: .local)
@@ -7455,7 +7582,8 @@ private extension moroTests {
             48,
             threshold: 40,
             for: .local,
-            isSelected: true
+            isSelected: true,
+            isDragging: true
         )
         #expect(
             bridge.commitPullRefresh(

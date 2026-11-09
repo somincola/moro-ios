@@ -20,8 +20,11 @@ private struct ProfileStatButtonStyle: ButtonStyle {
 struct ProfileView: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.moroSceneDescriptor) private var sceneDescriptor
+    /// iPhone Duo: a post is open in the Me tab's panel and its controls take over the bar.
+    @Environment(\.threadSplitPanelOwnsBar) private var panelOwnsBar
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.displayScale) private var displayScale
     @ScaledMetric(relativeTo: .subheadline) private var bioLineSpacing: CGFloat = 2
     @ScaledMetric(relativeTo: .subheadline) private var bioParagraphSpacing: CGFloat = 6
     @Environment(\.cacheManager) private var cacheManager
@@ -40,8 +43,13 @@ struct ProfileView: View {
     @StateObject private var postMenuActionCenter: PostMenuActionCenter
 
     @State private var chromeState = ProfileChromeState()
+    /// The Me tab's own profile refreshes quietly on coming back to it once older than five
+    /// minutes (pushed profiles never get tab activations).
+    @State private var autoRefresh = AutoRefreshSchedule(ttl: 5 * 60)
     @State private var scrollPosition = ScrollPosition(edge: .top)
     @State private var actionPresentation = ProfileActionPresentationState()
+    @State private var avatarPreview: Status.Attachment?
+    @State private var isAvatarVisible = true
     @StateObject private var actionSurface = PostActionSurfaceCenter()
 
     @StateObject private var interactionService: PostInteractionService
@@ -211,7 +219,10 @@ struct ProfileView: View {
         .ignoresSafeArea(.container, edges: .top)
         .background(sceneCanvasColor)
         .background {
-            ProfileNavigationBarHeightReader(tint: UIColor(navigationForeground)) { metrics in
+            // The panel's controls sit on the plain side bar, not over the banner.
+            ProfileNavigationBarHeightReader(
+                tint: UIColor(panelOwnsBar ? theme.colors.textPrimary : navigationForeground)
+            ) { metrics in
                 navigationBarHeight = metrics.height
                 navigationBarBottom = metrics.bottom
                 navigationBarIsVertical = metrics.isVertical
@@ -225,12 +236,14 @@ struct ProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(
-            isNavigationChromeSolid ? colorScheme : .dark,
+            isNavigationChromeSolid || panelOwnsBar ? colorScheme : .dark,
             for: .navigationBar
         )
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                profileNavigationAction
+            if !panelOwnsBar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    profileNavigationAction
+                }
             }
         }
         .task {
@@ -238,6 +251,7 @@ struct ProfileView: View {
             viewModel.currentAccountID = appState.currentAccount?.id
             await viewModel.setFeaturedTagsEnabled(profilePreferences.showsFeaturedTags(accountKey: activeAccountKey))
             await viewModel.loadInitial()
+            autoRefresh.recordSuccess()
             await viewModel.loadFeaturedTags()
             syncCurrentUserProfileFromAppState()
         }
@@ -256,6 +270,7 @@ struct ProfileView: View {
         .onChange(of: currentAccountSyncKey) { _, _ in
             syncCurrentUserProfileFromAppState()
         }
+        .onTabActivate(.me) { refreshIfStale() }
         // Only the Me tab's root profile receives re-tap events (pushed profiles don't).
         .onTabReselect(.me) {
             if chromeState.scrollOffset > 1 {
@@ -264,6 +279,11 @@ struct ProfileView: View {
                 MoroRefreshFeedback.armed()
                 runRefresh()
             }
+        }
+        .fullScreenCover(item: $avatarPreview) { attachment in
+            ImagePreviewView(attachments: [attachment])
+                .moroTheme(theme)
+                .environment(\.dynamicTypeSize, dynamicTypeSize)
         }
         .profileActionPresentations(
             presentation: $actionPresentation,
@@ -343,6 +363,11 @@ struct ProfileView: View {
             let started = Date()
             let succeeded = await refreshProfileDataReportingResult()
             MoroRefreshFeedback.deliver(succeeded ? .succeeded : .failed)
+            if succeeded {
+                autoRefresh.recordSuccess()
+            } else {
+                autoRefresh.recordFailure(automatic: false)
+            }
 
             let remaining = refreshFeedbackMinimumDuration - Date().timeIntervalSince(started)
             if remaining > 0 {
@@ -350,6 +375,21 @@ struct ProfileView: View {
             }
 
             chromeState.finishRefresh()
+        }
+    }
+
+    /// Automatic and silent: no spinner, no haptics, and only at the top, so the posts
+    /// being read never move.
+    private func refreshIfStale() {
+        guard chromeState.scrollOffset <= 1, !chromeState.isRefreshing,
+            autoRefresh.shouldRefresh(isOffline: NetworkMonitor.shared.isOffline)
+        else { return }
+        Task { @MainActor in
+            if await refreshProfileDataReportingResult() {
+                autoRefresh.recordSuccess()
+            } else {
+                autoRefresh.recordFailure(automatic: true)
+            }
         }
     }
 
@@ -634,7 +674,12 @@ struct ProfileView: View {
 
         ZStack(alignment: .bottom) {
             if let headerURL = acc?.profileHeaderURL {
-                MoroNetworkImage(url: headerURL)
+                ProfileMediaImage(
+                    url: headerURL,
+                    staticURL: acc?.headerURL,
+                    thumbnailPixelSize: MoroNetworkImage.thumbnailPixelSize,
+                    isVisible: profileChromeProgress < 1 && avatarPreview == nil
+                )
                     .frame(maxWidth: .infinity)
                     .frame(height: visibleHeight + 2)
                     .clipped()
@@ -685,13 +730,7 @@ struct ProfileView: View {
         let avatarSize: CGFloat = 76
 
         HStack(alignment: .bottom, spacing: theme.spacing.m) {
-            MoroAvatar(
-                imageURL: acc?.avatarAnimatedURL,
-                staticImageURL: acc?.avatarURL,
-                initials: acc?.displayNameInitials ?? "?",
-                seed: acc?.placeholderSeed,
-                size: avatarSize
-            )
+            profileAvatar(account: acc, size: avatarSize)
             .overlay(
                 Circle()
                     .stroke(theme.colors.surfaceBase, lineWidth: 3)
@@ -709,6 +748,43 @@ struct ProfileView: View {
         .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .padding(.top, -(avatarSize / 2))  // Overlap banner by half avatar
         .padding(.bottom, theme.spacing.xs)
+    }
+
+    @ViewBuilder
+    private func profileAvatar(account: Account?, size: CGFloat) -> some View {
+        if let account, let url = account.profileAvatarURL {
+            Button {
+                avatarPreview = Status.Attachment(
+                    id: "profile-avatar-\(account.id)", type: "image", url: url,
+                    previewURL: account.avatarURL
+                )
+            } label: {
+                ZStack {
+                    theme.colors.primary50
+                    ProfileMediaImage(
+                        url: url,
+                        staticURL: account.avatarURL,
+                        thumbnailPixelSize: size * displayScale,
+                        isVisible: isAvatarVisible && avatarPreview == nil,
+                        maximumAnimatedBufferSize: 2 * 1024 * 1024
+                    )
+                }
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(theme.colors.primary300, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(MoroL10n.EditProfile.mediaAvatar)
+            .accessibilityHint(MoroL10n.ImagePreview.zoomAction)
+            .accessibilityIdentifier("profile.avatar")
+            .onScrollVisibilityChange(threshold: 0.1) { isAvatarVisible = $0 }
+        } else {
+            MoroAvatar(
+                initials: account?.displayNameInitials ?? "?",
+                seed: account?.placeholderSeed,
+                size: size
+            )
+        }
     }
 
     // MARK: - Profile Identity
@@ -1166,7 +1242,7 @@ struct ProfileView: View {
         bot: false,
         fields: [
             AccountField(
-                name: "Website", value: "<a href=\"https://moro.somincola.com\">moro.somincola.com</a>",
+                name: "Website", value: "<a href=\"https://getmoro.app\">getmoro.app</a>",
                 verifiedAt: Date()),
             AccountField(
                 name: "GitHub", value: "<a href=\"https://github.com/moro\">github.com/moro</a>"),

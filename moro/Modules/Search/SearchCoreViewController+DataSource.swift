@@ -127,6 +127,7 @@ extension SearchCoreViewController: UITableViewDataSource {
             else {
                 return UITableViewCell()
             }
+            configureAccountPlayback(cell)
             if let content = rowContent(for: row) { cell.configure(with: content, theme: appliedTheme) }
             return cell
 
@@ -137,6 +138,30 @@ extension SearchCoreViewController: UITableViewDataSource {
 }
 
 extension SearchCoreViewController: UITableViewDelegate {
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        if scrollView.isDragging || scrollView.isDecelerating { playbackScope.isScrolling = true }
+        avatarVisibility.refresh()
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        playbackScope.isScrolling = true
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate { playbackScope.isScrolling = false }
+        avatarVisibility.refresh()
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        playbackScope.isScrolling = false
+        avatarVisibility.refresh()
+    }
+
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        playbackScope.isScrolling = false
+        avatarVisibility.refresh()
+    }
+
     func tableView(_ tableView: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
         !isStatusRow(at: indexPath)
     }

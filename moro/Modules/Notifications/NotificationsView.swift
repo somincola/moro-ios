@@ -5,6 +5,7 @@
 //  Notifications list view with pull-to-refresh and infinite scroll.
 //
 
+import Combine
 import SwiftUI
 
 enum NotificationsPresentation {
@@ -94,8 +95,26 @@ private struct NotificationFeedView: View {
     @State private var isScrolledToTop = true
     @State private var refreshBridge = ScrollViewRefreshBridge()
     @State private var isPullRefreshing = false
+    /// Rows at least half on screen. Only these may move the read marker.
+    @State private var visibleRowIDs: Set<String> = []
+    @State private var isUserScrolling = false
+    /// Bumped each time the reader puts a finger on the list, so a refresh can tell whether
+    /// they took over the scroll position while it ran.
+    @State private var userScrollGeneration = 0
+    /// New or grown rows the reader hasn't seen yet; counted by the "new notifications" pill.
+    @State private var unseenNewRowIDs: Set<String> = []
+    /// New rows that just came into view, tinted briefly so the eye finds them.
+    @State private var highlightedRowIDs: Set<String> = []
+    /// Bumped to scroll the list to its newest row (only the list's reader proxy can).
+    @State private var scrollToNewestRequest = 0
+    @State private var playbackScope = MediaPlaybackScope(allowsAnimatedAvatars: true)
+    @State private var isPresented = false
 
     private static let topAnchorID = "notifications.top"
+    /// How long a refresh opened over unread notifications stays silent before the spinner
+    /// shows, so a fast answer never flashes one.
+    private static let lateIndicatorDelay: Duration = .milliseconds(800)
+    private static let highlightDuration: Duration = .seconds(2)
 
     var body: some View {
         Group {
@@ -111,13 +130,41 @@ private struct NotificationFeedView: View {
                 }
             }
         }
+        .environment(\.moroPlaybackScope, playbackScope)
+        .onAppear {
+            isPresented = true
+            updatePlaybackActivity()
+        }
+        .onDisappear {
+            isPresented = false
+            playbackScope.isActive = false
+            playbackScope.isScrolling = false
+        }
+        .onChange(of: isActive) { _, _ in updatePlaybackActivity() }
+        .onChange(of: actorsSheet?.id) { _, _ in updatePlaybackActivity() }
         .task(id: isActive) {
             guard isActive else { return }
-            await activateAndMarkRead()
+            await openFeed()
         }
         .onChange(of: notificationUnreadStore.refreshVersion) { _, _ in
             guard isActive, notificationUnreadStore.isNotificationListVisible else { return }
-            Task { await refreshAndMarkRead() }
+            Task { await refreshFeed(userInitiated: false) }
+        }
+        // Rows already on screen count as seen as soon as the list is showing and has
+        // something unread (a push can raise the count under a row the reader is looking at).
+        .onChange(of: notificationUnreadStore.isNotificationListVisible) { _, _ in markSeenRows() }
+        .onChange(of: notificationUnreadStore.activeUnreadCount) { _, _ in markSeenRows() }
+        // Automatic refreshes pause offline; back online, a check skipped meanwhile runs once.
+        .onReceive(NetworkMonitor.shared.$isConnected.removeDuplicates().dropFirst()) { connected in
+            guard connected, isActive, notificationUnreadStore.isNotificationListVisible else { return }
+            Task { await openFeed() }
+        }
+        // VoiceOver hears about new notifications once, when the pill appears.
+        .onChange(of: unseenNewRowCount > 0) { _, hasUnseen in
+            guard hasUnseen else { return }
+            AccessibilityNotification.Announcement(
+                MoroL10n.Notifications.newNotifications(unseenNewRowCount)
+            ).post()
         }
         .onChange(of: canResumePagination) { _, ready in
             if ready { loadMoreFromVisibleFooter() }
@@ -131,6 +178,11 @@ private struct NotificationFeedView: View {
             }
             .moroSheetSurface(detents: [.medium, .large])
         }
+    }
+
+    private func updatePlaybackActivity() {
+        playbackScope.isActive = isPresented && isActive && actorsSheet == nil
+        if !playbackScope.isActive { playbackScope.isScrolling = false }
     }
 
     private var notificationsContent: some View {
@@ -158,7 +210,10 @@ private struct NotificationFeedView: View {
                     message: error.localizedDescription,
                     actionTitle: MoroL10n.Notifications.retryAction,
                     action: {
-                        Task { await loadInitialAndMarkRead() }
+                        Task {
+                            await viewModel.loadInitial()
+                            markSeenRows()
+                        }
                     }
                 ))
         }
@@ -174,7 +229,7 @@ private struct NotificationFeedView: View {
                     message: MoroL10n.Notifications.emptyMessage,
                     actionTitle: MoroL10n.Notifications.refreshAction,
                     action: {
-                        Task { await refreshAndMarkRead() }
+                        Task { await refreshFeed(userInitiated: true) }
                     }
                 ))
         }
@@ -189,7 +244,7 @@ private struct NotificationFeedView: View {
                     actionTitle: selectedFilter == .all ? MoroL10n.Notifications.refreshAction : MoroL10n.Notifications.viewAll,
                     action: {
                         if selectedFilter == .all {
-                            Task { await refreshAndMarkRead() }
+                            Task { await refreshFeed(userInitiated: true) }
                         } else {
                             selectedFilter = .all
                         }
@@ -234,7 +289,7 @@ private struct NotificationFeedView: View {
                                     .foregroundStyle(theme.colors.textSecondary)
                                 Spacer()
                                 Button(MoroL10n.Notifications.retryAction) {
-                                    Task { await refreshAndMarkRead() }
+                                    Task { await refreshFeed(userInitiated: true) }
                                 }
                                 .frame(minHeight: 44)
                             }
@@ -325,6 +380,15 @@ private struct NotificationFeedView: View {
                                         }
                                 }
                             }
+                            .background {
+                                if highlightedRowIDs.contains(notification.id) {
+                                    theme.colors.themeTint.opacity(0.10)
+                                        .accessibilityIdentifier("notifications.newRowHighlight")
+                                }
+                            }
+                            .onScrollVisibilityChange(threshold: 0.5) { isVisible in
+                                rowVisibilityChanged(notification.id, isVisible: isVisible)
+                            }
                             .id(notification.id)
                         }
 
@@ -348,18 +412,30 @@ private struct NotificationFeedView: View {
                 }
             }
             .scrollPosition(id: $scrollPositionID, anchor: .top)
+            .accessibilityIdentifier("notifications.list")
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top <= 1
             } action: { _, atTop in
                 isScrolledToTop = atTop
             }
+            .onScrollPhaseChange { _, phase in
+                isUserScrolling = phase != .idle
+                // Avatars pause while the list moves and resume once it settles.
+                playbackScope.isScrolling = phase != .idle
+                if phase == .interacting { userScrollGeneration &+= 1 }
+            }
+            .onChange(of: scrollToNewestRequest) { _, _ in
+                withAnimation(.snappy) { proxy.scrollTo(Self.topAnchorID, anchor: .top) }
+            }
             .refreshable {
                 // Runs for a real pull and for a tab re-tap that started the same control.
                 isPullRefreshing = true
                 defer { isPullRefreshing = false }
-                await refreshAndMarkRead()
+                await refreshFeed(userInitiated: true)
             }
             .overlay(alignment: .top) { pullRefreshProbe }
+            .overlay(alignment: .top) { newNotificationsPill }
+            .animation(.snappy, value: unseenNewRowCount == 0)
             // Same as Home: re-tapping Inbox scrolls up, and at the top it refreshes the way a
             // pull does (spinner shown, rows pushed down). A re-tap during that refresh is ignored.
             .onTabReselect(.inbox) {
@@ -369,7 +445,7 @@ private struct NotificationFeedView: View {
                 } else if !refreshBridge.isRefreshing {
                     MoroRefreshFeedback.armed()
                     if !refreshBridge.beginRefreshing() {
-                        Task { await refreshAndMarkRead() }
+                        Task { await refreshFeed(userInitiated: true) }
                     }
                 }
             }
@@ -391,39 +467,169 @@ private struct NotificationFeedView: View {
         #endif
     }
 
-    private func loadInitialAndMarkRead() async {
-        let sessionID = notificationUnreadStore.activeSessionID
-        let newestNotificationID = await viewModel.loadInitial()
-        await markReadIfVisible(through: newestNotificationID, sessionID: sessionID)
+    // MARK: - Refresh
+
+    /// Opening the page is an automatic refresh: silent, even with unread notifications, which
+    /// only send the request at once. If it is slow and the reader is still resting at the top,
+    /// the spinner shows after a moment (checked when it would show, not when it started).
+    private func openFeed() async {
+        let prioritized = notificationUnreadStore.activeUnreadCount > 0
+        let before = rowSources()
+        let settled = isSettledAtTop
+        let generation = userScrollGeneration
+        let lateIndicator = prioritized ? Task { @MainActor in
+            try? await Task.sleep(for: Self.lateIndicatorDelay)
+            guard !Task.isCancelled else { return }
+            revealLateIndicatorIfStillWaiting()
+        } : nil
+        await viewModel.activate(forceRefresh: prioritized)
+        lateIndicator?.cancel()
+        presentRefreshResult(before: before, settled: settled, scrollGeneration: generation)
     }
 
-    private func activateAndMarkRead() async {
-        let sessionID = notificationUnreadStore.activeSessionID
-        let newestNotificationID = await viewModel.activate(
-            forceRefresh: notificationUnreadStore.activeUnreadCount > 0)
-        await markReadIfVisible(through: newestNotificationID, sessionID: sessionID)
+    /// A pull, a re-tap at the top, a retry button, or a signal (push, streaming) while the
+    /// list is showing. Signals that land during the request are not lost: when the signal
+    /// version moved while it ran, it fetches once more.
+    private func refreshFeed(userInitiated: Bool) async {
+        var signal = notificationUnreadStore.refreshVersion
+        for _ in 0..<3 {
+            let before = rowSources()
+            // The reader asked for this one, so new rows show at the top unless they take over
+            // the scroll position while it runs.
+            let settled = userInitiated || isSettledAtTop
+            let generation = userScrollGeneration
+            await viewModel.refresh(automatic: !userInitiated)
+            // SwiftUI can cancel a refresh action as its content changes even while the feed
+            // stays on screen; the result still has to be shown and its rows still counted.
+            await Task { @MainActor in
+                presentRefreshResult(before: before, settled: settled, scrollGeneration: generation)
+            }.value
+            let current = notificationUnreadStore.refreshVersion
+            guard current != signal, isActive, notificationUnreadStore.isNotificationListVisible else {
+                return
+            }
+            signal = current
+        }
     }
 
-    private func refreshAndMarkRead() async {
-        let sessionID = notificationUnreadStore.activeSessionID
-        let newestNotificationID = await viewModel.refresh()
-        // A refresh action can be cancelled during SwiftUI updates even while
-        // its feed stays visible. Recheck visibility and account before marking it.
-        await Task { @MainActor in
-            await markReadIfVisible(through: newestNotificationID, sessionID: sessionID)
-        }.value
+    private var isSettledAtTop: Bool {
+        isScrolledToTop && !isUserScrolling
     }
 
-    private func markReadIfVisible(through notificationID: String?, sessionID: String?) async {
-        // A filtered page must not mark unrelated, unseen notifications as read.
-        guard !Task.isCancelled, isActive, selectedFilter == .all,
-            sessionID == notificationUnreadStore.activeSessionID,
-            viewModel.scope == .everything, notificationUnreadStore.isNotificationListVisible,
-            let notificationID
-        else {
+    private func revealLateIndicatorIfStillWaiting() {
+        guard isActive, notificationUnreadStore.isNotificationListVisible, viewModel.isRefreshing,
+            !viewModel.notifications.isEmpty, isSettledAtTop, !refreshBridge.isRefreshing
+        else { return }
+        // Starts the list's own pull to refresh, which joins the request already running.
+        _ = refreshBridge.beginRefreshing()
+    }
+
+    /// Each row's notifications before a refresh, to tell new rows (and groups that grew)
+    /// from ones already there.
+    private func rowSources() -> [String: Set<String>] {
+        Dictionary(
+            filteredNotifications.map { ($0.id, Set($0.sourceNotificationIDs)) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    /// New rows never move what the reader is looking at. Resting at the top (or after asking
+    /// for the refresh), the list scrolls to them and tints them; otherwise the pill counts them.
+    private func presentRefreshResult(before: [String: Set<String>], settled: Bool, scrollGeneration: Int) {
+        defer { markSeenRows() }
+        // A first load has nothing to compare against: all of it is simply the list.
+        guard !before.isEmpty else { return }
+        let newRowIDs = filteredNotifications.compactMap { row -> String? in
+            guard let old = before[row.id] else { return row.id }
+            return Set(row.sourceNotificationIDs).isSubset(of: old) ? nil : row.id
+        }
+        guard !newRowIDs.isEmpty else { return }
+
+        let readerTookOver = scrollGeneration != userScrollGeneration || isUserScrolling
+        if settled, !readerTookOver, isActive {
+            highlight(newRowIDs)
+            scrollToNewestRequest &+= 1
+        } else {
+            // A group that grew while on screen has been seen already.
+            let onScreen = newRowIDs.filter(visibleRowIDs.contains)
+            highlight(onScreen)
+            unseenNewRowIDs.formUnion(newRowIDs.filter { !visibleRowIDs.contains($0) })
+        }
+    }
+
+    private func highlight(_ rowIDs: [String]) {
+        guard !rowIDs.isEmpty else { return }
+        highlightedRowIDs.formUnion(rowIDs)
+        Task { @MainActor in
+            try? await Task.sleep(for: Self.highlightDuration)
+            withAnimation(.easeOut(duration: 0.6)) { highlightedRowIDs.subtract(rowIDs) }
+        }
+    }
+
+    // MARK: - Read Boundary
+
+    private func rowVisibilityChanged(_ rowID: String, isVisible: Bool) {
+        guard isVisible else {
+            visibleRowIDs.remove(rowID)
             return
         }
-        await notificationUnreadStore.markActiveNotificationsRead(through: notificationID)
+        visibleRowIDs.insert(rowID)
+        if unseenNewRowIDs.remove(rowID) != nil {
+            highlight([rowID])
+        }
+        markSeenRows()
+    }
+
+    private var unseenNewRowCount: Int {
+        guard !unseenNewRowIDs.isEmpty else { return 0 }
+        return filteredNotifications.reduce(0) { $0 + (unseenNewRowIDs.contains($1.id) ? 1 : 0) }
+    }
+
+    /// Moves the read marker to the newest notification on screen: downloaded or merged rows
+    /// the reader hasn't seen keep the badge. Only the "All" list of the current account,
+    /// while it is showing, may move it, so "Mentions" never clears other kinds.
+    private func markSeenRows() {
+        guard isActive, selectedFilter == .all, viewModel.scope == .everything,
+            notificationUnreadStore.isNotificationListVisible,
+            notificationUnreadStore.activeUnreadCount > 0,
+            viewModel.hasCurrentHead
+        else { return }
+        let viewModel = viewModel
+        let newestSeen = filteredNotifications
+            .filter { visibleRowIDs.contains($0.id) }
+            .compactMap { viewModel.newestSourceID(of: $0) }
+            .reduce(nil) { (newest: String?, id: String) -> String? in
+                guard let newest else { return id }
+                return viewModel.isNotification(id, newerThan: newest) == true ? id : newest
+            }
+        guard let newestSeen else { return }
+        let sessionID = notificationUnreadStore.activeSessionID
+        let remainingUnread = viewModel.loadedNotificationCount(newerThan: newestSeen)
+        let store = notificationUnreadStore
+        Task { @MainActor in
+            guard sessionID == store.activeSessionID else { return }
+            await store.markActiveNotificationsSeen(
+                through: newestSeen,
+                remainingUnread: remainingUnread,
+                isNewer: { viewModel.isNotification($0, newerThan: $1) }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var newNotificationsPill: some View {
+        let count = unseenNewRowCount
+        if isActive, count > 0 {
+            Button {
+                scrollToNewestRequest &+= 1
+            } label: {
+                MoroNoticePill(icon: "arrow.up", text: MoroL10n.Notifications.newNotifications(count))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, theme.spacing.s)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .accessibilityIdentifier("notifications.newNotifications")
+        }
     }
 
     private var notificationSettingsButton: some View {
@@ -467,6 +673,7 @@ private struct NotificationActorsSheetState: Identifiable {
 private struct NotificationActorsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.moroTheme) private var theme
+    @State private var playbackScope = MediaPlaybackScope(allowsAnimatedAvatars: true)
 
     let title: String
     let accounts: [Account]
@@ -486,7 +693,8 @@ private struct NotificationActorsSheet: View {
                             imageURL: account.avatarAnimatedURL,
                             staticImageURL: account.avatarURL,
                             initials: account.displayNameInitials, seed: account.placeholderSeed,
-                            size: 40
+                            size: 40,
+                            allowsAnimation: true
                         )
                         VStack(alignment: .leading, spacing: 2) {
                             AccountDisplayNameView(
@@ -502,11 +710,19 @@ private struct NotificationActorsSheet: View {
                     .padding(.vertical, 4)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("notifications.actor.\(account.id)")
             }
             .listStyle(.plain)
+            .onScrollPhaseChange { _, phase in playbackScope.isScrolling = phase != .idle }
             .moroReadableListMargins()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
+        }
+        .environment(\.moroPlaybackScope, playbackScope)
+        .onAppear { playbackScope.isActive = true }
+        .onDisappear {
+            playbackScope.isActive = false
+            playbackScope.isScrolling = false
         }
     }
 }
