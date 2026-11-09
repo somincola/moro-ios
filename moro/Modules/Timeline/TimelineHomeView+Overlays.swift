@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 extension TimelineHomeView {
@@ -13,7 +14,9 @@ extension TimelineHomeView {
         ) {
             loadDetectedPosts(scrollToTop: true, providesFeedback: true)
         }
-        .padding(.top, headerHeight + 8)
+        // Flush with the header's bottom edge: the compact badge hangs from it, the full
+        // notice keeps its own gap below.
+        .padding(.top, headerHeight)
     }
 
     /// Re-tapping Home at the top is a pull without the finger: it opens the same petal slot
@@ -37,6 +40,7 @@ extension TimelineHomeView {
         if !session.hasRestoredReadingAnchor, !target.statuses.isEmpty {
             session.hasRestoredReadingAnchor = true
             if let saved = target.savedReadingAnchor {
+                scrollBridge.holdReadingPosition(for: timeline)
                 scrollBridge.restoreReadingAnchor(saved, for: timeline)
                 return
             }
@@ -99,6 +103,9 @@ private struct TimelineNewPostsNotice: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isAtTop: Bool
     @State private var compactTimelines: Set<TimelineType> = []
+    /// A pull to refresh is in progress: it brings the new posts in itself, so the notice
+    /// steps aside instead of flashing a count that the refresh is about to clear.
+    @State private var isPullRefreshing = false
 
     init(
         timeline: TimelineType,
@@ -122,13 +129,15 @@ private struct TimelineNewPostsNotice: View {
 
     var body: some View {
         VStack {
-            if isEnabled, !isAtTop, hasPendingPosts {
+            if isEnabled, !isAtTop, !isPullRefreshing, hasPendingPosts {
                 HStack(spacing: 0) {
                     Spacer(minLength: 0)
                     Button(action: onTap) {
                         if isCompact {
+                            // A tab hanging from the header's trailing corner; the 44pt hit
+                            // area extends below the visible badge.
                             TimelineNewPostsBadge(text: compactText)
-                                .frame(minWidth: 44, minHeight: 44)
+                                .frame(minWidth: 44, minHeight: 44, alignment: .topTrailing)
                                 .contentShape(Rectangle())
                         } else {
                             MoroNoticePill(icon: "arrow.up", text: noticeText)
@@ -140,7 +149,8 @@ private struct TimelineNewPostsNotice: View {
                     .accessibilityIdentifier("timeline.newPosts")
                     if !isCompact { Spacer(minLength: 0) }
                 }
-                .padding(.horizontal, theme.spacing.m)
+                .padding(.horizontal, isCompact ? 0 : theme.spacing.m)
+                .padding(.top, isCompact ? 0 : 8)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isCompact)
             }
             Spacer()
@@ -153,6 +163,12 @@ private struct TimelineNewPostsNotice: View {
         }
         .onChange(of: timeline) { _, newTimeline in
             isAtTop = bridge.isAtTop(newTimeline)
+            isPullRefreshing = Self.isPulling(bridge.pullRefreshSubject(for: newTimeline).value)
+        }
+        .onReceive(bridge.pullRefreshSubject(for: timeline)) { state in
+            let pulling = Self.isPulling(state)
+            guard isPullRefreshing != pulling else { return }
+            isPullRefreshing = pulling
         }
         .onReceive(bridge.userScrollEvents) { source in
             guard source == timeline, hasPendingPosts else { return }
@@ -165,6 +181,10 @@ private struct TimelineNewPostsNotice: View {
                 compactTimelines.insert(timeline)
             }
         }
+    }
+
+    private static func isPulling(_ state: TimelinePullRefreshVisualState) -> Bool {
+        state.distance > 0 || state.isPinned || state.isRefreshing
     }
 
     private var compactText: String {
@@ -187,21 +207,30 @@ private struct TimelineNewPostsBadge: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
 
+    /// Square where it meets the header (top) and the screen edge (trailing); only the
+    /// free bottom-leading corner is rounded.
+    private var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 12,
+            bottomTrailingRadius: 0, topTrailingRadius: 0, style: .continuous)
+    }
+
     var body: some View {
         Text(text)
             .moroScaledFont(size: 13, weight: .semibold)
             .monospacedDigit()
             .lineLimit(1)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .frame(minWidth: 28, minHeight: 28)
+            .padding(.leading, 14)
+            .padding(.trailing, 12)
+            .padding(.vertical, 7)
+            .frame(minWidth: 44, minHeight: 30)
             .foregroundStyle(.white)
             .background(colorScheme == .dark ? theme.colors.surfaceElevated : theme.colors.textPrimary)
-            .clipShape(Capsule())
+            .clipShape(shape)
             .overlay {
-                Capsule().stroke(colorScheme == .dark ? Color.white.opacity(0.12) : .black.opacity(0.06), lineWidth: 1)
+                if colorScheme == .dark { shape.stroke(Color.white.opacity(0.12), lineWidth: 1) }
             }
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.14), radius: 6, y: 2)
+            // Cast downward only: the top edge sits on the header.
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.12), radius: 4, y: 2)
     }
 }
 
