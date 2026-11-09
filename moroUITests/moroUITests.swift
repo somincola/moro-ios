@@ -55,6 +55,47 @@ final class moroUITests: XCTestCase {
         waitForResultLabel(result, equals: "tap:quoted-status")
     }
 
+    /// Avatar and name open the person; the action text and the time open the post,
+    /// like the preview. A notification without a post keeps opening the person.
+    @MainActor
+    func testNotificationPeopleOpenProfilesWhileActionAndTimeOpenThePost() throws {
+        let app = XCUIApplication()
+        app.terminate()
+        app.launchArguments = ["UITEST_NOTIFICATION_ROW_TAPS", "UITEST_DISABLE_ANIMATIONS"]
+        app.launchEnvironment["UITEST_NOTIFICATION_ROW_TAPS"] = "1"
+        app.launchEnvironment["UITEST_DISABLE_ANIMATIONS"] = "1"
+        app.launch(isolatedFor: self)
+        let result = app.staticTexts["notification.tapResult"]
+        XCTAssertTrue(result.waitForExistence(timeout: 12))
+
+        func tap(_ identifier: String, expecting expected: String, line: UInt = #line) {
+            let button = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", identifier)).firstMatch
+            XCTAssertTrue(button.waitForExistence(timeout: 12), "\(identifier) missing", line: line)
+            if !button.isHittable { app.swipeUp(velocity: .slow) }
+            waitForElementToBeHittable(button)
+            button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            waitForResultLabel(result, equals: "tap:\(expected)")
+        }
+
+        // Grouped likes: the people open the list, "and 3 others liked your post · 1s" the post.
+        let group = "favourite-group-" // the grouped row's id carries a time bucket
+        tap("notifications.actor.\(group)", expecting: "actors")
+        tap("notifications.action.\(group)", expecting: "action-status")
+
+        // A single like: name → profile, action and time → the liked post.
+        tap("notifications.actor.single-like-notification", expecting: "profile:actor-4")
+        tap("notifications.action.single-like-notification", expecting: "liked-status")
+
+        // A reply: name → profile, time and action → the reply.
+        tap("notifications.actor.reply-notification", expecting: "profile:actor-2")
+        tap("notifications.time.reply-notification", expecting: "reply-status")
+        tap("notifications.action.reply-notification", expecting: "reply-status")
+
+        // A follow has no post: everything about it opens the person.
+        tap("notifications.time.follow-notification", expecting: "profile:actor-3")
+        tap("notifications.action.follow-notification", expecting: "profile:actor-3")
+    }
+
     @MainActor
     func testComposeCharacterCounterAndPostButton() throws {
         let app = XCUIApplication()
