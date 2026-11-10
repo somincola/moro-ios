@@ -8,14 +8,13 @@ First launch and sign-in:
 • Moro supports several signed-in accounts. Long-press the "Me" tab to switch between them.
 
 Sharing photos into Moro (new in 1.3.1):
-• In Photos, select 1–4 photos → Share → Moro. The share sheet shows a short progress view, then Moro opens with the photos added to the post editor. Nothing is published until the user taps Post in Moro; the editor also offers saving as a draft or discarding.
-• The share extension only copies the selected photos into the app's shared container and asks the system to open Moro with a moro:// link that carries an opaque identifier (no content, no credentials). It does not upload or post anything itself.
-• If iOS does not switch to Moro automatically, the share sheet shows an "Open Moro" button; opening Moro manually continues the same import.
+• In Photos, select 1–4 photos → Share → Moro. After a short progress view, Moro opens with the photos in the post editor. Nothing is published until the user taps Post; the editor can also save a draft or discard.
+• The share extension only copies the photos into the app's shared container and asks the system to open Moro with a moro:// link carrying an opaque identifier (no content, no credentials). It never uploads or posts.
+• If iOS does not switch to Moro, the share sheet shows an "Open Moro" button; opening Moro manually continues the import.
 ---
 iPhone Duo:
-• On the wide inner display, lists stay full width. Tapping a post (or, in Explore, a person or topic) opens it in a panel on the right; the panel closes with its × button, Esc, or by dragging the divider to the right edge, and the full-screen button (two diagonal arrows) opens the page on its own.
-• Each tab's controls (Home's timeline switcher and announcements, Explore's search and scopes, Notifications' filters and settings, the open post's actions) are in the system bar: a vertical bar at the side of the display when held landscape. Settings is the gear button in that bar.
-• Lists (Home → timeline switcher → Lists) show the lists on the left and the selected list on the right.
+• On the wide inner display, tapping a post opens it in a panel on the right; close it with ×, Esc, or by dragging the divider to the right edge. The two-arrows button opens the page full screen.
+• Each tab's controls, and Settings (gear), are in the system bar at the side of the display when held landscape.
 ---
 User-Generated Content and Safety (Guideline 1.2)
 
