@@ -477,6 +477,7 @@ struct TimelineHomeView: View {
                 if lastInactiveAt == nil {
                     lastInactiveAt = Date()
                 }
+                if newValue == .background { TimelineLaunchPolicy.recordLeaving() }
             @unknown default:
                 break
             }

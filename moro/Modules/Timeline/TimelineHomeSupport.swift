@@ -183,3 +183,37 @@ private struct TimelineHomePreviewHost: View {
         .moroTheme(MoroTheme())
     }
 }
+
+/// Decides what a fresh launch does with the reading position saved by the last one.
+///
+/// iOS does not tell an app whether it was swiped away or quietly evicted in the
+/// background, so the time away stands in for the reader's intent: back within the window
+/// (typically after an eviction), the timeline reopens where it was; after a longer
+/// absence it opens at the top with the latest posts. While the app stays alive the
+/// position is always kept; this only concerns a new process.
+nonisolated enum TimelineLaunchPolicy {
+    static let restoreWindow: TimeInterval = 30 * 60
+    private static let lastLeftKey = "timeline.lastLeftAt"
+
+    /// Evaluated once per process, before this launch records its own leaving time.
+    static let restoresReadingPosition: Bool = {
+        var window = restoreWindow
+        #if DEBUG
+        if let override = ProcessInfo.processInfo.environment["UITEST_TIMELINE_RESTORE_WINDOW"]
+            .flatMap(TimeInterval.init) { window = override }
+        #endif
+        let lastLeft = UserDefaults.standard.object(forKey: lastLeftKey) as? TimeInterval
+        return shouldRestore(lastLeftAt: lastLeft.map(Date.init(timeIntervalSince1970:)), now: Date(), window: window)
+    }()
+
+    static func shouldRestore(lastLeftAt: Date?, now: Date, window: TimeInterval) -> Bool {
+        guard let lastLeftAt else { return false }
+        let away = now.timeIntervalSince(lastLeftAt)
+        return away >= 0 && away < window
+    }
+
+    static func recordLeaving(at date: Date = Date()) {
+        _ = restoresReadingPosition // settle this launch's decision before overwriting its input
+        UserDefaults.standard.set(date.timeIntervalSince1970, forKey: lastLeftKey)
+    }
+}

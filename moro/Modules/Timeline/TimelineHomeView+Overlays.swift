@@ -39,7 +39,9 @@ extension TimelineHomeView {
         let session = pageSessionStore.session(for: timeline)
         if !session.hasRestoredReadingAnchor, !target.statuses.isEmpty {
             session.hasRestoredReadingAnchor = true
-            if let saved = target.savedReadingAnchor {
+            // Back soon after leaving: reopen where the reader was. After a longer absence
+            // the timeline starts at the top with the latest posts.
+            if TimelineLaunchPolicy.restoresReadingPosition, let saved = target.savedReadingAnchor {
                 scrollBridge.holdReadingPosition(for: timeline)
                 scrollBridge.restoreReadingAnchor(saved, for: timeline)
                 return

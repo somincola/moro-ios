@@ -408,6 +408,18 @@ struct TimelineLiveUpdatesTests {
         #expect(model.failedGapIDs.isEmpty && !model.hasUnappliedUpdates)
     }
 
+    @Test func aLaunchRestoresTheReadingPositionOnlySoonAfterLeaving() {
+        let now = Date()
+        let window = TimelineLaunchPolicy.restoreWindow
+        #expect(window == 30 * 60)
+        #expect(!TimelineLaunchPolicy.shouldRestore(lastLeftAt: nil, now: now, window: window), "First launch")
+        #expect(TimelineLaunchPolicy.shouldRestore(lastLeftAt: now.addingTimeInterval(-60), now: now, window: window))
+        #expect(TimelineLaunchPolicy.shouldRestore(lastLeftAt: now.addingTimeInterval(-29 * 60), now: now, window: window))
+        #expect(!TimelineLaunchPolicy.shouldRestore(lastLeftAt: now.addingTimeInterval(-31 * 60), now: now, window: window))
+        #expect(!TimelineLaunchPolicy.shouldRestore(lastLeftAt: now.addingTimeInterval(600), now: now, window: window),
+            "A clock set backwards is not a reason to restore")
+    }
+
     private func waitForGapWork(_ condition: () -> Bool) async throws {
         // Returns as soon as the work settles; the generous limit only matters when the
         // whole suite runs in parallel and the main actor is busy.
