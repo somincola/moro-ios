@@ -712,6 +712,57 @@ final class SharedComposeDraftStagingStore {
         return try operation()
     }
 
+    /// Removes what nothing will ever import: shares nobody claimed for `maxUnclaimedAge`
+    /// (their account was removed, or they were simply forgotten), and files or cancel
+    /// markers left in the staging directory without an index entry (the extension was
+    /// killed between moving files and committing the index). `claimedIDs` are shares a
+    /// draft still owns; those are kept however old. Entries newer than `graceInterval`
+    /// are left alone so a share being staged right now is never touched.
+    @discardableResult
+    func sweep(
+        claimedIDs: Set<String>, now: Date = Date(),
+        maxUnclaimedAge: TimeInterval = 7 * 24 * 3600, graceInterval: TimeInterval = 3600
+    ) -> Int {
+        var removed = 0
+        var expired: Set<String> = []
+        let indexedIDs: Set<String>
+        do {
+            indexedIDs = try withLock {
+                let items = loadItemsLocked()
+                expired = Set(items.filter {
+                    !claimedIDs.contains($0.id) && now.timeIntervalSince($0.createdAt) > maxUnclaimedAge
+                }.map(\.id))
+                if !expired.isEmpty {
+                    try saveItemsLocked(items.filter { !expired.contains($0.id) })
+                }
+                return Set(items.map(\.id)).subtracting(expired)
+            }
+        } catch {
+            AppLogger.error("Skipped the shared compose staging sweep: \(error)")
+            return 0
+        }
+        // File work happens outside the index lock.
+        for id in expired {
+            try? fileManager.removeItem(at: baseDirectoryURL.appendingPathComponent(id, isDirectory: true))
+            removed += 1
+        }
+        let entries = (try? fileManager.contentsOfDirectory(
+            at: baseDirectoryURL, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        for entry in entries {
+            let name = entry.lastPathComponent
+            let itemID = name.hasPrefix(Self.cancelledMarkerPrefix)
+                ? String(name.dropFirst(Self.cancelledMarkerPrefix.count)) : name
+            guard UUID(uuidString: itemID) != nil, !indexedIDs.contains(itemID) else { continue }
+            let modified = (try? entry.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? now
+            guard now.timeIntervalSince(modified) > graceInterval else { continue }
+            if (try? fileManager.removeItem(at: entry)) != nil, !name.hasPrefix(Self.cancelledMarkerPrefix) {
+                removed += 1
+            }
+        }
+        return removed
+    }
+
     /// Must match `MoroShareExtensionSharedContainer.cancelledMarkerPrefix`.
     nonisolated static let cancelledMarkerPrefix = ".cancelled-"
 
@@ -933,6 +984,20 @@ final class ComposeDraftStore {
     @discardableResult
     func removePendingSharedStagingItem(id: String) -> Bool {
         stagingStore.removeItem(id: id)
+    }
+
+    /// Launch-time housekeeping for the share staging area; see `SharedComposeDraftStagingStore.sweep`.
+    @discardableResult
+    func sweepSharedStaging(now: Date = Date()) -> Int {
+        let claimed = withLock {
+            loadDraftsLocked().reduce(into: Set<String>()) { ids, draft in
+                ids.formUnion(draft.sharedImportItemIDs ?? [])
+                if draft.id.hasPrefix(Self.sharedDraftIDPrefix) {
+                    ids.insert(String(draft.id.dropFirst(Self.sharedDraftIDPrefix.count)))
+                }
+            }
+        }
+        return stagingStore.sweep(claimedIDs: claimed, now: now)
     }
 
     /// Explicit discard that also works when the shared index is unreadable.

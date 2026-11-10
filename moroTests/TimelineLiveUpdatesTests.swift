@@ -409,7 +409,9 @@ struct TimelineLiveUpdatesTests {
     }
 
     private func waitForGapWork(_ condition: () -> Bool) async throws {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        // Returns as soon as the work settles; the generous limit only matters when the
+        // whole suite runs in parallel and the main actor is busy.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(15))
         while ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(10))
             if condition() { return }

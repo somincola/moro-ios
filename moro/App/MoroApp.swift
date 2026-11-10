@@ -123,6 +123,10 @@ struct MoroApp: App {
             .onOpenURL { url in
                 SharedComposeHandoff.shared.receive(url)
             }
+            .task {
+                // Once per launch: drop shared photos that nothing will ever import.
+                ComposeDraftStore.shared.sweepSharedStaging()
+            }
             .onChange(of: scenePhase, initial: true) { _, newPhase in
                 guard newPhase == .active else { return }
                 Task { @MainActor in
