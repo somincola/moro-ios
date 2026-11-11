@@ -46,12 +46,14 @@ final class MoroShareExtensionSessionBootstrapReader {
 }
 
 enum MoroShareExtensionInputError: Error {
-    case noContent, tooManyImages, unreadableImage, sharedContainerUnavailable
+    case noContent, tooManyImages, unreadableImage, unreadableVideo, videoMustBeAlone, sharedContainerUnavailable
     var message: String {
         switch self {
         case .noContent: return L("share.error.noContent")
         case .tooManyImages: return L("share.error.tooManyImages")
         case .unreadableImage: return L("share.error.unreadableImage")
+        case .unreadableVideo: return L("share.error.unreadableVideo")
+        case .videoMustBeAlone: return L("share.error.videoMustBeAlone")
         case .sharedContainerUnavailable: return L("share.error.importFailed")
         }
     }
@@ -79,8 +81,10 @@ enum MoroShareExtensionInputLoader {
     static func load(from inputItems: [Any]) async throws -> MoroShareExtensionLoadedContent {
         let items = inputItems.compactMap { $0 as? NSExtensionItem }
         let providers = items.flatMap { $0.attachments ?? [] }
-        let images = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }
-        guard images.count <= 4 else { throw MoroShareExtensionInputError.tooManyImages }
+        let media = providers.filter { isMedia($0) }
+        let videos = media.filter { isVideo($0) }
+        guard videos.isEmpty || media.count == 1 else { throw MoroShareExtensionInputError.videoMustBeAlone }
+        guard media.count <= 4 else { throw MoroShareExtensionInputError.tooManyImages }
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("moro-share-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -88,51 +92,59 @@ enum MoroShareExtensionInputLoader {
             var textParts = items.compactMap { $0.attributedContentText?.string }
             // A Photos file URL is transport metadata, never a post's body.
             if let provider = providers.first(where: {
-                !$0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
+                !isMedia($0)
                     && $0.hasItemConformingToTypeIdentifier(UTType.plainText.identifier)
             }), let text = await loadString(provider, type: UTType.plainText.identifier) {
                 textParts.append(text)
             }
             if let provider = providers.first(where: {
-                !$0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
+                !isMedia($0)
                     && !$0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
                     && $0.hasItemConformingToTypeIdentifier(UTType.url.identifier)
             }), let text = await loadString(provider, type: UTType.url.identifier) {
                 textParts.append(text)
             }
             var attachments: [MoroShareExtensionPreparedAttachment] = []
-            // Copy one original at a time. Never decode previews or retain four full-size images.
-            for (index, provider) in images.enumerated() {
+            // Keep originals on disk. Video data must never be loaded into the extension's
+            // small memory budget; the app prepares it after the handoff.
+            for (index, provider) in media.enumerated() {
                 try Task.checkCancellation()
+                let isVideo = Self.isVideo(provider)
+                let contentType: UTType = isVideo ? .movie : .image
                 let identifier =
                     provider.registeredTypeIdentifiers.first {
                         guard let type = UTType($0) else { return false }
-                        return type.conforms(to: .image) && type.preferredMIMEType != nil
-                    } ?? UTType.image.identifier
+                        return type.conforms(to: contentType) && type.preferredMIMEType != nil
+                    } ?? contentType.identifier
                 let type = UTType(identifier)
                 let id = UUID().uuidString
-                let ext = type?.preferredFilenameExtension ?? "jpg"
-                let suggested = (provider.suggestedName ?? "image-\(index + 1)") as NSString
+                let ext = type?.preferredFilenameExtension ?? (isVideo ? "mov" : "jpg")
+                let fallbackName = "\(isVideo ? "video" : "image")-\(index + 1)"
+                let suggested = (provider.suggestedName ?? fallbackName) as NSString
                 let name = suggested.deletingPathExtension
                     .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: "\\", with: "-")
-                let fileName = "\(name.isEmpty ? "image-\(index + 1)" : name).\(ext)"
+                let fileName = "\(name.isEmpty ? fallbackName : name).\(ext)"
                 let destination = directory.appendingPathComponent("\(id).\(ext)")
                 do {
                     try await provider.moro_copyFileRepresentation(type: identifier, to: destination)
                 } catch {
                     try Task.checkCancellation()
+                    guard !isVideo else { throw MoroShareExtensionInputError.unreadableVideo }
                     let data: Data
                     do { data = try await provider.moro_loadDataRepresentation(type: identifier) } catch {
                         throw MoroShareExtensionInputError.unreadableImage
                     }
                     try data.write(to: destination, options: .atomic)
                 }
+                try Task.checkCancellation()
                 let size = try destination.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                guard size > 0 else { throw MoroShareExtensionInputError.unreadableImage }
+                guard size > 0 else {
+                    throw isVideo ? MoroShareExtensionInputError.unreadableVideo : MoroShareExtensionInputError.unreadableImage
+                }
                 attachments.append(
                     .init(
                         sourceURL: destination, fileName: fileName,
-                        mimeType: type?.preferredMIMEType ?? "image/jpeg", id: id))
+                        mimeType: type?.preferredMIMEType ?? (isVideo ? "video/quicktime" : "image/jpeg"), id: id))
             }
             var distinctText: [String] = []
             for text in textParts.map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
@@ -146,6 +158,16 @@ enum MoroShareExtensionInputLoader {
             try? FileManager.default.removeItem(at: directory)
             throw error
         }
+    }
+
+    private static func isMedia(_ provider: NSItemProvider) -> Bool {
+        provider.hasItemConformingToTypeIdentifier(UTType.image.identifier)
+            || provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier)
+    }
+
+    private static func isVideo(_ provider: NSItemProvider) -> Bool {
+        provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier)
+            && !provider.hasItemConformingToTypeIdentifier(UTType.image.identifier)
     }
 
     private static func loadString(_ provider: NSItemProvider, type: String) async -> String? {

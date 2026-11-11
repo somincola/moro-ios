@@ -512,6 +512,8 @@ public enum MoroL10n {
         // Toast / feedback messages
         public static var toastPollMediaConflict: String { text("compose.toast.pollMediaConflict") }
         public static var toastImageProcessFailed: String { text("compose.toast.imageProcessFailed") }
+        public static var toastVideoMustBeAlone: String { text("compose.toast.videoMustBeAlone") }
+        public static var toastVideoTooLarge: String { text("compose.toast.videoTooLarge") }
         public static var toastMediaCannotRetry: String { text("compose.toast.mediaCannotRetry") }
         public static var toastMediaUploadFailed: String { text("compose.toast.mediaUploadFailed") }
         public static var toastImportFailed: String { text("compose.toast.importFailed") }

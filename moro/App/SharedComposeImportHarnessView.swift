@@ -16,6 +16,9 @@ struct SharedComposeImportHarnessView: View {
             Button("Existing editor") { root.openCompose(draft: fixture.existingDraft) }
                 .accessibilityIdentifier("shareFixture.existing")
             Text(fixture.summary).accessibilityIdentifier("shareFixture.summary")
+            if fixture.scenario.contains("video") {
+                Text(fixture.videoSummary).accessibilityIdentifier("shareFixture.videoSummary")
+            }
         }
         .fullScreenCover(item: $root.composeContext, onDismiss: { fixture.refresh(); receive() }) { wrapper in
             ComposeView(context: wrapper.context, apiClient: fixture.client, currentUserID: fixture.account.id,
@@ -23,14 +26,20 @@ struct SharedComposeImportHarnessView: View {
                 onDismiss: { root.composeContext = nil }) { _ in fixture.refresh() }
                 .environmentObject(fixture.appState)
                 .safeAreaInset(edge: .bottom) {
-                    if fixture.scenario != "system" {
-                        HStack {
-                            Button("Incoming images") { fixture.stage(count: 2) }
-                                .accessibilityIdentifier("shareFixture.incoming")
-                            Text(fixture.summary).font(.caption)
-                                .accessibilityIdentifier("shareFixture.editorSummary")
+                    VStack(spacing: 4) {
+                        if !fixture.scenario.hasPrefix("system") {
+                            HStack {
+                                Button("Incoming images") { fixture.stage(count: 2) }
+                                    .accessibilityIdentifier("shareFixture.incoming")
+                                Text(fixture.summary).font(.caption)
+                                    .accessibilityIdentifier("shareFixture.editorSummary")
+                            }
+                            .padding(8).background(.thinMaterial)
                         }
-                        .padding(8).background(.thinMaterial)
+                        if fixture.scenario.contains("video") {
+                            Text(fixture.videoSummary).font(.caption)
+                                .accessibilityIdentifier("shareFixture.editorVideoSummary")
+                        }
                     }
                 }
         }
@@ -38,6 +47,7 @@ struct SharedComposeImportHarnessView: View {
         .onReceive(NotificationCenter.default.publisher(for: SharedComposeHandoff.received)) { _ in receive() }
         .onReceive(Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()) { _ in fixture.refresh() }
         .onChange(of: scenePhase) { _, phase in if phase == .active { receive() } }
+        .task { await fixture.prepareVideo() }
     }
 
     private func receive() {
@@ -57,13 +67,14 @@ private final class SharedComposeFixture: ObservableObject {
     let client: MastodonClient
     let scenario = ProcessInfo.processInfo.environment["UITEST_SHARE_SCENARIO"] ?? "normal"
     @Published private(set) var summary = ""
+    @Published private(set) var videoSummary = ""
     private let directory: URL
 
     init() {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent("share-fixture-\(UUID())")
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let staging: SharedComposeDraftStagingStore
-        if scenario == "system" {
+        if scenario.hasPrefix("system") {
             staging = .shared
             // A previous interrupted UI run may have left fixture-only files behind.
             for item in staging.pendingItems() where item.accountID == "share-fixture" {
@@ -80,7 +91,7 @@ private final class SharedComposeFixture: ObservableObject {
         client = MastodonClient(baseURL: URL(string: "https://\(UUID().uuidString).share-fixture.invalid")!,
             session: URLSession(configuration: configuration), authInterceptor: AuthInterceptor(tokenProvider: SharedComposeFixtureToken()))
         appState.currentAccount = account
-        if scenario == "system" {
+        if scenario.hasPrefix("system") {
             // No token, login or real account is written into the shared container.
             let snapshot = try? JSONSerialization.data(withJSONObject: ["account": ["id": account.id]])
             MoroSharedContainer.sharedUserDefaults().set(snapshot, forKey: "shared_active_account_session_snapshot_v1")
@@ -96,7 +107,9 @@ private final class SharedComposeFixture: ObservableObject {
                 url: imageURL("existing-\($0)"), previewURL: nil, type: "image", description: "Existing", focus: nil,
                 uploadState: .uploaded) }
         }
-        return model.makeDraft(category: .auto)
+        let draft = model.makeDraft(category: .auto)
+        _ = store.save(draft)
+        return draft
     }
 
     func stage(count: Int) {
@@ -122,6 +135,16 @@ private final class SharedComposeFixture: ObservableObject {
         let requests = SharedComposeFixtureProtocol.counts
         let value = "Manual: \(drafts.filter { $0.category == .manual }.count); files: \(store.pendingSharedStagingItems().reduce(0) { $0 + $1.attachments.count }); uploads: \(requests.uploads); posts: \(requests.posts)"
         if summary != value { summary = value }
+        let videoValue = "Video uploads: \(requests.videos); processing checks: \(requests.processingChecks)"
+        if videoSummary != videoValue { videoSummary = videoValue }
+    }
+
+    func prepareVideo() async {
+        guard scenario.contains("video") else { return }
+        do {
+            try await TimelineMediaFixture.prepare()
+            SharedComposeFixtureProtocol.setVideoURL(TimelineMediaFixture.videoURL)
+        } catch { summary = "Fixture failed: \(error.localizedDescription)" }
     }
 
     private func imageURL(_ id: String) -> URL {
@@ -146,7 +169,13 @@ private final class SharedComposeFixtureProtocol: URLProtocol, @unchecked Sendab
     private static let lock = NSLock()
     private static var uploads = 0
     private static var posts = 0
-    static var counts: (uploads: Int, posts: Int) { lock.withLock { (uploads, posts) } }
+    private static var videos = 0
+    private static var processingChecks = 0
+    private static var videoURL: URL?
+    static var counts: (uploads: Int, posts: Int, videos: Int, processingChecks: Int) {
+        lock.withLock { (uploads, posts, videos, processingChecks) }
+    }
+    static func setVideoURL(_ url: URL) { lock.withLock { videoURL = url } }
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func stopLoading() {}
@@ -154,6 +183,7 @@ private final class SharedComposeFixtureProtocol: URLProtocol, @unchecked Sendab
         do {
             let url = request.url!
             let data: Data
+            var statusCode = 200
             if url.path == "/api/v2/media" {
                 let count = Self.lock.withLock { Self.uploads += 1; return Self.uploads }
                 if ProcessInfo.processInfo.environment["UITEST_SHARE_SCENARIO"] == "retry", count == 2 {
@@ -165,15 +195,36 @@ private final class SharedComposeFixtureProtocol: URLProtocol, @unchecked Sendab
                 let imageURL = FileManager.default.temporaryDirectory.appendingPathComponent("share-upload-\(count).png")
                 try image.pngData()!.write(to: imageURL)
                 // The production grid reads this local URL through its regular image loader.
-                data = try JSONSerialization.data(withJSONObject: ["id": "upload-\(count)", "type": "image",
-                    "url": imageURL.absoluteString, "preview_url": imageURL.absoluteString, "description": "Shared image"])
+                var body = request.httpBody ?? Data()
+                if body.isEmpty, let stream = request.httpBodyStream {
+                    stream.open()
+                    defer { stream.close() }
+                    var buffer = [UInt8](repeating: 0, count: 4096)
+                    while stream.hasBytesAvailable {
+                        let read = stream.read(&buffer, maxLength: buffer.count)
+                        guard read > 0 else { break }
+                        body.append(contentsOf: buffer.prefix(read))
+                    }
+                }
+                let isVideo = body.range(of: Data("Content-Type: video/".utf8)) != nil
+                if isVideo { Self.lock.withLock { Self.videos += 1 }; statusCode = 202 }
+                data = try JSONSerialization.data(withJSONObject: ["id": "upload-\(count)", "type": isVideo ? "video" : "image",
+                    "url": isVideo ? NSNull() : imageURL.absoluteString as Any,
+                    "preview_url": imageURL.absoluteString, "description": isVideo ? "Shared video" : "Shared image"])
+            } else if url.path.hasPrefix("/api/v1/media/"), request.httpMethod == "GET" {
+                let videoURL = Self.lock.withLock {
+                    Self.processingChecks += 1
+                    return Self.videoURL ?? URL(string: "https://fixture.invalid/video.mp4")!
+                }
+                data = try JSONSerialization.data(withJSONObject: ["id": url.lastPathComponent, "type": "video",
+                    "url": videoURL.absoluteString, "description": "Shared video"])
             } else if url.path == "/api/v1/statuses", request.httpMethod == "POST" {
                 Self.lock.withLock { Self.posts += 1 }
                 data = try JSONSerialization.data(withJSONObject: DirectMessagesFixtureProtocol.status("shared-post", author: "tester", content: "<p>Shared post</p>"))
             } else if url.path.contains("/instance") {
                 data = try JSONSerialization.data(withJSONObject: ["uri": url.host!, "title": "Share fixture", "version": "4.5.0"])
             } else { data = Data("[]".utf8) }
-            client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
+            client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: statusCode, httpVersion: nil,
                 headerFields: ["Content-Type": "application/json"])!, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)
             client?.urlProtocolDidFinishLoading(self)

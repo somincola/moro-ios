@@ -85,7 +85,7 @@ struct TimelineMediaHarnessView: View {
         }
     }
 
-    private static func makeVideo(at url: URL) async throws {
+    static func makeVideo(at url: URL) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 160, AVVideoHeightKey: 96,

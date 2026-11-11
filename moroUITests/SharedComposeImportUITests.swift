@@ -2,6 +2,117 @@ import XCTest
 
 @MainActor
 final class SharedComposeImportUITests: XCTestCase {
+    func testPhotoLibraryImportsAVideoAndReleasesTheMediaSlotWhenRemoved() {
+        let app = launch("video")
+        defer { app.terminate() }
+        app.buttons["shareFixture.existing"].tap()
+        openPhotoPicker(app)
+        let video = libraryVideo(in: app)
+        XCTAssertTrue(video.waitForExistence(timeout: 15), "Seed a sample video in the simulator Photos library")
+        video.tap()
+        confirmPhotoSelection(app)
+        waitForVideoUpload(app)
+        XCTAssertTrue(app.composePostButton.isEnabled)
+        XCTAssertFalse(app.buttons["compose.mediaMenu"].isEnabled)
+        attach(app, "photo-library-video-import")
+        let remove = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "compose.media.remove.")).firstMatch
+        XCTAssertTrue(remove.waitForExistence(timeout: 8))
+        remove.tap()
+        XCTAssertTrue(app.buttons["compose.mediaMenu"].isEnabled)
+        close(app, action: "Discard Draft")
+    }
+
+    func testPhotoLibraryRejectsAVideoMixedWithAnImage() {
+        let app = launch("video")
+        defer { app.terminate() }
+        app.buttons["shareFixture.existing"].tap()
+        openPhotoPicker(app)
+        let video = libraryVideo(in: app)
+        let photo = app.images.matching(NSPredicate(format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "Photo,", "照片,")).firstMatch
+        XCTAssertTrue(video.waitForExistence(timeout: 15))
+        XCTAssertTrue(photo.waitForExistence(timeout: 15))
+        video.tap()
+        photo.tap()
+        confirmPhotoSelection(app)
+        let message = app.staticTexts["A post can contain only one video. Videos cannot be combined with images."]
+        XCTAssertTrue(message.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["compose.mediaMenu"].isEnabled)
+        XCTAssertEqual(app.textViews["compose.textInput"].value as? String, "Existing words")
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "compose.media.alt.")).firstMatch.exists)
+        attach(app, "photo-library-mixed-selection-error")
+        close(app, action: "Discard Draft")
+    }
+
+    func testPhotosCanShareAVideoDirectlyToANewEditor() {
+        let app = launch("system-video")
+        defer { app.terminate() }
+        let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
+        photos.launch()
+        defer { photos.terminate() }
+        if photos.buttons["Continue"].waitForExistence(timeout: 2) { photos.buttons["Continue"].tap() }
+        if photos.scrollViews["OneUpMainPagingView"].exists {
+            let close = photos.buttons.matching(NSPredicate(format: "label IN %@", ["Close", "关闭"])).firstMatch
+            XCTAssertTrue(close.waitForExistence(timeout: 8))
+            close.tap()
+        }
+        let video = libraryVideo(in: photos)
+        XCTAssertTrue(video.waitForExistence(timeout: 15), "Seed a sample video in the simulator Photos library")
+        video.tap()
+        let share = photos.buttons.matching(NSPredicate(format: "label IN %@", ["Share", "分享", "共享"])).firstMatch
+        XCTAssertTrue(share.waitForExistence(timeout: 8))
+        share.tap()
+        let activity = photos.otherElements["ActivityListView"]
+        XCTAssertTrue(activity.waitForExistence(timeout: 8))
+        let moro = activity.descendants(matching: .any)["Moro"].firstMatch
+        let more = activity.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["More", "更多"])).firstMatch
+        if !moro.waitForExistence(timeout: 3), more.exists { more.tap() }
+        XCTAssertTrue(moro.waitForExistence(timeout: 8))
+        moro.tap()
+        expectation(for: NSPredicate(format: "state == %d", XCUIApplication.State.runningForeground.rawValue), evaluatedWith: app)
+        waitForExpectations(timeout: 25)
+        waitForVideoUpload(app)
+        XCTAssertTrue(app.composePostButton.isEnabled)
+        XCTAssertFalse(app.buttons["compose.mediaMenu"].isEnabled)
+        XCTAssertEqual(app.textViews["compose.textInput"].value as? String, "")
+        attach(app, "photos-video-direct-handoff")
+        close(app, action: "Save Draft")
+        waitForSummary(app, "Manual: 1; files: 0; uploads: 1; posts: 0")
+    }
+
+    private func openPhotoPicker(_ app: XCUIApplication) {
+        let media = app.buttons["compose.mediaMenu"]
+        XCTAssertTrue(media.waitForExistence(timeout: 8))
+        media.tap()
+        let library = app.buttons["Photo Library"]
+        XCTAssertTrue(library.waitForExistence(timeout: 8))
+        library.tap()
+    }
+
+    private func libraryVideo(in app: XCUIApplication) -> XCUIElement {
+        app.images.matching(NSPredicate(format: "label BEGINSWITH %@ OR label BEGINSWITH %@", "Video,", "视频,")).firstMatch
+    }
+
+    private func confirmPhotoSelection(_ app: XCUIApplication) {
+        let add = app.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@ OR label BEGINSWITH %@",
+            "Add", "Add (", "添加")).firstMatch
+        XCTAssertTrue(add.waitForExistence(timeout: 8))
+        add.tap()
+    }
+
+    private func waitForVideoUpload(_ app: XCUIApplication) {
+        let summary = app.staticTexts["shareFixture.editorVideoSummary"]
+        let ready = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", "Video uploads: 1; processing checks: 1"), object: summary)
+        let result = XCTWaiter.wait(for: [ready], timeout: 25)
+        if result != .completed {
+            attach(app, "video-import-unexpected-state")
+            let hierarchy = XCTAttachment(string: app.debugDescription)
+            hierarchy.lifetime = .keepAlways
+            add(hierarchy)
+        }
+        XCTAssertEqual(result, .completed, "Unexpected video import: \(summary.exists ? summary.label : "missing summary")")
+    }
+
     func testBatchOpensEditorAndOnlyExplicitSaveCreatesAManualDraft() {
         let app = launch()
         defer { app.terminate() }
