@@ -243,55 +243,55 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No URL, text, or images detected to import."
+            "value": "No URL, text, images, or video detected to import."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "未检测到可导入的 URL、文字或图片。"
+            "value": "未检测到可导入的 URL、文字、图片或视频。"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aucune URL, texte ou image détecté à importer."
+            "value": "Aucune URL, texte, image ou vidéo à importer."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "インポートできる URL、テキスト、または画像が見つかりませんでした。"
+            "value": "インポートできる URL、テキスト、画像、動画が見つかりませんでした。"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Keine URL, kein Text und keine Bilder zum Importieren gefunden."
+            "value": "Keine URL, kein Text, keine Bilder und keine Videos zum Importieren gefunden."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nessun URL, testo o immagine rilevato da importare."
+            "value": "Nessun URL, testo, immagine o video rilevato da importare."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "No se detectaron URL, texto ni imágenes para importar."
+            "value": "No se detectaron URL, texto, imágenes ni vídeos para importar."
           }
         },
         "pt-PT": {
           "stringUnit": {
             "state": "translated",
-            "value": "Não foi detetado nenhum URL, texto ou imagem para importar."
+            "value": "Não foi detetado nenhum URL, texto, imagem ou vídeo para importar."
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "未偵測到可匯入的 URL、文字或圖片。"
+            "value": "未偵測到可匯入的 URL、文字、圖片或影片。"
           }
         }
       }
@@ -469,6 +469,124 @@
           "stringUnit": {
             "state": "translated",
             "value": "Não foi possível ler uma imagem. Tente partilhá-la novamente."
+          }
+        }
+      }
+    },
+    "share.error.unreadableVideo": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Video konnte nicht gelesen werden. Versuche es erneut zu teilen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not read the video. Try sharing again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo leer el vídeo. Vuelve a compartirlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La vidéo n’a pas pu être lue. Réessayez de la partager."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile leggere il video. Prova a condividerlo di nuovo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画を読み込めませんでした。もう一度共有してください。"
+          }
+        },
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível ler o vídeo. Tente partilhá-lo novamente."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取视频，请重新分享。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法讀取影片，請重新分享。"
+          }
+        }
+      }
+    },
+    "share.error.videoMustBeAlone": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Beitrag kann nur ein Video enthalten. Videos können nicht mit Bildern kombiniert werden."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A post can contain only one video. Videos cannot be combined with images."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una publicación solo puede contener un vídeo. No se pueden combinar vídeos e imágenes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une publication ne peut contenir qu’une seule vidéo, sans images."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un post può contenere un solo video. Non è possibile combinare video e immagini."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1つの投稿に添付できる動画は1本だけです。画像と一緒には添付できません。"
+          }
+        },
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma publicação só pode conter um vídeo. Não é possível combinar vídeos e imagens."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一条帖子只能添加一个视频，不能与图片混合添加。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一則貼文只能加入一個影片，不能與圖片混合加入。"
           }
         }
       }

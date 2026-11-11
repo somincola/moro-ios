@@ -49,6 +49,15 @@ struct MastodonClient: MastodonAPI {
         return URLSession(configuration: configuration)
     }()
 
+    /// Video uploads need a longer transfer budget than ordinary API reads.
+    static let defaultMediaUploadSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 120
+        configuration.timeoutIntervalForResource = 10 * 60
+        configuration.waitsForConnectivity = false
+        return URLSession(configuration: configuration)
+    }()
+
     /// Editing must not re-send creation-only fields or reset an existing quote.
     private struct StatusEditPayload: Encodable {
         let status: String
@@ -800,11 +809,35 @@ struct MastodonClient: MastodonAPI {
         if let description = description {
             formData = ["description": description]
         }
-        let request = try authorizedRequest(
+        var request = try authorizedRequest(
             for: endpoint,
             multipartData: (data: data, fieldName: "file", fileName: fileName, mimeType: mimeType),
             formData: formData)
-        return try await perform(request)
+        request.timeoutInterval = 120
+        // Keep injected sessions (custom transports and tests) intact.
+        let uploadSession = session === Self.defaultSession ? Self.defaultMediaUploadSession : session
+        let (attachment, response): (Status.Attachment, HTTPURLResponse) = try await performWithResponse(request, using: uploadSession)
+        // 202: the server is still processing the file (videos, large images). A post that
+        // references it before processing ends is rejected, so the upload is not done yet.
+        guard response.statusCode == 202 else { return attachment }
+        return try await waitUntilMediaProcessed(id: attachment.id)
+    }
+
+    /// Polls `GET /api/v1/media/:id` (206 while processing, 200 when ready). Cancelling the
+    /// calling task stops it; a server that never finishes ends as a failed upload.
+    private func waitUntilMediaProcessed(
+        id: String, timeout: TimeInterval = MediaProcessingPolicy.timeout
+    ) async throws -> Status.Attachment {
+        let deadline = Date().addingTimeInterval(timeout)
+        var attempt = 0
+        while true {
+            try await Task.sleep(for: .seconds(MediaProcessingPolicy.delay(beforeAttempt: attempt)))
+            attempt += 1
+            let request = try authorizedRequest(for: .media(id: id))
+            let (attachment, response): (Status.Attachment, HTTPURLResponse) = try await performWithResponse(request)
+            if response.statusCode != 206 { return attachment }
+            guard Date() < deadline else { throw APIError.timeout }
+        }
     }
 
     func updateMedia(id: String, description: String?, focus: String?) async throws
@@ -1472,13 +1505,15 @@ struct MastodonClient: MastodonAPI {
         return value
     }
 
-    private func performWithResponse<T: Decodable>(_ request: URLRequest) async throws -> (T, HTTPURLResponse) {
+    private func performWithResponse<T: Decodable>(
+        _ request: URLRequest, using transport: URLSession? = nil
+    ) async throws -> (T, HTTPURLResponse) {
         // Log the request
         logger.logRequest(request)
         let startTime = Date()
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await (transport ?? session).data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw APIError.invalidURL
             }
@@ -1690,6 +1725,22 @@ struct MastodonClient: MastodonAPI {
             // Success - ignore response body
         } catch {
             throw Self.transportFailure(error)
+        }
+    }
+}
+
+/// How long to wait for the server to finish processing an uploaded file.
+nonisolated enum MediaProcessingPolicy {
+    /// Small instances can take minutes to transcode a long video.
+    static let timeout: TimeInterval = 10 * 60
+
+    /// Quick first checks (short clips finish in a second or two), then every 5 s.
+    static func delay(beforeAttempt attempt: Int) -> Double {
+        switch attempt {
+        case 0: return 1
+        case 1: return 1.5
+        case 2: return 2.5
+        default: return 5
         }
     }
 }

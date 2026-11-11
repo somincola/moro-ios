@@ -129,6 +129,7 @@ enum MastodonEndpoint {
     // Media
     case uploadMedia
     case updateMedia(id: String)
+    case media(id: String)
 
     // Custom Emojis
     case customEmojis
@@ -354,7 +355,7 @@ enum MastodonEndpoint {
             return "/api/v1/polls/\(pollID)/votes"
         case .uploadMedia:
             return "/api/v2/media"
-        case .updateMedia(let id):
+        case .updateMedia(let id), .media(let id):
             return "/api/v1/media/\(id)"
         case .customEmojis:
             return "/api/v1/custom_emojis"

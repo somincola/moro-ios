@@ -5,6 +5,7 @@
 //  Serial background preparation for media selected by the composer.
 //
 
+import AVFoundation
 import Foundation
 import ImageIO
 import UIKit
@@ -19,6 +20,8 @@ actor ComposeMediaProcessor {
 
     enum ProcessingError: Error {
         case invalidImage
+        /// Still above the server's video limit after re-encoding to 720p.
+        case videoTooLarge
     }
 
     static let shared = ComposeMediaProcessor()
@@ -73,12 +76,79 @@ actor ComposeMediaProcessor {
     func prepareFile(
         at url: URL,
         mimeType: String,
-        mediaType: String
-    ) throws -> PreparedMedia {
+        mediaType: String,
+        videoSizeLimit: Int = ComposeMediaSelectionPolicy.defaultVideoSizeLimit
+    ) async throws -> PreparedMedia {
+        if mediaType == "video" {
+            return try await prepareVideoFile(at: url, mimeType: mimeType, sizeLimit: videoSizeLimit)
+        }
         // Keep the payload self-contained after the security-scoped URL closes so
         // failed uploads can still be retried without retaining a mapped file.
         let data = try Data(contentsOf: url)
         return try prepareImportedData(data, mimeType: mimeType, mediaType: mediaType)
+    }
+
+    /// Uploads the original when it fits the server's limit. A larger video (a minute of
+    /// 4K is several hundred MB) is re-encoded to 1080p, then 720p, before giving up.
+    func prepareVideoFile(at url: URL, mimeType: String, sizeLimit: Int) async throws -> PreparedMedia {
+        try Task.checkCancellation()
+        let preview = await videoThumbnail(for: url)
+        var uploadURL = url
+        var uploadMimeType = mimeType
+        var exportedURL: URL?
+        defer { if let exportedURL { try? FileManager.default.removeItem(at: exportedURL) } }
+
+        if fileSize(of: url) > sizeLimit {
+            var fitted = false
+            var didExport = false
+            var exportError: Error?
+            for preset in [AVAssetExportPreset1920x1080, AVAssetExportPreset1280x720] {
+                try Task.checkCancellation()
+                if let exportedURL { try? FileManager.default.removeItem(at: exportedURL) }
+                let destination = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("moro-video-\(UUID().uuidString).mp4")
+                exportedURL = destination
+                guard let session = AVAssetExportSession(asset: AVURLAsset(url: url), presetName: preset) else {
+                    continue
+                }
+                session.shouldOptimizeForNetworkUse = true
+                do {
+                    try await session.export(to: destination, as: .mp4)
+                    didExport = true
+                } catch {
+                    try Task.checkCancellation()
+                    exportError = error
+                    continue
+                }
+                if fileSize(of: destination) <= sizeLimit {
+                    uploadURL = destination
+                    uploadMimeType = "video/mp4"
+                    fitted = true
+                    break
+                }
+            }
+            guard fitted else {
+                if !didExport, let exportError { throw exportError }
+                throw ProcessingError.videoTooLarge
+            }
+        }
+
+        try Task.checkCancellation()
+        let data = try Data(contentsOf: uploadURL)
+        return PreparedMedia(
+            uploadData: data, uploadMimeType: uploadMimeType, mediaType: "video", previewImage: preview)
+    }
+
+    private func fileSize(of url: URL) -> Int {
+        (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+    }
+
+    private func videoThumbnail(for url: URL) async -> UIImage? {
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: maximumPreviewPixelSize, height: maximumPreviewPixelSize)
+        guard let (image, _) = try? await generator.image(at: .zero) else { return nil }
+        return UIImage(cgImage: image)
     }
 
     func prepareImportedData(

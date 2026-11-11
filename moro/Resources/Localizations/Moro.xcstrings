@@ -24545,6 +24545,124 @@
         }
       }
     },
+    "compose.toast.videoMustBeAlone" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Beitrag kann nur ein Video enthalten. Videos können nicht mit Bildern kombiniert werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A post can contain only one video. Videos cannot be combined with images."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una publicación solo puede contener un vídeo. No se pueden combinar vídeos e imágenes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une publication ne peut contenir qu’une seule vidéo, sans images."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un post può contenere un solo video. Non è possibile combinare video e immagini."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1つの投稿に添付できる動画は1本だけです。画像と一緒には添付できません。"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma publicação só pode conter um vídeo. Não é possível combinar vídeos e imagens."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一条帖子只能添加一个视频，不能与图片混合添加。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一則貼文只能加入一個影片，不能與圖片混合加入。"
+          }
+        }
+      }
+    },
+    "compose.toast.videoTooLarge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Video überschreitet auch nach der Komprimierung die Größenbeschränkung dieses Servers. Wähle ein kürzeres Video."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The video exceeds this server’s size limit even after compression. Choose a shorter video."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El vídeo supera el límite de tamaño de este servidor incluso tras comprimirlo. Selecciona un vídeo más corto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La vidéo dépasse la limite de taille de ce serveur, même après compression. Choisissez une vidéo plus courte."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il video supera il limite di dimensione del server anche dopo la compressione. Scegli un video più breve."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "圧縮しても動画がこのサーバーのサイズ制限を超えています。短い動画を選択してください。"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O vídeo excede o limite de tamanho deste servidor mesmo após a compressão. Escolha um vídeo mais curto."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "压缩后视频仍超过此服务器允许的大小，请选择更短的视频。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "壓縮後影片仍超過此伺服器允許的大小，請選擇較短的影片。"
+          }
+        }
+      }
+    },
     "compose.toast.mediaCannotRetry" : {
       "extractionState" : "stale",
       "localizations" : {

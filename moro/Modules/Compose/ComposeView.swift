@@ -170,6 +170,7 @@ struct ComposeView: View {
     @State private var attemptedSharedImportIDs: Set<String> = []
     @State private var pendingSharedImportIDs: Set<String> = []
     @State private var sharedImportMessage: String?
+    @State private var mediaImportFeedback: AppFeedbackMessage?
     @State private var sharedImportInterrupted = false
     @State private var isCompletingPublish = false
     @State private var publishFailureMessage: String?
@@ -326,7 +327,17 @@ struct ComposeView: View {
             }
             .disabled(isPublishingOrClosing)
             .background(theme.colors.background)
-            .safeAreaInset(edge: .top, spacing: 0) { sharedImportNotice }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                VStack(spacing: 0) {
+                    sharedImportNotice
+                    if let feedback = mediaImportFeedback {
+                        InlineFeedbackCard(kind: feedback.kind, message: feedback.text,
+                            actionTitle: MoroL10n.Common.ok, action: { mediaImportFeedback = nil })
+                            .padding(theme.spacing.m)
+                            .accessibilityIdentifier("compose.mediaImportError")
+                    }
+                }
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
@@ -432,7 +443,7 @@ struct ComposeView: View {
                 selection: $selectedPhotos,
                 maxSelectionCount: max(viewModel.remainingMediaAttachmentSlots, 1),
                 selectionBehavior: .ordered,
-                matching: .images,
+                matching: .any(of: [.images, .videos]),
                 preferredItemEncoding: .current
             )
             .fileImporter(
@@ -453,12 +464,18 @@ struct ComposeView: View {
             }
             .onChange(of: selectedPhotos) { _, newValue in
                 guard !newValue.isEmpty else { return }
-
+                selectedPhotos = []
+                mediaImportFeedback = nil
+                let types = newValue.map(Self.mediaType(for:))
+                guard !viewModel.wouldBreakVideoRule(adding: types) else {
+                    showMediaImportFeedback(.failed(.videoMustBeAlone))
+                    return
+                }
                 let acceptedItems = Array(
                     newValue.prefix(viewModel.remainingMediaAttachmentSlots)
                 )
-                selectedPhotos = []
-                let reservationIDs = viewModel.reservePhotoImports(count: acceptedItems.count)
+                let reservationIDs = viewModel.reserveMediaImports(
+                    types: Array(types.prefix(acceptedItems.count)))
                 guard !reservationIDs.isEmpty else { return }
 
                 Task {
@@ -1798,6 +1815,12 @@ struct ComposeView: View {
     }
     
     // MARK: - Actions
+
+    nonisolated private static func mediaType(for item: PhotosPickerItem) -> String {
+        // Live Photos can also advertise a movie representation; keep their still image.
+        if item.supportedContentTypes.contains(where: { $0.conforms(to: .image) }) { return "image" }
+        return item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) ? "video" : "image"
+    }
     
     private func handlePhotoSelections(
         _ items: [PhotosPickerItem],
@@ -1825,6 +1848,15 @@ struct ComposeView: View {
                 for (item, reservationID) in batch {
                     group.addTask {
                         do {
+                            if Self.mediaType(for: item) == "video" {
+                                guard let video = try await item.loadTransferable(type: ComposePickedVideo.self) else {
+                                    await viewModel.cancelPhotoImportReservation(id: reservationID)
+                                    return .failed(.fileRead)
+                                }
+                                defer { video.removeTemporaryFile() }
+                                return await viewModel.importVideoFile(
+                                    at: video.url, mimeType: video.mimeType, reservationID: reservationID)
+                            }
                             guard let data = try await item.loadTransferable(type: Data.self) else {
                                 await viewModel.cancelPhotoImportReservation(id: reservationID)
                                 return .failed(.imageProcessing)
@@ -1838,7 +1870,7 @@ struct ComposeView: View {
                             return .cancelled
                         } catch {
                             await viewModel.cancelPhotoImportReservation(id: reservationID)
-                            return .failed(.imageProcessing)
+                            return .failed(Self.mediaType(for: item) == "video" ? .fileRead : .imageProcessing)
                         }
                     }
                 }
@@ -1857,6 +1889,7 @@ struct ComposeView: View {
     }
     
     private func handleImageSelection(_ image: UIImage) async {
+        mediaImportFeedback = nil
         showMediaImportFeedback(await viewModel.importCameraImage(image))
     }
     
@@ -2016,23 +2049,33 @@ struct ComposeView: View {
     }
     
     private func handleFileSelection(_ url: URL) async {
+        mediaImportFeedback = nil
         showMediaImportFeedback(await viewModel.importFile(at: url))
     }
 
     private func showMediaImportFeedback(_ outcome: ComposeViewModel.MediaImportOutcome) {
-        guard case .failed(let failure) = outcome else { return }
-        switch failure {
-        case .imageProcessing:
-            AppFeedbackCenter.shared.showError(MoroL10n.Compose.toastImageProcessFailed)
-        case .fileAccess:
-            AppFeedbackCenter.shared.showError(MoroL10n.Compose.toastFileAccessFailed)
-        case .fileRead:
-            AppFeedbackCenter.shared.showError(MoroL10n.Compose.toastFileReadFailed)
-        case .upload:
-            AppFeedbackCenter.shared.showError(MoroL10n.Compose.toastMediaUploadFailed)
-        case .retryUnavailable:
-            AppFeedbackCenter.shared.showInfo(MoroL10n.Compose.toastMediaCannotRetry)
+        guard case .failed(let failure) = outcome else {
+            if outcome == .uploaded { mediaImportFeedback = nil }
+            return
         }
+        let message: String = switch failure {
+        case .imageProcessing:
+            MoroL10n.Compose.toastImageProcessFailed
+        case .fileAccess:
+            MoroL10n.Compose.toastFileAccessFailed
+        case .fileRead:
+            MoroL10n.Compose.toastFileReadFailed
+        case .upload:
+            MoroL10n.Compose.toastMediaUploadFailed
+        case .retryUnavailable:
+            MoroL10n.Compose.toastMediaCannotRetry
+        case .videoMustBeAlone:
+            MoroL10n.Compose.toastVideoMustBeAlone
+        case .videoTooLarge:
+            MoroL10n.Compose.toastVideoTooLarge
+        }
+        mediaImportFeedback = AppFeedbackMessage(kind: failure == .retryUnavailable ? .info : .error, text: message)
+        UIAccessibility.post(notification: .announcement, argument: message)
     }
     
     private func publish() async {

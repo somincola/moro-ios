@@ -318,6 +318,21 @@ nonisolated struct MastodonInstanceV2: Codable {
 nonisolated struct InstanceConfiguration: Codable {
     let statuses: Statuses?
     var accounts: ProfileLimits? = nil
+    var mediaAttachments: MediaAttachments? = nil
+
+    nonisolated enum CodingKeys: String, CodingKey {
+        case statuses, accounts
+        case mediaAttachments = "media_attachments"
+    }
+
+    nonisolated struct MediaAttachments: Codable {
+        /// Largest video upload in bytes (Mastodon's default is 99 MB).
+        var videoSizeLimit: Int? = nil
+
+        nonisolated enum CodingKeys: String, CodingKey {
+            case videoSizeLimit = "video_size_limit"
+        }
+    }
 
     nonisolated struct Statuses: Codable {
         let maxCharacters: Int?

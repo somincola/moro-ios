@@ -1,10 +1,72 @@
 import Darwin
 import Foundation
 import Testing
+import UniformTypeIdentifiers
 
 /// Compile the extension's actual sources into this test target; do not mirror its writer.
 @MainActor
 struct ShareExtensionStagingTests {
+    @Test func videoShareOwnsAFileCopyAndDoesNotImportItsTransportURLAsText() async throws {
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("shared-video-\(UUID()).mp4")
+        let bytes = Data("movie-file-fixture".utf8)
+        try bytes.write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+        let provider = videoProvider(at: source)
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.plainText.identifier, visibility: .all) { completion in
+            completion(Data(source.absoluteString.utf8), nil)
+            return nil
+        }
+        let item = NSExtensionItem()
+        item.attachments = [provider]
+        let content = try await MoroShareExtensionInputLoader.load(from: [item])
+        defer { content.removeTemporaryFiles() }
+        try FileManager.default.removeItem(at: source)
+        let attachment = try #require(content.attachments.first)
+        #expect(content.text.isEmpty && content.attachments.count == 1)
+        #expect(attachment.mimeType == "video/mp4")
+        #expect(attachment.fileName == "Shared clip.mp4")
+        #expect(try Data(contentsOf: attachment.sourceURL) == bytes)
+        content.removeTemporaryFiles()
+        #expect(!FileManager.default.fileExists(atPath: content.temporaryDirectoryURL.path))
+    }
+
+    @Test func videoSharesRejectTwoVideosAndMixedImageSelections() async throws {
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("not-read.mp4")
+        let image = NSItemProvider(item: Data([1]) as NSData, typeIdentifier: UTType.png.identifier)
+        for providers in [[videoProvider(at: source), videoProvider(at: source)], [videoProvider(at: source), image]] {
+            let item = NSExtensionItem()
+            item.attachments = providers
+            do {
+                let content = try await MoroShareExtensionInputLoader.load(from: [item])
+                content.removeTemporaryFiles()
+                Issue.record("Invalid video selections must be rejected before reading files")
+            } catch MoroShareExtensionInputError.videoMustBeAlone {}
+        }
+    }
+
+    @Test func anUnreadableVideoDoesNotBecomeATextOnlyShare() async throws {
+        let provider = videoProvider(at: FileManager.default.temporaryDirectory.appendingPathComponent("missing-\(UUID()).mp4"))
+        let item = NSExtensionItem()
+        item.attributedContentText = NSAttributedString(string: "Keep this caption with its video")
+        item.attachments = [provider]
+        do {
+            let content = try await MoroShareExtensionInputLoader.load(from: [item])
+            content.removeTemporaryFiles()
+            Issue.record("A failed video cannot silently turn into a text-only share")
+        } catch MoroShareExtensionInputError.unreadableVideo {}
+    }
+
+    private func videoProvider(at source: URL) -> NSItemProvider {
+        let provider = NSItemProvider()
+        provider.suggestedName = "Shared clip.mp4"
+        provider.registerFileRepresentation(forTypeIdentifier: UTType.mpeg4Movie.identifier,
+            fileOptions: [], visibility: .all) { completion in
+            completion(source, false, nil)
+            return nil
+        }
+        return provider
+    }
+
     @Test func cancelledServiceCannotStartALatePreparation() async throws {
         let importer = MoroShareExtensionImportService()
         await importer.cancel()

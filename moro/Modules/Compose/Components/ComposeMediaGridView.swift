@@ -172,7 +172,13 @@ private struct ComposeMediaTileView: View {
         GeometryReader { geometry in
             ZStack {
                 // Image content
-                if case .uploaded = attachment.uploadState, attachment.url.scheme != "temp" {
+                if attachment.type == "video", let previewImage = attachment.previewImage {
+                    Image(uiImage: previewImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped()
+                } else if case .uploaded = attachment.uploadState, attachment.url.scheme != "temp" {
                     CachedAsyncImage(url: attachment.previewURL ?? attachment.url) { image in
                         image
                             .resizable()
@@ -227,7 +233,7 @@ private struct ComposeMediaTileView: View {
         Rectangle()
             .fill(theme.colors.surfaceSubtle)
             .overlay {
-                Image(systemName: "photo")
+                Image(systemName: attachment.type == "video" ? "video" : "photo")
                     .moroScaledFont(size: 24)
                     .foregroundStyle(theme.colors.textSecondary)
             }

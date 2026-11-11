@@ -7,6 +7,69 @@ import UIKit
 @Suite(.serialized)
 @MainActor
 struct SharedComposeHandoffTests {
+    @Test func aSharedVideoKeepsItsTypeThroughFailureRetryAndDraftRecovery() async throws {
+        let fixture = try StoreFixture()
+        defer { fixture.cleanup() }
+        let api = MockMastodonAPI()
+        var uploads = 0
+        api.uploadMediaHandler = { data, mimeType, _ in
+            #expect(!data.isEmpty && mimeType == "video/mp4")
+            uploads += 1
+            if uploads == 1 { throw URLError(.notConnectedToInternet) }
+            return .init(id: "shared-video", type: "video", url: URL(string: "https://fixture.invalid/shared.mp4")!)
+        }
+        let item = try await fixture.stageVideo()
+        let model = ComposeViewModel(context: .newPost, apiClient: api, currentUserID: "me")
+        #expect(await model.importSharedAttachments(from: Self.importPayload(item), draftStore: fixture.store) == .failed)
+        #expect(model.mediaAttachments.map(\.type) == ["video"])
+        #expect(!model.canAddMedia && !model.canPublish)
+        #expect(fixture.store.pendingSharedStagingItems().first?.attachments.count == 1)
+        #expect(await model.importSharedAttachments(from: Self.importPayload(item), draftStore: fixture.store) == .complete)
+        #expect(uploads == 2 && fixture.store.pendingSharedStagingItems().isEmpty)
+        let draftID = try #require(model.activeDraftID)
+        let draft = try #require(fixture.store.draft(id: draftID))
+        let restored = ComposeViewModel(context: .newPost, apiClient: api, currentUserID: "me", initialDraft: draft)
+        restored.configureSharedImportRecovery(using: fixture.store)
+        #expect(restored.mediaAttachments.map(\.type) == ["video"])
+        #expect(restored.canPublish && !restored.canAddMedia)
+    }
+
+    @Test func aSharedVideoUsesTheInstanceSizeLimitAndRetainsAnOversizedFileForRecovery() async throws {
+        let fixture = try StoreFixture()
+        defer { fixture.cleanup() }
+        let api = MockMastodonAPI()
+        api.fetchInstanceV2Handler = {
+            .init(domain: "x", title: "X", description: nil, thumbnail: nil, contact: nil,
+                registrations: nil, rules: nil, languages: nil,
+                configuration: .init(statuses: nil, mediaAttachments: .init(videoSizeLimit: 1)))
+        }
+        var uploads = 0
+        api.uploadMediaHandler = { _, _, _ in uploads += 1; return Self.serverAttachment("unexpected") }
+        let item = try await fixture.stageVideo()
+        let model = ComposeViewModel(context: .newPost, apiClient: api, currentUserID: "me")
+        #expect(await model.importSharedAttachments(from: Self.importPayload(item), draftStore: fixture.store) == .failed)
+        #expect(model.videoSizeLimit == 1 && uploads == 0)
+        #expect(model.hasFailedMedia && !model.canPublish)
+        #expect(model.sharedImportFailureMessage == MoroL10n.Compose.toastVideoTooLarge)
+        #expect(fixture.store.pendingSharedStagingItems().first?.attachments.count == 1)
+        #expect(model.discardRemainingSharedImports(using: fixture.store))
+        #expect(model.mediaAttachments.isEmpty && model.canAddMedia)
+        #expect(fixture.store.pendingSharedStagingItems().isEmpty)
+    }
+
+    @Test func aSharedVideoDoesNotReplaceAnExistingImageOrItsText() async throws {
+        let fixture = try StoreFixture()
+        defer { fixture.cleanup() }
+        let item = try await fixture.stageVideo()
+        let model = ComposeViewModel(context: .newPost, apiClient: MockMastodonAPI(), currentUserID: "me")
+        model.content = "Existing text"
+        model.mediaAttachments = [Self.serverMedia("image")]
+        #expect(await model.importSharedAttachments(from: Self.importPayload(item), draftStore: fixture.store) == .blocked)
+        #expect(model.content == "Existing text" && model.mediaAttachments.map(\.id) == ["image"])
+        #expect(model.sharedImportFailureMessage == MoroL10n.Compose.toastVideoMustBeAlone)
+        #expect(fixture.store.pendingSharedStagingItems().first?.id == item.id)
+    }
+
     @Test func handoffAcceptsOnlyAnOpaqueShareIDAndTracksTheEditorLifetime() {
         let handoff = SharedComposeHandoff(notificationCenter: NotificationCenter())
         let id = UUID().uuidString
@@ -615,6 +678,13 @@ struct SharedComposeHandoffTests {
             try #require(image.pngData()).write(to: source)
             return try store.stageSharedDraft(accountID: "me", target: .init(kind: .newPost), payload: SharedComposeHandoffTests.payload(text),
                 attachments: (0..<count).map { .init(sourceURL: source, mimeType: "image/png", id: "source-\($0)") })
+        }
+        func stageVideo() async throws -> SharedComposeDraftStagingItem {
+            let source = directory.appendingPathComponent("source.mp4")
+            try await TimelineMediaFixture.makeVideo(at: source)
+            return try store.stageSharedDraft(accountID: "me", target: .init(kind: .newPost),
+                payload: SharedComposeHandoffTests.payload("Shared video"),
+                attachments: [.init(sourceURL: source, mimeType: "video/mp4", id: "video-source")])
         }
         func cleanup() {
             for suite in suites { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }

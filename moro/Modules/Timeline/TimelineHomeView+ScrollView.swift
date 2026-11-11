@@ -100,6 +100,9 @@ extension TimelineHomeView {
             .onAppear {
                 scrollBridge.register(proxy, for: timelineType)
                 scrollBridge.updateGeometry(for: timelineType, headerHeight: headerHeight)
+                if TimelineLaunchPolicy.restoresReadingPosition, !pageSession.hasRestoredReadingAnchor {
+                    scrollBridge.expectReadingRestore(for: timelineType)
+                }
             }
         }
     }

@@ -29,7 +29,8 @@ final class LocalizationRegressionTests: XCTestCase {
         for (bundle, table, keys) in [
             (widget, "Localizable", ["widget.action.search", "widget.profile.followers", "widget.comfort.message"]),
             (share, "Localizable", ["share.state.loading", "share.state.opening", "share.action.open", "share.action.retry",
-                "share.error.openFailed", "share.error.tooManyImages", "share.error.unreadableImage"]),
+                "share.error.openFailed", "share.error.tooManyImages", "share.error.unreadableImage",
+                "share.error.videoMustBeAlone", "share.error.unreadableVideo"]),
             (widget, "AppIntents", ["Open Moro", "Destination", "Profile"]),
             (Bundle.main, "AppIntents", ["Open Moro", "Destination", "Profile"]),
         ] {

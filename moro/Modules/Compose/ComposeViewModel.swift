@@ -9,7 +9,7 @@ import Foundation
 import Combine
 import SwiftUI
 
-enum ComposeMediaSelectionPolicy {
+nonisolated enum ComposeMediaSelectionPolicy {
     /// Mastodon's limit, used until (or unless) the instance reports its own.
     static let maximumAttachmentCount = 4
     /// Guards the layout against an implausible instance value.
@@ -30,6 +30,22 @@ enum ComposeMediaSelectionPolicy {
         requestedCount: Int, existingCount: Int, limit: Int = maximumAttachmentCount
     ) -> Int {
         min(max(0, requestedCount), remainingSlots(existingCount: existingCount, limit: limit))
+    }
+
+    /// Mastodon's default `video_size_limit`, used until the instance reports its own.
+    static let defaultVideoSizeLimit = 99 * 1024 * 1024
+
+    static func videoSizeLimit(reportedByInstance value: Int?) -> Int {
+        guard let value, value > 0 else { return defaultVideoSizeLimit }
+        return value
+    }
+
+    static func isVideo(_ mediaType: String) -> Bool { mediaType == "video" || mediaType == "audio" }
+
+    /// Mastodon accepts at most one video per post, and never together with other media.
+    static func breaksVideoRule(existingTypes: [String], addingTypes: [String]) -> Bool {
+        let all = existingTypes + addingTypes
+        return all.count > 1 && all.contains(where: isVideo)
     }
 }
 
@@ -112,8 +128,23 @@ final class ComposeViewModel: ObservableObject {
     @Published var maxMediaAttachments = ComposeMediaSelectionPolicy.maximumAttachmentCount
     private var hasLoadedInstanceLimits = false
 
+    /// Largest video upload this instance accepts; bigger ones are re-encoded first.
+    @Published var videoSizeLimit = ComposeMediaSelectionPolicy.defaultVideoSizeLimit
+
     var remainingMediaAttachmentSlots: Int {
-        ComposeMediaSelectionPolicy.remainingSlots(existingCount: mediaAttachments.count, limit: maxMediaAttachments)
+        // A video is always the post's only attachment.
+        if hasVideoAttachment { return 0 }
+        return ComposeMediaSelectionPolicy.remainingSlots(existingCount: mediaAttachments.count, limit: maxMediaAttachments)
+    }
+
+    var hasVideoAttachment: Bool {
+        mediaAttachments.contains { ComposeMediaSelectionPolicy.isVideo($0.type) }
+    }
+
+    /// Whether adding media of these types would break Mastodon's one-video rule.
+    func wouldBreakVideoRule(adding types: [String]) -> Bool {
+        ComposeMediaSelectionPolicy.breaksVideoRule(
+            existingTypes: mediaAttachments.map(\.type), addingTypes: types)
     }
 
     var canAddMedia: Bool {
@@ -158,6 +189,7 @@ final class ComposeViewModel: ObservableObject {
         case characterLimitExceeded
         case pollNeedsMoreOptions
         case pollCannotIncludeMedia
+        case videoMustBeAlone
         case scheduledDateTooSoon
     }
 
@@ -167,6 +199,10 @@ final class ComposeViewModel: ObservableObject {
         case fileRead
         case upload
         case retryUnavailable
+        /// A video must be the post's only attachment.
+        case videoMustBeAlone
+        /// Over the instance's video limit even after re-encoding.
+        case videoTooLarge
     }
 
     enum MediaImportOutcome: Equatable, Sendable {
@@ -452,6 +488,11 @@ final class ComposeViewModel: ObservableObject {
         if maxMediaAttachments != mediaLimit {
             maxMediaAttachments = mediaLimit
         }
+        let videoLimit = ComposeMediaSelectionPolicy.videoSizeLimit(
+            reportedByInstance: instance.configuration?.mediaAttachments?.videoSizeLimit)
+        if videoSizeLimit != videoLimit {
+            videoSizeLimit = videoLimit
+        }
     }
 
     static func defaultScheduledDate(from referenceDate: Date = Date()) -> Date {
@@ -625,19 +666,25 @@ final class ComposeViewModel: ObservableObject {
     /// Adds lightweight placeholders immediately after the system picker is confirmed.
     /// Expensive Photos transfers and image preparation then happen behind visible progress UI.
     func reservePhotoImports(count: Int) -> [String] {
+        reserveMediaImports(types: Array(repeating: "image", count: max(0, count)))
+    }
+
+    /// Typed placeholders: a video placeholder already counts as the post's only video.
+    func reserveMediaImports(types: [String]) -> [String] {
+        guard !isPublishing, !hasPublished, !wouldBreakVideoRule(adding: types) else { return [] }
         let acceptedCount = ComposeMediaSelectionPolicy.acceptedSelectionCount(
-            requestedCount: count,
+            requestedCount: types.count,
             existingCount: mediaAttachments.count,
             limit: maxMediaAttachments
         )
 
-        return (0..<acceptedCount).map { _ in
+        return types.prefix(acceptedCount).map { type in
             let reservationID = UUID().uuidString
             let attachment = MediaAttachment(
                 id: reservationID,
                 url: URL(string: "temp://\(reservationID)")!,
                 previewURL: nil,
-                type: "image",
+                type: type,
                 description: nil,
                 focus: nil,
                 uploadState: .uploading(progress: 0.0)
@@ -724,16 +771,47 @@ final class ComposeViewModel: ObservableObject {
         defer { url.stopAccessingSecurityScopedResource() }
 
         let resolved = ComposeMediaType.resolve(fileExtension: url.pathExtension)
+        guard !wouldBreakVideoRule(adding: [resolved.mediaKind]) else {
+            return .failed(.videoMustBeAlone)
+        }
+        guard let reservationID = reserveMediaImports(types: [resolved.mediaKind]).first else { return .cancelled }
         do {
+            if resolved.mediaKind == "video", !hasLoadedInstanceLimits { await loadInstanceLimits() }
             let prepared = try await ComposeMediaProcessor.shared.prepareFile(
                 at: url,
                 mimeType: resolved.mimeType,
-                mediaType: resolved.mediaKind
+                mediaType: resolved.mediaKind,
+                videoSizeLimit: videoSizeLimit
             )
-            return await importPreparedMedia(prepared)
+            return await importPreparedMedia(prepared, reservationID: reservationID)
         } catch is CancellationError {
+            cancelPhotoImportReservation(id: reservationID)
             return .cancelled
+        } catch ComposeMediaProcessor.ProcessingError.videoTooLarge {
+            cancelPhotoImportReservation(id: reservationID)
+            return .failed(.videoTooLarge)
         } catch {
+            cancelPhotoImportReservation(id: reservationID)
+            return .failed(.fileRead)
+        }
+    }
+
+    /// A video from the photo picker, already copied to a temporary file the caller owns.
+    func importVideoFile(at url: URL, mimeType: String, reservationID: String) async -> MediaImportOutcome {
+        guard mediaAttachments.contains(where: { $0.id == reservationID }) else { return .cancelled }
+        do {
+            if !hasLoadedInstanceLimits { await loadInstanceLimits() }
+            let prepared = try await ComposeMediaProcessor.shared.prepareVideoFile(
+                at: url, mimeType: mimeType, sizeLimit: videoSizeLimit)
+            return await importPreparedMedia(prepared, reservationID: reservationID)
+        } catch is CancellationError {
+            cancelPhotoImportReservation(id: reservationID)
+            return .cancelled
+        } catch ComposeMediaProcessor.ProcessingError.videoTooLarge {
+            cancelPhotoImportReservation(id: reservationID)
+            return .failed(.videoTooLarge)
+        } catch {
+            cancelPhotoImportReservation(id: reservationID)
             return .failed(.fileRead)
         }
     }
@@ -781,12 +859,19 @@ final class ComposeViewModel: ObservableObject {
         if isPublishing || hasPublished || !isEditingSourceReady { return MoroL10n.ShareImport.busy }
         if case .edit = context { return MoroL10n.ShareImport.editingPost }
         if isPollActive, !sharedImport.attachments.isEmpty { return MoroL10n.Compose.validationPollCannotIncludeMedia }
-        let newCount = sharedImport.attachments.filter { reference in
+        let newAttachments = sharedImport.attachments.filter { reference in
             !mediaAttachments.contains { $0.sharedImportItemID == sharedImport.stagingItemID
                 && $0.sharedImportAttachmentID == reference.id }
-        }.count
-        if newCount > remainingMediaAttachmentSlots { return MoroL10n.ShareImport.mediaLimit(maxMediaAttachments) }
+        }
+        if wouldBreakVideoRule(adding: newAttachments.map { Self.mediaKind(forMimeType: $0.mimeType) }) {
+            return MoroL10n.Compose.toastVideoMustBeAlone
+        }
+        if newAttachments.count > remainingMediaAttachmentSlots { return MoroL10n.ShareImport.mediaLimit(maxMediaAttachments) }
         return nil
+    }
+
+    nonisolated static func mediaKind(forMimeType mimeType: String) -> String {
+        mimeType.lowercased().hasPrefix("video/") ? "video" : "image"
     }
 
     private func performSharedImport(
@@ -835,7 +920,7 @@ final class ComposeViewModel: ObservableObject {
         for attachment in sharedImport.attachments where !mediaAttachments.contains(where: {
             $0.sharedImportItemID == sharedImport.stagingItemID && $0.sharedImportAttachmentID == attachment.id
         }) {
-            guard let id = reservePhotoImports(count: 1).first,
+            guard let id = reserveMediaImports(types: [Self.mediaKind(forMimeType: attachment.mimeType)]).first,
                   let index = mediaAttachments.firstIndex(where: { $0.id == id }) else { break }
             mediaAttachments[index].sharedImportItemID = sharedImport.stagingItemID
             mediaAttachments[index].sharedImportAttachmentID = attachment.id
@@ -871,7 +956,9 @@ final class ComposeViewModel: ObservableObject {
             } else {
                 let reservationID: String
                 if let existing { reservationID = existing.id }
-                else if let id = reservePhotoImports(count: 1).first { reservationID = id }
+                else if let id = reserveMediaImports(types: [Self.mediaKind(forMimeType: attachment.mimeType)]).first {
+                    reservationID = id
+                }
                 else { encounteredFailure = true; continue }
                 if let index = mediaAttachments.firstIndex(where: { $0.id == reservationID }) {
                     mediaAttachments[index].sharedImportItemID = sharedImport.stagingItemID
@@ -881,12 +968,16 @@ final class ComposeViewModel: ObservableObject {
                 do {
                     let prepared = try await ComposeMediaProcessor.shared.prepareFile(
                         at: fileURL, mimeType: attachment.mimeType,
-                        mediaType: attachment.mimeType.lowercased().hasPrefix("video/") ? "video" : "image")
+                        mediaType: Self.mediaKind(forMimeType: attachment.mimeType), videoSizeLimit: videoSizeLimit)
                     try Task.checkCancellation()
                     outcome = await importPreparedMedia(prepared, reservationID: reservationID)
                 } catch is CancellationError {
                     return successfulUploadCount > 0 ? .partial : .cancelled
                 } catch {
+                    if let processingError = error as? ComposeMediaProcessor.ProcessingError,
+                       case .videoTooLarge = processingError {
+                        sharedImportFailureMessage = MoroL10n.Compose.toastVideoTooLarge
+                    }
                     updateMediaUploadState(id: reservationID, state: .failed(error: error))
                     encounteredFailure = true
                     continue
@@ -924,7 +1015,9 @@ final class ComposeViewModel: ObservableObject {
 
         // Failed or unacknowledged files stay recoverable. The editor offers an explicit
         // retry; publishing/discarding the owning draft cleans up all remaining staging.
-        if encounteredFailure || progressPersistenceFailed { sharedImportFailureMessage = MoroL10n.ShareImport.retryMessage }
+        if encounteredFailure || progressPersistenceFailed {
+            sharedImportFailureMessage = sharedImportFailureMessage ?? MoroL10n.ShareImport.retryMessage
+        }
         guard successfulUploadCount > 0 else { return .failed }
         if !encounteredFailure
             && !progressPersistenceFailed
@@ -938,6 +1031,16 @@ final class ComposeViewModel: ObservableObject {
         _ preparedMedia: ComposeMediaProcessor.PreparedMedia,
         reservationID: String? = nil
     ) async -> MediaImportOutcome {
+        guard !isPublishing, !hasPublished else {
+            if let reservationID { cancelPhotoImportReservation(id: reservationID) }
+            return .cancelled
+        }
+        let otherTypes = mediaAttachments.filter { $0.id != reservationID }.map(\.type)
+        guard !ComposeMediaSelectionPolicy.breaksVideoRule(
+            existingTypes: otherTypes, addingTypes: [preparedMedia.mediaType]) else {
+            if let reservationID { cancelPhotoImportReservation(id: reservationID) }
+            return .failed(.videoMustBeAlone)
+        }
         let tempID: String
         if let reservationID {
             guard populatePhotoImportReservation(
@@ -976,6 +1079,7 @@ final class ComposeViewModel: ObservableObject {
             return false
         }
 
+        mediaAttachments[index].type = preparedMedia.mediaType
         mediaAttachments[index].previewImage = preparedMedia.previewImage
         mediaAttachments[index].sourceUploadData = preparedMedia.uploadData
         mediaAttachments[index].sourceMimeType = preparedMedia.uploadMimeType
@@ -1092,6 +1196,8 @@ final class ComposeViewModel: ObservableObject {
         if isPollActive && !mediaAttachments.isEmpty {
             throw ComposeError.pollCannotIncludeMedia
         }
+
+        if wouldBreakVideoRule(adding: []) { throw ComposeError.videoMustBeAlone }
 
         if let scheduledPublishDate, scheduledPublishDate < minimumScheduledDate {
             throw ComposeError.invalidScheduledDate
@@ -1235,6 +1341,8 @@ final class ComposeViewModel: ObservableObject {
             return .pollCannotIncludeMedia
         }
 
+        if wouldBreakVideoRule(adding: []) { return .videoMustBeAlone }
+
         if let scheduledPublishDate, scheduledPublishDate < minimumScheduledDate {
             return .scheduledDateTooSoon
         }
@@ -1267,6 +1375,8 @@ final class ComposeViewModel: ObservableObject {
             return MoroL10n.ShareImport.unfinished
         case .pollCannotIncludeMedia:
             return MoroL10n.Compose.validationPollCannotIncludeMedia
+        case .videoMustBeAlone:
+            return MoroL10n.Compose.toastVideoMustBeAlone
         case .scheduledDateTooSoon:
             return MoroL10n.Compose.errorInvalidScheduledDate
         }
@@ -1439,7 +1549,7 @@ struct MediaAttachment: Identifiable {
     let id: String
     let url: URL
     let previewURL: URL?
-    let type: String
+    var type: String
     var description: String?
     var focus: String? // Format: "x,y" where x and y are between -1.0 and 1.0
     var originalDescription: String? = nil
@@ -1491,6 +1601,7 @@ enum ComposeError: LocalizedError {
     case characterLimitExceeded
     case invalidPoll
     case pollCannotIncludeMedia
+    case videoMustBeAlone
     case invalidScheduledDate
     
     var errorDescription: String? {
@@ -1513,6 +1624,8 @@ enum ComposeError: LocalizedError {
             return MoroL10n.Compose.errorInvalidPoll
         case .pollCannotIncludeMedia:
             return MoroL10n.Compose.errorPollCannotIncludeMedia
+        case .videoMustBeAlone:
+            return MoroL10n.Compose.toastVideoMustBeAlone
         case .invalidScheduledDate:
             return MoroL10n.Compose.errorInvalidScheduledDate
         }
