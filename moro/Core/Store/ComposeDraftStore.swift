@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Darwin
 
 nonisolated private struct LossyDecodable<Value: Decodable>: Decodable {
     let value: Value?
@@ -27,6 +28,8 @@ nonisolated struct ComposeDraftAttachment: Codable, Equatable, Identifiable {
     let type: String
     let description: String?
     let focus: String?
+    var sharedImportItemID: String? = nil
+    var sharedImportAttachmentID: String? = nil
 
     init(
         id: String,
@@ -53,10 +56,12 @@ nonisolated struct ComposeDraftAttachment: Codable, Equatable, Identifiable {
             description: attachment.description,
             focus: attachment.focus
         )
+        sharedImportItemID = attachment.sharedImportItemID
+        sharedImportAttachmentID = attachment.sharedImportAttachmentID
     }
 
     var mediaAttachment: MediaAttachment {
-        MediaAttachment(
+        var attachment = MediaAttachment(
             id: id,
             url: url,
             previewURL: previewURL,
@@ -65,6 +70,9 @@ nonisolated struct ComposeDraftAttachment: Codable, Equatable, Identifiable {
             focus: focus,
             uploadState: .uploaded
         )
+        attachment.sharedImportItemID = sharedImportItemID
+        attachment.sharedImportAttachmentID = sharedImportAttachmentID
+        return attachment
     }
 }
 
@@ -212,6 +220,8 @@ nonisolated struct ComposeDraft: Identifiable, Codable, Equatable {
     let createdAt: Date
     var updatedAt: Date
     var publishAttempt: ComposePublishAttempt? = nil
+    /// Import provenance is persisted with the text/media so retries never append twice.
+    var sharedImportItemIDs: [String]? = nil
 
     var displayPreviewText: String {
         let preview = payload.previewText
@@ -340,6 +350,14 @@ nonisolated struct SharedComposeDraftStagingItem: Codable, Equatable, Identifiab
             updatedAt: now
         )
     }
+
+    func asImportRecoveryDraft(accountID activeAccountID: String? = nil, now: Date = Date()) -> ComposeDraft {
+        var draft = ComposeDraft(id: ComposeDraftStore.sharedDraftIDPrefix + id,
+            accountID: accountID ?? activeAccountID, category: .auto, target: target, payload: payload,
+            createdAt: createdAt, updatedAt: now)
+        draft.sharedImportItemIDs = [id]
+        return draft
+    }
 }
 
 final class SharedComposeDraftStagingStore {
@@ -356,8 +374,10 @@ final class SharedComposeDraftStagingStore {
         static let corruptBackup = "shared_compose_draft_staging_items_v1_corrupt_backup"
     }
 
-    nonisolated private enum PersistenceError: Error {
+    nonisolated enum PersistenceError: Error {
         case writeVerificationFailed
+        case indexLockUnavailable
+        case indexCorrupt
     }
 
     private let userDefaults: UserDefaults
@@ -366,6 +386,7 @@ final class SharedComposeDraftStagingStore {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let lock = NSLock()
+    private var didReportLockFailure = false
 
     init(
         userDefaults: UserDefaults,
@@ -378,9 +399,47 @@ final class SharedComposeDraftStagingStore {
     }
 
     func pendingItems() -> [SharedComposeDraftStagingItem] {
-        withLock {
+        (try? withLock {
             loadItemsLocked().sorted { $0.createdAt < $1.createdAt }
+        }) ?? []
+    }
+
+    /// A failed read must never look like an empty queue to the publish guard. A busy lock
+    /// throws `.indexLockUnavailable`; an undecodable index throws `.indexCorrupt` (its raw
+    /// copy is backed up) so callers can offer an explicit discard instead of a dead end.
+    func pendingItemsForPublishing() throws -> [SharedComposeDraftStagingItem] {
+        try withLock {
+            guard let data = userDefaults.data(forKey: Keys.items) else { return [] }
+            do {
+                return purgingCancelledLocked(try decoder.decode([SharedComposeDraftStagingItem].self, from: data))
+            } catch {
+                if userDefaults.data(forKey: Keys.corruptBackup) == nil {
+                    userDefaults.set(data, forKey: Keys.corruptBackup)
+                }
+                AppLogger.error("Shared compose staging index is unreadable: \(error)")
+                throw PersistenceError.indexCorrupt
+            }
         }
+    }
+
+    /// The person explicitly discarded these shares. Drop them even if the index cannot be
+    /// decoded: valid entries of other shares are recovered and the index is rewritten, so
+    /// one corrupt write cannot leave a draft that can be neither published nor discarded.
+    @discardableResult
+    func discardItems(ids: Set<String>) -> Bool {
+        do {
+            try withLock {
+                let items = loadItemsLocked()
+                try saveItemsLocked(items.filter { !ids.contains($0.id) })
+            }
+        } catch {
+            AppLogger.error("Failed to discard shared compose items: \(error)")
+            return false
+        }
+        for id in ids where UUID(uuidString: id) != nil {
+            try? fileManager.removeItem(at: baseDirectoryURL.appendingPathComponent(id, isDirectory: true))
+        }
+        return true
     }
 
     @discardableResult
@@ -392,57 +451,57 @@ final class SharedComposeDraftStagingStore {
         attachments: [SharedComposeDraftAttachmentInput] = [],
         now: Date = Date()
     ) throws -> SharedComposeDraftStagingItem {
-        try withLock {
-            try ensureBaseDirectory()
+        try ensureBaseDirectory()
 
-            let itemID = UUID().uuidString
-            let itemDirectoryURL = baseDirectoryURL.appendingPathComponent(itemID, isDirectory: true)
-            try fileManager.createDirectory(
-                at: itemDirectoryURL,
-                withIntermediateDirectories: true,
-                attributes: nil
-            )
+        let itemID = UUID().uuidString
+        let itemDirectoryURL = baseDirectoryURL.appendingPathComponent(itemID, isDirectory: true)
+        try fileManager.createDirectory(
+            at: itemDirectoryURL,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
 
-            var attachmentReferences: [SharedComposeDraftAttachmentReference] = []
-            do {
-                for attachment in attachments {
-                    let destinationURL = try copyAttachment(
-                        attachment,
-                        into: itemDirectoryURL
+        var attachmentReferences: [SharedComposeDraftAttachmentReference] = []
+        do {
+            for attachment in attachments {
+                let destinationURL = try copyAttachment(
+                    attachment,
+                    into: itemDirectoryURL
+                )
+                attachmentReferences.append(
+                    SharedComposeDraftAttachmentReference(
+                        id: attachment.id,
+                        fileName: destinationURL.lastPathComponent,
+                        mimeType: attachment.mimeType,
+                        relativePath: "\(itemID)/\(destinationURL.lastPathComponent)"
                     )
-                    attachmentReferences.append(
-                        SharedComposeDraftAttachmentReference(
-                            id: attachment.id,
-                            fileName: destinationURL.lastPathComponent,
-                            mimeType: attachment.mimeType,
-                            relativePath: "\(itemID)/\(destinationURL.lastPathComponent)"
-                        )
-                    )
-                }
-            } catch {
-                try? fileManager.removeItem(at: itemDirectoryURL)
-                throw error
+                )
             }
+        } catch {
+            try? fileManager.removeItem(at: itemDirectoryURL)
+            throw error
+        }
 
-            let item = SharedComposeDraftStagingItem(
-                id: itemID,
-                accountID: accountID,
-                sourceApplication: sourceApplication,
-                target: target,
-                payload: payload,
-                attachments: attachmentReferences,
-                createdAt: now
-            )
+        let item = SharedComposeDraftStagingItem(
+            id: itemID,
+            accountID: accountID,
+            sourceApplication: sourceApplication,
+            target: target,
+            payload: payload,
+            attachments: attachmentReferences,
+            createdAt: now
+        )
 
-            do {
+        do {
+            try withLock {
                 var items = loadItemsLocked()
                 items.append(item)
                 try saveItemsLocked(items)
-                return item
-            } catch {
-                try? fileManager.removeItem(at: itemDirectoryURL)
-                throw error
             }
+            return item
+        } catch {
+            try? fileManager.removeItem(at: itemDirectoryURL)
+            throw error
         }
     }
 
@@ -453,30 +512,28 @@ final class SharedComposeDraftStagingStore {
     }
 
     func nextPendingItem() -> SharedComposeDraftStagingItem? {
-        withLock {
-            loadItemsLocked().min { $0.createdAt < $1.createdAt }
-        }
+        pendingItems().first
     }
 
     @discardableResult
     func removeItem(id: String) -> Bool {
-        withLock {
-            var items = loadItemsLocked()
-            let beforeCount = items.count
-            items.removeAll { $0.id == id }
-            guard items.count != beforeCount else { return false }
+        do {
+            let removed = try withLock {
+                var items = loadItemsLocked()
+                let beforeCount = items.count
+                items.removeAll { $0.id == id }
+                guard items.count != beforeCount else { return false }
 
-            do {
                 try saveItemsLocked(items)
-            } catch {
-                AppLogger.error("Failed to persist shared draft removal: \(error)")
-                return false
+                return true
             }
-
-            try? fileManager.removeItem(
-                at: baseDirectoryURL.appendingPathComponent(id, isDirectory: true)
-            )
-            return true
+            if removed {
+                try? fileManager.removeItem(at: baseDirectoryURL.appendingPathComponent(id, isDirectory: true))
+            }
+            return removed
+        } catch {
+            AppLogger.error("Failed to persist shared draft removal: \(error)")
+            return false
         }
     }
 
@@ -484,60 +541,70 @@ final class SharedComposeDraftStagingStore {
     /// staging, so a cancellation or relaunch cannot upload completed attachments twice.
     @discardableResult
     func acknowledgeImportedAttachment(itemID: String, attachmentID: String) -> Bool {
-        withLock {
-            var items = loadItemsLocked()
-            guard let itemIndex = items.firstIndex(where: { $0.id == itemID }),
-                  let importedAttachment = items[itemIndex].attachments.first(where: { $0.id == attachmentID }) else {
-                return false
-            }
+        do {
+            let consumedURL = try withLock { () -> URL? in
+                var items = loadItemsLocked()
+                guard let itemIndex = items.firstIndex(where: { $0.id == itemID }),
+                    let importedAttachment = items[itemIndex].attachments.first(where: { $0.id == attachmentID })
+                else {
+                    return nil
+                }
 
-            let item = items[itemIndex]
-            let remainingAttachments = item.attachments.filter { $0.id != attachmentID }
-            if remainingAttachments.isEmpty {
-                items.remove(at: itemIndex)
-            } else {
-                items[itemIndex] = SharedComposeDraftStagingItem(
-                    id: item.id,
-                    accountID: item.accountID,
-                    sourceApplication: item.sourceApplication,
-                    target: item.target,
-                    payload: item.payload,
-                    attachments: remainingAttachments,
-                    createdAt: item.createdAt
-                )
-            }
+                let item = items[itemIndex]
+                let remainingAttachments = item.attachments.filter { $0.id != attachmentID }
+                if remainingAttachments.isEmpty {
+                    items.remove(at: itemIndex)
+                } else {
+                    items[itemIndex] = SharedComposeDraftStagingItem(
+                        id: item.id,
+                        accountID: item.accountID,
+                        sourceApplication: item.sourceApplication,
+                        target: item.target,
+                        payload: item.payload,
+                        attachments: remainingAttachments,
+                        createdAt: item.createdAt
+                    )
+                }
 
-            do {
                 try saveItemsLocked(items)
-            } catch {
-                AppLogger.error("Failed to persist shared attachment progress: \(error)")
-                return false
+                return remainingAttachments.isEmpty
+                    ? baseDirectoryURL.appendingPathComponent(itemID, isDirectory: true)
+                    : attachmentFileURL(for: importedAttachment)
             }
-
-            if remainingAttachments.isEmpty {
-                try? fileManager.removeItem(
-                    at: baseDirectoryURL.appendingPathComponent(itemID, isDirectory: true)
-                )
-            } else {
-                try? fileManager.removeItem(at: attachmentFileURL(for: importedAttachment))
-            }
+            guard let consumedURL else { return false }
+            try? fileManager.removeItem(at: consumedURL)
             return true
+        } catch {
+            AppLogger.error("Failed to persist shared attachment progress: \(error)")
+            return false
         }
     }
 
     func clear() {
-        withLock {
-            let items = loadItemsLocked()
-            items.forEach { item in
+        do {
+            let items = try withLock {
+                let items = loadItemsLocked()
+                userDefaults.removeObject(forKey: Keys.items)
+                guard userDefaults.data(forKey: Keys.items) == nil else {
+                    throw PersistenceError.writeVerificationFailed
+                }
+                return items
+            }
+            for item in items {
                 try? fileManager.removeItem(
                     at: baseDirectoryURL.appendingPathComponent(item.id, isDirectory: true)
                 )
             }
-            userDefaults.removeObject(forKey: Keys.items)
+        } catch {
+            AppLogger.error("Failed to clear shared compose staging: \(error)")
         }
     }
 
     private func loadItemsLocked() -> [SharedComposeDraftStagingItem] {
+        purgingCancelledLocked(decodeItemsLocked())
+    }
+
+    private func decodeItemsLocked() -> [SharedComposeDraftStagingItem] {
         guard let data = userDefaults.data(forKey: Keys.items) else { return [] }
         do {
             return try decoder.decode([SharedComposeDraftStagingItem].self, from: data)
@@ -622,10 +689,124 @@ final class SharedComposeDraftStagingStore {
         return String(sanitized)
     }
 
-    private func withLock<T>(_ operation: () throws -> T) rethrows -> T {
+    private func withLock<T>(_ operation: () throws -> T) throws -> T {
         lock.lock()
         defer { lock.unlock() }
+        // The extension is another process. Synchronize the same index under a file
+        // lock, so its append cannot race this process's per-attachment acknowledgement.
+        do { try ensureBaseDirectory() } catch { reportLockFailure(); throw error }
+        let descriptor = Darwin.open(
+            baseDirectoryURL.appendingPathComponent(".index.lock").path, O_CREAT | O_RDWR, 0o600)
+        guard descriptor >= 0 else { reportLockFailure(); throw PersistenceError.indexLockUnavailable }
+        defer { Darwin.close(descriptor) }
+        guard Self.acquireIndexLock(descriptor) else {
+            reportLockFailure()
+            throw PersistenceError.indexLockUnavailable
+        }
+        defer { flock(descriptor, LOCK_UN) }
+        didReportLockFailure = false
+        defer {
+            userDefaults.synchronize()
+        }
+        userDefaults.synchronize()
         return try operation()
+    }
+
+    /// Removes what nothing will ever import: shares nobody claimed for `maxUnclaimedAge`
+    /// (their account was removed, or they were simply forgotten), and files or cancel
+    /// markers left in the staging directory without an index entry (the extension was
+    /// killed between moving files and committing the index). `claimedIDs` are shares a
+    /// draft still owns; those are kept however old. Entries newer than `graceInterval`
+    /// are left alone so a share being staged right now is never touched.
+    @discardableResult
+    func sweep(
+        claimedIDs: Set<String>, now: Date = Date(),
+        maxUnclaimedAge: TimeInterval = 7 * 24 * 3600, graceInterval: TimeInterval = 3600
+    ) -> Int {
+        var removed = 0
+        var expired: Set<String> = []
+        let indexedIDs: Set<String>
+        do {
+            indexedIDs = try withLock {
+                let items = loadItemsLocked()
+                expired = Set(items.filter {
+                    !claimedIDs.contains($0.id) && now.timeIntervalSince($0.createdAt) > maxUnclaimedAge
+                }.map(\.id))
+                if !expired.isEmpty {
+                    try saveItemsLocked(items.filter { !expired.contains($0.id) })
+                }
+                return Set(items.map(\.id)).subtracting(expired)
+            }
+        } catch {
+            AppLogger.error("Skipped the shared compose staging sweep: \(error)")
+            return 0
+        }
+        // File work happens outside the index lock.
+        for id in expired {
+            try? fileManager.removeItem(at: baseDirectoryURL.appendingPathComponent(id, isDirectory: true))
+            removed += 1
+        }
+        let entries = (try? fileManager.contentsOfDirectory(
+            at: baseDirectoryURL, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        for entry in entries {
+            let name = entry.lastPathComponent
+            let itemID = name.hasPrefix(Self.cancelledMarkerPrefix)
+                ? String(name.dropFirst(Self.cancelledMarkerPrefix.count)) : name
+            guard UUID(uuidString: itemID) != nil, !indexedIDs.contains(itemID) else { continue }
+            let modified = (try? entry.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? now
+            guard now.timeIntervalSince(modified) > graceInterval else { continue }
+            if (try? fileManager.removeItem(at: entry)) != nil, !name.hasPrefix(Self.cancelledMarkerPrefix) {
+                removed += 1
+            }
+        }
+        return removed
+    }
+
+    /// Must match `MoroShareExtensionSharedContainer.cancelledMarkerPrefix`.
+    nonisolated static let cancelledMarkerPrefix = ".cancelled-"
+
+    /// Ordinary contention with the extension is retried briefly (≤ ~200 ms) instead of
+    /// surfacing as a failure; the wait stays bounded so a suspended peer cannot hang us.
+    nonisolated static func acquireIndexLock(
+        _ descriptor: Int32, attempts: Int = 20, interval: useconds_t = 10_000
+    ) -> Bool {
+        for attempt in 0..<attempts {
+            if flock(descriptor, LOCK_EX | LOCK_NB) == 0 { return true }
+            let code = errno
+            guard code == EWOULDBLOCK || code == EINTR else { return false }
+            if attempt + 1 < attempts { usleep(interval) }
+        }
+        return false
+    }
+
+    private func cancelledMarkerURL(for itemID: String) -> URL {
+        baseDirectoryURL.appendingPathComponent(Self.cancelledMarkerPrefix + itemID, isDirectory: false)
+    }
+
+    /// The extension leaves a tombstone when it cannot remove a cancelled item from the
+    /// index. Such items are never offered to the editor; they are purged here instead.
+    private func purgingCancelledLocked(_ items: [SharedComposeDraftStagingItem]) -> [SharedComposeDraftStagingItem] {
+        let cancelled = items.filter { fileManager.fileExists(atPath: cancelledMarkerURL(for: $0.id).path) }
+        guard !cancelled.isEmpty else { return items }
+        let cancelledIDs = Set(cancelled.map(\.id))
+        let remaining = items.filter { !cancelledIDs.contains($0.id) }
+        do {
+            try saveItemsLocked(remaining)
+            for id in cancelledIDs {
+                try? fileManager.removeItem(at: baseDirectoryURL.appendingPathComponent(id, isDirectory: true))
+                try? fileManager.removeItem(at: cancelledMarkerURL(for: id))
+            }
+        } catch {
+            AppLogger.error("Failed to purge cancelled shared compose items: \(error)")
+        }
+        return remaining
+    }
+
+    private func reportLockFailure() {
+        guard !didReportLockFailure else { return }
+        didReportLockFailure = true
+        AppLogger.error("Shared compose staging index lock unavailable; operation skipped")
     }
 }
 
@@ -698,9 +879,10 @@ final class ComposeDraftStore {
             var drafts = loadDraftsLocked()
             if let index = drafts.firstIndex(where: { $0.id == draft.id }) {
                 drafts[index] = replacing(drafts[index], with: draft)
-            } else if draft.category == .auto,
+            } else if draft.category == .auto, draft.sharedImportItemIDs?.isEmpty != false,
                       let index = drafts.firstIndex(where: {
                           $0.category == .auto
+                              && $0.sharedImportItemIDs?.isEmpty != false
                               && $0.accountID == draft.accountID
                               && $0.target.matchKey == draft.target.matchKey
                       }) {
@@ -719,10 +901,28 @@ final class ComposeDraftStore {
     }
 
     /// A draft made from a share is named after its staging item.
-    static let sharedDraftIDPrefix = "shared-"
+    nonisolated static let sharedDraftIDPrefix = "shared-"
 
     @discardableResult
-    func removeDraft(id: String) -> Bool {
+    func removeDraft(id: String, removeStaging: Bool = true) -> Bool {
+        var sharedIDs = Set(draft(id: id)?.sharedImportItemIDs ?? [])
+        if id.hasPrefix(Self.sharedDraftIDPrefix) {
+            sharedIDs.insert(String(id.dropFirst(Self.sharedDraftIDPrefix.count)))
+        }
+        if removeStaging, !sharedIDs.isEmpty {
+            do {
+                let stagedIDs = Set(try stagingStore.pendingItemsForPublishing().map(\.id))
+                for sharedID in sharedIDs where stagedIDs.contains(sharedID) {
+                    guard stagingStore.removeItem(id: sharedID) else { return false }
+                }
+            } catch SharedComposeDraftStagingStore.PersistenceError.indexCorrupt {
+                // Discarding is explicit; repair the index rather than trapping the draft.
+                guard stagingStore.discardItems(ids: sharedIDs) else { return false }
+            } catch {
+                AppLogger.error("Failed to remove shared staging before discarding draft: \(error)")
+                return false
+            }
+        }
         let removed = withLock {
             var drafts = loadDraftsLocked()
             let beforeCount = drafts.count
@@ -730,16 +930,26 @@ final class ComposeDraftStore {
             guard drafts.count != beforeCount else { return false }
             return saveDraftsLocked(drafts)
         }
-        // Deleted or sent, a shared draft is finished with: whatever of the share is still
-        // staged must not turn it back into a draft the next time the app comes forward.
-        if id.hasPrefix(Self.sharedDraftIDPrefix) {
-            stagingStore.removeItem(id: String(id.dropFirst(Self.sharedDraftIDPrefix.count)))
-        }
         return removed
+    }
+
+    func draftForSharedImport(_ itemID: String, accountID: String?) -> ComposeDraft? {
+        guard let owner = draftOwningSharedImport(itemID), owner.accountID == accountID else { return nil }
+        return owner
+    }
+
+    func draftOwningSharedImport(_ itemID: String) -> ComposeDraft? {
+        withLock { loadDraftsLocked().first {
+            $0.id == Self.sharedDraftIDPrefix + itemID || $0.sharedImportItemIDs?.contains(itemID) == true
+        } }
     }
 
     func pendingSharedStagingItems() -> [SharedComposeDraftStagingItem] {
         stagingStore.pendingItems()
+    }
+
+    func pendingSharedStagingItemsForPublishing() throws -> [SharedComposeDraftStagingItem] {
+        try stagingStore.pendingItemsForPublishing()
     }
 
     func nextPendingSharedStagingItem() -> SharedComposeDraftStagingItem? {
@@ -771,8 +981,29 @@ final class ComposeDraftStore {
         stagingStore.attachmentFileURL(for: attachment)
     }
 
-    func removePendingSharedStagingItem(id: String) {
+    @discardableResult
+    func removePendingSharedStagingItem(id: String) -> Bool {
         stagingStore.removeItem(id: id)
+    }
+
+    /// Launch-time housekeeping for the share staging area; see `SharedComposeDraftStagingStore.sweep`.
+    @discardableResult
+    func sweepSharedStaging(now: Date = Date()) -> Int {
+        let claimed = withLock {
+            loadDraftsLocked().reduce(into: Set<String>()) { ids, draft in
+                ids.formUnion(draft.sharedImportItemIDs ?? [])
+                if draft.id.hasPrefix(Self.sharedDraftIDPrefix) {
+                    ids.insert(String(draft.id.dropFirst(Self.sharedDraftIDPrefix.count)))
+                }
+            }
+        }
+        return stagingStore.sweep(claimedIDs: claimed, now: now)
+    }
+
+    /// Explicit discard that also works when the shared index is unreadable.
+    @discardableResult
+    func discardSharedStagingItems(ids: Set<String>) -> Bool {
+        stagingStore.discardItems(ids: ids)
     }
 
     @discardableResult
@@ -835,15 +1066,18 @@ final class ComposeDraftStore {
         with draft: ComposeDraft,
         savedID: String? = nil
     ) -> ComposeDraft {
-        ComposeDraft(
+        var replacement = ComposeDraft(
             id: savedID ?? existing.id,
             accountID: draft.accountID,
             category: existing.category == .manual ? .manual : draft.category,
             target: draft.target,
             payload: draft.payload,
             createdAt: existing.createdAt,
-            updatedAt: draft.updatedAt
+            updatedAt: draft.updatedAt,
+            publishAttempt: draft.publishAttempt
         )
+        replacement.sharedImportItemIDs = draft.sharedImportItemIDs
+        return replacement
     }
 
     private func migrateLegacyDraftsIfNeeded() {

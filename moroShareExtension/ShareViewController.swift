@@ -1,189 +1,144 @@
-//
-//  ShareViewController.swift
-//  moroShareExtension
-//
-//  Minimal Share Extension that stages URL/text/image content for Moro Compose import.
-//
-
 import UIKit
 
-/// Lookup helper for Localizable.xcstrings strings shipped with the extension.
-/// Bundle.main inside an app extension is the extension's own bundle.
-func L(_ key: String) -> String {
-    NSLocalizedString(key, bundle: .main, comment: "")
-}
+func L(_ key: String) -> String { NSLocalizedString(key, bundle: .main, comment: "") }
+func L(_ key: String, _ args: CVarArg...) -> String { String(format: L(key), arguments: args) }
 
-func L(_ key: String, _ args: CVarArg...) -> String {
-    String(format: L(key), arguments: args)
-}
-
+/// Receive and stage once, then hand off. Publishing and draft decisions belong to Moro.
 final class ShareViewController: UIViewController {
-    private enum ViewState {
-        case loading(String)
-        case ready(String)
-        case importing(String)
-        case error(String)
-    }
-
-    private let sessionReader = MoroShareExtensionSessionBootstrapReader()
-    private let stagingStore = MoroShareExtensionDraftStagingStore()
-
     private let titleLabel = UILabel()
     private let messageLabel = UILabel()
     private let activityIndicator = UIActivityIndicatorView(style: .large)
-    private let importButton = UIButton(type: .system)
+    private let retryButton = UIButton(type: .system)
     private let cancelButton = UIButton(type: .system)
-
-    private var loadedContent: MoroShareExtensionLoadedContent?
-    private var activeAccountID: String?
+    private let importer = MoroShareExtensionImportService()
+    private var importTask: Task<Void, Never>?
+    private var stagedItemID: String?
+    private var hasStarted = false
+    private var isOpening = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        configureView()
-
-        Task { @MainActor [weak self] in
-            await self?.loadSharedContent()
-        }
-    }
-
-    private func configureView() {
         view.backgroundColor = .systemBackground
-
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.text = L("share.title")
-        titleLabel.font = .systemFont(ofSize: 22, weight: .bold)
+        titleLabel.font = .preferredFont(forTextStyle: .title2)
+        titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.textAlignment = .center
-
-        messageLabel.translatesAutoresizingMaskIntoConstraints = false
-        messageLabel.font = .systemFont(ofSize: 15)
+        messageLabel.font = .preferredFont(forTextStyle: .body)
+        messageLabel.adjustsFontForContentSizeCategory = true
         messageLabel.textColor = .secondaryLabel
         messageLabel.textAlignment = .center
         messageLabel.numberOfLines = 0
-
-        activityIndicator.translatesAutoresizingMaskIntoConstraints = false
         activityIndicator.hidesWhenStopped = true
-
-        importButton.translatesAutoresizingMaskIntoConstraints = false
-        importButton.configuration = .filled()
-        importButton.configuration?.cornerStyle = .large
-        importButton.setTitle(L("share.action.import"), for: .normal)
-        importButton.addTarget(self, action: #selector(importButtonTapped), for: .touchUpInside)
-
-        cancelButton.translatesAutoresizingMaskIntoConstraints = false
+        retryButton.configuration = .filled()
+        retryButton.configuration?.cornerStyle = .large
+        retryButton.setTitle(L("share.action.retry"), for: .normal)
+        retryButton.addTarget(self, action: #selector(retryTapped), for: .touchUpInside)
+        retryButton.accessibilityIdentifier = "share.retry"
         cancelButton.configuration = .plain()
         cancelButton.setTitle(L("share.action.cancel"), for: .normal)
-        cancelButton.addTarget(self, action: #selector(cancelButtonTapped), for: .touchUpInside)
-
-        let stackView = UIStackView(arrangedSubviews: [
-            titleLabel,
-            activityIndicator,
-            messageLabel,
-            importButton,
-            cancelButton,
-        ])
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        stackView.axis = .vertical
-        stackView.alignment = .fill
-        stackView.spacing = 18
-
-        view.addSubview(stackView)
-
+        cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        let stack = UIStackView(arrangedSubviews: [titleLabel, activityIndicator, messageLabel, retryButton, cancelButton])
+        stack.axis = .vertical
+        stack.spacing = 18
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(stack)
         NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            stackView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
-            stackView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            stack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
+            stack.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerYAnchor),
+            stack.topAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
         ])
+        showProgress(L("share.state.loading"))
     }
 
-    @MainActor
-    private func loadSharedContent() async {
-        apply(state: .loading(L("share.state.loading")))
-
-        guard let activeAccountID = sessionReader.loadActiveAccountID() else {
-            apply(state: .error(L("share.error.notLoggedIn")))
-            return
-        }
-
-        let content = await MoroShareExtensionInputLoader.load(
-            from: extensionContext?.inputItems ?? []
-        )
-        guard content.hasSubstantivePayload else {
-            apply(state: .error(L("share.error.noContent")))
-            return
-        }
-
-        self.activeAccountID = activeAccountID
-        self.loadedContent = content
-        apply(state: .ready(L("share.state.ready", content.summaryText)))
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard !hasStarted else { return }
+        hasStarted = true
+        startImport()
     }
 
-    @objc
-    private func importButtonTapped() {
-        Task { @MainActor [weak self] in
-            await self?.stageSharedDraft()
-        }
-    }
-
-    @objc
-    private func cancelButtonTapped() {
-        extensionContext?.cancelRequest(
-            withError: NSError(
-                domain: "com.somincola.moro.ShareExtension",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: L("share.action.cancel")]
-            )
-        )
-    }
-
-    @MainActor
-    private func stageSharedDraft() async {
-        guard let activeAccountID, let loadedContent else {
-            apply(state: .error(L("share.error.notReady")))
-            return
-        }
-
-        apply(state: .importing(L("share.state.importing")))
-
-        do {
-            try stagingStore.stage(
-                accountID: activeAccountID,
-                sourceApplication: "ShareExtension",
-                content: loadedContent
-            )
-            apply(state: .importing(L("share.state.importComplete")))
-            try? await Task.sleep(nanoseconds: 450_000_000)
-            extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
-        } catch {
-            apply(state: .error(L("share.error.importFailed")))
+    private func startImport() {
+        guard importTask == nil else { return }
+        showProgress(L("share.state.loading"))
+        let items = extensionContext?.inputItems ?? []
+        let accountID = MoroShareExtensionSessionBootstrapReader().loadActiveAccountID()
+        importTask = Task { @MainActor [weak self, importer] in
+            do {
+                let id = try await importer.prepare(inputItems: items, accountID: accountID)
+                guard let self else { await importer.cancel(itemID: id); return }
+                self.stagedItemID = id
+                guard !Task.isCancelled else { await importer.cancel(itemID: id); return }
+                self.importTask = nil
+                self.openMoro()
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                self.importTask = nil
+                let message = (error as? MoroShareExtensionInputError)?.message ?? L("share.error.importFailed")
+                self.showError(message)
+            }
         }
     }
 
-    private func apply(state: ViewState) {
-        switch state {
-        case .loading(let message):
-            activityIndicator.startAnimating()
-            messageLabel.text = message
-            importButton.isHidden = true
-            importButton.isEnabled = false
-            cancelButton.isEnabled = true
-        case .ready(let message):
-            activityIndicator.stopAnimating()
-            messageLabel.text = message
-            importButton.isHidden = false
-            importButton.isEnabled = true
-            cancelButton.isEnabled = true
-        case .importing(let message):
-            activityIndicator.startAnimating()
-            messageLabel.text = message
-            importButton.isHidden = false
-            importButton.isEnabled = false
-            cancelButton.isEnabled = false
-        case .error(let message):
-            activityIndicator.stopAnimating()
-            messageLabel.text = message
-            importButton.isHidden = true
-            importButton.isEnabled = false
-            cancelButton.isEnabled = true
+    @objc private func retryTapped() {
+        if stagedItemID != nil { openMoro() } else { startImport() }
+    }
+
+    private func openMoro() {
+        guard !isOpening, let id = stagedItemID,
+              let url = URL(string: "moro://share/compose?item=\(id)") else { return }
+        isOpening = true
+        showProgress(L("share.state.opening"))
+        // Share extensions have no guaranteed app-launch contract. Use a public
+        // responder URL opener where available, with an explicit recoverable fallback.
+        // Never use UIApplication.shared, private selectors or the Objective-C runtime.
+        var responder: UIResponder? = self
+        while let current = responder {
+            if let application = current as? UIApplication {
+                application.open(url, options: [:]) { [weak self] success in
+                    Task { @MainActor [weak self] in self?.finishOpening(success: success) }
+                }
+                return
+            }
+            responder = current.next
+        }
+        extensionContext?.open(url) { [weak self] success in
+            Task { @MainActor [weak self] in self?.finishOpening(success: success) }
         }
     }
+
+    private func finishOpening(success: Bool) {
+        isOpening = false
+        if success { extensionContext?.completeRequest(returningItems: [], completionHandler: nil) }
+        else { showError(L("share.error.openFailed")) }
+    }
+
+    @objc private func cancelTapped() {
+        importTask?.cancel()
+        cancelButton.isEnabled = false
+        Task { @MainActor [weak self, importer] in
+            await importer.cancel(itemID: self?.stagedItemID)
+            self?.extensionContext?.cancelRequest(withError: NSError(
+                domain: "com.somincola.moro.ShareExtension", code: NSUserCancelledError,
+                userInfo: [NSLocalizedDescriptionKey: L("share.action.cancel")]))
+        }
+    }
+
+    private func showProgress(_ message: String) {
+        activityIndicator.startAnimating()
+        messageLabel.text = message
+        retryButton.isHidden = true
+        cancelButton.isEnabled = !isOpening
+    }
+
+    private func showError(_ message: String) {
+        activityIndicator.stopAnimating()
+        messageLabel.text = message
+        retryButton.isHidden = false
+        retryButton.setTitle(L(stagedItemID == nil ? "share.action.retry" : "share.action.open"), for: .normal)
+        cancelButton.isEnabled = true
+    }
+
+    nonisolated deinit { importTask?.cancel() }
 }

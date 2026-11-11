@@ -11,6 +11,7 @@ struct SharedComposeAttachmentImportPayload: Equatable {
     let stagingItemID: String
     let sourceApplication: String?
     let attachments: [SharedComposeDraftAttachmentReference]
+    var text: String = ""
 }
 
 struct SharedComposeImportResolution: Equatable {
@@ -29,15 +30,21 @@ final class SharedComposeImportCoordinator {
     }
 
     func consumeNextImportableDraft(activeAccountID: String?) -> SharedComposeImportResolution? {
-        guard let stagedItem = draftStore.pendingSharedStagingItems().first(where: {
-            itemMatchesActiveAccount($0, activeAccountID: activeAccountID)
-        }) else {
+        let pending = draftStore.pendingSharedStagingItems().filter {
+            guard itemMatchesActiveAccount($0, activeAccountID: activeAccountID) else { return false }
+            // Explicitly saved work belongs in Drafts. A failed attachment must not
+            // immediately reopen the editor the user just chose to save and close.
+            let owner = draftStore.draftOwningSharedImport($0.id)
+            guard owner == nil || owner?.accountID == activeAccountID else { return false }
+            return owner?.category != .manual || $0.id == SharedComposeHandoff.shared.requestedItemID
+        }
+        guard let stagedItem = pending.first(where: { $0.id == SharedComposeHandoff.shared.requestedItemID }) ?? pending.first else {
             return nil
         }
 
-        let stagedDraft = stagedItem.asManualDraft()
+        let stagedDraft = stagedItem.asImportRecoveryDraft(accountID: activeAccountID)
         let draft: ComposeDraft
-        if let existingDraft = draftStore.draft(id: stagedDraft.id) {
+        if let existingDraft = draftStore.draftForSharedImport(stagedItem.id, accountID: activeAccountID) {
             // Preserve attachments already uploaded during an earlier partial import.
             draft = existingDraft
         } else {
@@ -59,10 +66,12 @@ final class SharedComposeImportCoordinator {
             sharedImport = SharedComposeAttachmentImportPayload(
                 stagingItemID: stagedItem.id,
                 sourceApplication: stagedItem.sourceApplication,
-                attachments: stagedItem.attachments
+                attachments: stagedItem.attachments,
+                text: stagedItem.payload.content
             )
         }
 
+        SharedComposeHandoff.shared.acknowledge(stagedItem.id)
         return SharedComposeImportResolution(
             draft: draft,
             sharedImport: sharedImport

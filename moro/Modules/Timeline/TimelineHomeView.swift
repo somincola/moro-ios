@@ -448,6 +448,9 @@ struct TimelineHomeView: View {
             scrollBridge.setActive(isActive && newValue == .active && !hasLocalModal)
             switch newValue {
             case .active:
+                // Coming back to the app is not "watching live": keep the post that was
+                // showing, even at the top, and let new posts wait behind the notice.
+                if lastInactiveAt != nil { scrollBridge.holdReadingPositionAfterResume() }
                 guard hasLoadedHome else { return }
                 refreshAnnouncementBadge(initialDelay: false)
                 detectionManager.startDetection()
@@ -474,6 +477,7 @@ struct TimelineHomeView: View {
                 if lastInactiveAt == nil {
                     lastInactiveAt = Date()
                 }
+                if newValue == .background { TimelineLaunchPolicy.recordLeaving() }
             @unknown default:
                 break
             }

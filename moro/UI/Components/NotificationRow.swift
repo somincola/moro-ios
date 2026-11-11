@@ -153,13 +153,15 @@ struct NotificationRow: View {
     }
 
     private var actionLabel: some View {
-        Text(actionText)
-            .moroScaledFont(size: 14, weight: .medium)
-            .foregroundStyle(theme.colors.textSecondary)
-            .lineLimit(2)
-            .lineSpacing(1)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        eventButton(part: "action") {
+            Text(actionText)
+                .moroScaledFont(size: 14, weight: .medium)
+                .foregroundStyle(theme.colors.textSecondary)
+                .lineLimit(2)
+                .lineSpacing(1)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private var systemEventRow: some View {
@@ -282,20 +284,26 @@ struct NotificationRow: View {
     @ViewBuilder
     private var personHeader: some View {
         if let account = primaryAccount {
-            Button(action: { onAccountTap?() }) {
-                HStack(alignment: .center, spacing: 4) {
-                    actorDisplayName(account)
-                        .layoutPriority(2)
+            HStack(alignment: .center, spacing: 4) {
+                // The person opens their profile; the time belongs to the post.
+                Button(action: { onAccountTap?() }) {
+                    HStack(alignment: .center, spacing: 4) {
+                        actorDisplayName(account)
+                            .layoutPriority(2)
 
-                    accountHandle(account)
-                        .layoutPriority(1)
-
-                    metaTime
+                        accountHandle(account)
+                            .layoutPriority(1)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .frame(minHeight: identityLineHeight, alignment: .center)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.plain)
+                .layoutPriority(1)
+                .accessibilityIdentifier("notifications.actor.\(notification.id)")
+
+                eventButton(part: "time") { metaTime }
             }
-            .buttonStyle(.plain)
+            .frame(minHeight: identityLineHeight, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             HStack(spacing: 4) {
                 Text(MoroL10n.Notifications.unknownUser)
@@ -308,25 +316,53 @@ struct NotificationRow: View {
     @ViewBuilder
     private var postActionSummary: some View {
         if let account = primaryAccount {
-            Button(action: actorTapAction) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .center, spacing: 4) {
-                        actorDisplayName(account, usesIntrinsicWidth: true)
+            // The name opens the person (or the list of people); "liked your post · 2h"
+            // describes the post, so it opens the post like its preview does.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 4) {
+                    actorNameButton { actorDisplayName(account, usesIntrinsicWidth: true) }
 
-                        postActionAndTimeText(usesIntrinsicWidth: true)
-                    }
-                    .fixedSize(horizontal: true, vertical: false)
-                    .frame(minHeight: identityLineHeight, alignment: .center)
+                    eventButton(part: "action") { postActionAndTimeText(usesIntrinsicWidth: true) }
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minHeight: identityLineHeight, alignment: .center)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        actorDisplayName(account)
+                VStack(alignment: .leading, spacing: 2) {
+                    actorNameButton { actorDisplayName(account) }
 
+                    eventButton(part: "action") {
                         postActionAndTimeText()
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func actorNameButton<Label: View>(@ViewBuilder label: () -> Label) -> some View {
+        Button(action: actorTapAction) {
+            label().contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("notifications.actor.\(notification.id)")
+    }
+
+    /// The action text and the time open the post the notification is about, like its
+    /// preview and thumbnail. Without a post (a follow, say) they fall back to the person.
+    private func eventButton<Label: View>(part: String, @ViewBuilder label: () -> Label) -> some View {
+        Button(action: eventTapAction) {
+            label().contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("notifications.\(part).\(notification.id)")
+    }
+
+    private func eventTapAction() {
+        if let status = effectiveStatusTarget, let onStatusTap {
+            onStatusTap(status)
+        } else {
+            actorTapAction()
         }
     }
 

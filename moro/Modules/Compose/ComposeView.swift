@@ -165,6 +165,12 @@ struct ComposeView: View {
     @State private var emojiViewModel: CustomEmojiViewModel?
     @State private var pendingScheduledDate = ComposeViewModel.defaultScheduledDate()
     @State private var hasProcessedSharedImport = false
+    @StateObject private var sharedEditingSession = SharedComposeEditingSession()
+    @State private var sharedImportTask: Task<Void, Never>?
+    @State private var attemptedSharedImportIDs: Set<String> = []
+    @State private var pendingSharedImportIDs: Set<String> = []
+    @State private var sharedImportMessage: String?
+    @State private var sharedImportInterrupted = false
     @State private var isCompletingPublish = false
     @State private var publishFailureMessage: String?
     @State private var publishDraftSaved: Bool?
@@ -193,6 +199,7 @@ struct ComposeView: View {
             accountCache: accountCache,
             initialDraft: initialDraft
         )
+        resolvedViewModel.configureSharedImportRecovery(using: resolvedDraftStore)
         self.draftStore = resolvedDraftStore
         self.sharedImport = sharedImport
         self.onDismiss = onDismiss
@@ -319,6 +326,7 @@ struct ComposeView: View {
             }
             .disabled(isPublishingOrClosing)
             .background(theme.colors.background)
+            .safeAreaInset(edge: .top, spacing: 0) { sharedImportNotice }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
@@ -329,10 +337,10 @@ struct ComposeView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     MoroToolbarButton(MoroL10n.Common.cancel, kind: .close) {
-                        if viewModel.hasDraftableContent {
+                        if viewModel.hasDraftableContent || viewModel.hasPendingSharedMedia {
                             destination = .discardConfirmation
                         } else {
-                            dismissComposer()
+                            discardDraftAndDismiss()
                         }
                     }
                     .disabled(isPublishingOrClosing)
@@ -461,17 +469,16 @@ struct ComposeView: View {
                 }
             }
             .onAppear {
-                if let sharedImport, !hasProcessedSharedImport {
-                    hasProcessedSharedImport = true
-                    Task {
-                        await importSharedAttachments(from: sharedImport)
-                    }
-                }
+                sharedEditingSession.activate()
+                startSharedImports()
             }
             .onDisappear {
                 if isCompletingPublish {
                     AppLogger.debug("[Compose] Published composer disappeared")
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: SharedComposeHandoff.received)) { _ in
+                startSharedImports()
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { notification in
                 updateEmojiPickerHeight(from: notification)
@@ -479,6 +486,13 @@ struct ComposeView: View {
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .background {
                     autosaveDraftIfNeeded()
+                    if sharedImportTask != nil { sharedImportInterrupted = true }
+                } else if newPhase == .active {
+                    // A batch cut short in the background is resumed once automatically,
+                    // instead of waiting for the person to tap "Retry".
+                    let resume = sharedImportInterrupted && sharedImportTask == nil
+                    if resume { sharedImportInterrupted = false }
+                    startSharedImports(retry: resume)
                 }
             }
             .task(priority: .utility) {
@@ -557,7 +571,17 @@ struct ComposeView: View {
                 draftStore: draftStore
             ) { draft in
                 self.destination = nil
+                let previousImport = sharedImportTask
+                previousImport?.cancel()
                 viewModel.applyRestoredDraft(draft)
+                hasProcessedSharedImport = true
+                attemptedSharedImportIDs.removeAll()
+                pendingSharedImportIDs.removeAll()
+                sharedImportMessage = nil
+                Task { @MainActor in
+                    await previousImport?.value
+                    startSharedImports()
+                }
                 AppFeedbackCenter.shared.showInfo(MoroL10n.ComposeDrafts.restored)
             }
             .accessibilityIdentifier("compose.draftsSheet")
@@ -1761,8 +1785,13 @@ struct ComposeView: View {
     }
 
     private func discardDraftAndDismiss() {
+        viewModel.cancelSharedImports()
+        sharedImportTask?.cancel()
         if let draftID = viewModel.activeDraftID {
-            _ = draftStore.removeDraft(id: draftID)
+            guard draftStore.removeDraft(id: draftID) else {
+                AppFeedbackCenter.shared.showError(MoroL10n.ComposeDrafts.saveFailed)
+                return
+            }
         }
         viewModel.clearActiveDraftReference()
         dismissComposer()
@@ -1832,31 +1861,149 @@ struct ComposeView: View {
     }
     
     private func retryMediaUpload(attachmentID: String) async {
+        if viewModel.mediaAttachment(id: attachmentID)?.sharedImportItemID != nil {
+            startSharedImports(retry: true)
+            return
+        }
         showMediaImportFeedback(
             await viewModel.retryMediaUpload(attachmentID: attachmentID)
         )
     }
 
-    private func importSharedAttachments(
-        from sharedImport: SharedComposeAttachmentImportPayload
-    ) async {
-        let outcome = await viewModel.importSharedAttachments(from: sharedImport, draftStore: draftStore)
-        if outcome == .complete || outcome == .partial {
-            let draft = viewModel.makeDraft(category: .manual)
-            if !draftStore.save(draft) {
-                AppFeedbackCenter.shared.showError(MoroL10n.ComposeDrafts.saveFailed)
+    private func startSharedImports(retry: Bool = false) {
+        guard sharedEditingSession.isActive, scenePhase == .active,
+              sharedImportTask == nil, !isCompletingPublish else { return }
+        // The extension or another surface may have changed staging while we were away.
+        viewModel.refreshPendingSharedMedia()
+        if retry { attemptedSharedImportIDs.subtract(pendingSharedImportIDs) }
+        // Ask iOS for extra time so a batch keeps uploading for a while after the person
+        // switches away. If the time runs out, the batch resumes on returning (see scenePhase).
+        let backgroundAssertion = SharedImportBackgroundAssertion()
+        sharedImportTask = Task { @MainActor in
+            defer {
+                sharedImportTask = nil
+                backgroundAssertion.end()
+                if sharedImportInterrupted, scenePhase == .active, !pendingSharedImportIDs.isEmpty {
+                    // The batch was cut short by going to the background; resume it once.
+                    sharedImportInterrupted = false
+                    startSharedImports(retry: true)
+                }
+            }
+            var initial = hasProcessedSharedImport ? nil : sharedImport
+            while !Task.isCancelled {
+                let incoming: SharedComposeAttachmentImportPayload
+                let isInitialImport: Bool
+                if let first = initial {
+                    initial = nil
+                    hasProcessedSharedImport = true
+                    incoming = first
+                    isInitialImport = true
+                } else if let next = nextPendingSharedImport() {
+                    incoming = next
+                    isInitialImport = false
+                } else { break }
+                attemptedSharedImportIDs.insert(incoming.stagingItemID)
+                let outcome = await viewModel.importSharedAttachments(from: incoming, draftStore: draftStore)
+                if outcome == .withdrawn {
+                    // Cancelled in the share sheet after Moro had already opened it.
+                    pendingSharedImportIDs.remove(incoming.stagingItemID)
+                    if pendingSharedImportIDs.isEmpty { sharedImportMessage = nil }
+                    if isInitialImport,
+                       viewModel.activeDraftID == ComposeDraftStore.sharedDraftIDPrefix + incoming.stagingItemID,
+                       !viewModel.mediaAttachments.contains(where: { $0.uploadState.isUploaded }) {
+                        // The editor exists only for that share: close it and leave nothing behind.
+                        discardDraftAndDismiss()
+                        break
+                    }
+                    continue
+                }
+                if Task.isCancelled || outcome == .cancelled {
+                    attemptedSharedImportIDs.remove(incoming.stagingItemID)
+                    hasProcessedSharedImport = true // Resume from the fresh, remaining staged files.
+                    break
+                }
+                if outcome == .complete {
+                    pendingSharedImportIDs.remove(incoming.stagingItemID)
+                    if pendingSharedImportIDs.isEmpty { sharedImportMessage = nil }
+                    AppFeedbackCenter.shared.showInfo(MoroL10n.Compose.toastImportComplete)
+                } else {
+                    pendingSharedImportIDs.insert(incoming.stagingItemID)
+                    sharedImportMessage = viewModel.sharedImportFailureMessage ?? MoroL10n.ShareImport.retryMessage
+                }
             }
         }
+    }
 
-        switch outcome {
-        case .complete:
-            AppFeedbackCenter.shared.showInfo(MoroL10n.Compose.toastImportComplete)
-        case .partial:
-            AppFeedbackCenter.shared.showInfo(MoroL10n.Compose.toastImportPartial)
-        case .failed:
-            AppFeedbackCenter.shared.showError(MoroL10n.Compose.toastImportFailed)
-        case .cancelled:
-            break
+    private func nextPendingSharedImport() -> SharedComposeAttachmentImportPayload? {
+        let pending = draftStore.pendingSharedStagingItems().filter { item in
+            guard !attemptedSharedImportIDs.contains(item.id),
+                  item.accountID == nil || item.accountID == viewModel.sharedImportAccountID else { return false }
+            let owner = draftStore.draftOwningSharedImport(item.id)
+            return owner == nil || (owner?.accountID == viewModel.sharedImportAccountID
+                && owner?.id == viewModel.activeDraftID)
+        }
+        guard let item = pending.first(where: { $0.id == SharedComposeHandoff.shared.requestedItemID }) ?? pending.first else { return nil }
+        return SharedComposeAttachmentImportPayload(stagingItemID: item.id, sourceApplication: item.sourceApplication,
+            attachments: item.attachments, text: item.payload.content)
+    }
+
+    private func ignorePendingSharedImports() {
+        if viewModel.sharedStagingUnreadable {
+            // The queue cannot be decoded, so the remaining files cannot be identified one by
+            // one. Discarding is explicit: repair the index and keep what already uploaded.
+            guard viewModel.discardRemainingSharedImports(using: draftStore) else {
+                AppFeedbackCenter.shared.showError(MoroL10n.ShareImport.retryMessage)
+                return
+            }
+            pendingSharedImportIDs.removeAll()
+            sharedImportMessage = nil
+            if viewModel.hasDraftableContent { _ = draftStore.save(viewModel.makeDraft(category: .auto)) }
+            return
+        }
+        do {
+            let stagedIDs = Set(try draftStore.pendingSharedStagingItemsForPublishing().map(\.id))
+            for id in pendingSharedImportIDs {
+                if stagedIDs.contains(id), !draftStore.removePendingSharedStagingItem(id: id) {
+                    AppFeedbackCenter.shared.showError(MoroL10n.ShareImport.retryMessage)
+                    return
+                }
+                SharedComposeHandoff.shared.acknowledge(id)
+            }
+        } catch {
+            AppFeedbackCenter.shared.showError(MoroL10n.ShareImport.retryMessage)
+            return
+        }
+        for attachment in viewModel.mediaAttachments where !attachment.uploadState.isUploaded
+            && attachment.sharedImportItemID.map({ pendingSharedImportIDs.contains($0) }) == true {
+            _ = viewModel.removeMedia(id: attachment.id)
+        }
+        pendingSharedImportIDs.removeAll()
+        sharedImportMessage = nil
+        viewModel.refreshPendingSharedMedia()
+        if viewModel.hasDraftableContent { _ = draftStore.save(viewModel.makeDraft(category: .auto)) }
+    }
+
+    @ViewBuilder private var sharedImportNotice: some View {
+        if let sharedImportMessage = sharedImportMessage
+            ?? (viewModel.sharedStagingUnreadable ? MoroL10n.ShareImport.retryMessage : nil) {
+            VStack(alignment: .leading, spacing: theme.spacing.s) {
+                Text(sharedImportMessage).font(theme.typography.caption)
+                    .accessibilityIdentifier("compose.sharedImportNotice")
+                HStack {
+                    Button(MoroL10n.ShareImport.retry) { startSharedImports(retry: true) }
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("compose.sharedImportRetry")
+                    Spacer()
+                    Button(MoroL10n.ShareImport.ignore, role: .destructive) { ignorePendingSharedImports() }
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("compose.sharedImportIgnore")
+                }
+                .font(theme.typography.caption)
+                .disabled(sharedImportTask != nil || isPublishingOrClosing)
+            }
+            .padding(theme.spacing.m)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(theme.colors.surfaceSubtle)
         }
     }
 
@@ -1930,7 +2077,8 @@ struct ComposeView: View {
                 )
             }
             if let draftID = viewModel.activeDraftID {
-                _ = draftStore.removeDraft(id: draftID)
+                // Publishing already verified that this editor has no pending shared files.
+                _ = draftStore.removeDraft(id: draftID, removeStaging: false)
                 viewModel.clearActiveDraftReference()
             }
         } catch {
@@ -1944,6 +2092,9 @@ struct ComposeView: View {
     }
 
     private func dismissComposer() {
+        viewModel.cancelSharedImports()
+        sharedImportTask?.cancel()
+        sharedEditingSession.finish()
         inputMode = .idle
         if let onDismiss {
             onDismiss()

@@ -28,17 +28,20 @@ struct NotificationRowTapHarnessView: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(notifications) { notification in
-                        let accessibilityIdentifier: String? = switch notification.type {
-                        case "favourite": "notification.mainStatusTap"
-                        case "quoted_update": "notification.quotedStatusTap"
-                        default: nil
-                        }
+                        // Only the grouped likes and the quoted update carry the routing ids.
+                        let accessibilityIdentifier: String? =
+                            notification.id.hasPrefix("favourite-group-") ? "notification.mainStatusTap"
+                            : notification.type == "quoted_update" ? "notification.quotedStatusTap"
+                            : nil
 
                         NotificationRow(
                             notification: notification,
+                            onAvatarTap: { lastTap = "profile:\(notification.presentationAccount?.id ?? "")" },
                             onStatusTap: { status in
                                 lastTap = status.id
                             },
+                            onAccountTap: { lastTap = "profile:\(notification.presentationAccount?.id ?? "")" },
+                            onActorsTap: { lastTap = "actors" },
                             statusTapAccessibilityIdentifier: accessibilityIdentifier
                         )
 
@@ -116,8 +119,29 @@ struct NotificationRowTapHarnessView: View {
             status: quotedUpdateStatus
         )
 
+        let likedStatus = makeStatus(
+            id: "liked-status",
+            content: "<p>A single like points at this post.</p>",
+            account: quotedAuthor
+        )
+        let singleLike = NotificationItem(
+            id: "single-like-notification",
+            type: "favourite",
+            createdAt: Date().addingTimeInterval(-240),
+            account: actors[3],
+            status: likedStatus
+        )
+        let follow = NotificationItem(
+            id: "follow-notification",
+            type: "follow",
+            createdAt: Date().addingTimeInterval(-300),
+            account: actors[2],
+            status: nil
+        )
+
         return NotificationDisplayItem.consolidate(actionNotifications)
-            + [NotificationDisplayItem(from: reply), NotificationDisplayItem(from: quotedUpdate)]
+            + [NotificationDisplayItem(from: reply), NotificationDisplayItem(from: quotedUpdate),
+               NotificationDisplayItem(from: singleLike), NotificationDisplayItem(from: follow)]
     }
 
     private static func makeAccount(id: String, name: String) -> Account {

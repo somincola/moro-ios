@@ -13,6 +13,8 @@
 		42D001002F71000100A1D001 /* moroShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 42D001022F71000100A1D001 /* moroShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		42E002002F72000100A1D001 /* moroNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 42E002022F72000100A1D001 /* moroNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		42F003002F73000100A1D001 /* moroWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 42F003022F73000100A1D001 /* moroWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		43A131012FCD000100A1D001 /* moroShareExtension/ShareSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43A131022FCD000100A1D001 /* moroShareExtension/ShareSupport.swift */; };
+		43A131032FCD000100A1D001 /* moroShareExtension/ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43A131042FCD000100A1D001 /* moroShareExtension/ShareViewController.swift */; };
 		43D000032FA0000100D00001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 43D000022FA0000100D00001 /* SwiftSoup */; };
 /* End PBXBuildFile section */
 
@@ -78,6 +80,8 @@
 		42D001022F71000100A1D001 /* moroShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = moroShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		42E002022F72000100A1D001 /* moroNotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = moroNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		42F003022F73000100A1D001 /* moroWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = moroWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		43A131022FCD000100A1D001 /* moroShareExtension/ShareSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = moroShareExtension/ShareSupport.swift; sourceTree = SOURCE_ROOT; };
+		43A131042FCD000100A1D001 /* moroShareExtension/ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = moroShareExtension/ShareViewController.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -212,6 +216,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		400CF0F830A1966B00B33876 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				43A131022FCD000100A1D001 /* moroShareExtension/ShareSupport.swift */,
+				43A131042FCD000100A1D001 /* moroShareExtension/ShareViewController.swift */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
 		408433D72ED449B700F038E4 = {
 			isa = PBXGroup;
 			children = (
@@ -225,6 +238,7 @@
 				42F003042F73000100A1D001 /* moroWidgetShared */,
 				40FBF57B2EF2BF8100B2C3BC /* Frameworks */,
 				408433E12ED449B700F038E4 /* Products */,
+				400CF0F830A1966B00B33876 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -549,6 +563,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				43A131012FCD000100A1D001 /* moroShareExtension/ShareSupport.swift in Sources */,
+				43A131032FCD000100A1D001 /* moroShareExtension/ShareViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -761,7 +777,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.somincola.moro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -802,7 +818,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.somincola.moro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -825,7 +841,7 @@
 				DEVELOPMENT_TEAM = 55FVR42ZG9;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = somincola.moroTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -848,7 +864,7 @@
 				DEVELOPMENT_TEAM = 55FVR42ZG9;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = somincola.moroTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -869,7 +885,7 @@
 				CURRENT_PROJECT_VERSION = 40;
 				DEVELOPMENT_TEAM = 55FVR42ZG9;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = somincola.moroUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -889,7 +905,7 @@
 				CURRENT_PROJECT_VERSION = 40;
 				DEVELOPMENT_TEAM = 55FVR42ZG9;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = somincola.moroUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -918,7 +934,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.somincola.moro.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -947,7 +963,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.somincola.moro.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -976,7 +992,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.somincola.moro.NotificationService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1005,7 +1021,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.somincola.moro.NotificationService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1035,7 +1051,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.somincola.moro.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1066,7 +1082,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.somincola.moro.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
