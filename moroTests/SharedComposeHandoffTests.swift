@@ -507,6 +507,45 @@ struct SharedComposeHandoffTests {
             configuration: InstanceConfiguration(statuses: .init(maxCharacters: 500, maxMediaAttachments: maxMediaAttachments)))
     }
 
+    @Test func launchSweepRemovesOnlyWhatNothingWillEverImport() throws {
+        let fixture = try StoreFixture()
+        defer { fixture.cleanup() }
+        let staging = fixture.directory.appendingPathComponent("staging")
+        let now = Date()
+        let old = now.addingTimeInterval(-8 * 24 * 3600)
+        func stage(at date: Date) throws -> SharedComposeDraftStagingItem {
+            let source = fixture.directory.appendingPathComponent("sweep-source.png")
+            try Data([1]).write(to: source)
+            return try fixture.store.stageSharedDraft(accountID: "me", target: .init(kind: .newPost),
+                payload: Self.payload("Sweep"), attachments: [.init(sourceURL: source, mimeType: "image/png", id: "a")],
+                now: date)
+        }
+        let forgotten = try stage(at: old)          // unclaimed for over a week
+        let claimed = try stage(at: old)            // just as old, but a draft owns it
+        let recent = try stage(at: now)             // unclaimed but new
+        #expect(fixture.store.save(claimed.asImportRecoveryDraft(accountID: "me")))
+
+        // Left behind without an index entry: an interrupted stage and a stray cancel marker.
+        let orphan = staging.appendingPathComponent(UUID().uuidString)
+        let fresh = staging.appendingPathComponent(UUID().uuidString)
+        let marker = staging.appendingPathComponent(SharedComposeDraftStagingStore.cancelledMarkerPrefix + UUID().uuidString)
+        for directory in [orphan, fresh] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        #expect(FileManager.default.createFile(atPath: marker.path, contents: Data()))
+        let stale = [FileAttributeKey.modificationDate: now.addingTimeInterval(-2 * 3600)]
+        try FileManager.default.setAttributes(stale, ofItemAtPath: orphan.path)
+        try FileManager.default.setAttributes(stale, ofItemAtPath: marker.path)
+
+        #expect(fixture.store.sweepSharedStaging(now: now) == 2)
+        #expect(Set(fixture.store.pendingSharedStagingItems().map(\.id)) == [claimed.id, recent.id])
+        func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
+        #expect(!exists(staging.appendingPathComponent(forgotten.id)) && !exists(orphan) && !exists(marker))
+        #expect(exists(staging.appendingPathComponent(claimed.id)) && exists(staging.appendingPathComponent(recent.id)))
+        #expect(exists(fresh), "A share being staged right now is never touched")
+        #expect(fixture.store.sweepSharedStaging(now: now) == 0)
+    }
+
     @Test func aShareCancelledWhileTheIndexIsBusyNeverReachesTheEditor() throws {
         let fixture = try StoreFixture()
         defer { fixture.cleanup() }
