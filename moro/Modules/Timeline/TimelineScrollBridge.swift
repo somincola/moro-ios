@@ -68,6 +68,11 @@ final class TimelineScrollBridge: ObservableObject {
     let userScrollEvents = PassthroughSubject<TimelineType, Never>()
     private var rows: [TimelineType: [String: WeakRow]] = [:]
     private var phases: [TimelineType: ScrollPhase] = [:]
+    /// Timelines that will reopen at a saved reading position. Their list stays transparent
+    /// from the first row layout until that position lands, so no frame shows the top first.
+    private var awaitingRestore: Set<TimelineType> = []
+    private var veiledTimelines: Set<TimelineType> = []
+    private let restoreVeilLimit: TimeInterval = 0.8
     private var headerHeights: [TimelineType: CGFloat] = [:]
     private var pendingLayouts: [TimelineType: PendingLayout] = [:]
     private var scheduledLayoutEvents: Set<TimelineType> = []
@@ -320,10 +325,37 @@ final class TimelineScrollBridge: ObservableObject {
         let offset = y - headerHeights[timeline, default: 48] - CGFloat(anchor.viewportOffset)
         suppressChrome.insert(timeline)
         scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: offset), animated: false)
+        // Same transaction as the offset: the first visible frame is already in place.
+        endRestoreVeil(for: timeline)
+    }
+
+    /// Call before a timeline's rows first appear when it will reopen at a saved position.
+    func expectReadingRestore(for timeline: TimelineType) {
+        guard !veiledTimelines.contains(timeline) else { return }
+        awaitingRestore.insert(timeline)
+    }
+
+    /// Shows the list again: the restore landed, was not needed, or took too long.
+    func endRestoreVeil(for timeline: TimelineType) {
+        awaitingRestore.remove(timeline)
+        guard veiledTimelines.remove(timeline) != nil else { return }
+        nativeScrollViews[timeline]?.value?.alpha = 1
+    }
+
+    private func veilUntilRestored(_ timeline: TimelineType) {
+        // Runs from row layout, inside the transaction that would first draw the rows.
+        guard let scrollView = nativeScrollViews[timeline]?.value,
+            awaitingRestore.remove(timeline) != nil else { return }
+        veiledTimelines.insert(timeline)
+        scrollView.alpha = 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + restoreVeilLimit) { [weak self] in
+            self?.endRestoreVeil(for: timeline)
+        }
     }
 
     func rowDidLayout(_ row: TimelineRowAnchorView, for timeline: TimelineType) {
         rows[timeline, default: [:]][row.statusID] = WeakRow(row)
+        if awaitingRestore.contains(timeline) { veilUntilRestored(timeline) }
         #if DEBUG
         startCommitProbeIfRequested()
         #endif

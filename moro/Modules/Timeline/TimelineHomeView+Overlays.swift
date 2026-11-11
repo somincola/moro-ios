@@ -46,6 +46,7 @@ extension TimelineHomeView {
                 scrollBridge.restoreReadingAnchor(saved, for: timeline)
                 return
             }
+            scrollBridge.endRestoreVeil(for: timeline)
         }
         if target.hasUnappliedUpdates {
             guard scrollBridge.prepareContentUpdate(for: timeline, revision: target.presentationRevision + 1, retainedIDs: target.canonicalStatusIDs) else { return }
