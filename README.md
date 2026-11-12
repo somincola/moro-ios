@@ -11,12 +11,11 @@
 <p align="center">
   <a href="https://getmoro.app/">Website</a> ·
   <a href="https://apps.apple.com/app/id6776115614">App Store</a> ·
+  <a href="https://github.com/somincola/moro-ios/releases">Releases</a> ·
+  <a href="CHANGELOG.md">Changelog / 更新日志</a> ·
   <a href="https://getmoro.app/privacy">Privacy</a> ·
   <a href="https://getmoro.app/support">Support</a>
 </p>
-
-> [!NOTE]
-> The App Store listing may remain unavailable while Moro is under review. The link above already targets Moro's permanent Apple ID and will continue to work after release.
 
 Moro brings a focused, native iOS experience to the fediverse. Sign in with an account from any compatible Mastodon server, follow conversations, discover communities, and post without ads or unnecessary noise.
 
@@ -42,18 +41,24 @@ These promotional previews are real app captures driven by fictional demo accoun
 - Explore rich profiles with custom emoji, pinned posts, links, and server-aware navigation.
 - Add polished Home Screen widgets for quick actions, account overview, profile stats, and a quiet decorative moment.
 - Protect app-switcher snapshots with Moro's branded privacy shield when the app leaves the foreground.
-- Share links, text, and images into Moro from other apps.
+- Pick photos or a video in the composer, or share them into Moro from Photos. Share links and text from other apps, too.
 - Choose from multiple app icons and use Moro in nine localized languages.
 - Enjoy native accessibility support, including Dynamic Type and VoiceOver.
 
 ## Download
 
-Moro requires iOS 17 or later and works with any compatible Mastodon instance.
+Moro requires iOS 18 or later and works with any compatible Mastodon instance.
 
 - [Download Moro on the App Store](https://apps.apple.com/app/id6776115614)
 - [Visit the Moro website](https://getmoro.app/)
 
 Moro is an independent, third-party Mastodon client and is not an official Mastodon app.
+
+## Releases and updates
+
+Find the [latest release](https://github.com/somincola/moro-ios/releases/latest) and browse [all releases](https://github.com/somincola/moro-ios/releases) for Chinese and English update notes, App Store build numbers, and source references.
+
+The [complete changelog / 完整更新日志](CHANGELOG.md) also preserves the earliest App Store updates, which predate this repository's source history. Install Moro through the [App Store](https://apps.apple.com/app/id6776115614).
 
 ## Privacy
 
@@ -61,10 +66,9 @@ Moro has no ads and does not use behavioral tracking. Account credentials are st
 
 ## Development
 
-1. Open `moro.xcodeproj` in Xcode 16 or later.
-2. Select the `moro` scheme and an iOS 17+ simulator.
-3. Copy the secrets sample when local credentials are required; never commit real tokens.
-4. Build and run from Xcode, or use the commands below.
+1. Open `moro.xcodeproj` in Xcode 26.6 or later; the CI toolchain is pinned in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+2. Select the `moro` scheme and an iOS 18+ simulator.
+3. Build and run from Xcode, or use the commands below. Keep local account credentials and tokens out of source control.
 
 ```bash
 xcodebuild -project moro.xcodeproj -scheme moro -sdk iphonesimulator -configuration Debug build
@@ -79,6 +83,8 @@ xcodebuild -project moro.xcodeproj -scheme moro -destination 'platform=iOS Simul
 | `moro/Modules` | Auth, Timeline, Post, Profile, Settings, and other features |
 | `moro/Core` | Models, stores, Mastodon API, persistence, and shared services |
 | `moro/UI` | Theme and reusable SwiftUI components |
+| `moroShareExtension` | Import text, links, photos, and videos from the system share sheet |
+| `moroNotificationService` | Process incoming push notifications |
 | `moroWidgetShared` | Shared WidgetKit intents and snapshot storage |
 | `moroWidgets` | Moro Home Screen widgets |
 | `moroTests` | Unit and integration tests |
