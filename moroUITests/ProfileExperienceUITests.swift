@@ -84,13 +84,14 @@ final class ProfileExperienceUITests: XCTestCase {
     func testHiddenConnectionsRemainAccessibleToTheAccountOwner() {
         let app = launch(extra: ["UITEST_PROFILE_HIDE_COLLECTIONS": "1"])
         defer { app.terminate() }
-        for (kind, title) in [("following", "Following"), ("followers", "Followers")] {
+        for (kind, title, count) in [("following", "Following", "Following 5"), ("followers", "Followers", "10 followers")] {
             let stat = app.buttons["profile.stat.\(kind)"]
             reveal(stat, in: app)
             XCTAssertNotEqual(stat.value as? String, "List hidden")
             stat.tap()
             XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
-            XCTAssertTrue(app.staticTexts["Connection Tester"].waitForExistence(timeout: 5))
+            XCTAssertEqual(app.staticTexts["profile.connections.total"].label, count)
+            XCTAssertTrue(app.buttons["profile.connection.fixture-connection"].waitForExistence(timeout: 5))
             attach(app, "profile-owner-hidden-\(kind)")
             back(app)
         }
@@ -106,9 +107,30 @@ final class ProfileExperienceUITests: XCTestCase {
             stat.tap()
             XCTAssertTrue(app.buttons["profile.moreButton"].isReachable(in: app))
             XCTAssertFalse(app.navigationBars[title].exists)
-            XCTAssertFalse(app.staticTexts["Connection Tester"].exists)
+            XCTAssertFalse(app.staticTexts["profile.connections.total"].exists)
         }
         attach(app, "profile-visitor-hidden-connections")
+    }
+
+    func testConnectionListsShowCompleteTotalsAndRowCountsOnAnotherProfile() {
+        let app = launch(extra: ["UITEST_PROFILE_CONNECTION_COUNTS": "1", "UITEST_OTHER_PROFILE": "1"])
+        defer { app.terminate() }
+
+        for (kind, total) in [("followers", "12,458 followers"), ("following", "Following 6,789")] {
+            let stat = app.buttons["profile.stat.\(kind)"]
+            reveal(stat, in: app)
+            stat.tap()
+            let subtitle = app.staticTexts["profile.connections.total"]
+            XCTAssertTrue(subtitle.waitForExistence(timeout: 5))
+            XCTAssertEqual(subtitle.label, total)
+
+            let row = app.buttons["profile.connection.fixture-connection"]
+            XCTAssertTrue(row.waitForExistence(timeout: 5))
+            XCTAssertEqual(row.label, "Connection Tester, @connection@example.social")
+            XCTAssertEqual(row.value as? String, "1 follower, Following 2,345")
+            attach(app, "profile-connection-count-\(kind)")
+            back(app)
+        }
     }
 
     func testFollowStateWaitsForTheServerAndBellShowsSubscriptionState() {
@@ -585,6 +607,55 @@ final class ProfileExperienceUITests: XCTestCase {
         XCTAssertTrue(more.exists)
         more.tap()
         XCTAssertTrue(more.waitForExistence(timeout: 5))
+    }
+
+    func testMediaGalleryOpensPhotosAndKeepsWarningsConcealed() {
+        let app = launch(extra: ["UITEST_PROFILE_GALLERY": "1"])
+        defer { app.terminate() }
+        let media = app.buttons["profile.tab.media"].firstMatch
+        reveal(media, in: app)
+        media.tap()
+
+        let photo = app.buttons["profile.media.tile.320"]
+        reveal(photo, in: app)
+        XCTAssertEqual(photo.value as? String, "Contains 2 media attachments")
+        XCTAssertEqual(app.buttons["profile.media.tile.319"].label, "Sensitive Content")
+        let contentWarning = app.buttons["profile.media.tile.318"]
+        XCTAssertEqual(contentWarning.label, "Content warning")
+        XCTAssertEqual(app.buttons["profile.media.tile.317"].label, "GIF, Gallery media 317")
+        XCTAssertEqual(app.buttons["profile.media.tile.316"].label, "Video, Gallery media 316")
+        XCTAssertEqual(app.buttons["profile.media.tile.315"].label, "Filtered")
+        attach(app, "profile-media-gallery")
+
+        photo.tap()
+        let close = app.buttons["imagePreview.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["imagePreview.page"].exists)
+        close.tap()
+
+        contentWarning.tap()
+        XCTAssertTrue(app.staticTexts["Gallery content warning"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Gallery post 318"].exists)
+        app.buttons["Show more"].tap()
+        XCTAssertTrue(app.staticTexts["Gallery post 318"].waitForExistence(timeout: 5))
+    }
+
+    func testMediaTabOpensGalleryAndPaginates() {
+        let app = launch(extra: ["UITEST_PROFILE_GALLERY": "1"])
+        defer { app.terminate() }
+        let media = app.buttons["profile.tab.media"].firstMatch
+        reveal(media, in: app)
+        media.tap()
+
+        let firstTile = app.buttons["profile.media.tile.320"]
+        XCTAssertTrue(firstTile.waitForExistence(timeout: 5))
+        let lastTile = app.buttons["profile.media.tile.300"]
+        reveal(lastTile, in: app)
+        XCTAssertTrue(lastTile.isHittable, "The second page should load in the gallery")
+        attach(app, "profile-media-gallery-scrolled")
+        media.tap()
+        XCTAssertTrue(lastTile.isHittable)
+        XCTAssertFalse(app.buttons["List"].exists)
     }
 
     func testEditorLayoutInLightAndDarkAtDefaultAndAccessibilitySizes() {

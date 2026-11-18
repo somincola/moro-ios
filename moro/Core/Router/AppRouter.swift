@@ -172,11 +172,12 @@ struct AppRouteViewFactory {
                 .toolbar(.hidden, for: .tabBar)
             )
 
-        case .profileConnections(let accountID, let kind):
+        case .profileConnections(let accountID, let kind, let totalCount):
             return AnyView(
                 ProfileConnectionsView(
                     accountID: accountID,
                     kind: kind,
+                    totalCount: totalCount,
                     apiClient: apiClient
                 )
                 .toolbar(.hidden, for: .tabBar)

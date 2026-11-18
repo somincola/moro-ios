@@ -24,6 +24,11 @@ struct ProfileContentStream: View, Equatable {
     let postActions: (Status) -> PostActions
 
     var body: some View {
+        let statuses = viewModel.currentStatuses
+        let displayedStatuses = viewModel.selectedTab == .media
+            ? statuses.filter { !$0.displayStatus.mediaAttachments.isEmpty }
+            : statuses
+
         LazyVStack(spacing: 0) {
             if viewModel.selectedTab == .posts && !viewModel.pinnedStatuses.isEmpty {
                 PinnedStatusSection(
@@ -36,7 +41,7 @@ struct ProfileContentStream: View, Equatable {
                 pinnedSectionSeparator
             }
 
-            contentRows
+            contentRows(displayedStatuses)
         }
         .background(theme.colors.surfaceBase)
     }
@@ -52,8 +57,8 @@ struct ProfileContentStream: View, Equatable {
     }
 
     @ViewBuilder
-    private var contentRows: some View {
-        switch contentState {
+    private func contentRows(_ statuses: [Status]) -> some View {
+        switch contentState(isEmpty: statuses.isEmpty) {
         case .loading(let skeletonStyle):
             ContentSkeletonView(style: skeletonStyle)
         case .empty(let spec):
@@ -63,16 +68,34 @@ struct ProfileContentStream: View, Equatable {
             ErrorStateView(spec: spec)
                 .frame(minHeight: 320)
         case .loaded:
-            loadedRows
+            if viewModel.selectedTab == .media {
+                if !statuses.isEmpty {
+                    ProfileMediaGallery(statuses: statuses) { postActions($0).onTap?() }
+                    if viewModel.hasMore, !viewModel.didFailLoadMore(.media) {
+                        Color.clear
+                            .frame(height: 1)
+                            .accessibilityHidden(true)
+                            .id(viewModel.paginationCursor)
+                            .onAppear {
+                                Task {
+                                    guard viewModel.selectedTab == .media else { return }
+                                    await viewModel.loadMore()
+                                }
+                            }
+                    }
+                }
+            } else {
+                listRows(statuses)
+            }
+            paginationFooter(isEmpty: statuses.isEmpty)
         }
     }
 
-    @ViewBuilder
-    private var loadedRows: some View {
-        ForEach(viewModel.currentStatuses.indexed(), id: \.element.id) {
+    private func listRows(_ statuses: [Status]) -> some View {
+        ForEach(statuses.indexed(), id: \.element.id) {
             index, status in
             let prefetchWindowSize = 2
-            let isNearBottom = viewModel.currentStatuses.count - index <= 3
+            let isNearBottom = statuses.count - index <= 3
 
             VStack(alignment: .leading, spacing: 0) {
                 TimelinePostRow(
@@ -94,16 +117,20 @@ struct ProfileContentStream: View, Equatable {
                 MoroDivider()
             }
         }
+    }
 
+    @ViewBuilder
+    private func paginationFooter(isEmpty: Bool) -> some View {
         let selectedTab = viewModel.selectedTab
-        if viewModel.currentStatuses.isEmpty && viewModel.hasMore && !viewModel.didFailLoadMore(selectedTab) {
+        if isEmpty && viewModel.hasMore && !viewModel.didFailLoadMore(selectedTab) {
             // Replies are filtered from server pages of posts. Keep paging when an
             // otherwise full page contains no replies, instead of showing a false end.
-            if viewModel.shouldAutomaticallyContinueEmptyPage || viewModel.isLoadingMore(selectedTab) {
+            let canContinue = viewModel.currentStatuses.isEmpty && viewModel.shouldAutomaticallyContinueEmptyPage
+            if canContinue || viewModel.isLoadingMore(selectedTab) {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 64)
                     .task(id: viewModel.paginationCursor) {
-                        if viewModel.shouldAutomaticallyContinueEmptyPage { await viewModel.loadMore() }
+                        if canContinue, selectedTab == viewModel.selectedTab { await viewModel.loadMore() }
                     }
             } else {
                 Button(MoroL10n.Topics.loadMore) { Task { await viewModel.loadMore() } }
@@ -119,7 +146,7 @@ struct ProfileContentStream: View, Equatable {
         }
     }
 
-    private var contentState: ContentState {
+    private func contentState(isEmpty: Bool) -> ContentState {
         switch viewModel.tabLoadState(for: viewModel.selectedTab) {
         case .notLoaded, .loading:
             return .loading(.timeline)
@@ -133,7 +160,7 @@ struct ProfileContentStream: View, Equatable {
                 )
             )
         case .loaded:
-            if viewModel.currentStatuses.isEmpty && !viewModel.hasMore && !(viewModel.selectedTab == .posts && !viewModel.pinnedStatuses.isEmpty) {
+            if isEmpty && !viewModel.hasMore && !(viewModel.selectedTab == .posts && !viewModel.pinnedStatuses.isEmpty) {
                 return .empty(emptyStateSpec)
             }
             return .loaded

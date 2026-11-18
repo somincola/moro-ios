@@ -148,8 +148,10 @@ struct ProfileConnectionsView: View {
     @Environment(\.appRouter) private var router
     @Environment(\.moroTheme) private var theme
     @StateObject private var viewModel: ProfileConnectionsViewModel
+    private let totalCount: Int
 
-    init(accountID: String, kind: ProfileConnectionKind, apiClient: MastodonAPI) {
+    init(accountID: String, kind: ProfileConnectionKind, totalCount: Int, apiClient: MastodonAPI) {
+        self.totalCount = totalCount
         _viewModel = StateObject(
             wrappedValue: ProfileConnectionsViewModel(
                 accountID: accountID,
@@ -160,8 +162,21 @@ struct ProfileConnectionsView: View {
     }
 
     var body: some View {
-        ContentStateContainer(state: contentState) {
-            accountList
+        VStack(spacing: 0) {
+            if viewModel.loadingState != .collectionsHidden {
+                Text(viewModel.kind.countLabel(totalCount))
+                    .font(theme.typography.caption)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, theme.spacing.m)
+                    .padding(.top, theme.spacing.xs)
+                    .padding(.bottom, theme.spacing.s)
+                    .accessibilityIdentifier("profile.connections.total")
+            }
+
+            ContentStateContainer(state: contentState) {
+                accountList
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.colors.surfaceBase.ignoresSafeArea())
@@ -231,14 +246,9 @@ struct ProfileConnectionsView: View {
             }
 
             ForEach(viewModel.accounts) { account in
-                Button {
+                ProfileConnectionAccountRow(account: account) {
                     router.navigate(to: .userProfile(account))
-                } label: {
-                    ProfileConnectionAccountRow(account: account)
                 }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-                .accessibilityLabel(MoroL10n.Profile.openProfile(account.acct))
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(theme.colors.surfaceBase)
                 .onAppear {
@@ -273,47 +283,84 @@ struct ProfileConnectionsView: View {
 
 private struct ProfileConnectionAccountRow: View {
     @Environment(\.moroTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let account: Account
+    let onOpen: () -> Void
+
+    private var handle: String { account.acct.isEmpty ? account.username : account.acct }
 
     var body: some View {
-        HStack(spacing: theme.spacing.m) {
-            MoroAvatar(
-                imageURL: account.avatarAnimatedURL,
-                staticImageURL: account.avatarURL,
-                initials: account.displayNameInitials, seed: account.placeholderSeed,
-                size: 44
-            )
+        let followers = MoroL10n.Navigation.followersCount(account.followersCount)
+        let following = MoroL10n.Navigation.followingCount(account.followingCount)
 
-            VStack(alignment: .leading, spacing: 3) {
-                AccountDisplayNameView(
-                    account: account,
-                    typography: .bodyStrong,
-                    textColor: theme.colors.textPrimary,
-                    lineLimit: 1
+        Button(action: onOpen) {
+            HStack(spacing: theme.spacing.m) {
+                MoroAvatar(
+                    imageURL: account.avatarAnimatedURL,
+                    staticImageURL: account.avatarURL,
+                    initials: account.displayNameInitials, seed: account.placeholderSeed,
+                    size: 44
                 )
 
-                Text("@\(account.acct.isEmpty ? account.username : account.acct)")
+                VStack(alignment: .leading, spacing: 3) {
+                    let layout = dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 3))
+                        : AnyLayout(HStackLayout(spacing: theme.spacing.xs))
+                    layout {
+                        AccountDisplayNameView(
+                            account: account,
+                            typography: .bodyStrong,
+                            textColor: theme.colors.textPrimary,
+                            lineLimit: dynamicTypeSize.isAccessibilitySize ? nil : 1
+                        )
+
+                        Text("@\(handle)")
+                            .font(theme.typography.caption)
+                            .foregroundStyle(theme.colors.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+
+                    ViewThatFits(in: .horizontal) {
+                        Text("\(followers) · \(following)")
+                            .fixedSize(horizontal: true, vertical: false)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(followers)
+                            Text(following)
+                        }
+                    }
                     .font(theme.typography.caption)
                     .foregroundStyle(theme.colors.textSecondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                }
+
+                Spacer(minLength: theme.spacing.s)
+
+                Image(systemName: "chevron.right")
+                    .moroScaledFont(size: 11, weight: .semibold)
+                    .foregroundStyle(theme.colors.textTertiary)
             }
-
-            Spacer(minLength: theme.spacing.s)
-
-            Image(systemName: "chevron.right")
-                .moroScaledFont(size: 11, weight: .semibold)
-                .foregroundStyle(theme.colors.textTertiary)
+            .padding(.horizontal, theme.spacing.m)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, theme.spacing.m)
-        .padding(.vertical, 11)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.colors.surfaceBase)
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: "\(account.displayNameContent.plainText), @\(handle)"))
+        .accessibilityValue(Text(verbatim: "\(followers), \(following)"))
+        .accessibilityHint(MoroL10n.Profile.openProfile(handle))
+        .accessibilityIdentifier("profile.connection.\(account.id)")
     }
 }
 
 private extension ProfileConnectionKind {
+    func countLabel(_ count: Int) -> String {
+        switch self {
+        case .following: MoroL10n.Navigation.followingCount(count)
+        case .followers: MoroL10n.Navigation.followersCount(count)
+        }
+    }
+
     var navigationTitle: String {
         switch self {
         case .following:

@@ -55,7 +55,7 @@ enum Route: Hashable {
     case userProfile(Account)
 
     /// Navigate to the accounts this profile follows or is followed by.
-    case profileConnections(accountID: String, kind: ProfileConnectionKind)
+    case profileConnections(accountID: String, kind: ProfileConnectionKind, totalCount: Int)
 
     // MARK: - Media
 
@@ -129,7 +129,7 @@ enum Route: Hashable {
         case .userProfile(let account):
             hasher.combine("userProfile")
             hasher.combine(account.id)
-        case .profileConnections(let accountID, let kind):
+        case .profileConnections(let accountID, let kind, _):
             hasher.combine("profileConnections")
             hasher.combine(accountID)
             hasher.combine(kind)
@@ -187,7 +187,7 @@ enum Route: Hashable {
             return l.id == r.id
         case (.userProfile(let l), .userProfile(let r)):
             return l.id == r.id
-        case (.profileConnections(let lAccountID, let lKind), .profileConnections(let rAccountID, let rKind)):
+        case (.profileConnections(let lAccountID, let lKind, _), .profileConnections(let rAccountID, let rKind, _)):
             return lAccountID == rAccountID && lKind == rKind
         case (.mediaPreview(let l), .mediaPreview(let r)):
             return l == r

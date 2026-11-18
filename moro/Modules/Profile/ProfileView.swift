@@ -958,13 +958,13 @@ struct ProfileView: View {
         profileStatButton(
             account: account,
             kind: .following,
-            value: formatCount(account.followingCount),
+            count: account.followingCount,
             label: MoroL10n.Profile.statFollowing
         )
         profileStatButton(
             account: account,
             kind: .followers,
-            value: formatCount(account.followersCount),
+            count: account.followersCount,
             label: MoroL10n.Profile.statFollowers
         )
     }
@@ -972,16 +972,17 @@ struct ProfileView: View {
     private func profileStatButton(
         account: Account,
         kind: ProfileConnectionKind,
-        value: String,
+        count: Int,
         label: String
     ) -> some View {
         let collectionsAreHidden = account.hideCollections == true && !isCurrentUser
+        let value = formatCount(count)
 
         return Button {
             if collectionsAreHidden {
                 AppFeedbackCenter.shared.showInfo(MoroL10n.Profile.collectionsHiddenMessage)
             } else {
-                router.navigate(to: .profileConnections(accountID: account.id, kind: kind))
+                router.navigate(to: .profileConnections(accountID: account.id, kind: kind, totalCount: count))
             }
         } label: {
             profileStatItem(

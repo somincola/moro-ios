@@ -784,6 +784,7 @@ public enum MoroL10n {
         public static var emptyRepliesMessage: String { text("profile.emptyRepliesMessage") }
         public static var emptyMediaTitle: String { text("profile.emptyMediaTitle") }
         public static var emptyMediaMessage: String { text("profile.emptyMediaMessage") }
+        public static var viewOriginalPost: String { text("profile.media.viewOriginalPost") }
         public static var emptyFollowingMessage: String { text("profile.emptyFollowingMessage") }
         public static var emptyFollowersMessage: String { text("profile.emptyFollowersMessage") }
         public static var collectionsHiddenTitle: String { text("profile.collectionsHiddenTitle") }

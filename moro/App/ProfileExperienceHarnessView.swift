@@ -15,7 +15,7 @@ struct ProfileExperienceHarnessView: View {
     }
 
     private static func makeState() -> AppState {
-        if ProcessInfo.processInfo.environment["UITEST_PROFILE_ANIMATED_MEDIA"] == "1" {
+        if ProcessInfo.processInfo.environment["UITEST_PROFILE_ANIMATED_MEDIA"] == "1" || ProfileFixtureProtocol.hasGallery {
             ProfileMediaFixture.prepare()
         }
         let state = AppState()
@@ -92,6 +92,8 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
     private static let legacy = ProcessInfo.processInfo.environment["UITEST_PROFILE_LEGACY"] == "1"
     private static let compactInfo = ProcessInfo.processInfo.environment["UITEST_PROFILE_COMPACT_INFO"] == "1"
+    private static let showsConnectionCounts = ProcessInfo.processInfo.environment["UITEST_PROFILE_CONNECTION_COUNTS"] == "1"
+    static let hasGallery = ProcessInfo.processInfo.environment["UITEST_PROFILE_GALLERY"] == "1"
     // Keep persisted instance limits isolated between test app launches.
     private static let instanceURL = URL(string: "https://\(UUID().uuidString.lowercased()).profile-fixture.invalid")!
     private static var profile: [String: Any] = [
@@ -155,6 +157,10 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             "statuses_count": 3, "url": "https://profile-fixture.invalid/@moro",
             "source": ["note": profile["note"]!, "fields": profile["fields"]!, "privacy": "public"],
         ]) { _, new in new }
+        if showsConnectionCounts {
+            payload["followers_count"] = 12_458
+            payload["following_count"] = 6_789
+        }
         if compactInfo {
             payload["note"] = "<p>Indie developer and creator of Moro for Mastodon.</p><p>Building thoughtful products for the open web.</p><p>Happy to be here—nice to meet you all! 👋</p>"
             payload["fields"] = [
@@ -329,10 +335,20 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             connection["username"] = "connection"
             connection["acct"] = "connection"
             connection["display_name"] = "Connection Tester"
+            if showsConnectionCounts {
+                connection["acct"] = "connection@example.social"
+                connection["followers_count"] = 1
+                connection["following_count"] = 2_345
+            }
             return (200, [connection])
         }
         if path.hasSuffix("/statuses") {
-            if parameter("only_media") == "true" { return (200, []) }
+            if parameter("only_media") == "true" {
+                guard hasGallery else { return (200, []) }
+                let cursor = parameter("max_id")
+                if cursor == nil { return (200, (301...320).reversed().map { mediaPost(String($0)) }) }
+                return (200, cursor == "301" ? [mediaPost("300")] : [])
+            }
             if parameter("exclude_replies") == "false", parameter("pinned") != "true" {
                 if ProcessInfo.processInfo.environment["UITEST_PROFILE_NO_REPLIES"] == "1" {
                     let cursor = Int(parameter("max_id") ?? "1000") ?? 1000
@@ -350,7 +366,10 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             return (200, ids.filter { selected == nil || ($0 == "98" ? "daily" : "app") == selected }.map { post($0) })
         }
         if path.hasSuffix("/context") { return (200, ["ancestors": [], "descendants": []]) }
-        if path.contains("/statuses/") { return (200, post(url.lastPathComponent)) }
+        if path.contains("/statuses/") {
+            let id = url.lastPathComponent
+            return (200, hasGallery && (300...320).contains(Int(id) ?? 0) ? mediaPost(id) : post(id))
+        }
         if path.contains("/accounts/") { return (200, accountPayload()) }
         if path.hasSuffix("/instance") {
             let fieldValueLimit = ProcessInfo.processInfo.environment["UITEST_PROFILE_LOWER_FIELD_LIMIT"] == "1" ? 20 : 255
@@ -366,6 +385,27 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
          "created_at": "2026-09-05T10:00:00.000Z", "account": accountPayload(),
          "media_attachments": [], "favourites_count": 0, "reblogs_count": 0, "replies_count": 0,
          "visibility": "public", "sensitive": false, "spoiler_text": ""]
+    }
+
+    private static func mediaPost(_ id: String) -> [String: Any] {
+        var status = post(id)
+        status["content"] = "<p>Gallery post \(id)</p>"
+        status["sensitive"] = id == "319"
+        status["spoiler_text"] = id == "318" ? "Gallery content warning" : ""
+        if id == "315" { status["filtered"] = [["filter": ["title": "Gallery filter warning"]]] }
+
+        let preview = ProfileMediaFixture.staticAvatarURL.absoluteString
+        let type = id == "317" ? "gifv" : id == "316" ? "video" : "image"
+        let url = type == "image" ? preview : "https://profile-media-fixture.invalid/video.mp4"
+        var attachments = [["id": "media-\(id)", "type": type, "url": url,
+                            "preview_url": preview, "description": "Gallery media \(id)"]]
+        if id == "320" {
+            let second = ProfileMediaFixture.staticHeaderURL.absoluteString
+            attachments.append(["id": "media-\(id)-second", "type": "image", "url": second,
+                                "preview_url": second, "description": "Second gallery photo"])
+        }
+        status["media_attachments"] = attachments
+        return status
     }
 
     private static func body(_ request: URLRequest) -> Data {
