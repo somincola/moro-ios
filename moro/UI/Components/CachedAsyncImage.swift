@@ -149,8 +149,9 @@ public struct CachedAsyncImage<Content: View, Placeholder: View>: View {
 
 // MARK: - Blur Hash Placeholder
 
-private struct BlurHashPlaceholder: View {
+struct BlurHashPlaceholder: View {
     let blurhash: String
+    var fallbackColor = Color.gray.opacity(0.2)
 
     @State private var image: UIImage?
 
@@ -161,7 +162,7 @@ private struct BlurHashPlaceholder: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else {
-                Color.gray.opacity(0.2)
+                fallbackColor
             }
         }
         .onAppear {

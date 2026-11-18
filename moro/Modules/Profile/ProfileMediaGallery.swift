@@ -1,22 +1,53 @@
 import SwiftUI
 
 struct ProfileMediaGallery: View {
+    enum Content {
+        case loading
+        case posts([Status], onOpenPost: (Status) -> Void)
+    }
+
+    // Covers a two-column grid on the readable column at Retina scale. A single size
+    // keeps cache hits across width and Dynamic Type changes.
+    static let thumbnailPixelSize: CGFloat = 768
+    fileprivate static let tileCornerRadius: CGFloat = 6
+
     @Environment(\.moroTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var isNarrow = false
 
-    let statuses: [Status]
-    let onOpenPost: (Status) -> Void
+    let content: Content
 
     var body: some View {
+        if case .loading = content {
+            grid
+                .allowsHitTesting(false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(MoroL10n.Instance.loading)
+                .accessibilityIdentifier("profile.media.loading")
+        } else {
+            grid
+        }
+    }
+
+    private var grid: some View {
         let spacing = theme.spacing.xs
         let columns = isNarrow || dynamicTypeSize.isAccessibilitySize ? 2 : 3
 
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns), spacing: spacing) {
-            ForEach(statuses) { status in
-                let attachments = status.displayStatus.mediaAttachments
-                if let cover = attachments.first(where: { ["image", "video", "gifv"].contains($0.type) }) ?? attachments.first {
-                    ProfileMediaGalleryTile(status: status.displayStatus, cover: cover) { onOpenPost(status) }
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns), spacing: spacing) {
+            switch content {
+            case .loading:
+                ForEach(0..<(columns * 3), id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: Self.tileCornerRadius)
+                        .fill(theme.colors.skeleton)
+                        .aspectRatio(1, contentMode: .fit)
+                }
+            case .posts(let statuses, let onOpenPost):
+                ForEach(statuses) { status in
+                    let attachments = status.displayStatus.mediaAttachments
+                    if let cover = attachments.first(where: { ["image", "video", "gifv"].contains($0.type) }) ?? attachments.first {
+                        ProfileMediaGalleryTile(status: status.displayStatus, cover: cover) { onOpenPost(status) }
+                            .id("\(status.id)/\(cover.id)/\(cover.previewURL?.absoluteString ?? "")")
+                    }
                 }
             }
         }
@@ -31,12 +62,16 @@ private struct ProfileMediaGalleryTile: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.moroMediaPrefs) private var mediaPreferences
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var previewPhase = PreviewPhase.loading
+    @State private var previewAttempt = 0
 
     let status: Status
     let cover: Status.Attachment
     let onOpenPost: () -> Void
 
-    private let cornerRadius: CGFloat = 6
+    private enum PreviewPhase { case loading, ready, failed }
+
+    private var cornerRadius: CGFloat { ProfileMediaGallery.tileCornerRadius }
     private var sourceID: String { "profile.gallery.\(status.id).\(cover.id)" }
     private var isVideo: Bool { cover.type == "video" || cover.type == "gifv" }
     private var isGIF: Bool { cover.type == "gifv" || cover.url.pathExtension.lowercased() == "gif" }
@@ -93,12 +128,33 @@ private struct ProfileMediaGalleryTile: View {
         .accessibilityValue(warning == nil && count > 1 ? MoroL10n.Search.mediaCount(count) : "")
         .accessibilityAction(named: Text(MoroL10n.Profile.viewOriginalPost), onOpenPost)
         .accessibilityIdentifier("profile.media.tile.\(status.id)")
+        .overlay {
+            if warning == nil && previewPhase == .failed {
+                retryThumbnailButton
+            }
+        }
     }
 
     private var thumbnail: some View {
         Group {
             if let url = cover.previewURL, cover.type == "image" || isVideo {
-                MoroNetworkImage(url: url, contentMode: .fill, playAnimations: false)
+                ZStack {
+                    if previewPhase != .ready {
+                        if let blurhash = cover.blurhash, !blurhash.isEmpty {
+                            BlurHashPlaceholder(blurhash: blurhash, fallbackColor: theme.colors.skeleton)
+                                .id(blurhash)
+                        } else {
+                            theme.colors.skeleton
+                        }
+                    }
+                    SDWebRemoteImage(
+                        url: url,
+                        thumbnailPixelSize: ProfileMediaGallery.thumbnailPixelSize,
+                        onLoadStateChange: { previewPhase = $0 ? .ready : .loading },
+                        onLoadFailure: { previewPhase = .failed }
+                    )
+                    .id(previewAttempt)
+                }
             } else {
                 Image(systemName: cover.type == "audio" ? "waveform" : "photo")
                     .foregroundStyle(theme.colors.textTertiary)
@@ -127,6 +183,24 @@ private struct ProfileMediaGalleryTile: View {
                 MediaPreviewSource(id: sourceID, cornerRadius: cornerRadius)
             }
         }
+    }
+
+    private var retryThumbnailButton: some View {
+        Button {
+            previewPhase = .loading
+            previewAttempt += 1
+        } label: {
+            Label(MoroL10n.ContentState.retry, systemImage: "arrow.clockwise")
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .foregroundStyle(theme.colors.textPrimary)
+                .padding(.horizontal, theme.spacing.s)
+                .frame(minWidth: 44, minHeight: 44)
+                .background(theme.colors.surfaceBase, in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(MoroL10n.ImagePreview.loadFailed)
+        .accessibilityIdentifier("profile.media.retry.\(status.id)")
     }
 
     private var mediaLabel: String {

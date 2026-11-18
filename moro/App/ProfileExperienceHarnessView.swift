@@ -94,6 +94,7 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     private static let compactInfo = ProcessInfo.processInfo.environment["UITEST_PROFILE_COMPACT_INFO"] == "1"
     private static let showsConnectionCounts = ProcessInfo.processInfo.environment["UITEST_PROFILE_CONNECTION_COUNTS"] == "1"
     static let hasGallery = ProcessInfo.processInfo.environment["UITEST_PROFILE_GALLERY"] == "1"
+    static let testsGalleryLoading = ProcessInfo.processInfo.environment["UITEST_PROFILE_GALLERY_LOADING"] == "1"
     // Keep persisted instance limits isolated between test app launches.
     private static let instanceURL = URL(string: "https://\(UUID().uuidString.lowercased()).profile-fixture.invalid")!
     private static var profile: [String: Any] = [
@@ -194,6 +195,19 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        if Self.testsGalleryLoading,
+           let url = request.url,
+           url.path.hasSuffix("/statuses"),
+           let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+           query.contains(URLQueryItem(name: "only_media", value: "true")),
+           !query.contains(where: { $0.name == "max_id" }) {
+            pushResponseTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(6))
+                guard !Task.isCancelled else { return }
+                self?.completeLoading()
+            }
+            return
+        }
         if request.url?.path.hasSuffix("/relationships") == true,
            let delay = ProcessInfo.processInfo.environment["UITEST_PROFILE_RELATIONSHIP_DELAY"].flatMap(Double.init) {
             pushResponseTask = Task { [weak self] in
@@ -399,6 +413,10 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
         let url = type == "image" ? preview : "https://profile-media-fixture.invalid/video.mp4"
         var attachments = [["id": "media-\(id)", "type": type, "url": url,
                             "preview_url": preview, "description": "Gallery media \(id)"]]
+        if testsGalleryLoading && id == "320" {
+            attachments[0]["preview_url"] = ProfileGalleryPreviewFixture.url.absoluteString
+            attachments[0]["blurhash"] = "LEHV6nWB2yk8pyo0adR*.7kCMdnj"
+        }
         if id == "320" {
             let second = ProfileMediaFixture.staticHeaderURL.absoluteString
             attachments.append(["id": "media-\(id)-second", "type": "image", "url": second,

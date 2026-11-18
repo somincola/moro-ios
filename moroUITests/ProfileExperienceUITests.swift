@@ -658,6 +658,40 @@ final class ProfileExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["List"].exists)
     }
 
+    func testMediaGalleryShowsGridSkeletonAndRetriesThumbnailInPlace() {
+        let app = launch(extra: ["UITEST_PROFILE_GALLERY": "1", "UITEST_PROFILE_GALLERY_LOADING": "1"])
+        defer { app.terminate() }
+        let media = app.buttons["profile.tab.media"].firstMatch
+        reveal(media, in: app)
+        media.tap()
+
+        let skeleton = app.descendants(matching: .any)["profile.media.loading"].firstMatch
+        XCTAssertTrue(skeleton.waitForExistence(timeout: 5))
+        attach(app, "profile-media-grid-skeleton")
+
+        let retry = app.buttons["profile.media.retry.320"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 15))
+        reveal(retry, in: app)
+        XCTAssertTrue(retry.isHittable)
+        XCTAssertFalse(skeleton.exists)
+
+        let tile = app.buttons["profile.media.tile.320"]
+        let frame = tile.frame
+        let sample = CGPoint(x: frame.minX + frame.width * 0.2, y: frame.minY + frame.height * 0.2)
+        let placeholder = mediaColors(app, at: [sample])[0]
+        attach(app, "profile-media-thumbnail-retry")
+        retry.tap()
+
+        let imageLoaded = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard !retry.exists else { return false }
+            let current = self.mediaColors(app, at: [sample])[0]
+            return zip(placeholder, current).contains { abs($0 - $1) > 40 }
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [imageLoaded], timeout: 8), .completed)
+        XCTAssertTrue(tile.isHittable)
+        attach(app, "profile-media-thumbnail-recovered")
+    }
+
     func testEditorLayoutInLightAndDarkAtDefaultAndAccessibilitySizes() {
         for scheme in ["light", "dark"] {
             for large in [false, true] {

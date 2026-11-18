@@ -60,7 +60,11 @@ struct ProfileContentStream: View, Equatable {
     private func contentRows(_ statuses: [Status]) -> some View {
         switch contentState(isEmpty: statuses.isEmpty) {
         case .loading(let skeletonStyle):
-            ContentSkeletonView(style: skeletonStyle)
+            if viewModel.selectedTab == .media {
+                ProfileMediaGallery(content: .loading)
+            } else {
+                ContentSkeletonView(style: skeletonStyle)
+            }
         case .empty(let spec):
             EmptyStateView(spec: spec)
                 .frame(minHeight: 320)
@@ -70,7 +74,7 @@ struct ProfileContentStream: View, Equatable {
         case .loaded:
             if viewModel.selectedTab == .media {
                 if !statuses.isEmpty {
-                    ProfileMediaGallery(statuses: statuses) { postActions($0).onTap?() }
+                    ProfileMediaGallery(content: .posts(statuses) { postActions($0).onTap?() })
                     if viewModel.hasMore, !viewModel.didFailLoadMore(.media) {
                         Color.clear
                             .frame(height: 1)
