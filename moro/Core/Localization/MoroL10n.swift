@@ -213,6 +213,7 @@ public enum MoroL10n {
         public static var customColor: String { text("display.color.custom") }
         public static var customColorHint: String { text("display.color.custom.hint") }
         public static var footer: String { text("display.footer") }
+        public static var footerWithNavigation: String { text("display.footer.withNavigation") }
         public static var previewLead: String { text("display.preview.lead") }
         public static var previewMiddle: String { text("display.preview.middle") }
         public static var previewTail: String { text("display.preview.tail") }
@@ -627,6 +628,18 @@ public enum MoroL10n {
         public static var actionEdited: String { text("notifications.action.edited") }
         public static var actionSignUp: String { text("notifications.action.signUp") }
         public static var actionReport: String { text("notifications.action.report") }
+
+        public static func reportTitle(target: String?, postCount: Int) -> String {
+            if postCount > 0 {
+                if let target {
+                    return format("notifications.report.postsFromAccount", Int64(postCount), target)
+                }
+                return format("notifications.report.posts", Int64(postCount))
+            }
+            if let target { return format("notifications.report.account", target) }
+            return badgeReport
+        }
+
         public static var actionSeveredRelationships: String { text("notifications.action.severedRelationships") }
         public static var actionWarning: String { text("notifications.action.warning") }
         public static var actionAddedToCollection: String { text("notifications.action.addedToCollection") }
@@ -740,6 +753,12 @@ public enum MoroL10n {
     }
 
     public enum Profile {
+        public static func connectionsTitle(_ name: String, _ count: String) -> String {
+            format("profile.connections.title", name, count)
+        }
+        public static func compactFollowers(_ count: String) -> String {
+            format("profile.connections.compactFollowers", count)
+        }
         // Menu actions
         public static var share: String { text("profile.action.share") }
         public static var editProfileButton: String { text("profile.action.editProfile") }
@@ -832,6 +851,9 @@ public enum MoroL10n {
     }
 
     public enum ListMembers {
+        public static func membersOf(_ title: String) -> String { format("listMembers.membersOf", title) }
+        public static var searchFollowing: String { text("listMembers.searchFollowing") }
+        public static var added: String { text("listMembers.added") }
         public static var title: String { text("listMembers.title") }
         public static var addMember: String { text("listMembers.addMember") }
         public static var loadFailed: String { text("listMembers.loadFailed") }
@@ -1235,6 +1257,22 @@ public enum MoroL10n {
         public static var unknown: String { text("about.unknown") }
 
         public static func versionBuild(_ version: String, _ build: String) -> String { format("about.versionBuild", version, build) }
+    }
+
+    public enum NavigationCustomization {
+        public static var title: String { text("navCustomization.title") }
+        public static func selectionHint(minimum: Int, maximum: Int) -> String {
+            format("navCustomization.selectionHint", Int64(minimum), Int64(maximum))
+        }
+        public static var preview: String { text("navCustomization.preview") }
+        public static var restore: String { text("navCustomization.restore") }
+        public static var dragHint: String { text("navCustomization.dragHint") }
+        public static func count(_ selected: Int, _ limit: Int) -> String {
+            format("navCustomization.count", Int64(selected), Int64(limit))
+        }
+        public static func position(_ position: Int, _ total: Int) -> String {
+            format("navCustomization.position", Int64(position), Int64(total))
+        }
     }
 
     public enum Lists {

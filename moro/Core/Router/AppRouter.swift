@@ -126,6 +126,9 @@ struct AppRouteViewFactory {
                     .toolbar(.hidden, for: .tabBar)
             )
 
+        case .inbox:
+            return AnyView(InboxRouteView(apiClient: apiClient).toolbar(.hidden, for: .tabBar))
+
         case .followedTopics:
             return AnyView(FollowedTopicsRouteView(apiClient: apiClient).toolbar(.hidden, for: .tabBar))
 
@@ -227,6 +230,19 @@ struct AppRouteViewFactory {
         case .lists:
             return AnyView(
                 ListsView(apiClient: apiClient)
+                    .toolbar(.hidden, for: .tabBar)
+            )
+
+        case .listTimeline(let list, let accountKey):
+            return AnyView(
+                ListTimelineView(list: list, apiClient: apiClient, cacheClientID: accountKey)
+                    .id(accountKey + ":" + list.id)
+                    .toolbar(.hidden, for: .tabBar)
+            )
+
+        case .listMembers(let list):
+            return AnyView(
+                ListMembersView(list: list, apiClient: apiClient)
                     .toolbar(.hidden, for: .tabBar)
             )
 

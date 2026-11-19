@@ -39,6 +39,7 @@ struct ProfileView: View {
     let account: Account?
     let accountID: String?
     let onLogout: () -> Void
+    private let onExplore: (() -> Void)?
     private let apiClient: MastodonAPI
     @StateObject private var postMenuActionCenter: PostMenuActionCenter
 
@@ -98,11 +99,13 @@ struct ProfileView: View {
         account: Account?,
         accountID: String? = nil,
         onLogout: @escaping () -> Void,
-        apiClient: MastodonAPI
+        apiClient: MastodonAPI,
+        onExplore: (() -> Void)? = nil
     ) {
         self.account = account
         self.accountID = accountID
         self.onLogout = onLogout
+        self.onExplore = onExplore
 
         let resolvedAccountID = accountID ?? account?.id ?? ""
         // Required: a fallback client built here had no token, so every request on the
@@ -412,6 +415,7 @@ struct ProfileView: View {
                 onSettings: presentSettings,
                 onBookmarks: { router.navigate(to: .bookmarks) },
                 onFavourites: { router.navigate(to: .favourites) },
+                onExplore: onExplore,
                 onCopyLink: copyUserLink,
                 onOpenInBrowser: openUserInBrowser
             )

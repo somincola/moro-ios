@@ -37,7 +37,7 @@ struct MastodonClient: MastodonAPI {
     private let builder: MastodonRequestBuilder
     private var authInterceptor: AuthInterceptor
     private let logger: NetworkLogger
-    let instanceMetadataCacheKey: String?
+    var instanceURL: URL? { builder.baseURL }
 
     /// Shorter timeouts than `URLSession.shared`'s 60s default so the error UI
     /// surfaces quickly on flaky networks instead of leaving a long spinner.
@@ -84,7 +84,6 @@ struct MastodonClient: MastodonAPI {
         self.builder = MastodonRequestBuilder(baseURL: baseURL)
         self.authInterceptor = authInterceptor
         self.logger = NetworkLogger(configuration: loggerConfig)
-        self.instanceMetadataCacheKey = baseURL.absoluteString
     }
 
     /// Work that outlives a screen must keep its account's credentials after an account switch.
@@ -962,6 +961,10 @@ struct MastodonClient: MastodonAPI {
         let endpoint = MastodonEndpoint.lists
         let request = try authorizedRequest(for: endpoint)
         return try await perform(request)
+    }
+
+    func searchFollowedAccounts(query: String, limit: Int) async throws -> [Account] {
+        try await perform(authorizedRequest(for: .searchFollowedAccounts(query: query, limit: limit)))
     }
 
     func fetchAccountLists(accountID: String) async throws -> [MastodonList] {

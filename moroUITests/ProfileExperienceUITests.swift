@@ -84,13 +84,13 @@ final class ProfileExperienceUITests: XCTestCase {
     func testHiddenConnectionsRemainAccessibleToTheAccountOwner() {
         let app = launch(extra: ["UITEST_PROFILE_HIDE_COLLECTIONS": "1"])
         defer { app.terminate() }
-        for (kind, title, count) in [("following", "Following", "Following 5"), ("followers", "Followers", "10 followers")] {
+        for (kind, title) in [("following", "Following (5)"), ("followers", "Followers (10)")] {
             let stat = app.buttons["profile.stat.\(kind)"]
             reveal(stat, in: app)
             XCTAssertNotEqual(stat.value as? String, "List hidden")
             stat.tap()
             XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
-            XCTAssertEqual(app.staticTexts["profile.connections.total"].label, count)
+            XCTAssertFalse(app.staticTexts["profile.connections.total"].exists)
             XCTAssertTrue(app.buttons["profile.connection.fixture-connection"].waitForExistence(timeout: 5))
             attach(app, "profile-owner-hidden-\(kind)")
             back(app)
@@ -112,22 +112,21 @@ final class ProfileExperienceUITests: XCTestCase {
         attach(app, "profile-visitor-hidden-connections")
     }
 
-    func testConnectionListsShowCompleteTotalsAndRowCountsOnAnotherProfile() {
+    func testConnectionListsShowTotalsInTheTitleAndCompactFollowersOnAnotherProfile() {
         let app = launch(extra: ["UITEST_PROFILE_CONNECTION_COUNTS": "1", "UITEST_OTHER_PROFILE": "1"])
         defer { app.terminate() }
 
-        for (kind, total) in [("followers", "12,458 followers"), ("following", "Following 6,789")] {
+        for (kind, title) in [("followers", "Followers (12.5k)"), ("following", "Following (6,789)")] {
             let stat = app.buttons["profile.stat.\(kind)"]
             reveal(stat, in: app)
             stat.tap()
-            let subtitle = app.staticTexts["profile.connections.total"]
-            XCTAssertTrue(subtitle.waitForExistence(timeout: 5))
-            XCTAssertEqual(subtitle.label, total)
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
+            XCTAssertFalse(app.staticTexts["profile.connections.total"].exists)
 
             let row = app.buttons["profile.connection.fixture-connection"]
             XCTAssertTrue(row.waitForExistence(timeout: 5))
-            XCTAssertEqual(row.label, "Connection Tester, @connection@example.social")
-            XCTAssertEqual(row.value as? String, "1 follower, Following 2,345")
+            XCTAssertEqual(row.label, "Con :badge:, @connection@example.social")
+            XCTAssertEqual(row.value as? String, "18,500 followers, Following 2,345")
             attach(app, "profile-connection-count-\(kind)")
             back(app)
         }

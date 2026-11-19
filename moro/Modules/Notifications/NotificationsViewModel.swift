@@ -101,6 +101,7 @@ final class NotificationsViewModel: ObservableObject {
 
     private let apiClient: MastodonAPI
     let scope: MastodonNotificationScope
+    var instanceURL: URL? { apiClient.instanceURL }
     private var activationTask: Task<String?, Never>?
     private var refreshTask: Task<String?, Never>?
     private var currentMaxID: String?

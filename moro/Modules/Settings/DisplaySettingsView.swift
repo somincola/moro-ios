@@ -5,6 +5,7 @@ struct DisplaySettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
     @Environment(\.moroTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.settingsContext) private var settingsContext
     @State private var fontSizeStep: Double
 
     init() {
@@ -52,9 +53,12 @@ struct DisplaySettingsView: View {
             }
 
             Section {
+                if let coordinator = settingsContext.tabCoordinator {
+                    navigationCustomizationLink(coordinator)
+                }
                 appIconLink
             } footer: {
-                Text(MoroL10n.Display.footer)
+                Text(settingsContext.tabCoordinator == nil ? MoroL10n.Display.footer : MoroL10n.Display.footerWithNavigation)
             }
         }
         .moroSettingsListChrome()
@@ -63,6 +67,34 @@ struct DisplaySettingsView: View {
         .sensoryFeedback(.selection, trigger: settings.themeColor)
         .onChange(of: settings.postFontSize) { _, size in
             fontSizeStep = Double(MoroPostFontSize.allCases.firstIndex(of: size) ?? 1)
+        }
+    }
+
+    @ViewBuilder
+    private func navigationCustomizationLink(_ coordinator: RootTabCoordinator) -> some View {
+        let label = Text(MoroL10n.NavigationCustomization.title)
+            .foregroundStyle(theme.colors.textPrimary)
+        if settingsContext.isSettingsTab {
+            Button(action: coordinator.presentNavigationCustomization) {
+                HStack {
+                    label
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(theme.colors.textTertiary)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("settings.navigationCustomization")
+        } else {
+            NavigationLink {
+                NavigationCustomizationView(coordinator: coordinator, accountHandle: settingsContext.activeAccountHandle)
+            } label: {
+                label
+            }
+            .accessibilityIdentifier("settings.navigationCustomization")
         }
     }
 

@@ -65,6 +65,8 @@ struct AccountDisplayNameView: View {
     var typography: Typography = .body
     var textColor: Color
     var lineLimit: Int? = 1
+    /// Inline bylines leave the remaining width to the handle beside the name.
+    var fitsInlineWidth = false
     var truncationMode: Text.TruncationMode = .tail
     var minimumScaleFactor: CGFloat = 1
     var allowsTightening: Bool = false
@@ -87,7 +89,8 @@ struct AccountDisplayNameView: View {
                     lineBreakMode: lineBreakMode,
                     minimumScaleFactor: minimumScaleFactor,
                     allowsTightening: allowsTightening,
-                    emojiScale: emojiScale
+                    emojiScale: emojiScale,
+                    fitsInlineWidth: fitsInlineWidth
                 )
                 .accessibilityLabel(content.plainText)
             } else {
@@ -351,6 +354,7 @@ private struct AccountDisplayNameLabelRepresentable: UIViewRepresentable {
     let minimumScaleFactor: CGFloat
     let allowsTightening: Bool
     let emojiScale: CGFloat
+    var fitsInlineWidth = false
 
     func makeUIView(context: Context) -> AccountDisplayNameLabel {
         let label = AccountDisplayNameLabel()
@@ -380,6 +384,12 @@ private struct AccountDisplayNameLabelRepresentable: UIViewRepresentable {
         uiView: AccountDisplayNameLabel,
         context: Context
     ) -> CGSize? {
+        if fitsInlineWidth, lineLimit == 1 {
+            let ideal = uiView.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude,
+                                                    height: CGFloat.greatestFiniteMagnitude))
+            return CGSize(width: min(ceil(ideal.width), proposal.width ?? .infinity),
+                          height: max(ceil(ideal.height), 1))
+        }
         guard let width = proposal.width, width > 0 else { return nil }
         uiView.preferredMaxLayoutWidth = width
         let size = uiView.sizeThatFits(CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))

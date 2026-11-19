@@ -31,6 +31,7 @@ struct ProfileMoreButton: View {
     var onSettings: (() -> Void)? = nil
     var onBookmarks: (() -> Void)? = nil
     var onFavourites: (() -> Void)? = nil
+    var onExplore: (() -> Void)? = nil
     var onCopyLink: (() -> Void)? = nil
     var onOpenInBrowser: (() -> Void)? = nil
     var onAddToList: (() -> Void)? = nil
@@ -47,6 +48,7 @@ struct ProfileMoreButton: View {
         onSettings: (() -> Void)? = nil,
         onBookmarks: (() -> Void)? = nil,
         onFavourites: (() -> Void)? = nil,
+        onExplore: (() -> Void)? = nil,
         onCopyLink: (() -> Void)? = nil,
         onOpenInBrowser: (() -> Void)? = nil,
         onAddToList: (() -> Void)? = nil,
@@ -62,6 +64,7 @@ struct ProfileMoreButton: View {
         self.onSettings = onSettings
         self.onBookmarks = onBookmarks
         self.onFavourites = onFavourites
+        self.onExplore = onExplore
         self.onCopyLink = onCopyLink
         self.onOpenInBrowser = onOpenInBrowser
         self.onAddToList = onAddToList
@@ -81,7 +84,7 @@ struct ProfileMoreButton: View {
                 }
             }
 
-            if onBookmarks != nil || onFavourites != nil {
+            if onBookmarks != nil || onFavourites != nil || onExplore != nil {
                 if onEditProfile != nil {
                     Divider()
                 }
@@ -103,10 +106,17 @@ struct ProfileMoreButton: View {
                         )
                     }
                 }
+
+                if let onExplore {
+                    Button(action: onExplore) {
+                        MoroMenuItemLabel(title: MoroL10n.Navigation.explore, systemImage: MainTab.explore.icon)
+                    }
+                    .accessibilityIdentifier("profile.menu.explore")
+                }
             }
 
             if onEditProfile != nil || onBookmarks != nil
-                || onFavourites != nil
+                || onFavourites != nil || onExplore != nil
             {
                 Divider()
             }

@@ -118,6 +118,8 @@ protocol MastodonAPI {
     func fetchTimelinePage(
         timeline: TimelineType, maxID: String?, sinceID: String?, limit: Int
     ) async throws -> TimelinePage
+    /// Instance serving this client's account, including when a notification refers to remote users.
+    var instanceURL: URL? { get }
     /// Stable identifier for instance-scoped metadata caches.
     /// Test doubles and clients without a stable server identity may keep the default `nil`.
     var instanceMetadataCacheKey: String? { get }
@@ -247,6 +249,7 @@ protocol MastodonAPI {
     func fetchFavouritedStatuses(maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Status]
     func fetchLists() async throws -> [MastodonList]
+    func searchFollowedAccounts(query: String, limit: Int) async throws -> [Account]
     /// Lists owned by the user that contain the given account.
     func fetchAccountLists(accountID: String) async throws -> [MastodonList]
     func createList(title: String, repliesPolicy: MastodonList.RepliesPolicy?) async throws
@@ -427,7 +430,8 @@ extension MastodonAPI {
     func dismissNotificationRequest(id: String) async throws {
         throw APIError.http(statusCode: 404, data: nil)
     }
-    var instanceMetadataCacheKey: String? { nil }
+    var instanceURL: URL? { nil }
+    var instanceMetadataCacheKey: String? { instanceURL?.absoluteString }
     func fetchEditableProfile() async throws -> EditableProfile {
         try EditableProfile.credentials(await verifyCredentials())
     }
@@ -466,6 +470,7 @@ struct NotificationItem: Identifiable, Codable {
     let status: Status?
     let fallback: NotificationFallback?
     let collection: NotificationCollectionSummary?
+    let report: ReportResponse?
 
     init(
         id: String,
@@ -475,7 +480,8 @@ struct NotificationItem: Identifiable, Codable {
         account: Account,
         status: Status?,
         fallback: NotificationFallback? = nil,
-        collection: NotificationCollectionSummary? = nil
+        collection: NotificationCollectionSummary? = nil,
+        report: ReportResponse? = nil
     ) {
         self.id = id
         self.type = type
@@ -485,6 +491,7 @@ struct NotificationItem: Identifiable, Codable {
         self.status = status
         self.fallback = fallback
         self.collection = collection
+        self.report = report
     }
 
     enum CodingKeys: String, CodingKey {
@@ -496,6 +503,7 @@ struct NotificationItem: Identifiable, Codable {
         case status
         case fallback
         case collection
+        case report
     }
 }
 

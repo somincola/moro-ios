@@ -11,13 +11,14 @@ import UIKit
 struct ListsView: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.activeAccountKey) private var activeAccountKey
+    @Environment(\.appRouter) private var router
     @StateObject private var viewModel: ListsViewModel
     @ObservedObject private var settings = AppSettings.shared
     private let apiClient: MastodonAPI
 
     @State private var showEditor = false
     @State private var editorDraft = ListEditorDraft.new
-    @State private var selectedListForMembers: MastodonList?
+    @State private var createdListToOpen: MastodonList?
     /// iPhone Duo's inner display held landscape: the lists stay on the left and the open list
     /// (or the editor) fills the right. Elsewhere a list pushes and the editor is a sheet.
     @State private var isWide = false
@@ -67,10 +68,10 @@ struct ListsView: View {
         .refreshable {
             await viewModel.refresh()
         }
-        .sheet(isPresented: $showEditor) {
+        .sheet(isPresented: $showEditor, onDismiss: openCreatedListMembers) {
             ListEditorSheet(
                 draft: $editorDraft,
-                isSaving: viewModel.isMutating,
+                viewModel: viewModel,
                 onCancel: {
                     showEditor = false
                 },
@@ -78,9 +79,6 @@ struct ListsView: View {
                     await saveEditor()
                 }
             )
-        }
-        .sheet(item: $selectedListForMembers) { list in
-            ListMembersView(list: list, apiClient: apiClient)
         }
     }
 
@@ -127,6 +125,7 @@ struct ListsView: View {
     }
 
     private func startNewList() {
+        viewModel.editorError = nil
         editorDraft = .new
         if isWide {
             withAnimation(.snappy(duration: 0.25)) { isEditingInline = true }
@@ -136,6 +135,7 @@ struct ListsView: View {
     }
 
     private func startEditing(_ list: MastodonList) {
+        viewModel.editorError = nil
         editorDraft = .from(list)
         if isWide {
             selectedListID = list.id
@@ -210,12 +210,12 @@ struct ListsView: View {
         if isEditingInline {
             // No title row of its own: the left column's highlighted row already says what's
             // being made, and a white band over the grouped form read as a stray strip.
-            ListEditorForm(draft: $editorDraft, isSaving: viewModel.isMutating)
+            ListEditorForm(draft: $editorDraft, isSaving: viewModel.isMutating, error: viewModel.editorError)
             .transition(.opacity)
             .accessibilityIdentifier("lists.editor.inline")
         } else if let list = selectedList {
             VStack(spacing: 0) {
-                columnHeader(list.title, subtitle: repliesPolicyLabel(for: list.repliesPolicy))
+                columnHeader(list)
                 ListTimelineView(
                     list: list, apiClient: apiClient, cacheClientID: activeAccountKey,
                     setsNavigationTitle: false)
@@ -228,21 +228,20 @@ struct ListsView: View {
     }
 
     /// The right column's title row, level with the system bar's title on the left.
-    private func columnHeader(_ title: String, subtitle: String? = nil) -> some View {
+    private func columnHeader(_ list: MastodonList) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: theme.spacing.s) {
-                Text(title)
+                Text(list.title)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(theme.colors.textPrimary)
                     .lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(theme.typography.caption)
-                        .foregroundStyle(theme.colors.textSecondary)
-                        .lineLimit(1)
-                }
+                Text(repliesPolicyLabel(for: list.repliesPolicy))
+                    .font(theme.typography.caption)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .lineLimit(1)
                 Spacer(minLength: 0)
+                ListMembersButton(list: list)
             }
             .padding(.horizontal, theme.spacing.contentHorizontalInset)
             .frame(height: 44)
@@ -300,9 +299,8 @@ struct ListsView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                NavigationLink {
-                    ListTimelineView(list: list, apiClient: apiClient, cacheClientID: activeAccountKey)
-                        .id(activeAccountKey + ":" + list.id)
+                Button {
+                    router.navigate(to: .listTimeline(list, accountKey: activeAccountKey))
                 } label: {
                     listRow(list, isSelected: false)
                 }
@@ -316,7 +314,7 @@ struct ListsView: View {
     @ViewBuilder
     private func listActions(_ list: MastodonList) -> some View {
         Button {
-            selectedListForMembers = list
+            router.navigate(to: .listMembers(list))
         } label: {
             Label(MoroL10n.Lists.members, systemImage: "person.2")
         }
@@ -411,6 +409,7 @@ struct ListsView: View {
                     .contentShape(Rectangle())
             }
             .accessibilityLabel(MoroL10n.StatusAction.more)
+            .accessibilityIdentifier("lists.more.\(list.id)")
 
             if !isWide {
                 Image(systemName: "chevron.right")
@@ -476,36 +475,30 @@ struct ListsView: View {
         let title = editorDraft.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
 
-        let success: Bool
         if let editingList = editorDraft.editingList {
-            success = await viewModel.updateList(
-                editingList,
-                title: title,
-                repliesPolicy: editorDraft.repliesPolicy
-            )
-            if success {
-                // Keep a pinned home tab's title in sync after a rename.
-                settings.renamePinnedTimelineList(
-                    id: editingList.id, title: title, accountKey: activeAccountKey)
-            }
+            guard await viewModel.updateList(editingList, title: title, repliesPolicy: editorDraft.repliesPolicy)
+            else { return }
+            settings.renamePinnedTimelineList(id: editingList.id, title: title, accountKey: activeAccountKey)
         } else {
-            let existingIDs = Set(viewModel.lists.map(\.id))
-            success = await viewModel.createList(
-                title: title,
-                repliesPolicy: editorDraft.repliesPolicy
-            )
-            if success, isWide {
-                // Open the new list beside the others.
-                selectedListID = viewModel.lists.first { !existingIDs.contains($0.id) }?.id ?? selectedListID
-            }
+            guard let created = await viewModel.createList(title: title, repliesPolicy: editorDraft.repliesPolicy)
+            else { return }
+            selectedListID = created.id
+            createdListToOpen = created
         }
 
-        if success {
+        if showEditor {
+            // Push only after the sheet has finished dismissing.
             showEditor = false
-            if isEditingInline {
-                withAnimation(.snappy(duration: 0.25)) { isEditingInline = false }
-            }
+        } else {
+            withAnimation(.snappy(duration: 0.25)) { isEditingInline = false }
+            openCreatedListMembers()
         }
+    }
+
+    private func openCreatedListMembers() {
+        guard let list = createdListToOpen else { return }
+        createdListToOpen = nil
+        router.navigate(to: .listMembers(list))
     }
 }
 
@@ -536,6 +529,7 @@ private struct ListEditorForm: View {
     @Environment(\.moroTheme) private var theme
     @Binding var draft: ListEditorDraft
     let isSaving: Bool
+    let error: String?
     @FocusState private var isNameFocused: Bool
 
     var body: some View {
@@ -544,6 +538,11 @@ private struct ListEditorForm: View {
                 TextField(MoroL10n.Lists.formNamePlaceholder, text: $draft.title)
                     .focused($isNameFocused)
                     .accessibilityIdentifier("lists.editor.name")
+                if let error {
+                    Label(error, systemImage: "exclamationmark.circle")
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.error)
+                }
             }
 
             Section(MoroL10n.Lists.formReplySection) {
@@ -626,14 +625,14 @@ private struct ListEditorForm: View {
 
 private struct ListEditorSheet: View {
     @Binding var draft: ListEditorDraft
-
-    let isSaving: Bool
+    @ObservedObject var viewModel: ListsViewModel
+    private var isSaving: Bool { viewModel.isMutating }
     let onCancel: () -> Void
     let onSave: () async -> Void
 
     var body: some View {
         NavigationStack {
-            ListEditorForm(draft: $draft, isSaving: isSaving)
+            ListEditorForm(draft: $draft, isSaving: isSaving, error: viewModel.editorError)
                 .navigationTitle(draft.isEditing ? MoroL10n.Lists.formEditTitle : MoroL10n.Lists.newList)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -648,10 +647,26 @@ private struct ListEditorSheet: View {
                             Task { await onSave() }
                         }
                         .disabled(isSaving || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("lists.editor.save")
                     }
                 }
         }
-        .moroTheme(MoroTheme())
+        .interactiveDismissDisabled(isSaving)
+    }
+}
+
+private struct ListMembersButton: View {
+    @Environment(\.appRouter) private var router
+    let list: MastodonList
+
+    var body: some View {
+        Button {
+            router.navigate(to: .listMembers(list))
+        } label: {
+            Label(MoroL10n.Lists.members, systemImage: "person.2")
+        }
+        .labelStyle(.iconOnly)
+        .accessibilityIdentifier("lists.timeline.members")
     }
 }
 
@@ -696,6 +711,11 @@ struct ListTimelineView: View {
             timelineList
         }
         .modifier(ListTimelineTitle(title: setsNavigationTitle ? list.title : nil))
+        .toolbar {
+            if setsNavigationTitle {
+                ToolbarItem(placement: .topBarTrailing) { ListMembersButton(list: list) }
+            }
+        }
         .background(theme.colors.surfaceBase)
         .task {
             await viewModel.loadInitial()
