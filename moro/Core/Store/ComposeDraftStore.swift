@@ -387,15 +387,18 @@ final class SharedComposeDraftStagingStore {
     private let decoder = JSONDecoder()
     private let lock = NSLock()
     private var didReportLockFailure = false
+    private let waitForIndexLockRetry: (useconds_t) -> Void
 
     init(
         userDefaults: UserDefaults,
         baseDirectoryURL: URL,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        waitForIndexLockRetry: ((useconds_t) -> Void)? = nil
     ) {
         self.userDefaults = userDefaults
         self.baseDirectoryURL = baseDirectoryURL
         self.fileManager = fileManager
+        self.waitForIndexLockRetry = waitForIndexLockRetry ?? { usleep($0) }
     }
 
     func pendingItems() -> [SharedComposeDraftStagingItem] {
@@ -699,7 +702,7 @@ final class SharedComposeDraftStagingStore {
             baseDirectoryURL.appendingPathComponent(".index.lock").path, O_CREAT | O_RDWR, 0o600)
         guard descriptor >= 0 else { reportLockFailure(); throw PersistenceError.indexLockUnavailable }
         defer { Darwin.close(descriptor) }
-        guard Self.acquireIndexLock(descriptor) else {
+        guard Self.acquireIndexLock(descriptor, wait: waitForIndexLockRetry) else {
             reportLockFailure()
             throw PersistenceError.indexLockUnavailable
         }
@@ -769,13 +772,14 @@ final class SharedComposeDraftStagingStore {
     /// Ordinary contention with the extension is retried briefly (≤ ~200 ms) instead of
     /// surfacing as a failure; the wait stays bounded so a suspended peer cannot hang us.
     nonisolated static func acquireIndexLock(
-        _ descriptor: Int32, attempts: Int = 20, interval: useconds_t = 10_000
+        _ descriptor: Int32, attempts: Int = 20, interval: useconds_t = 10_000,
+        wait: (useconds_t) -> Void = { usleep($0) }
     ) -> Bool {
         for attempt in 0..<attempts {
             if flock(descriptor, LOCK_EX | LOCK_NB) == 0 { return true }
             let code = errno
             guard code == EWOULDBLOCK || code == EINTR else { return false }
-            if attempt + 1 < attempts { usleep(interval) }
+            if attempt + 1 < attempts { wait(interval) }
         }
         return false
     }
