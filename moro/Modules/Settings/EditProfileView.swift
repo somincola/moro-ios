@@ -16,6 +16,7 @@ struct EditProfileView: View {
     @State private var isPickerPresented = false
     @State private var pickedItem: PhotosPickerItem?
     @State private var mediaOptions: MediaKind?
+    @State private var fieldOptionsID: UUID?
     @FocusState private var focus: Focus?
     private let apiClient: MastodonAPI
 
@@ -417,19 +418,9 @@ struct EditProfileView: View {
     }
 
     private func fieldMenu(_ field: EditProfileViewModel.EditableField, index: Int) -> some View {
-        Menu {
-            Button { move(field.id, by: -1) } label: {
-                SwiftUI.Label(MoroL10n.ComposeReading.moveUp, systemImage: "arrow.up")
-            }
-            .disabled(index == 0)
-            Button { move(field.id, by: 1) } label: {
-                SwiftUI.Label(MoroL10n.ComposeReading.moveDown, systemImage: "arrow.down")
-            }
-            .disabled(index == model.fields.count - 1)
-            Divider()
-            Button(role: .destructive) { removeField(field.id) } label: {
-                SwiftUI.Label(MoroL10n.Common.delete, systemImage: "trash")
-            }
+        Button {
+            focus = nil
+            fieldOptionsID = field.id
         } label: {
             Image(systemName: "ellipsis")
                 .moroScaledFont(size: 15, weight: .semibold)
@@ -437,10 +428,23 @@ struct EditProfileView: View {
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .padding(.top, 2)
         .padding(.trailing, 2)
         .accessibilityLabel(MoroL10n.EditProfile.fieldOptions)
         .accessibilityIdentifier("profile.field.\(index).menu")
+        .confirmationDialog(MoroL10n.EditProfile.fieldOptions, isPresented: Binding(
+            get: { fieldOptionsID == field.id },
+            set: { if !$0, fieldOptionsID == field.id { fieldOptionsID = nil } }
+        )) {
+            if index > 0 {
+                Button(MoroL10n.ComposeReading.moveUp) { move(field.id, by: -1) }
+            }
+            if index < model.fields.count - 1 {
+                Button(MoroL10n.ComposeReading.moveDown) { move(field.id, by: 1) }
+            }
+            Button(MoroL10n.Common.delete, role: .destructive) { removeField(field.id) }
+        }
     }
 
     private var addFieldButton: some View {
