@@ -178,6 +178,9 @@ private final class PushNotificationFixtureToken: AuthTokenProvider {
 }
 
 private final class PushNotificationFixtureProtocol: URLProtocol, @unchecked Sendable {
+    private static let listLock = NSLock()
+    private static var listsWithFixtureMember: Set<String> = []
+    private static var failedFirstAdd = false
     @MainActor static func makeClient(session: String) -> MastodonClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [Self.self]
@@ -224,6 +227,49 @@ private final class PushNotificationFixtureProtocol: URLProtocol, @unchecked Sen
             } else {
                 payload = []
             }
+        } else if url.path == "/api/v1/bookmarks" {
+            var bookmarked = DirectMessagesFixtureProtocol.status(
+                "nav-bookmark", author: "push-author", content: "<p>Navigation bookmark fixture</p>"
+            )
+            bookmarked["bookmarked"] = true
+            payload = [bookmarked]
+        } else if url.path == "/api/v1/favourites" {
+            var favourite = DirectMessagesFixtureProtocol.status(
+                "nav-favourite", author: "push-author", content: "<p>Navigation favourite fixture</p>"
+            )
+            favourite["favourited"] = true
+            payload = [favourite]
+        } else if url.path == "/api/v1/lists", request.httpMethod == "POST" {
+            payload = ["id": "created-list", "title": "Book club"]
+        } else if url.path == "/api/v1/lists" {
+            payload = [["id": "nav-list", "title": "Navigation list fixture"]]
+        } else if url.path.hasPrefix("/api/v1/lists/"), url.lastPathComponent == "accounts" {
+            let listID = url.deletingLastPathComponent().lastPathComponent
+            (code, payload) = Self.listLock.withLock {
+                switch request.httpMethod {
+                case "POST":
+                    if !Self.failedFirstAdd, ProcessInfo.processInfo.environment["UITEST_LIST_FAIL_ADD"] == "1" {
+                        Self.failedFirstAdd = true
+                        return (422, ["error": "Fixture add failed"])
+                    }
+                    Self.listsWithFixtureMember.insert(listID)
+                    return (200, [:])
+                case "DELETE":
+                    Self.listsWithFixtureMember.remove(listID)
+                    return (200, [:])
+                default:
+                    return (200, Self.listsWithFixtureMember.contains(listID) ? [account] : [])
+                }
+            }
+        } else if url.path == "/api/v1/accounts/search" {
+            let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            let query = items.first { $0.name == "q" }?.value ?? ""
+            if query == "offline" { code = 422; payload = ["error": "Fixture search failed"] }
+            else { payload = "push-author".contains(query) && items.contains(URLQueryItem(name: "following", value: "true")) ? [account] : [] }
+        } else if url.path == "/api/v1/timelines/list/nav-list" {
+            payload = [DirectMessagesFixtureProtocol.status(
+                "nav-list-post", author: "push-author", content: "<p>Navigation list post fixture</p>"
+            )]
         } else if url.path.hasPrefix("/api/v1/notifications/") {
             if url.lastPathComponent == "missing" {
                 code = 404; payload = ["error": "Not found"]
@@ -258,7 +304,10 @@ private final class PushNotificationFixtureProtocol: URLProtocol, @unchecked Sen
         }
         // UITEST_NOTIFICATIONS_DELAY slows the newest notifications page (initial load and
         // refreshes, not older pages) so a test can watch the refresh in progress.
-        if url.path == "/api/v1/notifications", !url.absoluteString.contains("max_id"),
+        if url.path.hasPrefix("/api/v1/lists/"), request.httpMethod == "POST",
+            let delay = ProcessInfo.processInfo.environment["UITEST_LIST_ADD_DELAY"].flatMap(Double.init) {
+            DispatchQueue.global().asyncAfter(deadline: .now() + delay, execute: deliver)
+        } else if url.path == "/api/v1/notifications", !url.absoluteString.contains("max_id"),
             let delay = ProcessInfo.processInfo.environment["UITEST_NOTIFICATIONS_DELAY"].flatMap(Double.init) {
             DispatchQueue.global().asyncAfter(deadline: .now() + delay, execute: deliver)
         } else {
@@ -293,6 +342,24 @@ private final class PushNotificationFixtureProtocol: URLProtocol, @unchecked Sen
         }
         if ProcessInfo.processInfo.environment["UITEST_NOTIFICATIONS_UPDATED"] == "1" {
             items.insert(notification(331, type: "update", text: "New activity after restart"), at: 0)
+        }
+        if ProcessInfo.processInfo.environment["UITEST_NOTIFICATIONS_REPORTS"] == "1" {
+            func report(_ id: Int, reportID: String, target: String, posts: [String], reason: String) -> [String: Any] {
+                let account = ["id": target, "username": String(target.prefix { $0 != "@" }), "acct": target]
+                return [
+                    "id": String(id), "type": "admin.report", "group_key": "ungrouped-\(id)",
+                    "created_at": "2026-09-10T01:00:00.123Z",
+                    "account": DirectMessagesFixtureProtocol.account("relay"),
+                    "report": ["id": reportID, "target_account": account, "status_ids": posts, "comment": reason,
+                               "action_taken_at": "2026-09-10T02:00:00.123Z"],
+                ]
+            }
+            items.insert(contentsOf: [
+                notification(335, type: "status", text: "这周的读书会定在周六。"),
+                report(334, reportID: "10", target: "garden", posts: [], reason: "请核对这个账号使用的社团名称。"),
+                report(333, reportID: "9", target: "river@example.net", posts: ["71", "72"], reason: "这两条嘟文使用了同一张图片。"),
+                report(332, reportID: "8", target: "brook", posts: ["73"], reason: "  "),
+            ], at: 0)
         }
         items += [
             notification(200, type: "mention", text: "Private reply", isDirect: true, replyTo: "inbox-post-199"),

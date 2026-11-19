@@ -23,6 +23,7 @@ final class ListsViewModel: ObservableObject {
     @Published private(set) var lists: [MastodonList] = []
     @Published private(set) var loadingState: LoadingState = .idle
     @Published var transientErrorMessage: String?
+    @Published var editorError: String?
     @Published var isMutating: Bool = false
 
     private let apiClient: MastodonAPI
@@ -52,11 +53,11 @@ final class ListsViewModel: ObservableObject {
         }
     }
 
-    func createList(title: String, repliesPolicy: MastodonList.RepliesPolicy?) async -> Bool {
+    func createList(title: String, repliesPolicy: MastodonList.RepliesPolicy?) async -> MastodonList? {
         let cleanedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanedTitle.isEmpty else { return false }
-        guard !isMutating else { return false }
+        guard !cleanedTitle.isEmpty, !isMutating else { return nil }
 
+        editorError = nil
         isMutating = true
         defer { isMutating = false }
 
@@ -64,12 +65,10 @@ final class ListsViewModel: ObservableObject {
             let created = try await apiClient.createList(title: cleanedTitle, repliesPolicy: repliesPolicy)
             lists.insert(created, at: 0)
             transientErrorMessage = nil
-            AppFeedbackCenter.shared.showSuccess(MoroL10n.ListsVM.created)
-            return true
+            return created
         } catch {
-            transientErrorMessage = MoroL10n.ListsVM.createFailed
-            AppFeedbackCenter.shared.showError(MoroL10n.ListsVM.createFailedShort)
-            return false
+            editorError = MoroL10n.ListsVM.createFailed
+            return nil
         }
     }
 
@@ -78,6 +77,7 @@ final class ListsViewModel: ObservableObject {
         guard !cleanedTitle.isEmpty else { return false }
         guard !isMutating else { return false }
 
+        editorError = nil
         isMutating = true
         defer { isMutating = false }
 
@@ -93,11 +93,9 @@ final class ListsViewModel: ObservableObject {
                 lists.insert(updated, at: 0)
             }
             transientErrorMessage = nil
-            AppFeedbackCenter.shared.showSuccess(MoroL10n.ListsVM.updated)
             return true
         } catch {
-            transientErrorMessage = MoroL10n.ListsVM.updateFailed
-            AppFeedbackCenter.shared.showError(MoroL10n.ListsVM.updateFailedShort)
+            editorError = MoroL10n.ListsVM.updateFailed
             return false
         }
     }

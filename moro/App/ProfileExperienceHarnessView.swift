@@ -351,7 +351,10 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             connection["display_name"] = "Connection Tester"
             if showsConnectionCounts {
                 connection["acct"] = "connection@example.social"
-                connection["followers_count"] = 1
+                connection["display_name"] = "Con :badge:"
+                let badge = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAYklEQVR42r3UsQ0AIAgEQAZxbLd0CI2Fic3Dg+AnllyiICK/0vqY2kmDXLAXU9EoBtFUMALsQDSCnTyDCFNBVKBhFHgXWph5ZRSq08x7WRjdFBZLmcV/P6VkOZSsr5IF+5oFQgn3o7F5mdoAAAAASUVORK5CYII="
+                connection["emojis"] = [["shortcode": "badge", "url": badge, "static_url": badge, "visible_in_picker": true]]
+                connection["followers_count"] = 18_500
                 connection["following_count"] = 2_345
             }
             return (200, [connection])

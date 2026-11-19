@@ -63,8 +63,7 @@ struct SettingsSheetHarnessView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environmentObject(appState)
         .sheet(item: $presentedSheet) { destination in
-            switch destination {
-            case .settings:
+            if destination == .settings {
                 SettingsSheetView(apiClient: apiClient)
                     .environmentObject(appState)
                     .environment(\.settingsContext, SettingsContext(

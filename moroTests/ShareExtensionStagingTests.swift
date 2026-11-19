@@ -181,8 +181,15 @@ struct ShareExtensionStagingTests {
         try #require(descriptor >= 0)
         defer { Darwin.close(descriptor) }
         try #require(flock(descriptor, LOCK_EX | LOCK_NB) == 0)
-        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(50)) { flock(descriptor, LOCK_UN) }
-        let id = try fixture.writer().stage(accountID: "me", content: content)
+        var retries = 0
+        let writer = MoroShareExtensionDraftStagingStore(
+            userDefaults: fixture.defaults, baseDirectoryURL: fixture.group,
+            waitForIndexLockRetry: { _ in
+                retries += 1
+                #expect(flock(descriptor, LOCK_UN) == 0)
+            })
+        let id = try writer.stage(accountID: "me", content: content)
+        #expect(retries == 1)
         #expect(try fixture.index().map { $0["id"] as? String } == [id])
     }
 

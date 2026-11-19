@@ -2323,6 +2323,17 @@ struct moroTests {
         #expect(viewModel.pinnedStatuses.isEmpty)
     }
 
+    @Test @MainActor func inlineEmojiNameLeavesRoomForAnAdjacentHandle() {
+        let url = URL(string: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7")!
+        let account = makeAccount(displayName: "Lin :mark:",
+                                  emojis: [.init(shortcode: "mark", url: url, staticURL: url)])
+        let host = UIHostingController(rootView: AccountDisplayNameView(
+            account: account, typography: .bodyStrong, textColor: .primary, fitsInlineWidth: true))
+        let fitting = host.sizeThatFits(in: CGSize(width: 320, height: 60))
+        #expect(fitting.width > 20 && fitting.width < 100)
+        #expect(fitting.height > 0)
+    }
+
     @Test @MainActor func accountDisplayNameParserKeepsPlainTextVisibleWhileResolvingEmoji()
         async throws
     {
@@ -8365,6 +8376,10 @@ final class MockMastodonAPI: MastodonAPI {
     var fetchAccountFollowersCalls: [(id: String, maxID: String?, limit: Int)] = []
     var fetchAccountFollowingCalls: [(id: String, maxID: String?, limit: Int)] = []
     var searchHandler: ((String, MastodonSearchType?, Bool, Int, Int?) async throws -> SearchResults)?
+    var searchFollowedAccountsHandler: ((String, Int) async throws -> [Account])?
+    var listAccountsHandler: ((String, Int) async throws -> [Account])?
+    var addListAccountsHandler: ((String, [String]) async throws -> Void)?
+    var removeListAccountsHandler: ((String, [String]) async throws -> Void)?
     var fetchStatusDetailHandler: ((String) async throws -> Status)?
     var fetchStatusSourceHandler: ((String) async throws -> StatusSource)?
     var fetchStatusContextHandler: ((String) async throws -> StatusContext)?
@@ -8842,6 +8857,10 @@ final class MockMastodonAPI: MastodonAPI {
         throw MockError.unimplemented
     }
     func fetchLists() async throws -> [MastodonList] { throw MockError.unimplemented }
+    func searchFollowedAccounts(query: String, limit: Int) async throws -> [Account] {
+        guard let searchFollowedAccountsHandler else { throw MockError.unimplemented }
+        return try await searchFollowedAccountsHandler(query, limit)
+    }
     func fetchAccountLists(accountID: String) async throws -> [MastodonList] { throw MockError.unimplemented }
     func createList(title: String, repliesPolicy: MastodonList.RepliesPolicy?) async throws
         -> MastodonList
@@ -8857,13 +8876,16 @@ final class MockMastodonAPI: MastodonAPI {
     func fetchListAccounts(listID: String, maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Account]
     {
-        throw MockError.unimplemented
+        guard let listAccountsHandler else { throw MockError.unimplemented }
+        return try await listAccountsHandler(listID, limit)
     }
     func addAccountsToList(listID: String, accountIDs: [String]) async throws {
-        throw MockError.unimplemented
+        guard let addListAccountsHandler else { throw MockError.unimplemented }
+        try await addListAccountsHandler(listID, accountIDs)
     }
     func removeAccountsFromList(listID: String, accountIDs: [String]) async throws {
-        throw MockError.unimplemented
+        guard let removeListAccountsHandler else { throw MockError.unimplemented }
+        try await removeListAccountsHandler(listID, accountIDs)
     }
     func fetchListTimeline(id: String, maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Status]

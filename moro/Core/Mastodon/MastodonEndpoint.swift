@@ -51,6 +51,7 @@ enum MastodonEndpoint {
     case publicTimeline(local: Bool, maxID: String?, sinceID: String?, minID: String?, limit: Int)
     case hashtagTimeline(tag: String, maxID: String?, sinceID: String?, limit: Int)
     case search(query: String, type: String?, resolve: Bool, limit: Int, offset: Int?)
+    case searchFollowedAccounts(query: String, limit: Int)
     case tag(name: String)
     case followTag(name: String)
     case unfollowTag(name: String)
@@ -248,6 +249,8 @@ enum MastodonEndpoint {
             return "/api/v1/timelines/tag/\(tag)"
         case .search:
             return "/api/v2/search"
+        case .searchFollowedAccounts:
+            return "/api/v1/accounts/search"
         case .tag(let name):
             return "/api/v1/tags/\(name)"
         case .followTag(let name):
@@ -394,6 +397,12 @@ enum MastodonEndpoint {
                 sinceID.map { URLQueryItem(name: "since_id", value: $0) },
                 URLQueryItem(name: "limit", value: "\(limit)"),
             ].compactMap { $0 }
+        case .searchFollowedAccounts(let query, let limit):
+            return [
+                URLQueryItem(name: "q", value: query),
+                URLQueryItem(name: "following", value: "true"),
+                URLQueryItem(name: "limit", value: String(limit)),
+            ]
         case .search(let query, let type, let resolve, let limit, let offset):
             return [
                 URLQueryItem(name: "q", value: query),

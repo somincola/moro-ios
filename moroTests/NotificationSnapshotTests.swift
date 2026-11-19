@@ -19,6 +19,58 @@ struct NotificationSnapshotTests {
             savedAt: Date().addingTimeInterval(-7 * 86_400))
     }
 
+    @Test func reportNotificationsKeepTheirOwnTargetPostsAndReasonAcrossDiskReads() async throws {
+        let payload = Data(#"""
+            [
+              {"id":"42","type":"admin.report","group_key":"ungrouped-42","created_at":"2026-09-10T01:00:00Z",
+               "account":{"id":"1","username":"relay","acct":"relay@example.org"},
+               "report":{"id":"7","action_taken":true,"action_taken_at":"2026-09-10T02:00:00Z",
+                         "target_account":{"id":"2","username":"garden","acct":"garden@example.net","display_name":"Garden Club"},
+                         "status_ids":["91","92"],"comment":"  Reason one.\nReason two.  "}},
+              {"id":"41","type":"admin.report","created_at":"2026-09-10T00:00:00Z",
+               "account":{"id":"1","username":"relay"},
+               "report":{"id":"6","status_ids":null,"comment":" \n ","target_account":{"id":"3","username":"river"}}},
+              {"id":"40","type":"admin.report","created_at":"2026-09-09T00:00:00Z","account":{"id":"1","username":"relay"}}
+            ]
+            """#.utf8)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        var saved = snapshot([], hasMore: false)
+        saved.notifications = try decoder.decode([NotificationItem].self, from: payload)
+        let directory = directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = NotificationSnapshotStore(directory: directory)
+        await store.save(saved, for: store.session(for: "a"), scope: .everything)?.value
+        let cold = NotificationSnapshotStore(directory: directory)
+        let restored = try #require(await cold.load(for: cold.session(for: "a"), scope: .everything))
+        let rows = NotificationDisplayItem.consolidate(restored.notifications)
+        #expect(rows.map(\.id) == ["42", "41", "40"])
+        let first = try #require(rows.first?.report)
+        #expect(first.statusIds == ["91", "92"])
+        #expect(String(first.notificationTitle().characters) == MoroL10n.Notifications.reportTitle(target: "garden", postCount: 2))
+        var emphasis = AttributeContainer()
+        emphasis.inlinePresentationIntent = .stronglyEmphasized
+        let title = first.notificationTitle(usernameAttributes: emphasis)
+        let names = title.runs.filter { $0.inlinePresentationIntent == .stronglyEmphasized }
+            .map { String(title[$0.range].characters) }
+        #expect(names == ["garden"])
+        #expect(first.notificationReason == "Reason one.\nReason two.")
+        let accountOnly = try #require(rows.first { $0.id == "41" }?.report)
+        #expect(String(accountOnly.notificationTitle().characters) == MoroL10n.Notifications.reportTitle(target: "river", postCount: 0))
+        #expect(accountOnly.notificationReason == nil)
+        #expect(rows.last?.report == nil)
+
+        let instance = try #require(URL(string: "https://one.example.invalid:8443/api/v1/notifications?max_id=42#feed"))
+        #expect(rows.map { $0.reportURL(on: instance)?.absoluteString } == [
+            "https://one.example.invalid:8443/admin/reports/7",
+            "https://one.example.invalid:8443/admin/reports/6",
+            "https://one.example.invalid:8443/admin/reports",
+        ])
+        let secondInstance = URL(string: "https://two.example.invalid")
+        #expect(rows.first?.reportURL(on: secondInstance)?.absoluteString == "https://two.example.invalid/admin/reports/7")
+        #expect(NotificationDisplayItem(from: item(43)).reportURL(on: instance) == nil)
+    }
+
     @Test func diskRoundTripKeepsOldSnapshotsAndIsolatesAccountsAndScopes() async throws {
         let directory = directory()
         defer { try? FileManager.default.removeItem(at: directory) }

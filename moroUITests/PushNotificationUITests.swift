@@ -39,6 +39,66 @@ final class PushNotificationUITests: XCTestCase {
         assertPost(in: app, session: "push-a")
     }
 
+    func testReportsDisplayTargetPostCountAndReasonInChineseAndEnglish() {
+        for chinese in [true, false] {
+            let app = launch("inbox", environment: ["UITEST_NOTIFICATIONS_REPORTS": "1"], inChinese: chinese)
+            defer { app.terminate() }
+            let inbox = app.tabBars.buttons.matching(NSPredicate(
+                format: "identifier == 'mainTab.inbox' OR label BEGINSWITH %@", chinese ? "收件箱" : "Inbox"
+            )).firstMatch
+            XCTAssertTrue(inbox.waitForExistence(timeout: 8))
+            inbox.tap()
+            let reports = app.descendants(matching: .any)
+            let account = reports["notifications.report.334"]
+            XCTAssertTrue(account.waitForExistence(timeout: 12))
+            let accountLabel = account.label
+            let expectedAction = chinese ? "有人举报了 garden ·" : "Someone reported garden ·"
+            let reason = "请核对这个账号使用的社团名称。"
+            XCTAssertTrue(accountLabel.hasPrefix(expectedAction), accountLabel)
+            XCTAssertTrue(accountLabel.hasSuffix(reason), accountLabel)
+            let multiple = reports["notifications.report.333"].label
+            XCTAssertTrue(multiple.hasPrefix(chinese ? "有人举报了 river 的 2 条嘟文 ·"
+                                                     : "Someone reported 2 posts from river ·"), multiple)
+            XCTAssertTrue(multiple.contains("这两条嘟文使用了同一张图片。"))
+            let single = reports["notifications.report.332"].label
+            XCTAssertTrue(single.hasPrefix(chinese ? "有人举报了 brook 的 1 条嘟文 ·" : "Someone reported 1 post from brook ·"), single)
+            if chinese {
+                attach(app, "report-notifications-zh")
+                let standardHeight = account.frame.height
+                app.terminate()
+                app.launchEnvironment["UITEST_DYNAMIC_TYPE_SIZE"] = "accessibilityXXXL"
+                app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+                app.launch(isolatedFor: self)
+                XCTAssertTrue(inbox.waitForExistence(timeout: 8))
+                inbox.tap()
+                XCTAssertTrue(account.waitForExistence(timeout: 12))
+                XCTAssertTrue(account.label.hasPrefix(expectedAction) && account.label.hasSuffix(reason), account.label)
+                XCTAssertGreaterThan(account.frame.height, standardHeight)
+                attach(app, "report-notifications-zh-large-text")
+            }
+        }
+    }
+
+    func testTappingReportFlagOpensDefaultBrowserAndReturnsToInbox() {
+        let app = launch("inbox", environment: ["UITEST_NOTIFICATIONS_REPORTS": "1"])
+        defer { app.terminate() }
+        app.buttons["mainTab.inbox"].tap()
+        let report = app.descendants(matching: .any)["notifications.report.334"]
+        XCTAssertTrue(report.waitForExistence(timeout: 12))
+        report.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.4)).tap()
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            app.state == .runningBackground || app.state == .runningBackgroundSuspended
+        })
+        let browser = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        browser.name = "report-in-default-browser"
+        browser.lifetime = .keepAlways
+        add(browser)
+
+        app.activate()
+        assertInbox(in: app)
+        XCTAssertTrue(report.isHittable)
+    }
+
     func testInboxTabsAndNotificationSettingsStayUsableAfterSwitchingAndForegrounding() {
         let app = launch("inbox")
         defer { app.terminate() }
@@ -292,10 +352,10 @@ final class PushNotificationUITests: XCTestCase {
         attach(app, "push-system-tap")
     }
 
-    private func launch(_ scenario: String, environment: [String: String] = [:]) -> XCUIApplication {
+    private func launch(_ scenario: String, environment: [String: String] = [:], inChinese: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_PUSH_OPEN", "UITEST_DISABLE_ANIMATIONS",
-            "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+            "-AppleLanguages", inChinese ? "(zh-Hans)" : "(en)", "-AppleLocale", inChinese ? "zh_CN" : "en_US"]
         app.launchEnvironment["UITEST_USE_FULL_APP"] = "1"
         app.launchEnvironment["UITEST_PUSH_SCENARIO"] = scenario
         app.launchEnvironment.merge(environment) { _, new in new }

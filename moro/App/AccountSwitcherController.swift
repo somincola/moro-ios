@@ -381,13 +381,16 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
         }
         barIsLeading = false
         let bar = tabBar.convert(tabBar.bounds, to: hostView)
-        let me = meTabFrame(in: hostView)
-            ?? CGRect(x: bar.maxX - bar.width / 4, y: bar.minY, width: bar.width / 4, height: bar.height)
+        let me = meTabFrame(in: hostView) ?? bar
         let above = bar.midY > hostView.bounds.midY
         model.placement = above ? .aboveTabBar : .belowTabBar
-        // Center the current account (rightmost) over the Me tab when it fits.
+        // Align the current account with Me while keeping the whole panel on screen.
         let half = AccountSwitcherMetrics.avatarSize / 2 + AccountSwitcherMetrics.padding
-        model.trailingInset = max(AccountSwitcherMetrics.edgeMargin, hostView.bounds.width - me.midX - half)
+        let isRTL = hostView.effectiveUserInterfaceLayoutDirection == .rightToLeft
+        let distanceFromTrailingEdge = isRTL ? me.midX : hostView.bounds.width - me.midX
+        let margin = AccountSwitcherMetrics.edgeMargin
+        let maximumInset = max(margin, hostView.bounds.width - panelWidth - margin)
+        model.trailingInset = min(maximumInset, max(margin, distanceFromTrailingEdge - half))
         model.edgeInset = above
             ? hostView.bounds.height - bar.minY + AccountSwitcherMetrics.gapToTabBar
             : bar.maxY + AccountSwitcherMetrics.gapToTabBar
@@ -402,15 +405,18 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
         barIsLeading = column.midX < hostView.bounds.midX
         model.placement = .aboveTabBar
         if barIsLeading {
-            let count = CGFloat(max(model.entries.count, 1))
-            let width = count * AccountSwitcherMetrics.avatarSize
-                + (count - 1) * AccountSwitcherMetrics.spacing + 2 * AccountSwitcherMetrics.padding
             model.trailingInset = max(
-                AccountSwitcherMetrics.edgeMargin, hostView.bounds.width - column.maxX - gap - width)
+                AccountSwitcherMetrics.edgeMargin, hostView.bounds.width - column.maxX - gap - panelWidth)
         } else {
             model.trailingInset = max(AccountSwitcherMetrics.edgeMargin, hostView.bounds.width - column.minX + gap)
         }
         model.edgeInset = max(AccountSwitcherMetrics.edgeMargin, hostView.bounds.height - me.midY - half)
+    }
+
+    private var panelWidth: CGFloat {
+        let count = CGFloat(max(model.entries.count, 1))
+        return count * AccountSwitcherMetrics.avatarSize
+            + (count - 1) * AccountSwitcherMetrics.spacing + 2 * AccountSwitcherMetrics.padding
     }
 
     private func makeHostIfNeeded() -> UIHostingController<AnyView>? {
@@ -481,7 +487,7 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
                 buttons.append((view, frame))
             }
         }
-        guard buttons.count == MainTab.allCases.count else { return [] }
+        guard buttons.count > 1, buttons.count == tabController.viewControllers?.count else { return [] }
         let xs = buttons.map(\.frame.midX), ys = buttons.map(\.frame.midY)
         let isColumn = (ys.max()! - ys.min()!) > (xs.max()! - xs.min()!)
         let rightToLeft = tabController.view.effectiveUserInterfaceLayoutDirection == .rightToLeft
@@ -497,8 +503,17 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
     }
 
     private func meTabView() -> UIView? {
+        guard let index = meTabIndex else { return nil }
         let buttons = tabButtons()
-        return buttons.first { $0.accessibilityIdentifier == Self.meTabIdentifier } ?? buttons.last
+        if let button = buttons.first(where: { $0.accessibilityIdentifier == Self.meTabIdentifier }) {
+            return button
+        }
+        guard buttons.indices.contains(index) else { return nil }
+        return buttons[index]
+    }
+
+    private var meTabIndex: Int? {
+        tabBarController?.viewControllers?.firstIndex { $0.tabBarItem.accessibilityIdentifier == Self.meTabIdentifier }
     }
 
     /// The column of tabs on iPhone Duo's vertical bar, or nil while the bar is horizontal.
@@ -539,16 +554,23 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
         if let view = meTabView(), view.bounds.width > 0 {
             return view.convert(view.bounds, to: space)
         }
-        // Fallback: the trailing of four equal slots on the horizontal bar. Not for a vertical
-        // bar, where a slice of the strip would miss the Me tab.
-        guard let tabBar = tabBarController?.tabBar, tabBar.bounds.width > tabBar.bounds.height else {
+        // Fall back to Me's slot in the current horizontal layout.
+        guard let tabBarController, let index = meTabIndex,
+              let count = tabBarController.viewControllers?.count, count > 0,
+              tabBarController.tabBar.bounds.width > tabBarController.tabBar.bounds.height
+        else {
             return nil
         }
-        let width = tabBar.bounds.width / CGFloat(MainTab.allCases.count)
-        guard width > 0 else { return nil }
-        let x = tabBar.effectiveUserInterfaceLayoutDirection == .rightToLeft
-            ? tabBar.bounds.minX : tabBar.bounds.maxX - width
-        return tabBar.convert(CGRect(x: x, y: 0, width: width, height: tabBar.bounds.height), to: space)
+        let tabBar = tabBarController.tabBar
+        let width = tabBar.bounds.width / CGFloat(count)
+        let physicalIndex = tabBar.effectiveUserInterfaceLayoutDirection == .rightToLeft ? count - index - 1 : index
+        let frame = CGRect(
+            x: tabBar.bounds.minX + CGFloat(physicalIndex) * width,
+            y: tabBar.bounds.minY,
+            width: width,
+            height: tabBar.bounds.height
+        )
+        return tabBar.convert(frame, to: space)
     }
 
     /// Where the Me tab's glyph is drawn. The iOS 26 tab bar doesn't expose the item's

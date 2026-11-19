@@ -38,6 +38,19 @@ extension MainTab {
                 presentation: .root,
                 surface: .hero
             )
+        case .bookmarks, .favourites:
+            return MoroSceneDescriptor(
+                identity: "root.\(rawValue)",
+                kind: .stream,
+                presentation: .root,
+                surface: .continuous
+            )
+        case .lists, .settings:
+            return MoroSceneDescriptor(
+                identity: "root.\(rawValue)",
+                kind: .grouped,
+                presentation: .root
+            )
         }
     }
 }
@@ -51,6 +64,9 @@ extension Route {
 
         case .announcements:
             return MoroSceneDescriptor(kind: .stream)
+
+        case .inbox:
+            return MoroSceneDescriptor(identity: "route.inbox", kind: .stream)
 
         case .conversationDetail:
             return MoroSceneDescriptor(
@@ -75,10 +91,10 @@ extension Route {
                 scrollBehavior: []
             )
 
-        case .bookmarks, .favourites, .scheduledStatuses, .profileConnections:
+        case .bookmarks, .favourites, .listTimeline, .scheduledStatuses, .profileConnections:
             return MoroSceneDescriptor(kind: .stream)
 
-        case .lists, .savedSearches, .followedTopics:
+        case .lists, .listMembers, .savedSearches, .followedTopics:
             return MoroSceneDescriptor(kind: .grouped)
 
         case .editProfile:

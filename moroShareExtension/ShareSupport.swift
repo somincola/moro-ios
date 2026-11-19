@@ -18,12 +18,13 @@ enum MoroShareExtensionSharedContainer {
     /// The critical section is a few milliseconds, so ordinary contention between the app
     /// and the extension is retried briefly instead of surfacing as a failure. The wait is
     /// bounded and never blocks indefinitely while the process could be suspended.
-    static func acquireIndexLock(_ descriptor: Int32, attempts: Int = 20, interval: useconds_t = 10_000) -> Bool {
+    static func acquireIndexLock(_ descriptor: Int32, attempts: Int = 20, interval: useconds_t = 10_000,
+                                 wait: (useconds_t) -> Void = { usleep($0) }) -> Bool {
         for attempt in 0..<attempts {
             if flock(descriptor, LOCK_EX | LOCK_NB) == 0 { return true }
             let code = errno
             guard code == EWOULDBLOCK || code == EINTR else { return false }
-            if attempt + 1 < attempts { usleep(interval) }
+            if attempt + 1 < attempts { wait(interval) }
         }
         return false
     }
@@ -218,17 +219,21 @@ final class MoroShareExtensionDraftStagingStore {
     private let baseDirectoryURL: URL?
     private let fileManager: FileManager
     private let transferFile: (URL, URL) throws -> Void
+    private let waitForIndexLockRetry: (useconds_t) -> Void
     private let key = "shared_compose_draft_staging_items_v1"
     private let corruptBackupKey = "shared_compose_draft_staging_items_v1_corrupt_backup"
 
     init(
         userDefaults: UserDefaults = MoroShareExtensionSharedContainer.sharedUserDefaults(),
         baseDirectoryURL: URL? = MoroShareExtensionSharedContainer.stagingDirectory(),
-        fileManager: FileManager = .default, transferFile: ((URL, URL) throws -> Void)? = nil
+        fileManager: FileManager = .default,
+        waitForIndexLockRetry: @escaping (useconds_t) -> Void = { usleep($0) },
+        transferFile: ((URL, URL) throws -> Void)? = nil
     ) {
         self.userDefaults = userDefaults
         self.baseDirectoryURL = baseDirectoryURL
         self.fileManager = fileManager
+        self.waitForIndexLockRetry = waitForIndexLockRetry
         self.transferFile = transferFile ?? { try fileManager.moveItem(at: $0, to: $1) }
     }
 
@@ -324,7 +329,9 @@ final class MoroShareExtensionDraftStagingStore {
             baseDirectoryURL.appendingPathComponent(".index.lock").path, O_CREAT | O_RDWR, 0o600)
         guard descriptor >= 0 else { throw CocoaError(.fileWriteUnknown) }
         defer { Darwin.close(descriptor) }
-        guard MoroShareExtensionSharedContainer.acquireIndexLock(descriptor) else { throw CocoaError(.fileWriteUnknown) }
+        guard MoroShareExtensionSharedContainer.acquireIndexLock(descriptor, wait: waitForIndexLockRetry) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
         defer { flock(descriptor, LOCK_UN) }
         userDefaults.synchronize()
         return try operation()
