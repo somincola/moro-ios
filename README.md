@@ -25,6 +25,7 @@
   <a href="https://getmoro.app/">Official website</a> ·
   <a href="https://github.com/somincola/moro-ios/releases">Release notes</a> ·
   <a href="https://getmoro.app/support">Support</a> ·
+  <a href="https://ko-fi.com/somincola">Buy Acacius a coffee</a> ·
   <a href="README.zh-CN.md">简体中文</a>
 </p>
 
