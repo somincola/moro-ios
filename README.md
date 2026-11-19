@@ -68,6 +68,12 @@ Read the [Privacy Policy](https://getmoro.app/privacy) and [Transparency page](h
 - **Updates:** [Latest release](https://github.com/somincola/moro-ios/releases/latest), [all releases](https://github.com/somincola/moro-ios/releases), and the [complete changelog](CHANGELOG.md).
 - **Get in touch:** [Support](https://getmoro.app/support) or [GitHub Issues](https://github.com/somincola/moro-ios/issues).
 
+## ☕ Support This Project
+
+Moro is free to use. If you find it helpful, consider supporting its continued development on [Ko-fi](https://ko-fi.com/somincola).
+
+Your support is entirely optional. All features will always remain free for everyone. Thank you for your support!
+
 ## For developers
 
 Moro is built with Swift and SwiftUI, with a share extension, notification service extension, and WidgetKit widgets. Start with the [documentation index](docs/README.md) for product behaviour, architecture, and integration contracts.

@@ -68,6 +68,12 @@ Moro **没有广告，也不进行跨应用追踪**。账号直接连接你选�
 - **查看更新：** [最新版本](https://github.com/somincola/moro-ios/releases/latest)、[全部 Releases](https://github.com/somincola/moro-ios/releases)与[完整更新日志](CHANGELOG.md)。
 - **支持与反馈：** [支持页面](https://getmoro.app/support)或 [GitHub Issues](https://github.com/somincola/moro-ios/issues)。
 
+## ☕ 支持这个项目
+
+Moro 可以免费使用。如果它对你有帮助，欢迎通过 [Ko-fi](https://ko-fi.com/somincola) 支持后续开发。
+
+赞助完全自愿。Moro 的所有功能都会一直向大家免费开放。谢谢你的支持！
+
 ## 开发者入口
 
 Moro 使用 Swift 与 SwiftUI 构建，包含分享扩展、通知服务扩展和 WidgetKit 组件。产品行为、架构与系统集成说明见[文档索引](docs/README.md)。
