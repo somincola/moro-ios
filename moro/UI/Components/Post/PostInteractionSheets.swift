@@ -5,10 +5,12 @@ struct PostInteractionSheets: ViewModifier {
     @ObservedObject var actionSurface: PostActionSurfaceCenter
     @ObservedObject var interactionService: PostInteractionService
     let apiClient: MastodonAPI
+    var composeAsSheet = false
+    var onComposeDismiss: (() -> Void)?
     @EnvironmentObject private var appState: AppState
 
     func body(content: Content) -> some View {
-        content
+        withComposer(content)
             .sheet(item: $actionSurface.boostDialogStatus) { status in
                 let quoteInfo = QuoteButtonInfo.forStatus(
                     status,
@@ -56,18 +58,6 @@ struct PostInteractionSheets: ViewModifier {
                     )
                 }
             }
-            .fullScreenCover(item: $actionSurface.composeContext) { wrapper in
-                ComposeView(
-                    context: wrapper.context,
-                    apiClient: apiClient,
-                    currentUserID: appState.currentAccount?.id,
-                    initialDraft: wrapper.draft,
-                    onDismiss: { actionSurface.composeContext = nil }
-                ) { status in
-                    FeedCoordinator.shared.publishUpdate(.post(status))
-                }
-                .environmentObject(appState)
-            }
             .sheet(item: $actionSurface.reportStatus) { status in
                 ReportView(
                     status: status,
@@ -75,6 +65,25 @@ struct PostInteractionSheets: ViewModifier {
                     onDismiss: { actionSurface.dismissReport() }
                 )
             }
+    }
+
+    @ViewBuilder private func withComposer(_ content: Content) -> some View {
+        if composeAsSheet {
+            content.sheet(item: $actionSurface.composeContext, onDismiss: onComposeDismiss) { wrapper in
+                composer(wrapper)
+                    .moroSheetSurface(detents: [.medium, .large], cornerRadius: 24)
+            }
+        } else {
+            content.fullScreenCover(item: $actionSurface.composeContext, content: composer)
+        }
+    }
+
+    private func composer(_ wrapper: ComposeContextWrapper) -> some View {
+        ComposeView(context: wrapper.context, apiClient: apiClient, currentUserID: appState.currentAccount?.id,
+                    initialDraft: wrapper.draft, onDismiss: { actionSurface.composeContext = nil }) { status in
+            FeedCoordinator.shared.publishUpdate(.post(status))
+        }
+        .environmentObject(appState)
     }
 }
 
@@ -97,7 +106,7 @@ struct MediaPreviewActionSource: ViewModifier {
         content
             .environment(\.mediaPreviewHandlers, PostInteractionHandlers(
                 interactionService: interactions, actionSurface: surface, postMenuActionCenter: menu,
-                apiClient: apiClient, currentUserID: appState.currentAccount?.id, router: router, onRemoveStatus: nil))
+                apiClient: apiClient, appState: appState, router: router, onRemoveStatus: nil))
             .modifier(PostInteractionSheets(actionSurface: surface, interactionService: interactions, apiClient: apiClient))
     }
 }

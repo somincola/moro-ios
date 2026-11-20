@@ -145,7 +145,7 @@ struct PostContent: View {
                         },
                         previewPost: {
                             let actions = mediaPreviewHandlers?.buildPostActions(for: status, prefetchRelationship: false) ?? mediaActions
-                            return MediaPreviewPost(status: status, actions: actions, isFocused: isFocused)
+                            return MediaPreviewPost(status: status, actions: actions, theme: theme, isFocused: isFocused)
                         }
                     )
                 case .poll:

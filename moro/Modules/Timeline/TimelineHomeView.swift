@@ -743,7 +743,7 @@ struct TimelineHomeView: View {
             actionSurface: actionSurface,
             postMenuActionCenter: postMenuActionCenter,
             apiClient: apiClient,
-            currentUserID: appState.currentAccount?.id,
+            appState: appState,
             router: router,
             onRemoveStatus: { id in viewModel.removeStatus(id: id) }
         )

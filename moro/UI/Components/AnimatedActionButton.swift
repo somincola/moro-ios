@@ -22,6 +22,7 @@ struct AnimatedActionButton: View {
     /// Minimum hit-target height. The toolbar passes its bar height so the tappable
     /// area fills the row without enlarging the visible icon or changing layout.
     var minHitHeight: CGFloat = 0
+    var fillsLane = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.postActionAnimationSchedule) private var animationSchedule
@@ -72,7 +73,7 @@ struct AnimatedActionButton: View {
             }
             .padding(.horizontal, 3)
             .padding(.vertical, 2)
-            .frame(minHeight: minHitHeight)
+            .frame(maxWidth: fillsLane ? .infinity : nil, minHeight: minHitHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(PostActionPressStyle(reduceMotion: reduceMotion))

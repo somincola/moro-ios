@@ -230,7 +230,7 @@ private struct ProfileMediaGalleryTile: View {
 
     private func openMedia() {
         guard cover.url.scheme != "about" else { onOpenPost(); return }
-        let post = MediaPreviewPost(status: status, actions: actions())
+        let post = MediaPreviewPost(status: status, actions: actions(), theme: theme)
         if isVideo {
             NativeVideoPlayer.present(attachment: cover, post: post)
         } else if cover.type == "image" {

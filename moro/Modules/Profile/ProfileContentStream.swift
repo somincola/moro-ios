@@ -32,7 +32,7 @@ struct ProfileContentStream: View, Equatable {
         LazyVStack(spacing: 0) {
             if viewModel.selectedTab == .posts && !viewModel.pinnedStatuses.isEmpty {
                 PinnedStatusSection(
-                    pinnedStatuses: viewModel.pinnedStatuses,
+                    viewModel: viewModel,
                     translationAPIClient: apiClient,
                     accountCache: cacheManager.accountCache,
                     postActions: postActions

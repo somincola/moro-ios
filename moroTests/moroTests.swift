@@ -2323,6 +2323,27 @@ struct moroTests {
         #expect(viewModel.pinnedStatuses.isEmpty)
     }
 
+    @Test @MainActor func pinnedRefreshKeepsChangesAcknowledgedWhileItWasLoading() async {
+        let api = MockMastodonAPI()
+        let coordinator = FeedCoordinator()
+        let account = makeAccount(id: "owner")
+        let pin = makeStatus(id: "100", account: account, pinned: true)
+        let removed = makeStatus(id: "99", account: account, pinned: true)
+        let other = makeStatus(id: "98", account: account, pinned: true)
+        let model = ProfileViewModel(apiClient: api, accountID: account.id, feedCoordinator: coordinator)
+        model.pinnedStatuses = [pin, removed]
+        api.fetchAccountStatusesHandler = { _, _, _, _, _, _, _, _ in
+            coordinator.publishUpdate(.post(pin.updating(favouritesCount: 1, reblogsCount: 1, bookmarked: true, favourited: true, reblogged: true)))
+            coordinator.publishUpdate(.deletedPost(removed.id))
+            return [pin, removed, other]
+        }
+        await model.fetchPinnedStatuses()
+        #expect(model.pinnedStatuses.map(\.id) == [pin.id, other.id])
+        #expect(model.pinnedStatuses.first?.favouritesCount == 1)
+        #expect(model.pinnedStatuses.first?.reblogsCount == 1)
+        #expect(model.pinnedStatuses.first?.bookmarked == true)
+    }
+
     @Test @MainActor func inlineEmojiNameLeavesRoomForAnAdjacentHandle() {
         let url = URL(string: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7")!
         let account = makeAccount(displayName: "Lin :mark:",
@@ -2866,10 +2887,12 @@ struct moroTests {
         surface.presentBoostOrToggle(for: status, currentUserID: "me") { toggledDirectly = true }
         #expect(toggledDirectly)
         #expect(surface.boostDialogStatus == nil)
+        let appState = AppState()
+        appState.currentAccount = makeAccount(id: "me")
         let handlers = PostInteractionHandlers(
             interactionService: PostInteractionService(apiClient: api), actionSurface: surface,
             postMenuActionCenter: PostMenuActionCenter(apiClient: api), apiClient: api,
-            currentUserID: "me", router: AppRouter(), onRemoveStatus: nil
+            appState: appState, router: AppRouter(), onRemoveStatus: nil
         )
         let quote = try #require(handlers.buildPostActions(for: status).onQuote)
         quote()
@@ -2884,10 +2907,12 @@ struct moroTests {
         let surface = PostActionSurfaceCenter()
         let original = makeStatus(id: "original-to-quote", visibility: visibility)
         let wrapper = makeStatus(id: "boost-wrapper", reblog: Indirect(original))
+        let appState = AppState()
+        appState.currentAccount = makeAccount(id: "me")
         let handlers = PostInteractionHandlers(
             interactionService: PostInteractionService(apiClient: api), actionSurface: surface,
             postMenuActionCenter: PostMenuActionCenter(apiClient: api), apiClient: api,
-            currentUserID: "me", router: AppRouter(), onRemoveStatus: nil
+            appState: appState, router: AppRouter(), onRemoveStatus: nil
         )
         for status in [original, wrapper] {
             let quote = handlers.buildPostActions(for: status).onQuote
@@ -2905,12 +2930,14 @@ struct moroTests {
         let api = MockMastodonAPI()
         let actionSurface = PostActionSurfaceCenter()
         let status = makeStatus(id: "delete-and-redraft", account: makeAccount(id: "me"))
+        let appState = AppState()
+        appState.currentAccount = makeAccount(id: "me")
         let handlers = PostInteractionHandlers(
             interactionService: PostInteractionService(apiClient: api),
             actionSurface: actionSurface,
             postMenuActionCenter: PostMenuActionCenter(apiClient: api),
             apiClient: api,
-            currentUserID: "me",
+            appState: appState,
             router: AppRouter(),
             onRemoveStatus: nil
         )

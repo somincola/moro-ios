@@ -470,7 +470,7 @@ struct StatusDetailView: View {
             actionSurface: actionSurface,
             postMenuActionCenter: postMenuActionCenter,
             apiClient: apiClient,
-            currentUserID: appState.currentAccount?.id,
+            appState: appState,
             router: router,
             onRemoveStatus: { statusID in
                 if statusID == viewModel.focusedStatus.id {

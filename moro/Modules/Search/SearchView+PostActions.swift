@@ -5,7 +5,7 @@ extension SearchContentView {
         PostInteractionHandlers(
             interactionService: interactionService, actionSurface: actionSurface,
             postMenuActionCenter: postMenuActionCenter, apiClient: apiClient,
-            currentUserID: appState.currentAccount?.id, router: router, onRemoveStatus: nil
+            appState: appState, router: router, onRemoveStatus: nil
         )
     }
 

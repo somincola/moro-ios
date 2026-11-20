@@ -62,6 +62,7 @@ final class NativeVideoSession: NSObject, ObservableObject, AVPictureInPictureCo
     private var heldRate: Float?
     private var wasPlayingBeforeHold = false
     private var holdingSpeed = false
+    private var resumeWhenComposerCloses = false
     private var holdsAudioFocus = false
 
     var player: AVPlayer? { observer.getPlayer() }
@@ -104,6 +105,18 @@ final class NativeVideoSession: NSObject, ObservableObject, AVPictureInPictureCo
 
     func togglePlayback() {
         if observer.isPlaybackActive { observer.pause() } else { observer.play() }
+    }
+
+    func pauseForComposer() {
+        guard observer.isPlaybackActive else { return }
+        resumeWhenComposerCloses = true
+        observer.pause()
+    }
+
+    func resumeAfterComposer() {
+        guard resumeWhenComposerCloses else { return }
+        resumeWhenComposerCloses = false
+        if playbackToken != nil, Self.docked !== self { observer.play() }
     }
 
     func toggleMute() {

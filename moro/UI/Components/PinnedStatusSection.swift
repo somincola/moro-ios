@@ -11,7 +11,9 @@ struct PinnedStatusSection: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    let pinnedStatuses: [Status]
+    // Status equality is ID-only. Observe the source here so an interaction on the same
+    // pinned post invalidates its row without replacing the row or its animation state.
+    @ObservedObject var viewModel: ProfileViewModel
     var translationAPIClient: MastodonAPI? = nil
     var accountCache: AccountCache? = nil
     var postActions: (Status) -> PostActions = { _ in .empty }
@@ -19,13 +21,13 @@ struct PinnedStatusSection: View {
     @State private var showsAllPinnedStatuses: Bool
 
     init(
-        pinnedStatuses: [Status],
+        viewModel: ProfileViewModel,
         translationAPIClient: MastodonAPI? = nil,
         accountCache: AccountCache? = nil,
         postActions: @escaping (Status) -> PostActions = { _ in .empty },
         initiallyExpanded: Bool = false
     ) {
-        self.pinnedStatuses = pinnedStatuses
+        self.viewModel = viewModel
         self.translationAPIClient = translationAPIClient
         self.accountCache = accountCache
         self.postActions = postActions
@@ -33,7 +35,7 @@ struct PinnedStatusSection: View {
     }
 
     private var stablePinnedStatuses: [Status] {
-        PinnedStatusSectionState.deduplicated(pinnedStatuses, id: { $0.id })
+        PinnedStatusSectionState.deduplicated(viewModel.pinnedStatuses, id: { $0.id })
     }
 
     private var visiblePinnedStatuses: [Status] {
@@ -79,6 +81,8 @@ struct PinnedStatusSection: View {
             }
         }
         .background(theme.colors.surfaceBase)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("profile.pinnedPosts")
         .onChange(of: statusIDs) { previousIDs, newIDs in
             if previousIDs != newIDs {
                 showsAllPinnedStatuses = false
@@ -167,7 +171,7 @@ enum PinnedStatusSectionState {
 
 #Preview("Pinned statuses — collapsed") {
     ScrollView {
-        PinnedStatusSection(pinnedStatuses: pinnedStatusPreviewStatuses)
+        PinnedStatusSection(viewModel: pinnedStatusPreviewModel())
     }
     .moroTheme(MoroTheme())
 }
@@ -175,7 +179,7 @@ enum PinnedStatusSectionState {
 #Preview("Pinned statuses — expanded") {
     ScrollView {
         PinnedStatusSection(
-            pinnedStatuses: pinnedStatusPreviewStatuses,
+            viewModel: pinnedStatusPreviewModel(),
             initiallyExpanded: true
         )
     }
@@ -227,3 +231,10 @@ private let pinnedStatusPreviewStatuses: [Status] = {
         ),
     ]
 }()
+
+@MainActor private func pinnedStatusPreviewModel() -> ProfileViewModel {
+    let client = MastodonClient(authInterceptor: AuthInterceptor(tokenProvider: AppState()))
+    let model = ProfileViewModel(apiClient: client, accountID: "1")
+    model.pinnedStatuses = pinnedStatusPreviewStatuses
+    return model
+}

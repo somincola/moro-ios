@@ -7,15 +7,19 @@ import SwiftUI
 final class MediaPreviewPost: ObservableObject {
     @Published private(set) var status: Status
     let actions: PostActions
+    let interactions: PostInteractionHandlers?
+    let theme: MoroTheme
     let isFocused: Bool
-    /// The presenting screen opens the composer, report or detail after this preview closes.
+    /// Navigation and reporting belong to the screen that opened this preview.
     var closeBeforeAction: ((@escaping () -> Void) -> Void)?
     private var subscription: AnyCancellable?
 
-    init?(status: Status, actions: PostActions, isFocused: Bool = false) {
+    init?(status: Status, actions: PostActions, theme: MoroTheme, isFocused: Bool = false) {
         guard actions.navigation != nil || actions.onTap != nil || actions.onReply != nil else { return nil }
         self.status = status.displayStatus
         self.actions = actions
+        self.theme = theme
+        interactions = actions.mediaHandlers?.forMediaPreview()
         self.isFocused = isFocused
         subscription = FeedCoordinator.shared.updates.sink { [weak self] update in
             guard let self, case .post(let updated) = update, updated.displayStatus.id == self.status.id else { return }
@@ -28,6 +32,50 @@ final class MediaPreviewPost: ObservableObject {
 
 extension EnvironmentValues {
     @Entry var mediaPreviewHandlers: PostInteractionHandlers? = nil
+}
+
+struct MediaPreviewPostSheets: ViewModifier {
+    let post: MediaPreviewPost?
+    var video: NativeVideoSession?
+
+    func body(content: Content) -> some View {
+        if let post, let handlers = post.interactions {
+            content
+                .modifier(PostInteractionSheets(actionSurface: handlers.actionSurface,
+                    interactionService: handlers.interactionService, apiClient: handlers.apiClient,
+                    composeAsSheet: true, onComposeDismiss: { video?.resumeAfterComposer() }))
+                .environmentObject(handlers.appState)
+                .moroTheme(post.theme)
+                .onReceive(handlers.actionSurface.$composeContext) { context in
+                    if context != nil { video?.pauseForComposer() }
+                }
+        } else {
+            content
+        }
+    }
+}
+
+struct MediaPreviewNavigationBar<Trailing: View>: View {
+    let close: () -> Void
+    let closeIdentifier: String
+    @ViewBuilder let trailing: () -> Trailing
+
+    var body: some View {
+        if #available(iOS 26, *) {
+            GlassEffectContainer(spacing: 6) { controls }
+        } else {
+            controls
+        }
+    }
+
+    private var controls: some View {
+        HStack(spacing: 12) {
+            MoroFloatingNavButton(kind: .close, action: close)
+                .accessibilityIdentifier(closeIdentifier)
+            Spacer()
+            trailing()
+        }
+    }
 }
 
 struct MediaPreviewMoreMenu: View {
@@ -58,12 +106,7 @@ struct MediaPreviewMoreMenu: View {
                 }
             }
         } label: {
-            ZStack {
-                FloatingNavIconLabel(systemName: "ellipsis").opacity(isExporting ? 0 : 1)
-                if isExporting { ProgressView().tint(.white) }
-            }
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
+            FloatingNavIconLabel(systemName: "ellipsis", isLoading: isExporting)
         }
         .accessibilityLabel(MoroL10n.StatusAction.more)
         .accessibilityIdentifier("mediaPreview.more")
@@ -80,35 +123,32 @@ struct MediaPreviewPostBar: View {
         let actions = post.actions
         HStack(spacing: 4) {
             if let reply = actions.onReply {
-                button("bubble.left", MoroL10n.StatusAction.reply, count: status.repliesCount) {
-                    post.closeBeforeAction? {
-                        if let handlers = actions.mediaHandlers { handlers.handleReply(status) }
-                        else { reply() }
-                    }
+                button(.reply, "bubble.left", title: MoroL10n.StatusAction.reply, count: status.repliesCount) {
+                    if let handlers = post.interactions { handlers.handleReply(status) }
+                    else { reply() }
                 }
             }
             if let boost = actions.onBoost {
-                button("arrow.2.squarepath", status.reblogged ? MoroL10n.StatusAction.unboost : MoroL10n.StatusAction.boost,
-                       count: status.reblogsCount, color: status.reblogged ? theme.colors.boostActive : .white) {
-                    if let handlers = actions.mediaHandlers {
-                        if AppSettings.shared.askBeforeBoostingAPost { post.closeBeforeAction? { handlers.handleBoost(status) } }
-                        else { handlers.handleBoost(status) }
-                    } else { post.closeBeforeAction?(boost) }
+                button(.boost, "arrow.2.squarepath", title: status.reblogged ? MoroL10n.StatusAction.unboost : MoroL10n.StatusAction.boost,
+                       active: status.reblogged, color: theme.colors.boostActive, count: status.reblogsCount,
+                       disabled: !status.allowsReblogAction) {
+                    if let handlers = post.interactions { handlers.handleBoost(status) }
+                    else { boost() }
                 }
-                .disabled(!status.allowsReblogAction)
-                .opacity(status.allowsReblogAction ? 1 : 0.45)
             }
             if let like = actions.onLike {
-                button(status.favourited ? "heart.fill" : "heart", status.favourited ? MoroL10n.StatusAction.unfavourite : MoroL10n.StatusAction.favourite,
-                       count: status.favouritesCount, color: status.favourited ? theme.colors.error : .white) {
-                    if let handlers = actions.mediaHandlers { handlers.handleLike(status) }
+                button(.like, "heart", selectedIcon: "heart.fill",
+                       title: status.favourited ? MoroL10n.StatusAction.unfavourite : MoroL10n.StatusAction.favourite,
+                       active: status.favourited, color: theme.colors.error, count: status.favouritesCount) {
+                    if let handlers = post.interactions { handlers.handleLike(status) }
                     else { like() }
                 }
             }
             if let bookmark = actions.onBookmark {
-                button(status.bookmarked ? "bookmark.fill" : "bookmark", status.bookmarked ? MoroL10n.StatusAction.unbookmark : MoroL10n.StatusAction.bookmark,
-                       color: status.bookmarked ? theme.colors.bookmarkActive : .white) {
-                    if let handlers = actions.mediaHandlers { handlers.handleBookmark(status) }
+                button(.bookmark, "bookmark", selectedIcon: "bookmark.fill",
+                       title: status.bookmarked ? MoroL10n.StatusAction.unbookmark : MoroL10n.StatusAction.bookmark,
+                       active: status.bookmarked, color: theme.colors.bookmarkActive) {
+                    if let handlers = post.interactions { handlers.handleBookmark(status) }
                     else { bookmark() }
                 }
             }
@@ -137,19 +177,11 @@ struct MediaPreviewPostBar: View {
             .contentShape(Rectangle())
     }
 
-    private func button(_ symbol: String, _ title: String, count: Int = 0, color: Color = .white,
+    private func button(_ role: PostActionRole, _ icon: String, selectedIcon: String? = nil, title: String,
+                        active: Bool = false, color: Color = .white, count: Int = 0, disabled: Bool = false,
                         action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: symbol)
-                if count > 0 { Text(count.formatted(.number.notation(.compactName))).font(.caption.monospacedDigit()) }
-            }
-            .foregroundStyle(color)
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityValue(count > 0 ? String(count) : "")
+        AnimatedActionButton(role: role, activeIcon: selectedIcon ?? icon, inactiveIcon: icon, isActive: active,
+                             activeColor: color, inactiveColor: .white, count: count, isDisabled: disabled,
+                             action: action, accessibilityLabel: title, iconSize: 18, minHitHeight: 44, fillsLane: true)
     }
 }

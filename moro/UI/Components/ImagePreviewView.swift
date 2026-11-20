@@ -83,10 +83,7 @@ struct ImagePreviewView: View {
             if showsControls {
                 VStack {
                     if tabletopFold != nil { Spacer() }
-                    HStack(spacing: 12) {
-                        MoroFloatingNavButton(kind: .close, action: closePreview)
-                            .accessibilityIdentifier("imagePreview.close")
-                        Spacer()
+                    MediaPreviewNavigationBar(close: closePreview, closeIdentifier: "imagePreview.close") {
                         if let currentAltText, let currentAttachment {
                             Button {
                                 altPresentation = AltPresentation(id: currentAttachment.id, text: currentAltText)
@@ -159,6 +156,7 @@ struct ImagePreviewView: View {
             .ignoresSafeArea()
         }
         .statusBar(hidden: true)
+        .modifier(MediaPreviewPostSheets(post: post))
         .onAppear {
             if playbackToken == nil { playbackToken = MediaPlaybackPresentation.shared.begin() }
         }

@@ -32,10 +32,7 @@ struct VideoFullscreenView: View {
 
                 if showsControls, dragDistance == 0 {
                     VStack(spacing: 0) {
-                        HStack {
-                            MoroFloatingNavButton(kind: .close, action: close)
-                                .accessibilityIdentifier("videoPreview.close")
-                            Spacer()
+                        MediaPreviewNavigationBar(close: close, closeIdentifier: "videoPreview.close") {
                             MediaPreviewMoreMenu(post: session.post, attachment: session.attachment,
                                                  isExporting: exportTask != nil, export: export)
                         }
@@ -92,6 +89,7 @@ struct VideoFullscreenView: View {
             }
         }
         .statusBarHidden()
+        .modifier(MediaPreviewPostSheets(post: session.post, video: session))
         .onAppear {
             if session.host == nil { session.dismissRoute = { [dismiss] in dismiss() } }
             session.startIfNeeded()
@@ -211,7 +209,7 @@ private struct VideoSpeedBadge: View {
             .foregroundStyle(.white)
             .fixedSize()
             .frame(width: locked ? diameter * 1.85 : diameter, height: diameter)
-            .background(Color(white: contrast == .increased ? 0.42 : 0.74).opacity(0.9), in: Capsule())
+            .background(Color(white: contrast == .increased ? 0.12 : 0.22).opacity(contrast == .increased ? 1 : 0.80), in: Capsule())
             .overlay {
                 if let progress {
                     Circle().inset(by: 1).trim(from: 0, to: progress)
