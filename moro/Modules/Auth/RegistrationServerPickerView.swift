@@ -51,7 +51,7 @@ struct RegistrationServerPickerView: View {
 
     private var header: some View {
         VStack(spacing: theme.spacing.l) {
-            Image("AppIconPreviewDefault")
+            Image(AppSettings.AppIconChoice.default.previewAssetName)
                 .resizable()
                 .scaledToFit()
                 .frame(width: 84, height: 84)

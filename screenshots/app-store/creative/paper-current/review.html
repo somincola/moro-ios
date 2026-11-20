@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-Hans">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moro 商店视频预览</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f8f7f4; color: #202124; font: 16px/1.55 Inter, "PingFang SC", system-ui, sans-serif; }
+  main { width: min(1220px, 100%); margin: auto; padding: clamp(24px, 5vw, 72px); }
+  header, .title, .meta { display: flex; align-items: center; gap: 12px; }
+  header { justify-content: space-between; flex-wrap: wrap; padding-bottom: 20px; border-bottom: 1px solid #d7d6d2; }
+  .title img { width: 42px; height: 42px; border-radius: 10px; }
+  h1, h2, p { margin: 0; }
+  h1 { font-size: clamp(20px, 2.5vw, 28px); font-weight: 620; }
+  h2 { margin: 0 0 8px; font-size: 21px; }
+  label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  input { width: 16px; height: 16px; accent-color: #344c99; }
+  .films { display: grid; grid-template-columns: 1.15fr 1fr; gap: clamp(20px, 3vw, 44px); margin-top: 28px; }
+  article { min-width: 0; }
+  .screen { position: relative; overflow: hidden; border-radius: 8px; background: #e5e3de; }
+  video { display: block; width: 100%; height: auto; }
+  .header video { aspect-ratio: 3840 / 1646; }
+  .search video { aspect-ratio: 3 / 2; }
+  .safe { pointer-events: none; display: none; position: absolute; border: 1px dashed white; outline: 1px solid #454954; }
+  main:has(input:checked) .safe { display: block; }
+  .header .safe { left: 28.568%; top: 29.951%; width: 42.865%; height: 40.158%; }
+  .search .safe { left: 21.771%; top: 29.883%; width: 56.458%; height: 40.234%; }
+  .meta { flex-wrap: wrap; justify-content: space-between; padding: 10px 0; font-size: 13px; color: #55585d; }
+  a { color: #33497c; text-underline-offset: 3px; }
+  .note { font-size: 15px; color: #41454a; }
+  @media(max-width: 760px) { .films { grid-template-columns: 1fr; gap: 28px; } }
+</style>
+<main>
+  <header>
+    <div class="title"><img src="../../../../output/app-icons/default/icon-1024.png" alt=""><h1>Moro 商店视频预览</h1></div>
+    <label><input type="checkbox">显示 Apple 安全区</label>
+  </header>
+  <div class="films">
+    <article class="header">
+      <h2>产品页页头</h2>
+      <div class="screen">
+        <video controls loop muted playsinline preload="metadata" poster="header-v2-poster.jpg" aria-label="产品页页头，白象纸雕与蓝耳">
+          <source src="moro-header-v2-3840x1646.mp4" type="video/mp4">
+        </video>
+        <span class="safe" aria-hidden="true"></span>
+      </div>
+      <div class="meta"><span>3840 × 1646 · 15 秒 · 无声循环</span><a href="moro-header-v2-3840x1646.mp4">打开原片</a></div>
+      <p class="note">十种语言共用纸雕白象页头。</p>
+    </article>
+    <article class="search">
+      <h2>搜索结果</h2>
+      <div class="screen">
+        <video controls loop muted playsinline preload="metadata" poster="../four-views/pages/exports/zh-Hans/poster.jpg" aria-label="简体中文搜索短片，依次展示首页、通知、个人中心和外观设置">
+          <source src="../four-views/pages/exports/zh-Hans/moro-search-zh-Hans-3840x2560.mp4" type="video/mp4">
+        </video>
+        <span class="safe" aria-hidden="true"></span>
+      </div>
+      <div class="meta"><span>3840 × 2560 · 12 秒 · 简体中文</span><a href="../four-views/pages/exports/zh-Hans/moro-search-zh-Hans-3840x2560.mp4">打开原片</a></div>
+      <p class="note"><a href="../four-views/review.html">查看十种语言与搜索卡片裁切</a></p>
+    </article>
+  </div>
+</main>
+</html>

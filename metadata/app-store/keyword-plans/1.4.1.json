@@ -1,0 +1,12 @@
+{
+  "ar-SA": "فيديفرس,تدوين مصغر,وسوم,قوائم,مسودات,خط زمني,محفوظات",
+  "de-DE": "Fediverse,ActivityPub,Mikroblog,Zeitleiste,Lesezeichen,Offline,Listen,Hashtags,Entwürfe,Beiträge",
+  "en-US": "fediverse,activitypub,microblog,chronological,timeline,bookmark,offline,thread,hashtag,lists,drafts",
+  "es-ES": "fediverso,activitypub,microblog,cronología,marcadores,sin conexión,listas,etiquetas,borradores",
+  "fr-FR": "fédivers,activitypub,microblog,fil,chronologique,signets,hors ligne,listes,hashtags,brouillons",
+  "it": "fediverso,activitypub,microblog,cronologia,segnalibri,offline,liste,hashtag,bozze,conversazioni",
+  "ja": "マストドン,フェディバース,時系列,ハッシュタグ,ブックマーク,下書き",
+  "pt-PT": "fediverso,activitypub,microblog,cronologia,marcadores,leitura offline,listas,etiquetas,rascunhos",
+  "zh-Hans": "长毛象,联邦宇宙,去中心化,时间线,离线阅读,话题标签,多账号,草稿箱",
+  "zh-Hant": "長毛象,聯邦宇宙,去中心化,時間軸,離線閱讀,主題標籤,多帳號,稍後閱讀"
+}

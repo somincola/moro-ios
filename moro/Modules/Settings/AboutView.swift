@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import UIKit
 
 struct AboutView: View {
     @Environment(\.moroTheme) private var theme
@@ -120,23 +119,13 @@ struct AboutView: View {
         .frame(maxWidth: .infinity)
     }
 
-    @ViewBuilder
     private var appIconPreview: some View {
-        if let image = UIImage(named: AppIconManager.shared.currentChoice.previewAssetName) {
-            Image(uiImage: image)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 80, height: 80)
-                .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
-        } else {
-            Image(systemName: "bubble.left.and.bubble.right.fill")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 48, height: 48)
-                .foregroundStyle(theme.colors.textPrimary)
-                .frame(width: 80, height: 80)
-                .background(theme.colors.groupedSurface, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
-        }
+        Image(AppSettings.AppIconChoice.default.previewAssetName)
+            .resizable()
+            .interpolation(.high)
+            .frame(width: 80, height: 80)
+            .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
+            .accessibilityHidden(true)
     }
 
     private func externalLinkRow(
