@@ -3,5 +3,6 @@
   "keywords": "fediverso,activitypub,microblog,cronologia,segnalibri,offline,liste,hashtag,bozze,conversazioni",
   "marketingUrl": "https://getmoro.app/",
   "promotionalText": "Scopri Moro — client Mastodon raffinato e sereno. Acceda con il Suo account e goda del fediverse senza distrazioni.",
-  "supportUrl": "https://getmoro.app/support"
+  "supportUrl": "https://getmoro.app/support",
+  "whatsNew": "Tocchi una foto o un video per nascondere i controlli. Allarghi due dita per ingrandire l’immagine oppure usi Picture in Picture per continuare a guardare il video mentre legge la cronologia.\n\n• Tenga premuto un video per guardarlo a velocità doppia. Faccia scorrere il dito verso il basso per mantenere la velocità. Ripeta il gesto per sbloccarla.\n• Risponda direttamente dall’anteprima e ritrovi il video nel punto in cui l’ha lasciato. Per salvare foto e video, apra il menu Altro.\n• Nei profili, Post, Risposte e Media ricordano ciascuno la propria posizione. La prima volta che apre Media, vedrà la prima riga.\n• Nei post fissati, i preferiti e le condivisioni mantengono ora il conteggio e lo stato aggiornati."
 }

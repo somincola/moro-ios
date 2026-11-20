@@ -3,5 +3,6 @@
   "keywords": "Fediverse,ActivityPub,Mikroblog,Zeitleiste,Lesezeichen,Offline,Listen,Hashtags,Entwürfe,Beiträge",
   "marketingUrl": "https://getmoro.app/",
   "promotionalText": "Lernen Sie Moro kennen – ein ruhiger Mastodon-Client. Leicht, einfach und freundlich. Ihr Account, Ihr Fediverse, ganz ohne Rauschen.",
-  "supportUrl": "https://getmoro.app/support"
+  "supportUrl": "https://getmoro.app/support",
+  "whatsNew": "Tippen Sie auf ein Foto oder Video, um die Bedienelemente auszublenden. Ziehen Sie zwei Finger auseinander, um Details zu sehen. Mit Bild-in-Bild können Sie ein Video weiterschauen, während Sie in Ihrer Zeitleiste lesen.\n\n• Halten Sie ein Video gedrückt, um es mit doppelter Geschwindigkeit abzuspielen. Streichen Sie dabei nach unten, um das Tempo beizubehalten. Dieselbe Geste hebt die Sperre auf.\n• Antworten Sie direkt in der Vorschau. Danach läuft das Video an derselben Stelle weiter. Fotos und Videos lassen sich über das Menü „Mehr“ sichern.\n• Beiträge, Antworten und Medien merken sich auf jedem Profil die jeweilige Leseposition. Beim ersten Öffnen von Medien sehen Sie die erste Reihe.\n• Bei angehefteten Beiträgen bleiben Favoriten, Boosts und die zugehörigen Zähler nach dem Antippen korrekt angezeigt."
 }

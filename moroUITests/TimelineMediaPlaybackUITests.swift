@@ -198,7 +198,12 @@ final class TimelineMediaPlaybackUITests: XCTestCase {
         XCTAssertEqual(photoSaveResult(in: app), "Saved to Photos")
         capture(app, name: "gifv-saved-to-photos")
         menu.tap()
-        app.buttons["Share…"].tap()
+        let share = app.buttons["Share…"]
+        // The system menu is presented again after Photos finishes. Its actions can be
+        // in the accessibility hierarchy before the opening transition accepts a tap.
+        XCTAssertTrue(share.waitForExistence(timeout: 5))
+        XCTAssertTrue(share.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        share.tap()
         let saveVideo = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@",
             ["Save Video", "存储视频", "保存视频"])).firstMatch
         XCTAssertTrue(saveVideo.waitForExistence(timeout: 8),

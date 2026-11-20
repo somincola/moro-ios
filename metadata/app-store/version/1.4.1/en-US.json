@@ -3,5 +3,6 @@
   "keywords": "fediverse,activitypub,microblog,chronological,timeline,bookmark,offline,thread,hashtag,lists,drafts",
   "marketingUrl": "https://getmoro.app/",
   "promotionalText": "Meet Moro — a calm, refined Mastodon client built to feel light, simple, and friendly. Bring your own account and enjoy the fediverse without the noise.",
-  "supportUrl": "https://getmoro.app/support"
+  "supportUrl": "https://getmoro.app/support",
+  "whatsNew": "Tap a photo or video to hide the controls. Pinch to zoom in, or keep a video playing in Picture in Picture while you read your timeline.\n\n• Press and hold a video to watch at 2×. Slide down to lock that speed, then repeat the gesture to unlock it.\n• Reply right from the viewer. When you return, the video picks up where you left it. To save the photo or video, open the More menu.\n• Posts, Replies and Media now remember where you were on a profile. Opening Media for the first time shows the first row, even after a long scroll through posts.\n• Favourites and boosts on pinned posts now keep their updated counts and selection."
 }

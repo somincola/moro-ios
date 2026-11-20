@@ -3,5 +3,6 @@
   "keywords": "fediverso,activitypub,microblog,cronologia,marcadores,leitura offline,listas,etiquetas,rascunhos",
   "marketingUrl": "https://getmoro.app/",
   "promotionalText": "Conheça o Moro — um cliente Mastodon calmo e refinado, leve, simples e simpático. Use a sua conta e aproveite o fediverso sem ruído.",
-  "supportUrl": "https://getmoro.app/support"
+  "supportUrl": "https://getmoro.app/support",
+  "whatsNew": "Toque numa fotografia ou num vídeo para ocultar os controlos. Afaste dois dedos para ampliar a imagem ou use o modo picture-in-picture para continuar a ver um vídeo enquanto lê a cronologia.\n\n• Mantenha o dedo sobre um vídeo para o ver ao dobro da velocidade. Deslize o dedo para baixo para fixar a velocidade. Repita o gesto para a desbloquear.\n• Responda diretamente na pré-visualização e retome o vídeo no mesmo ponto. Para guardar fotografias ou vídeos, abra o menu Mais.\n• Nos perfis, os separadores Publicações, Respostas e Multimédia guardam a posição de leitura de cada um. Na primeira visita a Multimédia, verá a primeira fila.\n• Os favoritos e as partilhas em publicações afixadas mantêm agora a contagem e o estado corretos."
 }
