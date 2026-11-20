@@ -95,7 +95,9 @@ final class NativeVideoSession: NSObject, ObservableObject, AVPictureInPictureCo
     }
 
     func startIfNeeded() {
-        guard !started, playbackToken != nil else { return }
+        guard playbackToken != nil else { return }
+        observer.setFullscreenLooping(true)
+        guard !started else { return }
         started = true
         observer.play()
     }
@@ -111,6 +113,7 @@ final class NativeVideoSession: NSObject, ObservableObject, AVPictureInPictureCo
 
     func cycleRate() {
         let rates: [Float] = [1, 1.25, 1.5, 2]
+        holdingSpeed = false
         isSpeedLocked = false
         heldRate = nil
         let next = ((rates.firstIndex(of: selectedRate) ?? 0) + 1) % rates.count
@@ -124,18 +127,21 @@ final class NativeVideoSession: NSObject, ObservableObject, AVPictureInPictureCo
     }
 
     func beginSpeedHold() {
-        guard !holdingSpeed, !isSpeedLocked else { return }
+        guard !holdingSpeed else { return }
         holdingSpeed = true
+        guard !isSpeedLocked else { return }
         heldRate = selectedRate
         wasPlayingBeforeHold = observer.isPlaybackActive
         setRate(2)
         if !wasPlayingBeforeHold { observer.play() }
     }
 
-    func finishSpeedHold(lock: Bool) {
+    func finishSpeedHold(completedDrag: Bool) {
         guard holdingSpeed else { return }
         holdingSpeed = false
-        if lock {
+        if isSpeedLocked {
+            if completedDrag { unlockSpeed() }
+        } else if completedDrag {
             isSpeedLocked = true
         } else {
             if !wasPlayingBeforeHold { observer.pause() }
@@ -174,6 +180,7 @@ final class NativeVideoSession: NSObject, ObservableObject, AVPictureInPictureCo
 
     func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
         guard Self.docked === self, let token = playbackToken else { return }
+        observer.setFullscreenLooping(false)
         MediaPlaybackPresentation.shared.dock(token, url: attachment.url)
         if let host { host.close() } else { dismissRoute?() }
     }

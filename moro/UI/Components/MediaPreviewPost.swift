@@ -31,25 +31,39 @@ extension EnvironmentValues {
 }
 
 struct MediaPreviewMoreMenu: View {
-    let post: MediaPreviewPost
+    let post: MediaPreviewPost?
+    let attachment: Status.Attachment
+    let isExporting: Bool
+    let export: (MediaExportAction) -> Void
 
     var body: some View {
         Menu {
-            Button {
-                post.closeBeforeAction? {
-                    if !post.isFocused { (post.actions.onTap ?? post.actions.navigation?.onTapDetail)?() }
+            ForEach(MediaExportAction.available(for: attachment), id: \.self) { action in
+                Button(action.title, systemImage: action.systemImage) { export(action) }
+                    .disabled(isExporting)
+            }
+            if let post {
+                Divider()
+                Button {
+                    post.closeBeforeAction? {
+                        if !post.isFocused { (post.actions.onTap ?? post.actions.navigation?.onTapDetail)?() }
+                    }
+                } label: { Label(MoroL10n.Profile.viewOriginalPost, systemImage: "text.bubble") }
+                .accessibilityIdentifier("mediaPreview.openPost")
+                if !post.actions.isOwnPost, let report = post.actions.menu?.onReport {
+                    Button(role: .destructive) { post.closeBeforeAction?(report) } label: {
+                        Label(MoroL10n.Profile.report, systemImage: "flag")
+                    }
+                    .accessibilityIdentifier("mediaPreview.report")
                 }
-            } label: { Label(MoroL10n.Profile.viewOriginalPost, systemImage: "text.bubble") }
-            .accessibilityIdentifier("mediaPreview.openPost")
-            if !post.actions.isOwnPost, let report = post.actions.menu?.onReport {
-                Button(role: .destructive) { post.closeBeforeAction?(report) } label: {
-                    Label(MoroL10n.Profile.report, systemImage: "flag")
-                }
-                .accessibilityIdentifier("mediaPreview.report")
             }
         } label: {
-            FloatingNavIconLabel(systemName: "ellipsis")
-                .frame(width: 44, height: 44)
+            ZStack {
+                FloatingNavIconLabel(systemName: "ellipsis").opacity(isExporting ? 0 : 1)
+                if isExporting { ProgressView().tint(.white) }
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
         }
         .accessibilityLabel(MoroL10n.StatusAction.more)
         .accessibilityIdentifier("mediaPreview.more")
@@ -58,8 +72,7 @@ struct MediaPreviewMoreMenu: View {
 
 struct MediaPreviewPostBar: View {
     @ObservedObject var post: MediaPreviewPost
-    let attachment: Status.Attachment
-    let export: (MediaExportAction) -> Void
+    let shareMedia: () -> Void
     @Environment(\.moroTheme) private var theme
 
     var body: some View {
@@ -99,17 +112,15 @@ struct MediaPreviewPostBar: View {
                     else { bookmark() }
                 }
             }
-            Menu {
-                if status.url != nil, let share = actions.menu?.onShare {
-                    Button(MoroL10n.VideoPreview.sharePost, systemImage: "link", action: share)
+            Group {
+                if status.url != nil, let sharePost = actions.menu?.onShare {
+                    Menu {
+                        Button(MoroL10n.VideoPreview.sharePost, systemImage: "link", action: sharePost)
+                        Button(MediaExportAction.share.title, systemImage: MediaExportAction.share.systemImage, action: shareMedia)
+                    } label: { shareIcon }
+                } else {
+                    Button(action: shareMedia) { shareIcon }
                 }
-                ForEach(MediaExportAction.available(for: attachment), id: \.self) { action in
-                    Button(action.title, systemImage: action.systemImage) { export(action) }
-                }
-            } label: {
-                Image(systemName: "square.and.arrow.up")
-                    .frame(minWidth: 44, minHeight: 44)
-                    .contentShape(Rectangle())
             }
             .accessibilityLabel(MoroL10n.Profile.share)
             .accessibilityIdentifier("mediaPreview.share")
@@ -118,6 +129,12 @@ struct MediaPreviewPostBar: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 14)
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+    }
+
+    private var shareIcon: some View {
+        Image(systemName: "square.and.arrow.up")
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
     }
 
     private func button(_ symbol: String, _ title: String, count: Int = 0, color: Color = .white,

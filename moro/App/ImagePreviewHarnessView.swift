@@ -6,6 +6,8 @@ import SwiftUI
 struct ImagePreviewHarnessView: View {
     @State private var attachments: [Status.Attachment] = []
     @State private var showsPreview = false
+    @State private var initialPasteboardChangeCount = 0
+    @State private var copiedImage = false
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -22,19 +24,29 @@ struct ImagePreviewHarnessView: View {
     }
 
     private var singleViewer: some View {
-        Button("Open image viewer") { showsPreview = true }
+        Button("Open image viewer", action: openPreview)
             .accessibilityIdentifier("imagePreview.open")
+            .accessibilityValue(copiedImage ? "Copied image" : "")
             .disabled(attachments.isEmpty)
             .task {
                 guard attachments.isEmpty else { return }
                 attachments = await Self.makeAttachments()
-                showsPreview = true
+                openPreview()
             }
-            .fullScreenCover(isPresented: $showsPreview) {
+            .fullScreenCover(isPresented: $showsPreview, onDismiss: {
+                let pasteboard = UIPasteboard.general
+                copiedImage = pasteboard.changeCount != initialPasteboardChangeCount && pasteboard.hasImages
+            }) {
                 ImagePreviewView(attachments: attachments, initialIndex: initialIndex)
                     .moroTheme(MoroTheme(colorScheme: colorScheme, dynamicTypeSize: dynamicTypeSize))
                     .environment(\.dynamicTypeSize, dynamicTypeSize)
             }
+    }
+
+    private func openPreview() {
+        initialPasteboardChangeCount = UIPasteboard.general.changeCount
+        copiedImage = false
+        showsPreview = true
     }
 
     static func makeAttachments() async -> [Status.Attachment] {

@@ -71,6 +71,11 @@ struct VideoPreviewTransport: View {
                 }
                 .accessibilityLabel(MoroL10n.VideoPreview.speed)
                 .accessibilityValue(session.selectedRate.formatted() + "×")
+                .accessibilityActions {
+                    if session.isSpeedLocked {
+                        Button(MoroL10n.VideoPreview.unlockSpeed, action: session.unlockSpeed)
+                    }
+                }
                 .accessibilityIdentifier("videoPreview.rate")
                 if !session.isGIF {
                     icon(session.isMuted ? "speaker.slash" : "speaker.wave.2",

@@ -12,7 +12,6 @@ struct ImagePreviewView: View {
     @State private var altPresentation: AltPresentation?
     @State private var showsControls = true
     @State private var viewportHeight: CGFloat = 0
-    @State private var actionTarget: Status.Attachment?
     @State private var isExporting = false
     @State private var exportNotice: String?
     @State private var noticeTask: Task<Void, Never>?
@@ -66,14 +65,16 @@ struct ImagePreviewView: View {
                                 altText: Self.descriptionText(attachment.description),
                                 onSingleTap: toggleControls,
                                 onInteractionBegan: hideControls,
-                                onDismiss: closePreview,
-                                onLongPress: { actionTarget = attachment }
+                                onDismiss: closePreview
                             )
                             .tag(index)
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
                     .frame(height: tabletopFold?.minY)
+                    .overlay(alignment: .bottom) {
+                        if tabletopFold != nil && showsControls { pageIndicator }
+                    }
                     .frame(maxHeight: .infinity, alignment: .top)
                     .ignoresSafeArea()
                 }
@@ -86,15 +87,6 @@ struct ImagePreviewView: View {
                         MoroFloatingNavButton(kind: .close, action: closePreview)
                             .accessibilityIdentifier("imagePreview.close")
                         Spacer()
-                        if attachments.count > 1 {
-                            Text("\(currentIndex + 1) / \(attachments.count)")
-                                .moroScaledFont(size: 15, weight: .medium)
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 12)
-                                .frame(minHeight: 44)
-                                .background(.black.opacity(0.55), in: Capsule())
-                                .accessibilityIdentifier("imagePreview.page")
-                        }
                         if let currentAltText, let currentAttachment {
                             Button {
                                 altPresentation = AltPresentation(id: currentAttachment.id, text: currentAltText)
@@ -109,37 +101,21 @@ struct ImagePreviewView: View {
                             .accessibilityLabel(MoroL10n.ImagePreview.altAccessibility)
                             .accessibilityIdentifier("imagePreview.alt")
                         }
-                        if let post {
-                            MediaPreviewMoreMenu(post: post)
-                        } else if let currentAttachment {
-                            Button {
-                                run(.share, on: currentAttachment)
-                            } label: {
-                                ZStack {
-                                    FloatingNavIconLabel(systemName: "square.and.arrow.up")
-                                        .opacity(isExporting ? 0 : 1)
-                                    if isExporting {
-                                        ProgressView()
-                                            .tint(.white)
-                                            .frame(width: 34, height: 34)
-                                            .background(Circle().fill(.black.opacity(0.4)))
-                                    }
-                                }
-                                .frame(minWidth: 44, minHeight: 44)
-                                .contentShape(Rectangle())
+                        if let currentAttachment {
+                            MediaPreviewMoreMenu(post: post, attachment: currentAttachment, isExporting: isExporting) {
+                                run($0, on: currentAttachment)
                             }
-                            .buttonStyle(.plain)
-                            .disabled(isExporting)
-                            .accessibilityLabel(MoroL10n.ImagePreview.shareAccessibility)
-                            .accessibilityIdentifier("imagePreview.share")
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
                     .padding(.bottom, tabletopFold == nil ? 0 : 16)
-                    if tabletopFold == nil { Spacer() }
+                    if tabletopFold == nil {
+                        Spacer()
+                        pageIndicator
+                    }
                     if let post, let currentAttachment {
-                        MediaPreviewPostBar(post: post, attachment: currentAttachment) { run($0, on: currentAttachment) }
+                        MediaPreviewPostBar(post: post) { run(.share, on: currentAttachment) }
                             .background {
                                 LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: .top, endPoint: .bottom)
                                     .padding(.top, -24).ignoresSafeArea()
@@ -199,26 +175,20 @@ struct ImagePreviewView: View {
             if UIAccessibility.isSwitchControlRunning { showsControls = true }
         }
         .accessibilityAction(.escape, closePreview)
-        .onChange(of: currentIndex) { _, _ in
-            showsControls = true
-        }
-        .confirmationDialog(
-            "",
-            isPresented: Binding(get: { actionTarget != nil }, set: { if !$0 { actionTarget = nil } }),
-            titleVisibility: .hidden,
-            presenting: actionTarget
-        ) { attachment in
-            ForEach(MediaExportAction.allCases, id: \.self) { action in
-                Button(action.title) { run(action, on: attachment) }
-            }
-            Button(MoroL10n.Common.cancel, role: .cancel) {}
-        }
         .sheet(item: $altPresentation) { presentation in
             AltTextOverlay(
                 altText: presentation.text,
                 maximumInitialHeight: max(180, viewportHeight * 0.6)
             )
             .environment(\.dynamicTypeSize, dynamicTypeSize)
+        }
+    }
+
+    @ViewBuilder private var pageIndicator: some View {
+        if attachments.count > 1 {
+            ImagePreviewPageControl(selection: $currentIndex, count: attachments.count)
+                .frame(height: 44)
+                .shadow(color: .black.opacity(0.65), radius: 2)
         }
     }
 
@@ -274,6 +244,33 @@ struct ImagePreviewView: View {
     private func closePreview() {
         dismiss()
         onDismiss?()
+    }
+}
+
+private struct ImagePreviewPageControl: UIViewRepresentable {
+    @Binding var selection: Int
+    let count: Int
+
+    func makeUIView(context: Context) -> UIPageControl {
+        let control = UIPageControl()
+        control.backgroundStyle = .minimal
+        control.pageIndicatorTintColor = .white.withAlphaComponent(0.44)
+        control.currentPageIndicatorTintColor = .white
+        control.accessibilityIdentifier = "imagePreview.pages"
+        control.addAction(UIAction { [weak control] _ in
+            if let control { selection = control.currentPage }
+        }, for: .valueChanged)
+        return control
+    }
+
+    func updateUIView(_ control: UIPageControl, context: Context) {
+        control.numberOfPages = count
+        control.currentPage = selection
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIPageControl, context: Context) -> CGSize? {
+        let size = uiView.size(forNumberOfPages: count)
+        return CGSize(width: min(size.width, proposal.width ?? size.width), height: proposal.height ?? size.height)
     }
 }
 

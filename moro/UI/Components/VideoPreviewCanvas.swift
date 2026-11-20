@@ -9,7 +9,6 @@ struct VideoPreviewCanvas: UIViewRepresentable {
     let zoomBegan: () -> Void
     let drag: (CGFloat, Bool, Bool) -> Void
     let speedHold: (CGFloat?, Bool) -> Void
-    let gifActions: () -> Void
 
     func makeUIView(context: Context) -> VideoViewport {
         VideoViewport(session: session)
@@ -20,7 +19,6 @@ struct VideoPreviewCanvas: UIViewRepresentable {
         view.zoomBegan = zoomBegan
         view.drag = drag
         view.speedHold = speedHold
-        view.gifActions = gifActions
     }
 }
 
@@ -29,7 +27,6 @@ final class VideoViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogniz
     var zoomBegan: (() -> Void)?
     var drag: ((CGFloat, Bool, Bool) -> Void)?
     var speedHold: ((CGFloat?, Bool) -> Void)?
-    var gifActions: (() -> Void)?
 
     private let session: NativeVideoSession
     private let picture = UIView()
@@ -123,7 +120,7 @@ final class VideoViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogniz
             let velocity = dismissPan.velocity(in: window)
             return zoomScale <= 1.01 && velocity.y > abs(velocity.x)
         }
-        if recognizer === hold { return zoomScale <= 1.01 }
+        if recognizer === hold { return zoomScale <= 1.01 || session.isSpeedLocked }
         return super.gestureRecognizerShouldBegin(recognizer)
     }
 
@@ -140,10 +137,6 @@ final class VideoViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogniz
 
     @objc private func held() {
         let y = hold.location(in: window).y
-        if session.isGIF {
-            if hold.state == .began { gifActions?() }
-            return
-        }
         switch hold.state {
         case .began:
             holdOrigin = y

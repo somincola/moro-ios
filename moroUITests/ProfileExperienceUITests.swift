@@ -629,7 +629,7 @@ final class ProfileExperienceUITests: XCTestCase {
         photo.tap()
         let close = app.buttons["imagePreview.close"]
         XCTAssertTrue(close.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["imagePreview.page"].exists)
+        XCTAssertTrue(app.pageIndicators["imagePreview.pages"].exists)
         XCTAssertTrue(app.buttons["mediaPreview.share"].exists)
         for action in ["Reply", "Boost", "Like", "Bookmark"] {
             XCTAssertTrue(app.buttons[action].exists, action)
@@ -637,6 +637,7 @@ final class ProfileExperienceUITests: XCTestCase {
         app.buttons["mediaPreview.more"].tap()
         XCTAssertTrue(app.buttons["mediaPreview.openPost"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["mediaPreview.report"].exists)
+        XCTAssertTrue(app.buttons["Save to Photos"].exists)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.65)).tap()
         app.buttons["Reply"].tap()
         XCTAssertTrue(app.textViews["compose.textInput"].waitForExistence(timeout: 5))

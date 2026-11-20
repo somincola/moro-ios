@@ -11,7 +11,7 @@ struct VideoFullscreenView: View {
     @State private var dragDistance: CGFloat = 0
     @State private var offeredDock = false
     @State private var holdProgress: CGFloat?
-    @State private var exportMenu = false
+    @State private var showsSpeedConfirmation = false
     @State private var exportTask: Task<Void, Never>?
     @State private var notice: String?
     @State private var noticeTask: Task<Void, Never>?
@@ -25,7 +25,7 @@ struct VideoFullscreenView: View {
                     .ignoresSafeArea()
                 VideoPreviewCanvas(session: session, tap: toggleControls, zoomBegan: hideControls,
                                    drag: { updateDrag($0, ended: $1, cancelled: $2, height: height) },
-                                   speedHold: updateSpeedHold, gifActions: { exportMenu = true })
+                                   speedHold: updateSpeedHold)
                     .ignoresSafeArea()
                     .scaleEffect(reduceMotion ? 1 : 1 - 0.35 * progress.reveal)
                     .offset(y: reduceMotion ? 0 : dragDistance)
@@ -36,28 +36,15 @@ struct VideoFullscreenView: View {
                             MoroFloatingNavButton(kind: .close, action: close)
                                 .accessibilityIdentifier("videoPreview.close")
                             Spacer()
-                            if let post = session.post {
-                                MediaPreviewMoreMenu(post: post)
-                            } else {
-                                Button { export(.share) } label: {
-                                    FloatingNavIconLabel(systemName: "square.and.arrow.up")
-                                        .frame(width: 44, height: 44)
-                                }
-                                .contextMenu {
-                                    ForEach(MediaExportAction.available(for: session.attachment), id: \.self) { action in
-                                        Button(action.title, systemImage: action.systemImage) { export(action) }
-                                    }
-                                }
-                                .accessibilityLabel(MoroL10n.MediaExport.share)
-                                .accessibilityIdentifier("videoPreview.share")
-                            }
+                            MediaPreviewMoreMenu(post: session.post, attachment: session.attachment,
+                                                 isExporting: exportTask != nil, export: export)
                         }
                         .padding(.horizontal, 14)
                         .padding(.top, 4)
                         Spacer()
                         VStack(spacing: 0) {
                             if let post = session.post {
-                                MediaPreviewPostBar(post: post, attachment: session.attachment, export: export)
+                                MediaPreviewPostBar(post: post) { export(.share) }
                             }
                             VideoPreviewTransport(session: session, observer: session.observer, expand: hideControls)
                         }
@@ -72,31 +59,11 @@ struct VideoFullscreenView: View {
                     .foregroundStyle(.white)
                 }
 
-                if holdProgress != nil || (session.isSpeedLocked && showsControls && dragDistance == 0) {
-                    VStack {
-                        Button { session.unlockSpeed() } label: {
-                            HStack(spacing: 5) {
-                                if session.isSpeedLocked { Image(systemName: "lock.fill") }
-                                Text("2×").monospacedDigit()
-                            }
-                            .font(.subheadline.bold())
-                            .padding(.horizontal, 12)
-                            .frame(minWidth: 44, minHeight: 36)
-                            .contentShape(Rectangle())
-                            .background(.black.opacity(0.64), in: Capsule())
-                            .overlay {
-                                if let holdProgress {
-                                    Capsule().trim(from: 0, to: holdProgress).stroke(.white, lineWidth: 2)
-                                }
-                            }
-                        }
-                        .foregroundStyle(.white)
-                        .accessibilityLabel(MoroL10n.VideoPreview.unlockSpeed)
-                        .accessibilityIdentifier("videoPreview.speedLock")
-                        .padding(.top, 8)
-                        Spacer()
-                    }
-                    .allowsHitTesting(session.isSpeedLocked)
+                if dragDistance == 0 && (holdProgress != nil || showsSpeedConfirmation) {
+                    VideoSpeedBadge(progress: holdProgress, locked: showsSpeedConfirmation, unlock: session.unlockSpeed)
+                        .padding(.top, 6)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .transition(.opacity)
                 }
 
                 if session.canDock && progress.offersPiP {
@@ -132,26 +99,35 @@ struct VideoFullscreenView: View {
         .onDisappear {
             exportTask?.cancel()
             noticeTask?.cancel()
-            session.finishSpeedHold(lock: false)
+            session.finishSpeedHold(completedDrag: false)
+            holdProgress = nil
+            showsSpeedConfirmation = false
             if session.host == nil { session.leftFullscreen() }
         }
         .onChange(of: voiceOver || switchControl) { _, enabled in if enabled { showsControls = true } }
         .onChange(of: session.pipFailed) { _, failed in if failed { showNotice(MoroL10n.VideoPreview.pipUnavailable) } }
         .accessibilityAction(.escape, close)
-        .confirmationDialog("", isPresented: $exportMenu, titleVisibility: .hidden) {
-            ForEach(MediaExportAction.available(for: session.attachment), id: \.self) { action in
-                Button(action.title) { export(action) }
-            }
+        .onChange(of: session.isSpeedLocked) { _, locked in
+            if !locked { showsSpeedConfirmation = false }
+        }
+        .task(id: showsSpeedConfirmation) {
+            guard showsSpeedConfirmation else { return }
+            try? await Task.sleep(for: .milliseconds(1600))
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { showsSpeedConfirmation = false }
         }
     }
 
     private func toggleControls() {
         guard !voiceOver, !switchControl else { return }
         showsControls.toggle()
+        if !showsControls { showsSpeedConfirmation = false }
     }
 
     private func hideControls() {
-        if !voiceOver && !switchControl { showsControls = false }
+        guard !voiceOver, !switchControl else { return }
+        showsControls = false
+        showsSpeedConfirmation = false
     }
 
     private func close() {
@@ -179,10 +155,15 @@ struct VideoFullscreenView: View {
     private func updateSpeedHold(_ distance: CGFloat?, ended: Bool) {
         let progress = min(1, (distance ?? 0) / 72)
         if ended {
-            session.finishSpeedHold(lock: distance != nil && progress >= 1)
-            holdProgress = nil
-        } else if !session.isSpeedLocked {
+            let completed = distance != nil && progress >= 1
+            session.finishSpeedHold(completedDrag: completed)
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
+                holdProgress = nil
+                showsSpeedConfirmation = completed && session.isSpeedLocked
+            }
+        } else {
             session.beginSpeedHold()
+            showsSpeedConfirmation = false
             holdProgress = progress
         }
     }
@@ -206,6 +187,45 @@ struct VideoFullscreenView: View {
             try? await Task.sleep(for: .seconds(3))
             if !Task.isCancelled { notice = nil }
         }
+    }
+}
+
+/// One centered shape expands around the same text when the user releases a completed hold.
+private struct VideoSpeedBadge: View {
+    let progress: CGFloat?
+    let locked: Bool
+    let unlock: () -> Void
+    @ScaledMetric(relativeTo: .subheadline) private var diameter: CGFloat = 40
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        Button(action: unlock) {
+            HStack(spacing: 5) {
+                if locked {
+                    Image(systemName: "lock.fill")
+                        .transition(.opacity)
+                }
+                Text(verbatim: "2×").monospacedDigit()
+            }
+            .font(.subheadline.bold())
+            .foregroundStyle(.white)
+            .fixedSize()
+            .frame(width: locked ? diameter * 1.85 : diameter, height: diameter)
+            .background(Color(white: contrast == .increased ? 0.42 : 0.74).opacity(0.9), in: Capsule())
+            .overlay {
+                if let progress {
+                    Circle().inset(by: 1).trim(from: 0, to: progress)
+                        .stroke(.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .allowsHitTesting(locked)
+        .accessibilityHidden(!locked)
+        .accessibilityLabel(MoroL10n.VideoPreview.unlockSpeed)
+        .accessibilityIdentifier("videoPreview.speedLock")
     }
 }
 

@@ -32,11 +32,44 @@ final class TimelineMediaPlaybackUITests: XCTestCase {
         let lock = app.buttons["videoPreview.speedLock"]
         XCTAssertTrue(lock.waitForExistence(timeout: 3))
         XCTAssertEqual(rate.value as? String, "2×")
-        lock.tap()
+        XCTAssertEqual(lock.frame.midX, app.frame.midX, accuracy: 2)
+        XCTAssertGreaterThan(lock.frame.width, lock.frame.height)
+        capture(app, name: "centered-speed-lock")
+        XCTAssertTrue(lock.waitForNonExistence(timeout: 6))
+        XCTAssertEqual(rate.value as? String, "2×")
+        canvas.press(forDuration: 0.6, thenDragTo: canvas.withOffset(CGVector(dx: 0, dy: 110)))
         XCTAssertEqual(rate.value as? String, "1.25×")
         XCTAssertFalse(lock.exists)
         app.buttons["videoPreview.close"].tap()
         XCTAssertTrue(play.waitForNonExistence(timeout: 5))
+    }
+
+    func testFullscreenVideoLoopsFromTheEndAtTheSelectedRate() {
+        let app = launch(autoplay: false)
+        defer { app.terminate() }
+        openVideo(app)
+        let play = app.buttons["videoPreview.play"]
+        XCTAssertTrue(play.waitForExistence(timeout: 8))
+        if play.label == "Pause" { play.tap() }
+        let rate = app.buttons["videoPreview.rate"]
+        rate.tap()
+        let scrubber = app.descendants(matching: .any)["videoPreview.scrubber"].firstMatch
+        scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        let nearEnd = NSPredicate { _, _ in
+            guard let value = scrubber.value as? String else { return false }
+            return (Int(value.split(separator: ":").last ?? "") ?? 0) > 20
+        }
+        expectation(for: nearEnd, evaluatedWith: scrubber)
+        waitForExpectations(timeout: 5)
+        XCTAssertEqual(play.label, "Play")
+        play.tap()
+        let advancedAgain = NSPredicate { _, _ in
+            guard let time = scrubber.value as? String, let seconds = Int(time.split(separator: ":").last ?? "") else { return false }
+            return (1...9).contains(seconds) && play.label == "Pause"
+        }
+        expectation(for: advancedAgain, evaluatedWith: scrubber)
+        waitForExpectations(timeout: 12)
+        XCTAssertEqual(rate.value as? String, "1.25×")
     }
 
     func testZoomedVideoPansAndOnlyDismissesAtOriginalSize() {
@@ -116,27 +149,17 @@ final class TimelineMediaPlaybackUITests: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.1)).tap()
         openGIFV(app)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.7)
+        XCTAssertFalse(app.buttons["Save to Photos"].exists)
+        let menu = app.buttons["mediaPreview.more"]
+        menu.tap()
         XCTAssertTrue(app.buttons["Save to Photos"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["Share…"].exists)
         capture(app, name: "gifv-fullscreen-actions")
         app.buttons["Save to Photos"].tap()
-        allowAddingPhotosIfNeeded(app)
-        let notice = app.staticTexts["videoPreview.notice"]
-        // Saving GIFV first exports it as a video; on a busy machine that alone can pass 8 s.
-        if !notice.waitForExistence(timeout: 20) {
-            // Simulator only: later in a run the Photos permission prompt may never be shown,
-            // so the save waits without an answer. Saving GIFV is verified on a device, so the
-            // actions above are what this test checks here. Share would wait behind the same
-            // export, so stop without failing.
-            let screen = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-            screen.name = "simulator-save-unanswered"; screen.lifetime = .keepAlways; add(screen)
-            return
-        }
-        XCTAssertEqual(notice.label, "Saved to Photos")
+        XCTAssertEqual(photoSaveResult(in: app), "Saved to Photos")
         capture(app, name: "gifv-saved-to-photos")
-        let share = app.buttons["videoPreview.share"]
-        XCTAssertTrue(share.waitForExistence(timeout: 3))
-        share.tap()
+        menu.tap()
+        app.buttons["Share…"].tap()
         let saveVideo = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@",
             ["Save Video", "存储视频", "保存视频"])).firstMatch
         XCTAssertTrue(saveVideo.waitForExistence(timeout: 8),
@@ -175,7 +198,7 @@ final class TimelineMediaPlaybackUITests: XCTestCase {
         XCTAssertTrue(open.waitForExistence(timeout: 5))
         // Avoid the play button in the centre of the same media.
         open.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5)).tap()
-        XCTAssertTrue(app.buttons["videoPreview.share"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["mediaPreview.more"].waitForExistence(timeout: 8))
     }
 
     private func openVideo(_ app: XCUIApplication) {
@@ -191,23 +214,29 @@ final class TimelineMediaPlaybackUITests: XCTestCase {
         let close = candidates.firstMatch
         XCTAssertTrue(close.waitForExistence(timeout: 5), app.debugDescription)
         (candidates.allElementsBoundByIndex.first { $0.isHittable } ?? close).tap()
-        XCTAssertTrue(app.buttons["videoPreview.share"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["mediaPreview.more"].waitForNonExistence(timeout: 5))
     }
 
-    /// The first save asks for Photos access. The system shows that alert from SpringBoard
-    /// a moment after the tap, so look in both places and give it time to appear; an alert
-    /// left up blocks the save and its notice for good.
-    private func allowAddingPhotosIfNeeded(_ app: XCUIApplication) {
+    /// An already-authorized save can finish and dismiss its toast while waiting for a permission alert.
+    private func photoSaveResult(in app: XCUIApplication) -> String? {
+        let notice = app.staticTexts["videoPreview.notice"]
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let alerts = [app.alerts.firstMatch, springboard.alerts.firstMatch]
+        let permissionOrResult = NSPredicate { _, _ in notice.exists || alerts.contains { $0.exists } }
+        if !notice.exists {
+            _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: permissionOrResult, object: nil)], timeout: 15)
+        }
+        if notice.exists { return notice.label }
         let allowLabel = NSPredicate(format:
             "(label CONTAINS[c] 'Allow' AND NOT label CONTAINS[c] 'Don') OR (label CONTAINS '允许' AND NOT label CONTAINS '不允许')")
-        let appears = NSPredicate { _, _ in app.alerts.firstMatch.exists || springboard.alerts.firstMatch.exists }
-        guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: appears, object: nil)], timeout: 3) == .completed
-        else { return }
-        for alert in [app.alerts.firstMatch, springboard.alerts.firstMatch] where alert.exists {
+        for alert in alerts where alert.exists {
             let allow = alert.buttons.matching(allowLabel).firstMatch
-            if allow.exists { allow.tap() }
+            if allow.exists {
+                allow.tap()
+                break
+            }
         }
+        return notice.waitForExistence(timeout: 15) ? notice.label : nil
     }
 
     private func waitForLabel(_ element: XCUIElement, matches: @escaping (String) -> Bool) {

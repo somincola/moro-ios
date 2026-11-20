@@ -38,13 +38,17 @@ struct VideoPlayerPoolTests {
         }
         video.beginSpeedHold()
         #expect(video.selectedRate == 2)
-        video.finishSpeedHold(lock: false)
+        video.finishSpeedHold(completedDrag: false)
         #expect(video.selectedRate == 1.25)
         #expect(!video.observer.isPlaybackRequested)
         video.beginSpeedHold()
-        video.finishSpeedHold(lock: true)
+        video.finishSpeedHold(completedDrag: true)
         #expect(video.isSpeedLocked && video.selectedRate == 2)
-        video.unlockSpeed()
+        video.beginSpeedHold()
+        video.finishSpeedHold(completedDrag: false)
+        #expect(video.isSpeedLocked && video.selectedRate == 2)
+        video.beginSpeedHold()
+        video.finishSpeedHold(completedDrag: true)
         #expect(!video.isSpeedLocked && video.selectedRate == 1.25)
     }
 
