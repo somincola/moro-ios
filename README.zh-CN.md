@@ -25,6 +25,7 @@
   <a href="https://getmoro.app/">官方网站</a> ·
   <a href="https://github.com/somincola/moro-ios/releases">版本更新</a> ·
   <a href="https://getmoro.app/support">支持与反馈</a> ·
+  <a href="https://ko-fi.com/somincola">请 Acacius 喝杯咖啡</a> ·
   <a href="README.md">English</a>
 </p>
 
@@ -66,6 +67,12 @@ Moro **没有广告，也不进行跨应用追踪**。账号直接连接你选�
 - **了解产品：** [Moro 官方网站](https://getmoro.app/)。
 - **查看更新：** [最新版本](https://github.com/somincola/moro-ios/releases/latest)、[全部 Releases](https://github.com/somincola/moro-ios/releases)与[完整更新日志](CHANGELOG.md)。
 - **支持与反馈：** [支持页面](https://getmoro.app/support)或 [GitHub Issues](https://github.com/somincola/moro-ios/issues)。
+
+## ☕ 支持这个项目
+
+Moro 可以免费使用。如果它对你有帮助，欢迎通过 [Ko-fi](https://ko-fi.com/somincola) 支持后续开发。
+
+赞助完全自愿。Moro 的所有功能都会一直向大家免费开放。谢谢你的支持！
 
 ## 开发者入口
 

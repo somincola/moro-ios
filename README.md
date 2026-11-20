@@ -25,6 +25,7 @@
   <a href="https://getmoro.app/">Official website</a> ·
   <a href="https://github.com/somincola/moro-ios/releases">Release notes</a> ·
   <a href="https://getmoro.app/support">Support</a> ·
+  <a href="https://ko-fi.com/somincola">Buy Acacius a coffee</a> ·
   <a href="README.zh-CN.md">简体中文</a>
 </p>
 
@@ -66,6 +67,12 @@ Read the [Privacy Policy](https://getmoro.app/privacy) and [Transparency page](h
 - **Explore:** [Official website](https://getmoro.app/).
 - **Updates:** [Latest release](https://github.com/somincola/moro-ios/releases/latest), [all releases](https://github.com/somincola/moro-ios/releases), and the [complete changelog](CHANGELOG.md).
 - **Get in touch:** [Support](https://getmoro.app/support) or [GitHub Issues](https://github.com/somincola/moro-ios/issues).
+
+## ☕ Support This Project
+
+Moro is free to use. If you find it helpful, consider supporting its continued development on [Ko-fi](https://ko-fi.com/somincola).
+
+Your support is entirely optional. All features will always remain free for everyone. Thank you for your support!
 
 ## For developers
 
