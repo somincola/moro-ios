@@ -34,6 +34,23 @@ final class ProfileViewModel: ObservableObject {
         case loaded
         case error(String)
     }
+
+    /// A tab's data survives navigation until its query or media inclusion settings change.
+    struct TabContentID: Hashable {
+        let tab: Tab
+        let query: UUID
+        let mediaRevision: UUID?
+    }
+
+    var selectedContentID: TabContentID { contentID(for: selectedTab) }
+
+    func contentID(for tab: Tab) -> TabContentID {
+        TabContentID(tab: tab, query: queryGeneration, mediaRevision: tab == .media ? mediaPreferenceRevision : nil)
+    }
+
+    func hasContent(for tab: Tab) -> Bool {
+        !statuses(for: tab).isEmpty || (tab == .posts && !pinnedStatuses.isEmpty)
+    }
     
     enum LoadingState: Equatable {
         case idle
@@ -169,8 +186,8 @@ final class ProfileViewModel: ObservableObject {
     
     // MARK: - Computed Properties
     
-    var currentStatuses: [Status] {
-        switch selectedTab {
+    func displayedStatuses(for tab: Tab) -> [Status] {
+        switch tab {
         case .posts:
             let pinnedIDs = Set(pinnedStatuses.map(\.id))
             return posts.filter { !pinnedIDs.contains($0.id) }
@@ -180,13 +197,16 @@ final class ProfileViewModel: ObservableObject {
             return media
         }
     }
+
+    var currentStatuses: [Status] { displayedStatuses(for: selectedTab) }
     
     var hasMore: Bool {
         hasMore(for: selectedTab)
     }
 
     var paginationCursor: String? { maxID(for: selectedTab) }
-    var shouldAutomaticallyContinueEmptyPage: Bool { (consecutiveEmptyPages[selectedTab] ?? 0) < 3 }
+    var shouldAutomaticallyContinueEmptyPage: Bool { shouldAutomaticallyContinueEmptyPage(for: selectedTab) }
+    func shouldAutomaticallyContinueEmptyPage(for tab: Tab) -> Bool { (consecutiveEmptyPages[tab] ?? 0) < 3 }
 
     func tabLoadState(for tab: Tab) -> TabLoadState {
         tabLoadStates[tab] ?? .notLoaded
@@ -211,7 +231,7 @@ final class ProfileViewModel: ObservableObject {
         }
     }
 
-    private func hasMore(for tab: Tab) -> Bool {
+    func hasMore(for tab: Tab) -> Bool {
         switch tab {
         case .posts:
             return hasMorePosts
@@ -380,7 +400,8 @@ final class ProfileViewModel: ObservableObject {
         }
     }
 
-    func loadMore() async {
+    func loadMore(ifCurrent contentID: TabContentID? = nil) async {
+        if let contentID, selectedContentID != contentID { return }
         let tab = selectedTab
         let mediaRevision = mediaPreferenceRevision
         let generation = queryGeneration
@@ -548,7 +569,7 @@ final class ProfileViewModel: ObservableObject {
         return existing + newStatuses.filter { !existingIDs.contains($0.id) }
     }
 
-    private func maxID(for tab: Tab) -> String? {
+    func maxID(for tab: Tab) -> String? {
         switch tab {
         case .posts:
             return postsMaxID

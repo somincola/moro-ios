@@ -753,6 +753,76 @@ final class ProfileExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["List"].exists)
     }
 
+    func testSwitchingProfileTabsShowsNewContentAndRestoresEachReadingPosition() {
+        let app = launch(extra: ["UITEST_PROFILE_LONG_TABS": "1", "UITEST_PROFILE_GALLERY": "1",
+                                 "UITEST_PROFILE_GALLERY_LOADING": "1"], animations: true)
+        defer { app.terminate() }
+        let posts = app.buttons["profile.tab.posts"].firstMatch
+        let replies = app.buttons["profile.tab.replies"].firstMatch
+        let media = app.buttons["profile.tab.media"].firstMatch
+
+        func scrollToItem(_ item: XCUIElement, file: StaticString = #filePath, line: UInt = #line) -> CGFloat {
+            let window = app.frame
+            for _ in 0..<16 {
+                var start = 0.78
+                var end = 0.43
+                if item.exists {
+                    let frame = item.frame
+                    if item.isHittable, (window.height * 0.23 ... window.height * 0.89).contains(frame.midY) {
+                        return frame.minY
+                    }
+                    if !frame.isEmpty, frame.midY < window.height * 0.23 {
+                        start = 0.42
+                        end = 0.67
+                    }
+                }
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: start)).press(forDuration: 0.06,
+                    thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: end)),
+                    withVelocity: .fast, thenHoldForDuration: 0.15)
+            }
+            XCTFail("Could not reach \(item)", file: file, line: line)
+            return 0
+        }
+        func assertRestored(_ item: XCUIElement, at y: CGFloat, file: StaticString = #filePath, line: UInt = #line) {
+            let restored = NSPredicate { _, _ in item.exists && item.isHittable && abs(item.frame.minY - y) < 8 }
+            let result = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: restored, object: nil)], timeout: 5)
+            if result != .completed {
+                XCTFail("Expected reading position at y=\(y), found \(item.exists ? String(describing: item.frame) : "no item")",
+                        file: file, line: line)
+            }
+        }
+
+        let post = app.staticTexts["Scroll post 485"].firstMatch
+        let postY = scrollToItem(post)
+        media.tap()
+        let skeleton = app.descendants(matching: .any)["profile.media.loading"].firstMatch
+        XCTAssertTrue(skeleton.waitForExistence(timeout: 4))
+        XCTAssertGreaterThanOrEqual(skeleton.frame.minY, media.frame.maxY - 2)
+        XCTAssertLessThan(skeleton.frame.minY, app.frame.midY)
+        posts.tap()
+        assertRestored(post, at: postY)
+        media.tap()
+        let firstTile = app.buttons["profile.media.tile.320"]
+        XCTAssertTrue(firstTile.waitForExistence(timeout: 12))
+        XCTAssertGreaterThanOrEqual(firstTile.frame.minY, media.frame.maxY - 2)
+        XCTAssertLessThan(firstTile.frame.minY, app.frame.midY)
+
+        let tile = app.buttons["profile.media.tile.289"]
+        let tileY = scrollToItem(tile)
+        replies.tap()
+        XCTAssertTrue(app.staticTexts["Scroll reply 700"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Scroll reply 700"].firstMatch.isHittable)
+        let reply = app.staticTexts["Scroll reply 690"].firstMatch
+        let replyY = scrollToItem(reply)
+
+        posts.tap()
+        assertRestored(post, at: postY)
+        media.tap()
+        assertRestored(tile, at: tileY)
+        replies.tap()
+        assertRestored(reply, at: replyY)
+    }
+
     func testMediaGalleryShowsGridSkeletonAndRetriesThumbnailInPlace() {
         let app = launch(extra: ["UITEST_PROFILE_GALLERY": "1", "UITEST_PROFILE_GALLERY_LOADING": "1"])
         defer { app.terminate() }

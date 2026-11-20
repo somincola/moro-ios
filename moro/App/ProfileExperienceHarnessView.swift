@@ -373,6 +373,20 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             return (200, reply)
         }
         if path.hasSuffix("/statuses") {
+            if ProcessInfo.processInfo.environment["UITEST_PROFILE_LONG_TABS"] == "1", parameter("pinned") != "true" {
+                let media = parameter("only_media") == "true"
+                let replies = !media && parameter("exclude_replies") == "false"
+                let first = media ? 320 : (replies ? 700 : 500)
+                let cursor = Int(parameter("max_id") ?? "") ?? (first + 1)
+                let page = (1...20).map { cursor - $0 }.filter { $0 > first - 60 }
+                return (200, page.map { id in
+                    if media { return mediaPost(String(id)) }
+                    var status = post(String(id))
+                    status["content"] = "<p>Scroll \(replies ? "reply" : "post") \(id)</p>"
+                    if replies { status["in_reply_to_id"] = "88" }
+                    return status
+                })
+            }
             if parameter("only_media") == "true" {
                 guard hasGallery else { return (200, []) }
                 let cursor = parameter("max_id")

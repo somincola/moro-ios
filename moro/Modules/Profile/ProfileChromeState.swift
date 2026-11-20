@@ -113,6 +113,56 @@ struct ProfileChromeLayout: Equatable {
     }
 }
 
+/// Each visited tab keeps its native scroll position and the measured heights of its lazy rows.
+struct ProfileTabScrollPosition: ViewModifier {
+    private struct Measurement: Equatable {
+        let offset: CGFloat
+        let reachableOffset: CGFloat
+    }
+
+    @State private var position = ScrollPosition(edge: .top)
+    @State private var firstOffset: CGFloat?
+    @State private var offset: CGFloat
+    let isActive: Bool
+    let scrollToTopRequest: Int
+    let reportOffset: (CGFloat) -> Void
+
+    init(initialOffset: CGFloat, isActive: Bool, scrollToTopRequest: Int, reportOffset: @escaping (CGFloat) -> Void) {
+        _firstOffset = State(initialValue: initialOffset > 0 ? initialOffset : nil)
+        _offset = State(initialValue: initialOffset)
+        self.isActive = isActive
+        self.scrollToTopRequest = scrollToTopRequest
+        self.reportOffset = reportOffset
+    }
+
+    func body(content: Content) -> some View {
+        content.scrollPosition($position)
+            .onScrollGeometryChange(for: Measurement.self) { geometry in
+                Measurement(offset: geometry.contentOffset.y + geometry.contentInsets.top,
+                            reachableOffset: geometry.contentSize.height + geometry.contentInsets.top
+                                + geometry.contentInsets.bottom - geometry.containerSize.height)
+            } action: { _, geometry in
+                // iOS 18 can lay out a new scroll view at zero before the header and grid have a size.
+                if let firstOffset {
+                    guard geometry.reachableOffset >= firstOffset - 1 else { return }
+                    self.firstOffset = nil
+                    if abs(geometry.offset - firstOffset) > 1 {
+                        position.scrollTo(y: firstOffset)
+                        return
+                    }
+                }
+                offset = geometry.offset
+                if isActive { reportOffset(geometry.offset) }
+            }
+            .onChange(of: isActive, initial: true) { _, active in
+                if active { reportOffset(max(0, offset)) }
+            }
+            .onChange(of: scrollToTopRequest) { _, _ in
+                if isActive { withAnimation(.snappy) { position.scrollTo(edge: .top) } }
+            }
+    }
+}
+
 struct ProfileChromeState: Equatable {
     var scrollOffset: CGFloat = 0
     var pullDistance: CGFloat = 0

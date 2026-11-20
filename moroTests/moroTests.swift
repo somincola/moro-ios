@@ -3437,6 +3437,37 @@ struct moroTests {
         )
     }
 
+    @Test @MainActor func cachedProfileTabsTrackTheirContentAndIgnorePaginationFromAnInactivePage() async {
+        let api = MockMastodonAPI()
+        let replies = (0..<20).map { makeStatus(id: String($0), inReplyToID: "parent") }
+        api.fetchAccountStatusesHandler = { _, _, _, _, _, _, _, _ in replies }
+        api.accountFeaturedTagsHandler = { _ in [FeaturedTag(id: "app", name: "app")] }
+        let model = ProfileViewModel(apiClient: api, accountID: "target")
+        let posts = model.selectedContentID
+        let media = model.contentID(for: .media)
+        model.pinnedStatuses = [makeStatus(id: "pin")]
+        #expect(model.hasContent(for: .posts))
+        #expect(!model.hasContent(for: .replies))
+
+        model.selectTab(.replies)
+        await model.loadTabIfNeeded(.replies)
+        #expect(model.hasContent(for: .replies))
+        #expect(model.displayedStatuses(for: .replies).count == 20)
+        let count = api.fetchAccountStatusesCalls.count
+        await model.loadMore(ifCurrent: posts)
+        #expect(api.fetchAccountStatusesCalls.count == count)
+        #expect(model.contentID(for: .posts) == posts)
+
+        model.account = makeAccount(showMedia: true, showMediaReplies: true)
+        #expect(model.contentID(for: .media) != media)
+        #expect(model.contentID(for: .posts) == posts)
+        let unfilteredReplies = model.selectedContentID
+        await model.loadFeaturedTags()
+        await model.selectFeaturedTag("app")
+        #expect(model.selectedContentID != unfilteredReplies)
+        #expect(model.contentID(for: .posts) != posts)
+    }
+
     @Test @MainActor func profileHeaderChromeProgressClampsAcrossTransition() async throws {
         #expect(
             ProfileHeaderChromeLogic.collapseOffset(
