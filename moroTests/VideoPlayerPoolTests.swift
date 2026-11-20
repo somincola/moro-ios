@@ -53,13 +53,48 @@ struct VideoPlayerPoolTests {
     }
 
     @Test func testDismissDragCanBackOutOfPictureInPictureBeforeRelease() {
-        let distances: [CGFloat] = [30, 85, 180, 280, 210, 100, 0]
-        let progress = distances.map { VideoPreviewDrag(distance: $0, height: 600) }
-        #expect(progress.map(\.closes) == [false, true, true, true, true, true, false])
-        #expect(progress.map(\.offersPiP) == [false, false, true, true, true, false, false])
-        #expect(progress[3].dock == 1)
-        #expect(progress[4].dock > 0 && progress[4].dock < 1)
-        #expect(progress[5].dock == 0)
+        let target = CGPoint(x: 200, y: 750)
+        func drag(_ distance: CGFloat, from startY: CGFloat = 350, x: CGFloat = 200) -> VideoPreviewDrag {
+            VideoPreviewDrag(distance: distance, height: 800, finger: CGPoint(x: x, y: startY + distance), target: target)
+        }
+        #expect(!drag(35).closes)
+        #expect(drag(140).closes && !drag(140).offersPiP)
+        #expect(drag(195).offersPiP && drag(195).approachProgress < 0.02)
+        #expect(drag(270).approachProgress > drag(230).approachProgress * 2)
+        #expect(!drag(300).isInDockRange(wasArmed: false))
+        #expect(drag(310).isInDockRange(wasArmed: false))
+        #expect(!drag(310, from: 180).isInDockRange(wasArmed: false))
+        #expect(!drag(310, x: 12).isInDockRange(wasArmed: false))
+        #expect(drag(80, from: 600).isInDockRange(wasArmed: false))
+        #expect(!drag(8, from: 690).isInDockRange(wasArmed: false))
+        #expect(drag(300).isInDockRange(wasArmed: true))
+        #expect(!drag(280).isInDockRange(wasArmed: true))
+        #expect(!drag(135).offersPiP && drag(135).approachProgress == 0)
+    }
+
+    @Test func shortVideosUseMoreOfTheirLetterboxSpaceAboveTheControls() {
+        let session = NativeVideoSession(attachment: .init(id: "framing", type: "gifv", url: url("framing")))
+        defer { session.end() }
+        let viewport = VideoViewport(session: session)
+        viewport.frame = CGRect(x: 0, y: 0, width: 400, height: 840)
+        viewport.layoutIfNeeded()
+        #expect(viewport.contentInset.bottom - viewport.contentInset.top == 108)
+        #expect(abs(viewport.contentOffset.y + viewport.contentInset.top) <= 0.5)
+        #expect(session.layer.bounds.width == 400)
+        #expect(VideoViewport.pictureLift(viewportHeight: 840, pictureHeight: 740) == 10)
+        #expect(VideoViewport.pictureLift(viewportHeight: 840, pictureHeight: 840) == 0)
+
+        for height: CGFloat in [340, 800] {
+            let target = CGPoint(x: 200, y: height - 46)
+            let drag = VideoPreviewDrag(distance: height * 0.5, height: height, finger: target, target: target)
+            for pictureHeight in [height * 0.3, height] {
+                let lift = VideoViewport.pictureLift(viewportHeight: height, pictureHeight: pictureHeight)
+                let offset = drag.pictureOffset(canvasHeight: height, canvasMidY: height / 2, pictureHeight: pictureHeight)
+                #expect(drag.isInDockRange(wasArmed: false))
+                let pictureBottom = height / 2 + (pictureHeight / 2 - lift) * drag.scale + offset
+                #expect(pictureBottom <= target.y - VideoPreviewDrag.targetRadius)
+            }
+        }
     }
 
     @Test func dockedVideoKeepsItsLeaseWhileOtherInlineAnimationsResume() {

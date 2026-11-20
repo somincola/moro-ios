@@ -21,6 +21,19 @@ final class TimelineMediaPlaybackUITests: XCTestCase {
             rate.tap()
             XCTAssertEqual(rate.value as? String, expected)
         }
+        // The 160×96 fixture is a solid color. Check both edges of the elevated video
+        // against its center in one decoded frame, independently of which frame is paused.
+        let frame = app.frame
+        let screenshot = app.screenshot().image
+        func sample(at y: CGFloat) -> Data {
+            let point = CGRect(origin: CGPoint(x: frame.midX, y: y), size: .zero)
+            return colorSignature(app, frame: point, image: screenshot)
+        }
+        let halfVideoHeight = frame.width * 0.3
+        let centerColor = sample(at: frame.midY)
+        XCTAssertFalse(centerColor.isEmpty)
+        XCTAssertEqual(sample(at: frame.midY - halfVideoHeight - 20), centerColor)
+        XCTAssertNotEqual(sample(at: frame.midY + halfVideoHeight - 20), centerColor)
         capture(app, name: "video-bottom-controls")
         let canvas = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         canvas.tap()
@@ -42,6 +55,32 @@ final class TimelineMediaPlaybackUITests: XCTestCase {
         XCTAssertFalse(lock.exists)
         app.buttons["videoPreview.close"].tap()
         XCTAssertTrue(play.waitForNonExistence(timeout: 5))
+    }
+
+    func testDraggingNearTheDockTargetKeepsTheVideoSessionAcrossHome() throws {
+        let app = launch(autoplay: false)
+        defer { app.terminate() }
+        openVideo(app)
+        let rate = app.buttons["videoPreview.rate"]
+        XCTAssertTrue(rate.waitForExistence(timeout: 6))
+        let pip = app.buttons["videoPreview.pip"]
+        try XCTSkipUnless(pip.exists, "AVKit does not offer system Picture in Picture on this device.")
+        expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: pip)
+        waitForExpectations(timeout: 8)
+        rate.tap()
+        XCTAssertEqual(rate.value as? String, "1.25×")
+
+        // Release above the button itself, inside the capture radius.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(forDuration: 0.06,
+            thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.87)),
+            withVelocity: XCUIGestureVelocity(rawValue: 450), thenHoldForDuration: 0.22)
+        XCTAssertTrue(rate.waitForNonExistence(timeout: 6))
+        XCTAssertTrue(app.buttons["media.open.fixture-2"].waitForExistence(timeout: 4))
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        openVideo(app)
+        XCTAssertTrue(rate.waitForExistence(timeout: 6))
+        XCTAssertEqual(rate.value as? String, "1.25×", "Opening the docked post should restore the original session.")
     }
 
     func testFullscreenVideoLoopsFromTheEndAtTheSelectedRate() {
@@ -244,8 +283,8 @@ final class TimelineMediaPlaybackUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: nil)], timeout: 8), .completed)
     }
 
-    private func colorSignature(_ app: XCUIApplication, frame: CGRect) -> Data {
-        let image = app.screenshot().image
+    private func colorSignature(_ app: XCUIApplication, frame: CGRect, image: UIImage? = nil) -> Data {
+        let image = image ?? app.screenshot().image
         guard let original = image.cgImage else { return Data() }
         let scale = CGFloat(original.width) / app.windows.firstMatch.frame.width
         let rect = CGRect(x: (frame.midX - 4) * scale, y: (frame.midY - 4) * scale, width: 8 * scale, height: 8 * scale)

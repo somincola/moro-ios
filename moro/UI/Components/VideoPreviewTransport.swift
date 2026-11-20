@@ -86,7 +86,7 @@ struct VideoPreviewTransport: View {
                 icon("arrow.up.left.and.arrow.down.right", MoroL10n.VideoPreview.immersive,
                      id: "expand", action: expand)
                 if !session.isGIF && AVPictureInPictureController.isPictureInPictureSupported() {
-                    icon("pip.enter", MoroL10n.VideoPreview.pip, id: "pip", action: session.startPictureInPicture)
+                    icon("pip.enter", MoroL10n.VideoPreview.pip, id: "pip") { session.startPictureInPicture() }
                         .disabled(!session.canDock)
                         .opacity(session.canDock ? 1 : 0.4)
                 }

@@ -7,7 +7,7 @@ struct VideoPreviewCanvas: UIViewRepresentable {
     let session: NativeVideoSession
     let tap: () -> Void
     let zoomBegan: () -> Void
-    let drag: (CGFloat, Bool, Bool) -> Void
+    let drag: (CGFloat, CGPoint, UIGestureRecognizer.State) -> Void
     let speedHold: (CGFloat?, Bool) -> Void
 
     func makeUIView(context: Context) -> VideoViewport {
@@ -25,7 +25,7 @@ struct VideoPreviewCanvas: UIViewRepresentable {
 final class VideoViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecognizerDelegate {
     var tap: (() -> Void)?
     var zoomBegan: (() -> Void)?
-    var drag: ((CGFloat, Bool, Bool) -> Void)?
+    var drag: ((CGFloat, CGPoint, UIGestureRecognizer.State) -> Void)?
     var speedHold: ((CGFloat?, Bool) -> Void)?
 
     private let session: NativeVideoSession
@@ -99,12 +99,20 @@ final class VideoViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogniz
             CATransaction.commit()
         }
         centerPicture()
+        contentOffset = CGPoint(x: -contentInset.left, y: -contentInset.top)
     }
 
     private func centerPicture() {
         let horizontal = max(0, (bounds.width - contentSize.width) / 2)
         let vertical = max(0, (bounds.height - contentSize.height) / 2)
-        contentInset = UIEdgeInsets(top: vertical, left: horizontal, bottom: vertical, right: horizontal)
+        let lift = Self.pictureLift(viewportHeight: bounds.height, pictureHeight: contentSize.height)
+        let inset = UIEdgeInsets(top: vertical - lift, left: horizontal, bottom: vertical + lift, right: horizontal)
+        if contentInset != inset { contentInset = inset }
+    }
+
+    /// Use the empty letterbox space to give the transport more room beneath a short video.
+    nonisolated static func pictureLift(viewportHeight: CGFloat, pictureHeight: CGFloat) -> CGFloat {
+        min(54, max(0, viewportHeight - pictureHeight) * 0.10)
     }
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { picture }
@@ -126,13 +134,9 @@ final class VideoViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogniz
 
     @objc private func tapped() { tap?() }
     @objc private func dragged() {
+        // The canvas itself scales and moves during a drag. Sample the stationary window.
         let distance = max(0, dismissPan.translation(in: window).y)
-        switch dismissPan.state {
-        case .began, .changed: drag?(distance, false, false)
-        case .ended: drag?(distance, true, false)
-        case .cancelled, .failed: drag?(0, true, true)
-        default: break
-        }
+        drag?(distance, dismissPan.location(in: window), dismissPan.state)
     }
 
     @objc private func held() {

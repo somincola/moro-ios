@@ -179,10 +179,12 @@ final class NativeVideoSession: NSObject, ObservableObject, AVPictureInPictureCo
         observer.play()
     }
 
-    func startPictureInPicture() {
-        guard let pip, pip.isPictureInPicturePossible, Self.docked == nil else { return }
+    @discardableResult
+    func startPictureInPicture() -> Bool {
+        guard let pip, pip.isPictureInPicturePossible, Self.docked == nil else { return false }
         pipFailed = false
         pip.startPictureInPicture()
+        return true
     }
 
     func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {

@@ -8,7 +8,8 @@ struct VideoFullscreenView: View {
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @Environment(\.accessibilitySwitchControlEnabled) private var switchControl
     @State private var showsControls = true
-    @State private var dragDistance: CGFloat = 0
+    @State private var drag: VideoPreviewDrag?
+    @State private var dockArmed = false
     @State private var offeredDock = false
     @State private var holdProgress: CGFloat?
     @State private var showsSpeedConfirmation = false
@@ -18,19 +19,25 @@ struct VideoFullscreenView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let height = geometry.size.height
-            let progress = VideoPreviewDrag(distance: dragDistance, height: height)
+            let viewport = geometry.frame(in: .global)
+            let target = CGPoint(x: viewport.midX, y: viewport.maxY - VideoPreviewDrag.targetBottomInset - VideoPreviewDrag.targetRadius)
+            let canvasHeight = viewport.height + geometry.safeAreaInsets.top + geometry.safeAreaInsets.bottom
+            let canvasMidY = viewport.midY + (geometry.safeAreaInsets.bottom - geometry.safeAreaInsets.top) / 2
             ZStack {
-                Color.black.opacity(1 - 0.8 * progress.reveal)
+                Color.black.opacity(1 - 0.8 * (drag?.reveal ?? 0))
                     .ignoresSafeArea()
                 VideoPreviewCanvas(session: session, tap: toggleControls, zoomBegan: hideControls,
-                                   drag: { updateDrag($0, ended: $1, cancelled: $2, height: height) },
+                                   drag: { distance, finger, state in
+                                       updateDrag(VideoPreviewDrag(distance: distance, height: viewport.height,
+                                                                   finger: finger, target: target), state: state)
+                                   },
                                    speedHold: updateSpeedHold)
                     .ignoresSafeArea()
-                    .scaleEffect(reduceMotion ? 1 : 1 - 0.35 * progress.reveal)
-                    .offset(y: reduceMotion ? 0 : dragDistance)
+                    .scaleEffect(reduceMotion ? 1 : (drag?.scale ?? 1))
+                    .offset(y: reduceMotion ? 0 : (drag?.pictureOffset(canvasHeight: canvasHeight, canvasMidY: canvasMidY,
+                                                                      pictureHeight: session.layer.bounds.height) ?? 0))
 
-                if showsControls, dragDistance == 0 {
+                if showsControls, drag == nil {
                     VStack(spacing: 0) {
                         MediaPreviewNavigationBar(close: close, closeIdentifier: "videoPreview.close") {
                             MediaPreviewMoreMenu(post: session.post, attachment: session.attachment,
@@ -56,29 +63,29 @@ struct VideoFullscreenView: View {
                     .foregroundStyle(.white)
                 }
 
-                if dragDistance == 0 && (holdProgress != nil || showsSpeedConfirmation) {
+                if drag == nil && (holdProgress != nil || showsSpeedConfirmation) {
                     VideoSpeedBadge(progress: holdProgress, locked: showsSpeedConfirmation, unlock: session.unlockSpeed)
                         .padding(.top, 6)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .transition(.opacity)
                 }
 
-                if session.canDock && progress.offersPiP {
-                    VStack {
-                        Spacer()
-                        Image(systemName: "pip.enter")
-                            .font(.system(size: 22, weight: .medium))
-                            .frame(width: 60, height: 60)
-                            .background(.black.opacity(0.72), in: Circle())
-                            .overlay {
-                                Circle().trim(from: 0, to: progress.dock)
-                                    .stroke(.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                                    .rotationEffect(.degrees(-90))
-                            }
-                            .foregroundStyle(.white)
-                            .padding(.bottom, 16)
-                    }
-                    .allowsHitTesting(false)
+                if session.canDock {
+                    Image(systemName: "pip.enter")
+                        .font(.system(size: 22, weight: .medium))
+                        .frame(width: 2 * VideoPreviewDrag.targetRadius, height: 2 * VideoPreviewDrag.targetRadius)
+                        .background(.black.opacity(0.72), in: Circle())
+                        .overlay {
+                            Circle().trim(from: 0, to: dockArmed ? 1 : (drag?.approachProgress ?? 0))
+                                .stroke(.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                                .rotationEffect(.degrees(-90))
+                                .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: dockArmed)
+                        }
+                        .foregroundStyle(.white)
+                        .opacity(drag?.offersPiP == true ? 1 : 0)
+                        .position(x: target.x - viewport.minX, y: target.y - viewport.minY)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
                 }
                 if let notice {
                     Text(notice).font(.footnote.weight(.medium)).foregroundStyle(.white)
@@ -103,7 +110,12 @@ struct VideoFullscreenView: View {
             if session.host == nil { session.leftFullscreen() }
         }
         .onChange(of: voiceOver || switchControl) { _, enabled in if enabled { showsControls = true } }
-        .onChange(of: session.pipFailed) { _, failed in if failed { showNotice(MoroL10n.VideoPreview.pipUnavailable) } }
+        .onChange(of: session.pipFailed) { _, failed in
+            if failed {
+                resetDrag()
+                showNotice(MoroL10n.VideoPreview.pipUnavailable)
+            }
+        }
         .accessibilityAction(.escape, close)
         .onChange(of: session.isSpeedLocked) { _, locked in
             if !locked { showsSpeedConfirmation = false }
@@ -132,22 +144,34 @@ struct VideoFullscreenView: View {
         if let host = session.host { host.close() } else { dismiss() }
     }
 
-    private func updateDrag(_ distance: CGFloat, ended: Bool, cancelled: Bool, height: CGFloat) {
-        let progress = VideoPreviewDrag(distance: distance, height: height)
-        guard ended else {
-            dragDistance = distance
-            if progress.offersPiP, session.canDock { offeredDock = true }
-            return
+    private func updateDrag(_ sample: VideoPreviewDrag, state: UIGestureRecognizer.State) {
+        switch state {
+        case .began, .changed, .ended:
+            drag = sample
+            dockArmed = sample.isInDockRange(wasArmed: dockArmed)
+            if sample.offersPiP && session.canDock { offeredDock = true }
+            guard state == .ended else { return }
+            if dockArmed && offeredDock {
+                // Let AVKit take over the shrunken frame on success. A failed request restores it.
+                if session.startPictureInPicture() { return }
+                showNotice(MoroL10n.VideoPreview.pipUnavailable)
+            } else if sample.closes {
+                close()
+                return
+            }
+            resetDrag()
+        case .failed, .cancelled:
+            resetDrag()
+        default: break
         }
-        defer { offeredDock = false }
-        if !cancelled, progress.dock >= 1, offeredDock || session.canDock {
-            if session.canDock { session.startPictureInPicture() }
-            else { showNotice(MoroL10n.VideoPreview.pipUnavailable) }
-        } else if !cancelled, progress.closes {
-            close()
-            return
+    }
+
+    private func resetDrag() {
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.23)) {
+            drag = nil
+            dockArmed = false
+            offeredDock = false
         }
-        withAnimation(reduceMotion ? nil : .snappy(duration: 0.23)) { dragDistance = 0 }
     }
 
     private func updateSpeedHold(_ distance: CGFloat?, ended: Bool) {
@@ -228,11 +252,52 @@ private struct VideoSpeedBadge: View {
 }
 
 struct VideoPreviewDrag {
+    static let targetRadius: CGFloat = 30
+    static let targetBottomInset: CGFloat = 16
     let distance: CGFloat
     let height: CGFloat
-    private var extent: CGFloat { max(1, height) }
-    var reveal: CGFloat { min(1, max(0, distance / (extent * 0.45))) }
-    var closes: Bool { distance >= extent * 0.13 }
-    var offersPiP: Bool { distance >= extent * 0.27 }
-    var dock: CGFloat { min(1, max(0, (distance - extent * 0.27) / (extent * 0.16))) }
+    let finger: CGPoint
+    let target: CGPoint
+
+    private var startGap: CGFloat { max(0, target.y - finger.y + distance) }
+    private var offerDistance: CGFloat { min(height * 0.24, max(50, startGap * 0.47)) }
+    private var captureRadius: CGFloat { min(92, max(52, height * 0.115)) }
+    private var remainingGap: CGFloat {
+        let horizontal = max(0, abs(finger.x - target.x) - Self.targetRadius)
+        return hypot(horizontal, max(0, target.y - finger.y))
+    }
+
+    var closes: Bool { distance >= min(height * 0.13, max(32, startGap * 0.30)) }
+    var offersPiP: Bool { distance >= offerDistance }
+    var reveal: CGFloat {
+        let travel = min(height * 0.45, max(offerDistance, startGap - captureRadius))
+        return min(1, distance / max(1, travel))
+    }
+    private var dockScale: CGFloat { min(0.65, max(0.50, 1 - 128 / max(1, height))) }
+    var scale: CGFloat { 1 - (1 - dockScale) * reveal }
+
+    /// Show a small lead-in. Crossing the capture radius fills the remaining arc even with a stationary finger.
+    var approachProgress: CGFloat {
+        guard offersPiP else { return 0 }
+        let gapAtReveal = startGap - offerDistance
+        let approach = min(1, max(0, (gapAtReveal - remainingGap) / max(1, gapAtReveal - captureRadius)))
+        return 0.55 * approach * approach
+    }
+
+    func isInDockRange(wasArmed: Bool) -> Bool {
+        offersPiP && remainingGap <= captureRadius + (wasArmed ? 18 : 0)
+    }
+
+    func pictureOffset(canvasHeight: CGFloat, canvasMidY: CGFloat, pictureHeight: CGFloat) -> CGFloat {
+        let fittedHeight = pictureHeight > 0 ? min(pictureHeight, canvasHeight) : canvasHeight
+        let lift = VideoViewport.pictureLift(viewportHeight: canvasHeight, pictureHeight: fittedHeight)
+        let bottomAtDockScale = canvasMidY + (fittedHeight / 2 - lift) * dockScale
+        // Follow the finger initially, then ease out so the bottom of the video leaves the target visible.
+        let room = target.y - Self.targetRadius - 12 - bottomAtDockScale
+        // In a short landscape viewport the fitted picture can already reach the target.
+        if room <= 0 { return room * reveal }
+        let freeTravel = room / 2
+        let extra = max(0, distance - freeTravel)
+        return min(distance, freeTravel) + freeTravel * extra / max(1, freeTravel + extra)
+    }
 }
