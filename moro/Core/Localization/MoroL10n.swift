@@ -2237,6 +2237,19 @@ public enum MoroL10n {
         public static var shareAccessibility: String { text("imagePreview.shareAccessibility") }
     }
 
+    public enum VideoPreview {
+        public static var docked: String { text("videoPreview.docked") }
+        public static var immersive: String { text("videoPreview.immersive") }
+        public static var pip: String { text("videoPreview.pip") }
+        public static var pipUnavailable: String { text("videoPreview.pipUnavailable") }
+        public static var position: String { text("videoPreview.position") }
+        public static var sharePost: String { text("videoPreview.sharePost") }
+        public static var soundOff: String { text("videoPreview.soundOff") }
+        public static var soundOn: String { text("videoPreview.soundOn") }
+        public static var speed: String { text("videoPreview.speed") }
+        public static var unlockSpeed: String { text("videoPreview.unlockSpeed") }
+    }
+
     public enum EmojiPicker {
         public static var search: String { text("emojiPicker.search") }
     }

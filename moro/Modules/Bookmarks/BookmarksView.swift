@@ -10,17 +10,20 @@ struct BookmarksRouteView: View {
 }
 
 struct BookmarksView: View {
+    private let apiClient: MastodonAPI
     @StateObject private var viewModel: BookmarksViewModel
     @Environment(\.moroTheme) private var theme
     @Environment(\.appRouter) private var router
     @EnvironmentObject private var appState: AppState
 
     init(apiClient: MastodonAPI, library: BookmarkLibraryStore? = nil) {
+        self.apiClient = apiClient
         _viewModel = StateObject(wrappedValue: BookmarksViewModel(apiClient: apiClient, library: library))
     }
 
     var body: some View {
         ContentStateContainer(state: contentState) { contentList }
+            .modifier(MediaPreviewActionSource(apiClient: apiClient))
             .navigationTitle(MoroL10n.Bookmarks.navTitle)
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $viewModel.searchQuery, placement: .navigationBarDrawer(displayMode: .always),

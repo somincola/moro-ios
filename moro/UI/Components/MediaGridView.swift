@@ -25,12 +25,15 @@ struct MediaGridView: View {
     let attachments: [Status.Attachment]
     let isSensitive: Bool
     var onImageTap: ((Status.Attachment, Int) -> Void)? = nil
+    var previewPost: (() -> MediaPreviewPost?)?
     
     @Environment(\.moroTheme) private var theme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selectedAttachment: Status.Attachment? = nil
     @State private var selectedIndex: Int = 0
+    @State private var fallbackPost: MediaPreviewPost?
+    @State private var afterFallbackDismiss: (() -> Void)?
     @Namespace private var mediaTransitionNamespace
     
     // Filter to only image attachments (videos are not yet supported in grid view)
@@ -54,10 +57,16 @@ struct MediaGridView: View {
                         .frame(maxWidth: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .clipped()
-                        .fullScreenCover(item: $selectedAttachment) { attachment in
+                        .fullScreenCover(item: $selectedAttachment, onDismiss: {
+                            let action = afterFallbackDismiss
+                            afterFallbackDismiss = nil
+                            fallbackPost = nil
+                            action?()
+                        }) { attachment in
                             ImagePreviewView(
                                 attachments: imageAttachments,
                                 initialIndex: selectedIndex,
+                                post: fallbackPost,
                                 onDismiss: { selectedAttachment = nil }
                             )
                             .navigationTransition(
@@ -92,9 +101,7 @@ struct MediaGridView: View {
                             isSensitive: isSensitive,
                             contentMode: .fit,
                             onTap: {
-                                // The system player, continuing this player.
-                                NativeVideoPlayer.present(url: attachment.url, isGIF: attachment.type == "gifv",
-                                                          attachment: attachment)
+                                NativeVideoPlayer.present(attachment: attachment, post: previewPost?())
                             }
                         )
                     }
@@ -230,9 +237,15 @@ struct MediaGridView: View {
     
     private func openPreview(index: Int) {
         let attachment = imageAttachments[index]
+        let post = previewPost?()
         // Presented from UIKit so rotating cannot close it by unloading this post's row.
         if MediaPreviewPresenter.present(attachments: imageAttachments, initialIndex: index,
-            sourceID: attachment.id, theme: theme, dynamicTypeSize: dynamicTypeSize) { return }
+            sourceID: attachment.id, theme: theme, dynamicTypeSize: dynamicTypeSize, post: post) { return }
+        post?.closeBeforeAction = { action in
+            afterFallbackDismiss = action
+            selectedAttachment = nil
+        }
+        fallbackPost = post
         selectedIndex = index
         selectedAttachment = attachment
     }

@@ -26,14 +26,16 @@ enum MediaPreviewPresenter {
         initialIndex: Int,
         sourceID: String,
         theme: MoroTheme,
-        dynamicTypeSize: DynamicTypeSize
+        dynamicTypeSize: DynamicTypeSize,
+        post: MediaPreviewPost? = nil
     ) -> Bool {
         guard let presenter = topViewController(), !(presenter is MediaPreviewHostingController)
         else { return false }
 
         let controller = MediaPreviewHostingController(rootView: AnyView(EmptyView()))
+        post?.closeBeforeAction = { [weak controller] action in controller?.close(completion: action) }
         controller.rootView = AnyView(
-            ImagePreviewView(attachments: attachments, initialIndex: initialIndex) { [weak controller] in
+            ImagePreviewView(attachments: attachments, initialIndex: initialIndex, post: post) { [weak controller] in
                 controller?.close()
             }
             // A UIKit-presented host does not inherit the post's SwiftUI environment.
@@ -72,9 +74,25 @@ final class MediaPreviewHostingController: UIHostingController<AnyView> {
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
 
-    func close() {
+    var onClosed: (() -> Void)?
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isBeingDismissed || presentingViewController == nil { finishClose() }
+    }
+
+    func close(completion: (() -> Void)? = nil) {
         guard presentingViewController != nil, !isBeingDismissed else { return }
-        dismiss(animated: true)
+        dismiss(animated: true) {
+            self.finishClose()
+            completion?()
+        }
+    }
+
+    private func finishClose() {
+        let action = onClosed
+        onClosed = nil
+        action?()
     }
 }
 

@@ -32,6 +32,7 @@ struct PostContent: View {
     var onPollVote: ((String, [Int]) async -> Bool)? = nil
     var onQuotedStatusTap: ((Status) -> Void)? = nil
     var onImageTap: ((URL) -> Void)? = nil
+    var mediaActions: PostActions
     var isFocused: Bool = false
     var contentLineSpacing: CGFloat = 4 // Line spacing for the body text (timeline density)
     var quoteStyle: QuoteStyle = .flat // Style for quote display
@@ -41,6 +42,7 @@ struct PostContent: View {
     @State private var isQuoteNoticeExpanded = false
     @Environment(\.moroTheme) private var theme
     @Environment(\.openURL) private var openURL
+    @Environment(\.mediaPreviewHandlers) private var mediaPreviewHandlers
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     init(
@@ -53,6 +55,7 @@ struct PostContent: View {
         onPollVote: ((String, [Int]) async -> Bool)? = nil,
         onQuotedStatusTap: ((Status) -> Void)? = nil,
         onImageTap: ((URL) -> Void)? = nil,
+        mediaActions: PostActions = .empty,
         isFocused: Bool = false,
         contentLineSpacing: CGFloat = 4,
         quoteStyle: QuoteStyle = .flat,
@@ -67,6 +70,7 @@ struct PostContent: View {
         self.onPollVote = onPollVote
         self.onQuotedStatusTap = onQuotedStatusTap
         self.onImageTap = onImageTap
+        self.mediaActions = mediaActions
         self.isFocused = isFocused
         self.contentLineSpacing = contentLineSpacing
         self.quoteStyle = quoteStyle
@@ -138,6 +142,10 @@ struct PostContent: View {
                         isSensitive: status.sensitive,
                         onImageTap: { attachment, _ in
                             onImageTap?(attachment.url)
+                        },
+                        previewPost: {
+                            let actions = mediaPreviewHandlers?.buildPostActions(for: status, prefetchRelationship: false) ?? mediaActions
+                            return MediaPreviewPost(status: status, actions: actions, isFocused: isFocused)
                         }
                     )
                 case .poll:

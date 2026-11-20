@@ -109,9 +109,10 @@ struct PostInteractionHandlers {
 
     func buildPostActions(
         for status: Status,
-        onPollVote: ((String, [Int]) async -> Bool)? = nil
+        onPollVote: ((String, [Int]) async -> Bool)? = nil,
+        prefetchRelationship: Bool = true
     ) -> PostActions {
-        let menuHandlers = moreMenuHandlers(for: status)
+        let menuHandlers = moreMenuHandlers(for: status, prefetchRelationship: prefetchRelationship)
         let navHandlers = PostNavigationActionCenter.handlers(for: status, router: router)
         return PostActions(
             navigation: navHandlers,
@@ -132,7 +133,8 @@ struct PostInteractionHandlers {
             onTap: navHandlers.onTapDetail,
             isOwnPost: PostMoreMenuPolicy.isOwnPost(
                 status, currentUserID: currentUserID
-            )
+            ),
+            mediaHandlers: self
         )
     }
 }

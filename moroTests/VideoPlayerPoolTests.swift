@@ -20,13 +20,61 @@ struct VideoPlayerPoolTests {
     @Test func fullscreenGIFStaysSilentAndReleasesItsPlaybackOwnership() {
         let wasAudible = VideoAudioSession.isAudible
         let wasCovered = MediaPlaybackPresentation.shared.coversInlinePlayback
-        let session = NativeVideoSession(url: url("silent-fullscreen"), isGIF: true)
+        let session = NativeVideoSession(attachment: Status.Attachment(id: "silent", type: "gifv", url: url("silent-fullscreen")))
         #expect(session.player?.isMuted == true)
         #expect(VideoAudioSession.isAudible == wasAudible)
         #expect(MediaPlaybackPresentation.shared.coversInlinePlayback)
         session.end()
         #expect(MediaPlaybackPresentation.shared.coversInlinePlayback == wasCovered)
     }
+
+    @Test func testSpeedCycleAndTemporaryHoldRestoreTheSelectedRate() {
+        let video = NativeVideoSession(attachment: .init(id: "speed", type: "video", url: url("speed")))
+        defer { video.end() }
+        for rate: Float in [1.25, 1.5, 2, 1, 1.25] {
+            video.cycleRate()
+            #expect(video.selectedRate == rate)
+            #expect(video.observer.isPlaybackRequested == false)
+        }
+        video.beginSpeedHold()
+        #expect(video.selectedRate == 2)
+        video.finishSpeedHold(lock: false)
+        #expect(video.selectedRate == 1.25)
+        #expect(!video.observer.isPlaybackRequested)
+        video.beginSpeedHold()
+        video.finishSpeedHold(lock: true)
+        #expect(video.isSpeedLocked && video.selectedRate == 2)
+        video.unlockSpeed()
+        #expect(!video.isSpeedLocked && video.selectedRate == 1.25)
+    }
+
+    @Test func testDismissDragCanBackOutOfPictureInPictureBeforeRelease() {
+        let distances: [CGFloat] = [30, 85, 180, 280, 210, 100, 0]
+        let progress = distances.map { VideoPreviewDrag(distance: $0, height: 600) }
+        #expect(progress.map(\.closes) == [false, true, true, true, true, true, false])
+        #expect(progress.map(\.offersPiP) == [false, false, true, true, true, false, false])
+        #expect(progress[3].dock == 1)
+        #expect(progress[4].dock > 0 && progress[4].dock < 1)
+        #expect(progress[5].dock == 0)
+    }
+
+    @Test func dockedVideoKeepsItsLeaseWhileOtherInlineAnimationsResume() {
+        let presentation = MediaPlaybackPresentation()
+        let token = presentation.begin()
+        let source = url("docked")
+        presentation.dock(token, url: source)
+        #expect(presentation.dockedURL == source)
+        #expect(presentation.coversInlineVideoPlayback && !presentation.coversInlinePlayback)
+        let image = presentation.begin()
+        #expect(presentation.coversInlinePlayback)
+        presentation.end(image)
+        #expect(presentation.dockedURL == source && !presentation.coversInlinePlayback)
+        presentation.undock(token)
+        #expect(presentation.coversInlinePlayback && presentation.dockedURL == nil)
+        presentation.end(token)
+        #expect(!presentation.coversInlineVideoPlayback)
+    }
+
     @Test func loopingGIFDoesNotOfferPlayDuringAQueueHandoff() {
         let gif = VideoPlayerObserver()
         gif.setPlayer(url: url("handoff"), isGIF: true)

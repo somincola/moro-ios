@@ -3,6 +3,64 @@ import UIKit
 
 @MainActor
 final class TimelineMediaPlaybackUITests: XCTestCase {
+    func testVideoUsesBottomControlsAndImmersiveTapRestoresThem() {
+        let app = launch(autoplay: false)
+        defer { app.terminate() }
+        openVideo(app)
+        let play = app.buttons["videoPreview.play"]
+        XCTAssertTrue(play.waitForExistence(timeout: 8))
+        XCTAssertGreaterThan(play.frame.midY, app.frame.height * 0.75)
+        if play.label == "Pause" { play.tap() }
+        let scrubber = app.descendants(matching: .any)["videoPreview.scrubber"].firstMatch
+        let seekStart = scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+        seekStart.press(forDuration: 0.12, thenDragTo: scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)))
+        XCTAssertEqual(play.label, "Play")
+        XCTAssertNotEqual(scrubber.value as? String, "0:00")
+        let rate = app.buttons["videoPreview.rate"]
+        for expected in ["1.25×", "1.5×", "2×", "1×"] {
+            rate.tap()
+            XCTAssertEqual(rate.value as? String, expected)
+        }
+        capture(app, name: "video-bottom-controls")
+        let canvas = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        canvas.tap()
+        XCTAssertTrue(play.waitForNonExistence(timeout: 3))
+        canvas.tap()
+        XCTAssertTrue(play.waitForExistence(timeout: 3))
+        rate.tap()
+        canvas.press(forDuration: 0.6, thenDragTo: canvas.withOffset(CGVector(dx: 0, dy: 110)))
+        let lock = app.buttons["videoPreview.speedLock"]
+        XCTAssertTrue(lock.waitForExistence(timeout: 3))
+        XCTAssertEqual(rate.value as? String, "2×")
+        lock.tap()
+        XCTAssertEqual(rate.value as? String, "1.25×")
+        XCTAssertFalse(lock.exists)
+        app.buttons["videoPreview.close"].tap()
+        XCTAssertTrue(play.waitForNonExistence(timeout: 5))
+    }
+
+    func testZoomedVideoPansAndOnlyDismissesAtOriginalSize() {
+        let app = launch(autoplay: false)
+        defer { app.terminate() }
+        openVideo(app)
+        let video = app.images["videoPreview.canvas"]
+        XCTAssertTrue(video.waitForExistence(timeout: 5))
+        video.pinch(withScale: 2.4, velocity: 2)
+        expectation(for: NSPredicate(format: "value != %@", "100%"), evaluatedWith: video)
+        waitForExpectations(timeout: 5)
+        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.50))
+        let lower = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.70))
+        center.press(forDuration: 0.05, thenDragTo: lower)
+        XCTAssertTrue(video.exists)
+        XCTAssertFalse(app.buttons["videoPreview.play"].exists)
+        video.pinch(withScale: 0.2, velocity: -2)
+        expectation(for: NSPredicate(format: "value == %@", "100%"), evaluatedWith: video)
+        waitForExpectations(timeout: 5)
+        center.press(forDuration: 0.05, thenDragTo: lower)
+        XCTAssertTrue(video.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["media.open.fixture-2"].exists)
+    }
+
     func testManualGIFAndGIFVStopAfterOnePassAndOfferReplay() {
         let app = launch(autoplay: false)
         defer { app.terminate() }
@@ -118,6 +176,13 @@ final class TimelineMediaPlaybackUITests: XCTestCase {
         // Avoid the play button in the centre of the same media.
         open.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5)).tap()
         XCTAssertTrue(app.buttons["videoPreview.share"].waitForExistence(timeout: 8))
+    }
+
+    private func openVideo(_ app: XCUIApplication) {
+        let video = app.buttons["media.open.fixture-2"]
+        for _ in 0..<4 where !video.isHittable { app.swipeUp() }
+        XCTAssertTrue(video.waitForExistence(timeout: 8))
+        video.coordinate(withNormalizedOffset: CGVector(dx: 0.18, dy: 0.5)).tap()
     }
 
     private func closeVideo(_ app: XCUIApplication) {

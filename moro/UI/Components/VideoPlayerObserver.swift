@@ -396,6 +396,12 @@ class VideoPlayerObserver: ObservableObject {
         entry.player.isMuted = muted
     }
 
+    func seek(to time: CMTime, precise: Bool) {
+        didReachEnd = false
+        let tolerance = precise ? .zero : CMTime(seconds: 0.15, preferredTimescale: 600)
+        player?.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance)
+    }
+
     func pause() {
         isPlaybackRequested = false
         player?.pause()

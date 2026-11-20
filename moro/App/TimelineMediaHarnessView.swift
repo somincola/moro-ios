@@ -50,6 +50,7 @@ struct TimelineMediaHarnessView: View {
     static var avatarURL: URL { directory.appendingPathComponent("avatar.gif") }
     static var stillURL: URL { directory.appendingPathComponent("still.png") }
     static var videoURL: URL { directory.appendingPathComponent("animated.mp4") }
+    static var regularVideoURL: URL { directory.appendingPathComponent("regular.mp4") }
 
     static func prepare() async throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -66,6 +67,9 @@ struct TimelineMediaHarnessView: View {
             await SDImageCache.shared.store(still, forKey: key, toDisk: true)
         }
         if !FileManager.default.fileExists(atPath: videoURL.path) { try await makeVideo(at: videoURL) }
+        if !FileManager.default.fileExists(atPath: regularVideoURL.path) {
+            try await makeVideo(at: regularVideoURL, secondsPerFrame: 2)
+        }
     }
 
     static func posts() async throws -> [Status] {
@@ -76,7 +80,7 @@ struct TimelineMediaHarnessView: View {
         return (0..<30).map { index in
             let raw = index == 1
             let attachment = Status.Attachment(id: "fixture-\(index)", type: raw ? "image" : index == 2 ? "video" : "gifv",
-                url: raw ? avatarURL : videoURL, previewURL: stillURL,
+                url: raw ? avatarURL : index == 2 ? regularVideoURL : videoURL, previewURL: stillURL,
                 meta: .init(original: .init(width: 320, height: 180, aspect: 16.0 / 9.0), small: nil))
             return Status(id: "media-\(index)", content: "<p>\(raw ? "Original GIF" : index == 2 ? "Video" : "GIFV") playback fixture \(index)</p>",
                 createdAt: Date(), account: account, mediaAttachments: [attachment],
@@ -85,7 +89,7 @@ struct TimelineMediaHarnessView: View {
         }
     }
 
-    static func makeVideo(at url: URL) async throws {
+    static func makeVideo(at url: URL, secondsPerFrame: Double = 0.1) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 160, AVVideoHeightKey: 96,
@@ -109,7 +113,8 @@ struct TimelineMediaHarnessView: View {
                     count: CVPixelBufferGetBytesPerRow(pixels) * 96 / MemoryLayout<UInt32>.stride)
             }
             CVPixelBufferUnlockBaseAddress(pixels, [])
-            guard adaptor.append(pixels, withPresentationTime: CMTime(value: Int64(frame), timescale: 10)) else {
+            let time = CMTime(seconds: Double(frame) * secondsPerFrame, preferredTimescale: 600)
+            guard adaptor.append(pixels, withPresentationTime: time) else {
                 throw MediaExportService.ExportError.saveFailed
             }
         }

@@ -74,7 +74,7 @@ struct ProfileContentStream: View, Equatable {
         case .loaded:
             if viewModel.selectedTab == .media {
                 if !statuses.isEmpty {
-                    ProfileMediaGallery(content: .posts(statuses) { postActions($0).onTap?() })
+                    ProfileMediaGallery(content: .posts(statuses, actions: postActions))
                     if viewModel.hasMore, !viewModel.didFailLoadMore(.media) {
                         Color.clear
                             .frame(height: 1)

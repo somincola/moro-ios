@@ -3,7 +3,7 @@ import SwiftUI
 struct ProfileMediaGallery: View {
     enum Content {
         case loading
-        case posts([Status], onOpenPost: (Status) -> Void)
+        case posts([Status], actions: (Status) -> PostActions)
     }
 
     // Covers a two-column grid on the readable column at Retina scale. A single size
@@ -41,11 +41,11 @@ struct ProfileMediaGallery: View {
                         .fill(theme.colors.skeleton)
                         .aspectRatio(1, contentMode: .fit)
                 }
-            case .posts(let statuses, let onOpenPost):
+            case .posts(let statuses, let actions):
                 ForEach(statuses) { status in
                     let attachments = status.displayStatus.mediaAttachments
                     if let cover = attachments.first(where: { ["image", "video", "gifv"].contains($0.type) }) ?? attachments.first {
-                        ProfileMediaGalleryTile(status: status.displayStatus, cover: cover) { onOpenPost(status) }
+                        ProfileMediaGalleryTile(status: status.displayStatus, cover: cover) { actions(status) }
                             .id("\(status.id)/\(cover.id)/\(cover.previewURL?.absoluteString ?? "")")
                     }
                 }
@@ -67,7 +67,8 @@ private struct ProfileMediaGalleryTile: View {
 
     let status: Status
     let cover: Status.Attachment
-    let onOpenPost: () -> Void
+    let actions: () -> PostActions
+    private func onOpenPost() { actions().onTap?() }
 
     private enum PreviewPhase { case loading, ready, failed }
 
@@ -229,14 +230,15 @@ private struct ProfileMediaGalleryTile: View {
 
     private func openMedia() {
         guard cover.url.scheme != "about" else { onOpenPost(); return }
+        let post = MediaPreviewPost(status: status, actions: actions())
         if isVideo {
-            NativeVideoPlayer.present(url: cover.url, isGIF: isGIF, attachment: cover)
+            NativeVideoPlayer.present(attachment: cover, post: post)
         } else if cover.type == "image" {
             let images = status.mediaAttachments.filter { $0.type == "image" }
             let index = images.firstIndex { $0.id == cover.id } ?? 0
             if !MediaPreviewPresenter.present(
                 attachments: images, initialIndex: index, sourceID: sourceID,
-                theme: theme, dynamicTypeSize: dynamicTypeSize
+                theme: theme, dynamicTypeSize: dynamicTypeSize, post: post
             ) {
                 onOpenPost()
             }

@@ -5,6 +5,7 @@ import SwiftUI
 struct ImagePreviewView: View {
     let attachments: [Status.Attachment]
     let initialIndex: Int
+    let post: MediaPreviewPost?
     var onDismiss: (() -> Void)? = nil
 
     @State private var currentIndex: Int
@@ -27,9 +28,11 @@ struct ImagePreviewView: View {
         let text: String
     }
 
-    init(attachments: [Status.Attachment], initialIndex: Int = 0, onDismiss: (() -> Void)? = nil) {
+    init(attachments: [Status.Attachment], initialIndex: Int = 0, post: MediaPreviewPost? = nil,
+         onDismiss: (() -> Void)? = nil) {
         self.attachments = attachments
         self.initialIndex = initialIndex
+        self.post = post
         self.onDismiss = onDismiss
         _currentIndex = State(initialValue: min(max(initialIndex, 0), max(attachments.count - 1, 0)))
     }
@@ -106,7 +109,9 @@ struct ImagePreviewView: View {
                             .accessibilityLabel(MoroL10n.ImagePreview.altAccessibility)
                             .accessibilityIdentifier("imagePreview.alt")
                         }
-                        if let currentAttachment {
+                        if let post {
+                            MediaPreviewMoreMenu(post: post)
+                        } else if let currentAttachment {
                             Button {
                                 run(.share, on: currentAttachment)
                             } label: {
@@ -133,6 +138,13 @@ struct ImagePreviewView: View {
                     .padding(.top, 8)
                     .padding(.bottom, tabletopFold == nil ? 0 : 16)
                     if tabletopFold == nil { Spacer() }
+                    if let post, let currentAttachment {
+                        MediaPreviewPostBar(post: post, attachment: currentAttachment) { run($0, on: currentAttachment) }
+                            .background {
+                                LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: .top, endPoint: .bottom)
+                                    .padding(.top, -24).ignoresSafeArea()
+                            }
+                    }
                 }
             }
 

@@ -609,7 +609,7 @@ final class ProfileExperienceUITests: XCTestCase {
     }
 
     func testMediaGalleryOpensPhotosAndKeepsWarningsConcealed() {
-        let app = launch(extra: ["UITEST_PROFILE_GALLERY": "1"])
+        let app = launch(extra: ["UITEST_PROFILE_GALLERY": "1", "UITEST_OTHER_PROFILE": "1"])
         defer { app.terminate() }
         let media = app.buttons["profile.tab.media"].firstMatch
         reveal(media, in: app)
@@ -630,7 +630,18 @@ final class ProfileExperienceUITests: XCTestCase {
         let close = app.buttons["imagePreview.close"]
         XCTAssertTrue(close.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["imagePreview.page"].exists)
-        close.tap()
+        XCTAssertTrue(app.buttons["mediaPreview.share"].exists)
+        for action in ["Reply", "Boost", "Like", "Bookmark"] {
+            XCTAssertTrue(app.buttons[action].exists, action)
+        }
+        app.buttons["mediaPreview.more"].tap()
+        XCTAssertTrue(app.buttons["mediaPreview.openPost"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["mediaPreview.report"].exists)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.65)).tap()
+        app.buttons["Reply"].tap()
+        XCTAssertTrue(app.textViews["compose.textInput"].waitForExistence(timeout: 5))
+        XCTAssertFalse(close.exists)
+        app.navigationBars.buttons["Cancel"].tap()
 
         contentWarning.tap()
         XCTAssertTrue(app.staticTexts["Gallery content warning"].waitForExistence(timeout: 5))
