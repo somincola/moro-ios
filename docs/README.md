@@ -34,6 +34,7 @@
 ## 设计源资产
 
 - [默认应用图标](design/brand/README.md)包含品牌色值、矢量母版和导出方式。
+- 产品页页头和十种语言的搜索短片可本地预览，并可从源文件重新导出。[商店视频预览](../screenshots/app-store/creative/paper-current/review.html) · [页头导出说明](../screenshots/app-store/creative/paper-current/README.md) · [搜索短片导出说明](../screenshots/app-store/creative/four-views/README.md)
 - `design/app-icon-concepts/`：已上线备用 App Icon 的源图，生产目标使用 `Assets.xcassets` 中的资源。该目录是当前资源源文件，不属于审计截图或执行历史。
 - `design/app-icon-dark-mode/`：全部 App Icon 的深色版本设计评价、交互对比页与系统渲染验证。
 
