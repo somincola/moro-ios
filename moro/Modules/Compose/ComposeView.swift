@@ -142,6 +142,9 @@ struct ComposeView: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceEmojiMotion
+    @Environment(\.accessibilityPlayAnimatedImages) private var systemPlaysAnimatedImages
+    @State private var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
     @EnvironmentObject private var appState: AppState
     
     @State private var selectedPhotos: [PhotosPickerItem] = []
@@ -303,6 +306,7 @@ struct ComposeView: View {
                     .scrollContentBackground(.hidden)
                     .contentShape(Rectangle())
                     .scrollDismissesKeyboard(.interactively)
+                    .onScrollPhaseChange { _, phase in emojiInput.editor?.setEmojiPageScrolling(phase != .idle) }
                     .accessibilityIdentifier("compose.contentScroll")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -504,6 +508,9 @@ struct ComposeView: View {
                     if resume { sharedImportInterrupted = false }
                     startSharedImports(retry: resume)
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+                lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
             }
             .task(priority: .utility) {
                 await viewModel.loadInstanceLimits()
@@ -858,11 +865,19 @@ struct ComposeView: View {
             hasEmojiHost: accountHost != nil,
             isSceneActive: scenePhase == .active,
             playAnimations: settings.playAnimations,
+            playsInlineEmoji: settings.playAnimations && systemPlaysAnimatedImages && !reduceEmojiMotion
+                && !lowPowerMode && scenePhase == .active && destination == nil && !isPublishingOrClosing,
             theme: theme,
             textColor: UIColor(theme.colors.textPrimary),
             placeholder: placeholderText,
             placeholderColor: UIColor(theme.colors.textSecondary)
         )
+        .onGeometryChange(for: CGRect.self) { proxy in
+            let bounds = CGRect(origin: .zero, size: proxy.size)
+            return bounds.intersection(proxy.bounds(of: .scrollView) ?? bounds)
+        } action: { rect in
+            emojiInput.editor?.setEmojiViewport(rect)
+        }
     }
 
     private var inlineCharacterCounter: some View {
@@ -2225,6 +2240,7 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
     let hasEmojiHost: Bool
     let isSceneActive: Bool
     let playAnimations: Bool
+    let playsInlineEmoji: Bool
     let theme: MoroTheme
     let textColor: UIColor
     let placeholder: String
@@ -2251,6 +2267,7 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
         textView.selectedRange = clampedRange(selection, in: textView.textStorage.length)
         context.coordinator.updateHighlighting(textView)
         textView.delegate = context.coordinator
+        textView.setEmojiPlaybackEnabled(playsInlineEmoji)
         textView.updateFocusRequest(isFocused)
         return textView
     }
@@ -2292,6 +2309,7 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
         }
 
         context.coordinator.updateHighlighting(textView)
+        textView.setEmojiPlaybackEnabled(playsInlineEmoji)
         textView.updateInputMode(
             inputMode,
             emojiPickerHeight: emojiPickerHeight,
@@ -2457,6 +2475,10 @@ final class ComposeUIKitTextView: UITextView {
     private var placeholderMeasuredSize: CGSize = .zero
 
     let emojiLayout: ComposeEmojiLayoutManager
+    private var emojiPlayback: ComposeEmojiPlayback?
+    private var emojiPlaybackEnabled = false
+    private var emojiPageScrolling = false
+    private var emojiViewport: CGRect?
     // Remember only the separators inserted by the picker/completion, until the caret moves.
     private var recentEmojiInsertion: (range: NSRange, shortcodeRange: NSRange)?
 
@@ -2518,6 +2540,8 @@ final class ComposeUIKitTextView: UITextView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        if window == nil { stopEmojiPlayback() }
+        else if emojiPlaybackEnabled { setNeedsLayout() }
         // The initial focus request can arrive before UIKit attaches the editor.
         // Apply it here once attached; normal resigning still updates ComposeInputMode.
         if window != nil, requestsFocus, !isFirstResponder { becomeFirstResponder() }
@@ -2568,6 +2592,44 @@ final class ComposeUIKitTextView: UITextView {
             let caret = caretRect(for: selectedTextRange.end).insetBy(dx: 0, dy: -12)
             scrollRectToVisible(caret, animated: false)
         }
+        updateEmojiPlayback()
+    }
+
+    func setEmojiPlaybackEnabled(_ enabled: Bool) {
+        guard emojiPlaybackEnabled != enabled else { return }
+        emojiPlaybackEnabled = enabled
+        if enabled { setNeedsLayout() } else { stopEmojiPlayback() }
+    }
+
+    func setEmojiPageScrolling(_ scrolling: Bool) {
+        guard emojiPageScrolling != scrolling else { return }
+        emojiPageScrolling = scrolling
+        if scrolling { stopEmojiPlayback() } else if emojiPlaybackEnabled { setNeedsLayout() }
+    }
+
+    /// SwiftUI supplies the outer page clip. An expanded editor also scrolls its native content.
+    func setEmojiViewport(_ rect: CGRect) {
+        guard emojiViewport != rect else { return }
+        emojiViewport = rect
+        if emojiPlaybackEnabled && !emojiPageScrolling && emojiLayout.hasEmoji { setNeedsLayout() }
+    }
+
+    private func updateEmojiPlayback() {
+        guard emojiPlaybackEnabled, !emojiPageScrolling, emojiLayout.hasEmoji, let window else {
+            stopEmojiPlayback()
+            return
+        }
+        let clip = emojiViewport?.offsetBy(dx: bounds.minX, dy: bounds.minY) ?? bounds
+        let visible = bounds.intersection(clip).intersection(convert(window.bounds, from: window))
+        guard !visible.isEmpty else { stopEmojiPlayback(); return }
+        let playback = emojiPlayback ?? ComposeEmojiPlayback()
+        emojiPlayback = playback
+        playback.update(in: self, viewport: visible)
+    }
+
+    private func stopEmojiPlayback() {
+        emojiPlayback?.stop(in: self)
+        emojiPlayback = nil
     }
 
     override func scrollRectToVisible(_ rect: CGRect, animated: Bool) {

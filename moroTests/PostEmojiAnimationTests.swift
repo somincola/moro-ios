@@ -1,3 +1,4 @@
+import SDWebImage
 import Testing
 import UIKit
 @testable import moro
@@ -19,6 +20,17 @@ struct PostEmojiAnimationTests {
         let image = UIGraphicsImageRenderer(size: CGSize(width: 12, height: 12)).image { _ in }
         #expect(PostEmojiAnimation.decode(try #require(image.pngData()), pixelSize: 24) == nil)
         #expect(PostEmojiAnimation.decode(Data("invalid".utf8), pixelSize: 24) == nil)
+    }
+
+    @Test func pickerOriginalCanStartAnAnimationWithoutAnotherDownload() async throws {
+        let data = PostEmojiPlaybackFixture.originals[0].data
+        let image = try #require(SDAnimatedImage(data: data))
+        let url = URL(string: "https://picker.invalid/\(UUID()).gif")!
+        await SDImageCache.shared.store(image, imageData: data, forKey: url.absoluteString, toDisk: false)
+        let store = PostEmojiAnimationStore()
+        let animation = try #require(await store.animation(for: url, pixelSize: 48))
+        #expect(animation.frames.count == 2)
+        #expect(store.cachedAnimation(for: url, pixelSize: 48) === animation)
     }
 
     @Test func deltaAPNGKeepsItsCanvasAndPaintsOnlyTheChangedPixel() throws {

@@ -26,11 +26,15 @@ final class ComposeEmojiLayoutManager: NSLayoutManager, NSLayoutManagerDelegate 
     private struct EmojiRun: Equatable {
         let range: NSRange
         let url: URL
+        let marker: InlineEmojiMarker
         var image: UIImage?
     }
 
     private var runs: [EmojiRun] = []
-    private var side: CGFloat = 0
+    private(set) var side: CGFloat = 0
+    private(set) var runRevision = 0
+    var hasEmoji: Bool { !runs.isEmpty }
+    private var playing: Set<InlineEmojiMarker> = []
     private weak var catalog: CustomEmojiViewModel?
     private var requested = Set<URL>()
     private var failed = Set<URL>()
@@ -84,12 +88,16 @@ final class ComposeEmojiLayoutManager: NSLayoutManager, NSLayoutManagerDelegate 
         let matches = ComposeEmojiShortcodes.matches(in: text, using: catalog?.emojiDict)
         if !matches.isEmpty {
             let previous = Dictionary(runs.map { ($0.url, $0) }, uniquingKeysWith: { first, _ in first })
+            var occurrences: [URL: Int] = [:]
             for match in matches {
                 let url = match.emoji.staticURL
+                let original = match.emoji.url
+                let marker = InlineEmojiMarker(index: occurrences[original, default: 0], url: original)
+                occurrences[original, default: 0] += 1
                 if let marked {
                     guard NSIntersectionRange(marked, match.range).length == 0,
                           let existing = previous[url] else { continue }
-                    updated.append(EmojiRun(range: match.range, url: url, image: existing.image))
+                    updated.append(EmojiRun(range: match.range, url: url, marker: marker, image: existing.image))
                     continue
                 }
                 let interior = (match.range.location + 1)..<NSMaxRange(match.range)
@@ -105,11 +113,12 @@ final class ComposeEmojiLayoutManager: NSLayoutManager, NSLayoutManagerDelegate 
                     guard !failed.contains(url) else { continue }
                     load(url, for: view)
                 }
-                updated.append(EmojiRun(range: match.range, url: url, image: image))
+                updated.append(EmojiRun(range: match.range, url: url, marker: marker, image: image))
             }
         }
         guard runs != updated || (!updated.isEmpty && side != size) else { return }
         runs = updated
+        runRevision &+= 1
         side = size
         invalidateGlyphs(forCharacterRange: range, changeInLength: 0, actualCharacterRange: nil)
         invalidateLayout(forCharacterRange: range, actualCharacterRange: nil)
@@ -216,17 +225,45 @@ final class ComposeEmojiLayoutManager: NSLayoutManager, NSLayoutManagerDelegate 
         guard !runs.isEmpty, let container = textContainers.first, let length = textStorage?.length else { return }
         let visible = characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
         for run in runs where NSLocationInRange(run.range.location, visible) && NSMaxRange(run.range) <= length {
-            let glyph = glyphIndexForCharacter(at: run.range.location)
-            let cell = boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
-            let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
-            let baseline = origin.y + line.minY + location(forGlyphAt: glyph).y
-            let slot = CGRect(x: origin.x + cell.minX, y: baseline + InlineEmojiRendering.descent(for: side) - side,
-                              width: side, height: side)
+            guard !playing.contains(run.marker) else { continue }
+            let slot = frame(for: run, in: container, origin: origin)
             if let image = run.image {
                 InlineEmojiRendering.scaled(image, for: run.url, size: side).draw(in: slot)
             } else {
                 Self.loadingImage?.draw(in: slot)
             }
+        }
+    }
+
+    private func frame(for run: EmojiRun, in container: NSTextContainer, origin: CGPoint) -> CGRect {
+        let glyph = glyphIndexForCharacter(at: run.range.location)
+        let cell = boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+        let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let baseline = origin.y + line.minY + location(forGlyphAt: glyph).y
+        return CGRect(x: origin.x + cell.minX, y: baseline + InlineEmojiRendering.descent(for: side) - side,
+                      width: side, height: side)
+    }
+
+    func visibleSlots(in view: UITextView, viewport: CGRect) -> [InlineEmojiSlot] {
+        guard !runs.isEmpty, !viewport.isEmpty, let length = textStorage?.length else { return [] }
+        let origin = CGPoint(x: view.textContainerInset.left, y: view.textContainerInset.top)
+        let container = view.textContainer
+        let glyphs = glyphRange(forBoundingRect: viewport.offsetBy(dx: -origin.x, dy: -origin.y), in: container)
+        let visible = characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+        return runs.compactMap { run in
+            guard NSLocationInRange(run.range.location, visible), NSMaxRange(run.range) <= length else { return nil }
+            let rect = frame(for: run, in: container, origin: origin)
+            return rect.intersects(viewport) ? InlineEmojiSlot(marker: run.marker, frame: rect) : nil
+        }
+    }
+
+    func showAnimations(_ markers: Set<InlineEmojiMarker>) {
+        guard markers != playing else { return }
+        let changed = playing.symmetricDifference(markers)
+        playing = markers
+        let length = textStorage?.length ?? 0
+        for run in runs where changed.contains(run.marker) && NSMaxRange(run.range) <= length {
+            invalidateDisplay(forCharacterRange: run.range)
         }
     }
 }

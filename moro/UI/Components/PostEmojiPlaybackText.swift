@@ -5,22 +5,11 @@ extension EnvironmentValues {
     @Entry var postEmojiIsScrolling = false
 }
 
-/// An occurrence, including its position so repeated copies of one emoji wrap independently.
-nonisolated struct PostEmojiMarker: TextAttribute, Hashable {
-    let index: Int
-    let url: URL
-}
-
-private struct PostEmojiSlot {
-    let marker: PostEmojiMarker
-    let frame: CGRect
-}
-
 /// The native Text owns wrapping, links and accessibility. Only visible animated glyphs
 /// get a layer; Core Animation advances their frames without updating the text or row.
 struct PostEmojiPlaybackText: View {
     let emojiSize: CGFloat
-    let content: (Set<PostEmojiMarker>) -> Text
+    let content: (Set<InlineEmojiMarker>) -> Text
 
     @Environment(\.displayScale) private var displayScale
     @Environment(\.scenePhase) private var scenePhase
@@ -31,7 +20,7 @@ struct PostEmojiPlaybackText: View {
     @Environment(\.accessibilityPlayAnimatedImages) private var playAnimatedImages
     @State private var isVisible = false
     @State private var isLowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
-    @State private var playing: [PostEmojiMarker: PostEmojiAnimation] = [:]
+    @State private var playing: [InlineEmojiMarker: PostEmojiAnimation] = [:]
 
     private var canPlay: Bool {
         MediaPlaybackPolicy.canPlay(isVisible: isVisible, isActive: scope.isActive, isSceneActive: scenePhase == .active,
@@ -76,20 +65,20 @@ struct PostEmojiPlaybackText: View {
             }
     }
 
-    private func visibleSlots(_ layouts: [Text.LayoutKey.AnchoredLayout], in proxy: GeometryProxy) -> [PostEmojiSlot] {
+    private func visibleSlots(_ layouts: [Text.LayoutKey.AnchoredLayout], in proxy: GeometryProxy) -> [InlineEmojiSlot] {
         let viewport = proxy.bounds(of: .scrollView) ?? CGRect(origin: .zero, size: proxy.size)
-        var slots: [PostEmojiSlot] = []
-        var seen = Set<PostEmojiMarker>()
+        var slots: [InlineEmojiSlot] = []
+        var seen = Set<InlineEmojiMarker>()
         for entry in layouts {
             let origin = proxy[entry.origin]
             for line in entry.layout {
                 for run in line {
-                    guard let marker = run[PostEmojiMarker.self] else { continue }
+                    guard let marker = run[InlineEmojiMarker.self] else { continue }
                     let rect = run.typographicBounds.rect
                     let frame = CGRect(x: origin.x + rect.minX, y: origin.y + rect.minY,
                                        width: emojiSize, height: emojiSize)
                     if frame.intersects(viewport), seen.insert(marker).inserted {
-                        slots.append(PostEmojiSlot(marker: marker, frame: frame))
+                        slots.append(InlineEmojiSlot(marker: marker, frame: frame))
                     }
                 }
             }
@@ -98,7 +87,7 @@ struct PostEmojiPlaybackText: View {
     }
 
     private struct Request: Equatable {
-        let markers: [PostEmojiMarker]
+        let markers: [InlineEmojiMarker]
         let pixelSize: Int
     }
 
@@ -124,58 +113,20 @@ struct PostEmojiPlaybackText: View {
 
 /// One transparent host per playing paragraph, irrespective of its number of emoji.
 private struct PostEmojiLayers: UIViewRepresentable {
-    let slots: [PostEmojiSlot]
-    let playing: [PostEmojiMarker: PostEmojiAnimation]
+    let slots: [InlineEmojiSlot]
+    let playing: [InlineEmojiMarker: PostEmojiAnimation]
 
-    func makeUIView(context: Context) -> LayerHost {
-        let host = LayerHost()
+    func makeUIView(context: Context) -> InlineEmojiLayerHost {
+        let host = InlineEmojiLayerHost()
         host.isUserInteractionEnabled = false
         return host
     }
 
-    func updateUIView(_ view: LayerHost, context: Context) {
+    func updateUIView(_ view: InlineEmojiLayerHost, context: Context) {
         view.update(slots: slots, playing: playing)
     }
 
-    static func dismantleUIView(_ view: LayerHost, coordinator: ()) {
+    static func dismantleUIView(_ view: InlineEmojiLayerHost, coordinator: ()) {
         view.update(slots: [], playing: [:])
-    }
-
-    final class LayerHost: UIView {
-        private var glyphs: [PostEmojiMarker: (animation: PostEmojiAnimation, layer: CALayer)] = [:]
-
-        func update(slots: [PostEmojiSlot], playing: [PostEmojiMarker: PostEmojiAnimation]) {
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            defer { CATransaction.commit() }
-            var obsolete = Set(glyphs.keys)
-            for slot in slots {
-                guard let animation = playing[slot.marker] else { continue }
-                obsolete.remove(slot.marker)
-                if let glyph = glyphs[slot.marker], glyph.animation === animation {
-                    glyph.layer.frame = slot.frame
-                    continue
-                }
-                glyphs[slot.marker]?.layer.removeFromSuperlayer()
-                let imageLayer = CALayer()
-                imageLayer.contentsScale = traitCollection.displayScale
-                imageLayer.contentsGravity = .resizeAspect
-                imageLayer.frame = slot.frame
-                imageLayer.contents = animation.frames.last
-                layer.addSublayer(imageLayer)
-                let sequence = CAKeyframeAnimation(keyPath: "contents")
-                sequence.calculationMode = .discrete
-                sequence.values = animation.frames
-                // Discrete keyframes include one extra time marking the end of the last frame.
-                sequence.keyTimes = (animation.frameStarts + [1]).map(NSNumber.init(value:))
-                sequence.duration = animation.duration
-                sequence.repeatCount = animation.loops == 0 ? .infinity : Float(animation.loops)
-                imageLayer.add(sequence, forKey: "postEmoji")
-                glyphs[slot.marker] = (animation, imageLayer)
-            }
-            for marker in obsolete { glyphs.removeValue(forKey: marker)?.layer.removeFromSuperlayer() }
-        }
-
-        nonisolated deinit {}
     }
 }

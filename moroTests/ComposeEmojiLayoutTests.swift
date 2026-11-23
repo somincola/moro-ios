@@ -53,6 +53,82 @@ struct ComposeEmojiLayoutTests {
         #expect(view.emojiLayout.emojiEnding(at: NSMaxRange(range)) == range)
     }
 
+    @Test func aWarmAnimationFollowsTheSameGlyphThroughTypingAndCaretMoves() async throws {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let controller = UIViewController()
+        window.rootViewController = controller
+        let (editor, catalog) = makeEditor()
+        controller.view.addSubview(editor)
+        window.isHidden = false
+        defer { window.isHidden = true }
+        let source = try #require(PostEmojiPlaybackFixture.post.emojis?.first)
+        let emoji = CustomEmoji(shortcode: "moving", url: source.url, staticURL: source.staticURL,
+                                visibleInPicker: true, category: nil)
+        catalog.emojiDict = ["moving": [emoji]]
+        editor.text = ":moving: "
+        editor.emojiLayout.refresh(in: editor, catalog: catalog)
+        let size = Int(ceil(editor.emojiLayout.side * editor.traitCollection.displayScale))
+        _ = try #require(await PostEmojiAnimationStore.shared.animation(for: source.url, pixelSize: size))
+        editor.setEmojiPlaybackEnabled(true)
+        editor.layoutIfNeeded()
+        func layer() -> CALayer? {
+            editor.subviews.compactMap { $0 as? InlineEmojiLayerHost }.first?.layer.sublayers?.first
+        }
+        let first = try #require(layer())
+        #expect(first.animation(forKey: "postEmoji") != nil)
+        let originalY = first.frame.minY
+        editor.selectedRange = NSRange(location: 0, length: 0)
+        editor.insertText("hello\n")
+        editor.emojiLayout.refresh(in: editor, catalog: catalog)
+        editor.layoutIfNeeded()
+        #expect(layer() === first)
+        #expect(first.frame.minY > originalY)
+        editor.selectedRange = NSRange(location: editor.text.utf16.count, length: 0)
+        editor.setMarkedText("nihao", selectedRange: NSRange(location: 5, length: 0))
+        editor.emojiLayout.refresh(in: editor, catalog: catalog)
+        editor.layoutIfNeeded()
+        #expect(layer() === first && editor.markedTextRange != nil)
+        editor.insertText("你好")
+        editor.unmarkText()
+        editor.setEmojiViewport(.zero)
+        editor.layoutIfNeeded()
+        #expect(layer() == nil)
+        editor.setEmojiViewport(editor.bounds)
+        editor.layoutIfNeeded()
+        #expect(layer()?.animation(forKey: "postEmoji") != nil)
+        editor.setEmojiPlaybackEnabled(false)
+        #expect(layer() == nil)
+        #expect(editor.text == "hello\n:moving: 你好")
+    }
+
+    @Test func repeatedCopiesShareTheEditorsFrameBudgetAndScrollingFreesIt() async throws {
+        let (editor, catalog) = makeEditor()
+        let originals = try #require(PostEmojiPlaybackFixture.post.emojis)
+        for (name, source) in zip(["a", "b"], originals) {
+            catalog.emojiDict?[name] = [CustomEmoji(shortcode: name, url: source.url, staticURL: source.staticURL,
+                                                    visibleInPicker: true, category: nil)]
+        }
+        editor.text = ":a: :a:\n:b: "
+        editor.emojiLayout.refresh(in: editor, catalog: catalog)
+        editor.layoutIfNeeded()
+        let size = Int(ceil(editor.emojiLayout.side * editor.traitCollection.displayScale))
+        let a = try #require(await PostEmojiAnimationStore.shared.animation(for: originals[0].url, pixelSize: size))
+        let b = try #require(await PostEmojiAnimationStore.shared.animation(for: originals[1].url, pixelSize: size))
+        let playback = ComposeEmojiPlayback(byteBudget: max(a.byteCount, b.byteCount))
+        playback.update(in: editor, viewport: editor.bounds)
+        func layers() -> [CALayer] {
+            editor.subviews.compactMap { $0 as? InlineEmojiLayerHost }.first?.layer.sublayers ?? []
+        }
+        #expect(layers().count == 2)
+        let bottom = try #require(editor.emojiLayout.visibleSlots(in: editor, viewport: editor.bounds).last)
+        playback.update(in: editor, viewport: bottom.frame)
+        #expect(layers().count == 1)
+        #expect(layers().first?.frame == bottom.frame)
+        playback.stop(in: editor)
+        #expect(layers().isEmpty)
+    }
+
     @Test func pickerThumbnailPaintsImmediatelyAtTheReadingBaseline() async throws {
         let (view, catalog) = makeEditor()
         let font = MoroTheme(postFontSize: .small).postUIFont()

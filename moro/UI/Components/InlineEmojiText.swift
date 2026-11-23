@@ -132,13 +132,13 @@ struct InlineEmojiText: View {
         .task(id: InlineTextRunBuilder.emojiURLs(in: runs)) { await loadMissingEmoji() }
     }
 
-    private func inlineText(markForPlayback: Bool, playing: Set<PostEmojiMarker>) -> Text {
+    private func inlineText(markForPlayback: Bool, playing: Set<InlineEmojiMarker>) -> Text {
         var pieces = runs.enumerated().map { index, run -> Text in
             switch run {
             case .text(let text):
                 return Text(text)
             case .emoji(let shortcode, let original, let poster):
-                let marker = PostEmojiMarker(index: index, url: original)
+                let marker = InlineEmojiMarker(index: index, url: original)
                 let piece: Text
                 if playing.contains(marker) {
                     piece = emojiText(InlineEmojiRendering.placeholder(size: emojiSize), shortcode: shortcode)

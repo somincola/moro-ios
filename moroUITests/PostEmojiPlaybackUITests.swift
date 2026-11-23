@@ -3,6 +3,92 @@ import UIKit
 
 @MainActor
 final class PostEmojiPlaybackUITests: XCTestCase {
+    func testComposerPlaysTheInsertedGlyphWithEitherKeyboardAndKeepsTheShortcode() throws {
+        for mode in ["new", "mentions"] {
+            let app = openComposer(mode: mode, playback: true)
+            defer { app.terminate() }
+            let editor = app.textViews["compose.textInput"]
+            if mode == "new" {
+                editor.typeText(":ani")
+                let suggestion = app.buttons["compose.suggestion.emoji.animated"]
+                XCTAssertTrue(suggestion.waitForExistence(timeout: 5))
+                suggestion.tap()
+            } else {
+                app.buttons["compose.emojiToggle"].tap()
+                let gif = app.buttons[":gif:"]
+                XCTAssertTrue(gif.waitForExistence(timeout: 5))
+                gif.tap()
+            }
+            try verifyAnimation(in: editor, app: app)
+            if mode == "mentions" {
+                app.buttons["compose.emojiToggle"].tap()
+                try verifyAnimation(in: editor, app: app)
+            }
+            let before = try XCTUnwrap(editor.value as? String)
+            XCTAssertTrue(before.contains(mode == "new" ? ":animated:" : ":gif:"))
+            editor.typeText("a")
+            XCTAssertEqual(editor.value as? String, before + "a")
+            editor.typeText(XCUIKeyboardKey.delete.rawValue)
+            XCTAssertEqual(editor.value as? String, before)
+            editor.typeText("\n:webp:")
+            try verifyAnimation(in: editor, app: app, count: 2)
+            editor.typeText(XCUIKeyboardKey.delete.rawValue)
+            XCTAssertEqual(editor.value as? String, before + "\n")
+        }
+    }
+
+    func testComposerKeepsThePosterWhenEmojiPlaybackIsOff() throws {
+        let app = openComposer(mode: "new", playback: false)
+        defer { app.terminate() }
+        let editor = app.textViews["compose.textInput"]
+        editor.typeText(":gif: ")
+        let end = Date().addingTimeInterval(1.6)
+        var colors: Set<PixelColor> = []
+        repeat {
+            let pixels = try Pixels(app)
+            for slot in pixels.glyphs(in: editor.frame) { colors.insert(pixels.color(in: slot)) }
+        } while Date() < end
+        XCTAssertEqual(colors, [.green])
+        XCTAssertEqual(editor.value as? String, ":gif: ")
+    }
+
+    private func openComposer(mode: String, playback: Bool) -> XCUIApplication {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_COMPOSE_REPLY"]
+        app.launchEnvironment = ["UITEST_USE_FULL_APP": "1", "UITEST_REPLY_MODE": mode,
+                                 "UITEST_COMPOSE_EMOJI_PLAYBACK": playback ? "1" : "0"]
+        app.launch(isolatedFor: self)
+        let open = app.buttons["replyHarness.open"]
+        XCTAssertTrue(open.waitForExistence(timeout: 8))
+        open.tap()
+        XCTAssertTrue(app.textViews["compose.textInput"].waitForExistence(timeout: 8))
+        return app
+    }
+
+    private func verifyAnimation(in editor: XCUIElement, app: XCUIApplication, count: Int = 1) throws {
+        let frame = editor.frame
+        let screenSize = app.frame.size
+        let deadline = Date().addingTimeInterval(10)
+        var seen = Array(repeating: Set<PixelColor>(), count: count)
+        // On a tethered phone a screenshot can take nearly a full fixture loop.
+        // Vary the sampling interval so two out-of-phase glyphs both show every color.
+        let intervals = [0.04, 0.19, 0.32]
+        var sample = 0
+        repeat {
+            let pixels = try Pixels(app, size: screenSize)
+            let slots = pixels.glyphs(in: frame)
+            if slots.count == count {
+                for (index, slot) in slots.enumerated() { seen[index].insert(pixels.color(in: slot)) }
+            }
+            if seen.allSatisfy({ $0.contains(.red) && $0.contains(.blue) }) { return }
+            RunLoop.current.run(until: Date().addingTimeInterval(intervals[sample % intervals.count]))
+            sample += 1
+        } while Date() < deadline
+        add(XCTAttachment(screenshot: app.screenshot()))
+        XCTFail("Expected red and blue frames inside the editor, observed \(seen)")
+    }
+
     func testGIFAPNGAndWebPAnimateInPlaceInTimelineAndDetail() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_TIMELINE_MEDIA", "UITEST_POST_EMOJI"]
@@ -75,11 +161,12 @@ final class PostEmojiPlaybackUITests: XCTestCase {
         let height: Int
         let rgba: [UInt8]
 
-        @MainActor init(_ app: XCUIApplication) throws {
+        @MainActor init(_ app: XCUIApplication, size: CGSize? = nil) throws {
             let image = app.screenshot().image
             let screenshot = try XCTUnwrap(image.cgImage)
-            width = Int(app.frame.width)
-            height = Int(app.frame.height)
+            let size = size ?? app.frame.size
+            width = Int(size.width)
+            height = Int(size.height)
             let (w, h) = (width, height)
             var bytes = [UInt8](repeating: 0, count: w * h * 4)
             try bytes.withUnsafeMutableBytes { buffer in
@@ -106,17 +193,24 @@ final class PostEmojiPlaybackUITests: XCTestCase {
         }
 
         func glyphs(below top: Int) -> [CGRect] {
+            glyphs(in: CGRect(x: 0, y: top, width: width, height: max(0, height - top)))
+        }
+
+        func glyphs(in region: CGRect) -> [CGRect] {
             var slots: [CGRect] = []
             // Every poster has a solid left edge. Merge horizontal bands across
             // consecutive scan lines, including the APNG's transparent corner.
-            for y in max(0, top)..<height {
-                var x = 0
-                while x < width {
+            let clip = region.intersection(CGRect(x: 0, y: 0, width: width, height: height))
+            guard !clip.isEmpty else { return [] }
+            let right = Int(clip.maxX)
+            for y in Int(clip.minY)..<Int(clip.maxY) {
+                var x = Int(clip.minX)
+                while x < right {
                     let color = at(x: x, y: y)
                     let start = x
                     x += 1
                     guard color != .other else { continue }
-                    while x < width && at(x: x, y: y) == color { x += 1 }
+                    while x < right && at(x: x, y: y) == color { x += 1 }
                     guard (8...34).contains(x - start) else { continue }
                     let band = CGRect(x: start, y: y, width: x - start, height: 1)
                     if let i = slots.lastIndex(where: { abs($0.minX - band.minX) <= 1 && $0.maxY == band.minY }) {

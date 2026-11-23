@@ -1,5 +1,6 @@
 import Foundation
 import ImageIO
+import SDWebImage
 
 /// Composited thumbnail frames shared by every visible occurrence of an original.
 nonisolated final class PostEmojiAnimation: Sendable {
@@ -63,23 +64,36 @@ nonisolated final class PostEmojiAnimation: Sendable {
 
 actor PostEmojiAnimationStore {
     static let shared = PostEmojiAnimationStore()
-    private let animations = NSCache<NSString, PostEmojiAnimation>()
+    nonisolated static let decodedByteBudget = 12 * 1024 * 1024
+    // NSCache permits concurrent reads. The editor can attach a warm animation in its layout pass.
+    private nonisolated(unsafe) let animations = NSCache<NSString, PostEmojiAnimation>()
     private let stills = NSCache<NSURL, NSNumber>()
 
     init() {
-        animations.totalCostLimit = 12 * 1024 * 1024
+        animations.totalCostLimit = Self.decodedByteBudget
         stills.countLimit = 1200
     }
 
+    nonisolated func cachedAnimation(for url: URL, pixelSize: Int) -> PostEmojiAnimation? {
+        animations.object(forKey: "\(pixelSize)|\(url.absoluteString)" as NSString)
+    }
+
     func animation(for url: URL, pixelSize: Int) async -> PostEmojiAnimation? {
-        let key = "\(pixelSize)|\(url.absoluteString)" as NSString
-        if let cached = animations.object(forKey: key) { return cached }
-        guard stills.object(forKey: url as NSURL) == nil,
-              let data = try? await AvatarAnimationDataStore.shared.data(for: url), !Task.isCancelled else { return nil }
+        if let cached = cachedAnimation(for: url, pixelSize: pixelSize) { return cached }
+        guard stills.object(forKey: url as NSURL) == nil, !Task.isCancelled else { return nil }
+        let data: Data
+        if let preview = SDImageCache.shared.imageFromMemoryCache(forKey: url.absoluteString) as? SDAnimatedImage,
+           let original = preview.animatedImageData, original.count <= AvatarAnimationLimits.maximumFileBytes {
+            data = original
+        } else {
+            guard let original = try? await AvatarAnimationDataStore.shared.data(for: url), !Task.isCancelled else { return nil }
+            data = original
+        }
         // Other occurrences can finish decoding while this caller waits for shared bytes.
-        if let cached = animations.object(forKey: key) { return cached }
+        if let cached = cachedAnimation(for: url, pixelSize: pixelSize) { return cached }
         guard stills.object(forKey: url as NSURL) == nil else { return nil }
         if let animation = PostEmojiAnimation.decode(data, pixelSize: pixelSize) {
+            let key = "\(pixelSize)|\(url.absoluteString)" as NSString
             animations.setObject(animation, forKey: key, cost: animation.byteCount)
             return animation
         }
