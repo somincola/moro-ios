@@ -111,6 +111,7 @@ struct PostContent: View {
                     onHashtagTap: onHashtagTap,
                     onLinkTap: onLinkTap
                 )
+                .environment(\.animatesPostEmoji, true)
                 .fixedSize(horizontal: false, vertical: true)
 
                 PostTranslationSection(

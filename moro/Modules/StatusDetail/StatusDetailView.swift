@@ -17,6 +17,7 @@ struct StatusDetailView: View {
     @StateObject private var actionSurface = PostActionSurfaceCenter()
     @State private var showingEditHistorySheet = false
     @State private var visibleStatusID: String?
+    @State private var isScrolling = false
     @State private var readingState = ThreadReadingState()
     @State private var highlightedStatusID: String?
     /// iPhone Duo Home: the panel's actions go in the system side bar, not the title row.
@@ -361,6 +362,8 @@ struct StatusDetailView: View {
             .moroReadableColumn()
         }
         .scrollPosition(id: $visibleStatusID, anchor: .top)
+        .environment(\.postEmojiIsScrolling, isScrolling)
+        .onScrollPhaseChange { _, phase in isScrolling = phase != .idle }
         // Pull for new replies. The loaded thread stays on screen while it reloads, so a
         // failure keeps it and says so instead of falling back to the inline retry row.
         .refreshable {

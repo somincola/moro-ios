@@ -274,7 +274,11 @@ struct MoroApp: App {
 
     @ViewBuilder private var timelineMediaHarness: some View {
         #if DEBUG
-        TimelineMediaHarnessView()
+        if launchArguments.contains("UITEST_POST_EMOJI") {
+            PostEmojiPlaybackHarness()
+        } else {
+            TimelineMediaHarnessView()
+        }
         #endif
     }
 

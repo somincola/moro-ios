@@ -36,6 +36,7 @@ enum SensitiveMediaDisplay: String, CaseIterable {
 }
 
 struct MoroMediaPreferences: Equatable {
+    var playAnimations: Bool = true
     var autoplayGIFs: Bool = true
     var videoAutoplayMode: AppSettings.VideoAutoplayMode = .wifi
     var sensitiveMediaDisplay: SensitiveMediaDisplay = .default
@@ -59,6 +60,7 @@ struct MoroMediaPreferences: Equatable {
 
     @MainActor
     init(settings: AppSettings) {
+        playAnimations = settings.playAnimations
         autoplayGIFs = settings.autoplayGIFs
         videoAutoplayMode = settings.videoAutoplayMode
         sensitiveMediaDisplay = settings.sensitiveMediaDisplay
@@ -66,11 +68,13 @@ struct MoroMediaPreferences: Equatable {
     }
 
     init(
+        playAnimations: Bool = true,
         autoplayGIFs: Bool = true,
         videoAutoplayMode: AppSettings.VideoAutoplayMode = .wifi,
         sensitiveMediaDisplay: SensitiveMediaDisplay = .default,
         expandContentWarnings: Bool = false
     ) {
+        self.playAnimations = playAnimations
         self.autoplayGIFs = autoplayGIFs
         self.videoAutoplayMode = videoAutoplayMode
         self.sensitiveMediaDisplay = sensitiveMediaDisplay

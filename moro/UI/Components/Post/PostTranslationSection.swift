@@ -301,6 +301,7 @@ struct PostTranslationSection: View {
                         onHashtagTap: onHashtagTap,
                         onLinkTap: onLinkTap
                     )
+                    .environment(\.animatesPostEmoji, true)
                     .font(theme.typography.body)
                     .foregroundStyle(theme.colors.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
