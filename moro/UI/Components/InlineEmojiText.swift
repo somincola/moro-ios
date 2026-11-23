@@ -254,6 +254,7 @@ enum InlineEmojiRendering {
     nonisolated(unsafe) private static let imageCache: NSCache<NSURL, UIImage> = {
         let cache = NSCache<NSURL, UIImage>()
         cache.countLimit = 240
+        cache.totalCostLimit = 8 * 1024 * 1024
         return cache
     }()
     private static var placeholders: [CGFloat: UIImage] = [:]
@@ -266,7 +267,7 @@ enum InlineEmojiRendering {
 
     // The picker, suggestions and text use one SDWebImage thumbnail key. A static
     // preview that is already visible can be painted synchronously in either renderer.
-    private nonisolated static let thumbnailPixels: CGFloat = 128
+    nonisolated static let thumbnailPixels: CGFloat = 128
 
     nonisolated static func cachedImage(for url: URL) -> UIImage? {
         imageCache.object(forKey: url as NSURL)
@@ -275,12 +276,20 @@ enum InlineEmojiRendering {
     }
 
     static func loadThumbnail(for url: URL) async -> UIImage? {
-        if let image = cachedImage(for: url) { return image }
-        return await ImageCache.shared.loadThumbnail(from: url, maxPixelSize: thumbnailPixels)
+        let image: UIImage?
+        if let cached = cachedImage(for: url) {
+            image = cached
+        } else {
+            image = await ImageCache.shared.loadThumbnail(from: url, maxPixelSize: thumbnailPixels)
+        }
+        // TextKit can immediately reuse the picker's decoded image if SDWebImage evicts it.
+        if let image { store(image, for: url) }
+        return image
     }
 
     nonisolated static func store(_ image: UIImage, for url: URL) {
-        imageCache.setObject(image, forKey: url as NSURL)
+        let bytes = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+        imageCache.setObject(image, forKey: url as NSURL, cost: bytes)
     }
 
     /// Downloads a static emoji image once, however many views ask for it at the same time.

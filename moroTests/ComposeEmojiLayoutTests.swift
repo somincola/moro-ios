@@ -147,6 +147,12 @@ struct ComposeEmojiLayoutTests {
         catalog.emojiDict = ["wide": [emoji]]
         // Load through the same path the visible suggestion and picker use.
         _ = try #require(await InlineEmojiRendering.loadThumbnail(for: url))
+        // Evict just this fixture from SDWebImage while the picker still displays it.
+        let pixelsPerSide = InlineEmojiRendering.thumbnailPixels
+        let thumbnailKey = try #require(SDWebImageManager.shared.cacheKey(for: url, context: [
+            .imageThumbnailPixelSize: NSValue(cgSize: CGSize(width: pixelsPerSide, height: pixelsPerSide))
+        ]))
+        SDImageCache.shared.removeImageFromMemory(forKey: thumbnailKey)
         #expect(ImageCache.shared.image(for: url) == nil)
         #expect(InlineEmojiRendering.cachedImage(for: url) != nil)
         view.insertEmoji("wide")
