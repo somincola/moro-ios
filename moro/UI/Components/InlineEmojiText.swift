@@ -114,14 +114,26 @@ struct InlineEmojiText: View {
 
     @Environment(\.animatesPostEmoji) private var animatesPostEmoji
     @Environment(\.moroMediaPrefs) private var mediaPrefs
-    @State private var failedURLs: Set<URL> = []
-    /// Bumped when downloads finish so the view picks the images up from the cache.
-    @State private var loadGeneration = 0
+    @Environment(\.scenePhase) private var scenePhase
+    private struct PosterRequest: Equatable {
+        let urls: [URL]
+        let size: CGFloat
+        let isActive: Bool
+    }
+    private struct Posters: Equatable {
+        var size: CGFloat = 0
+        var images: [URL: UIImage] = [:]
+        var failed: Set<URL> = []
+    }
+    // The paragraph keeps its display-sized posters while mounted. Memory-cache
+    // eviction in the background must not erase the still or the playback fallback.
+    @State private var posters = Posters()
 
     var body: some View {
-        let _ = loadGeneration
-        Group {
-            if animatesPostEmoji && mediaPrefs.playAnimations {
+        let request = PosterRequest(urls: InlineTextRunBuilder.emojiURLs(in: runs), size: emojiSize,
+                                    isActive: !animatesPostEmoji || scenePhase == .active)
+        return Group {
+            if animatesPostEmoji && mediaPrefs.playAnimations && request.isActive {
                 PostEmojiPlaybackText(emojiSize: emojiSize) { playing in
                     inlineText(markForPlayback: true, playing: playing)
                 }
@@ -129,7 +141,7 @@ struct InlineEmojiText: View {
                 inlineText(markForPlayback: false, playing: [])
             }
         }
-        .task(id: InlineTextRunBuilder.emojiURLs(in: runs)) { await loadMissingEmoji() }
+        .task(id: request) { if request.isActive { await loadPosters(request) } }
     }
 
     private func inlineText(markForPlayback: Bool, playing: Set<InlineEmojiMarker>) -> Text {
@@ -142,9 +154,11 @@ struct InlineEmojiText: View {
                 let piece: Text
                 if playing.contains(marker) {
                     piece = emojiText(InlineEmojiRendering.placeholder(size: emojiSize), shortcode: shortcode)
+                } else if posters.size == emojiSize, let image = posters.images[poster] {
+                    piece = emojiText(image, shortcode: shortcode)
                 } else if let image = InlineEmojiRendering.cachedImage(for: poster) {
                     piece = emojiText(InlineEmojiRendering.scaled(image, for: poster, size: emojiSize), shortcode: shortcode)
-                } else if failedURLs.contains(poster) {
+                } else if posters.failed.contains(poster) {
                     piece = Text(verbatim: ":\(shortcode):")
                 } else {
                     piece = emojiText(InlineEmojiRendering.placeholder(size: emojiSize), shortcode: shortcode)
@@ -185,10 +199,22 @@ struct InlineEmojiText: View {
         }
     }
 
-    private func loadMissingEmoji() async {
-        let missing = InlineTextRunBuilder.emojiURLs(in: runs).filter {
-            InlineEmojiRendering.cachedImage(for: $0) == nil && !failedURLs.contains($0)
+    private func loadPosters(_ request: PosterRequest) async {
+        guard !Task.isCancelled else { return }
+        let urls = Set(request.urls)
+        var next = Posters(size: request.size)
+        if posters.size == request.size { next.images = posters.images.filter { urls.contains($0.key) } }
+        next.failed = posters.failed.intersection(urls)
+        var missing: [URL] = []
+        for url in request.urls where next.images[url] == nil {
+            if let image = InlineEmojiRendering.cachedImage(for: url) {
+                next.images[url] = InlineEmojiRendering.scaled(image, for: url, size: request.size)
+                next.failed.remove(url)
+            } else {
+                missing.append(url)
+            }
         }
+        if posters != next { posters = next }
         guard !missing.isEmpty else { return }
 
         let sharedOriginals = Set(runs.compactMap { run -> URL? in
@@ -196,23 +222,23 @@ struct InlineEmojiText: View {
                   case .emoji(_, let original, let poster) = run, original == poster else { return nil }
             return original
         })
-        var failures: Set<URL> = []
-        await withTaskGroup(of: (URL, Bool).self) { group in
+        await withTaskGroup(of: (URL, UIImage?).self) { group in
             for url in missing {
                 group.addTask {
                     let image = await InlineEmojiRendering.loadImage(for: url, sharesOriginal: sharedOriginals.contains(url))
-                    return (url, image != nil)
+                    return (url, image)
                 }
             }
-            for await (url, loaded) in group where !loaded {
-                failures.insert(url)
+            for await (url, image) in group {
+                guard !Task.isCancelled else { return }
+                if let image {
+                    posters.images[url] = InlineEmojiRendering.scaled(image, for: url, size: request.size)
+                    posters.failed.remove(url)
+                } else {
+                    posters.failed.insert(url)
+                }
             }
         }
-        guard !Task.isCancelled else { return }
-        if !failures.isEmpty {
-            failedURLs.formUnion(failures)
-        }
-        loadGeneration &+= 1
     }
 }
 
@@ -263,33 +289,15 @@ enum InlineEmojiRendering {
         if let running = inFlight[url] { return await running.value }
         let task = Task<UIImage?, Never> {
             defer { inFlight[url] = nil }
-            let data: Data?
-            if sharesOriginal, let original = try? await AvatarAnimationDataStore.shared.data(for: url) {
-                data = original
-            } else {
-                data = await fetchData(from: url)
+            if sharesOriginal, let original = try? await AvatarAnimationDataStore.shared.data(for: url),
+               let image = UIImage(data: original) {
+                store(image, for: url)
+                return image
             }
-            guard let data, let image = UIImage(data: data) else { return nil }
-            store(image, for: url)
-            return image
+            return await loadThumbnail(for: url)
         }
         inFlight[url] = task
         return await task.value
-    }
-
-    nonisolated static func fetchData(from url: URL) async -> Data? {
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 15
-        request.cachePolicy = .returnCacheDataElseLoad
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                return nil
-            }
-            return data
-        } catch {
-            return nil
-        }
     }
 
     /// A transparent image the size of the final emoji. While an emoji is still loading it

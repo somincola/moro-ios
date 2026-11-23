@@ -5,6 +5,8 @@ import UIKit
 
 @MainActor
 struct PostEmojiAnimationTests {
+    // The second frame changes just one pixel; this APNG is authored for three loops.
+    private let finiteAPNG = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAYAAAB/qH1jAAAACGFjVEwAAAACAAAAA2qEwsoAAAAaZmNUTAAAAAAAAAAEAAAAAgAAAAAAAAAAAAEABQAAftSQLgAAABJJREFUeJxj+M/A8B8ZM6ALAAAPIQ/xBDfGnwAAABpmY1RMAAAAAQAAAAEAAAABAAAAAwAAAAEAAQAFAAD1xfCMAAAAEWZkQVQAAAACeJxjYGD4/x8AAwIB//V7pdcAAAAASUVORK5CYII=")!
     @Test func recognizesAnimationBytesAndPreservesFrameTimingAcrossFormats() throws {
         for (name, data) in PostEmojiPlaybackFixture.originals {
             let animation = try #require(PostEmojiAnimation.decode(data, pixelSize: 16), "Missing animation for \(name)")
@@ -35,8 +37,7 @@ struct PostEmojiAnimationTests {
 
     @Test func deltaAPNGKeepsItsCanvasAndPaintsOnlyTheChangedPixel() throws {
         // The second encoded frame contains just one blue pixel at (3, 1) on a 4×2 red canvas.
-        let data = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAYAAAB/qH1jAAAACGFjVEwAAAACAAAAA2qEwsoAAAAaZmNUTAAAAAAAAAAEAAAAAgAAAAAAAAAAAAEABQAAftSQLgAAABJJREFUeJxj+M/A8B8ZM6ALAAAPIQ/xBDfGnwAAABpmY1RMAAAAAQAAAAEAAAABAAAAAwAAAAEAAQAFAAD1xfCMAAAAEWZkQVQAAAACeJxjYGD4/x8AAwIB//V7pdcAAAAASUVORK5CYII=")!
-        let animation = try #require(PostEmojiAnimation.decode(data, pixelSize: 4))
+        let animation = try #require(PostEmojiAnimation.decode(finiteAPNG, pixelSize: 4))
         #expect(animation.loops == 3)
         let frame = animation.frames[1]
         #expect(frame.width == 4 && frame.height == 2)
@@ -60,5 +61,46 @@ struct PostEmojiAnimationTests {
         async let second = store.animation(for: url, pixelSize: 32)
         let (a, b) = await (first, second)
         #expect(a != nil && a === b)
+    }
+
+    @Test func aRetainedLayerRestoresItsLoopWhenItsSceneBecomesActive() throws {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let host = InlineEmojiLayerHost(frame: CGRect(x: 0, y: 0, width: 80, height: 24))
+        window.addSubview(host)
+        let source = try #require(PostEmojiPlaybackFixture.post.emojis?.first)
+        let marker = InlineEmojiMarker(index: 0, url: source.url)
+        let slot = InlineEmojiSlot(marker: marker, frame: host.bounds)
+        let animation = try #require(PostEmojiAnimation.decode(PostEmojiPlaybackFixture.originals[0].data, pixelSize: 24))
+        host.update(slots: [slot], playing: [marker: animation])
+        let layer = try #require(host.layer.sublayers?.first)
+        let initial = try #require(layer.animation(forKey: "postEmoji"))
+        layer.removeAllAnimations()
+        layer.contents = nil
+        layer.removeFromSuperlayer()
+        NotificationCenter.default.post(name: UIScene.didActivateNotification, object: scene)
+        #expect(layer.superlayer === host.layer)
+        #expect(layer.contents as AnyObject? === animation.frames.last)
+        let resumed = try #require(layer.animation(forKey: "postEmoji"))
+        #expect(resumed.beginTime == initial.beginTime && resumed.repeatCount == .infinity)
+        host.update(slots: [], playing: [:])
+        NotificationCenter.default.post(name: UIScene.didActivateNotification, object: scene)
+        #expect(host.layer.sublayers?.isEmpty != false)
+    }
+
+    @Test func refreshingAnEndedFiniteEmojiKeepsItsFinalFrame() throws {
+        let animation = try #require(PostEmojiAnimation.decode(finiteAPNG, pixelSize: 4))
+        let host = InlineEmojiLayerHost()
+        let marker = InlineEmojiMarker(index: 0, url: URL(fileURLWithPath: "/finite.png"))
+        let slot = InlineEmojiSlot(marker: marker, frame: CGRect(x: 0, y: 0, width: 4, height: 4))
+        host.update(slots: [slot], playing: [marker: animation])
+        let layer = try #require(host.layer.sublayers?.first)
+        let start = try #require(layer.animation(forKey: "postEmoji")).beginTime
+        layer.speed = 0
+        layer.timeOffset = start + animation.duration * Double(animation.loops) + 1
+        layer.removeAllAnimations()
+        host.update(slots: [slot], playing: [marker: animation])
+        #expect(layer.animation(forKey: "postEmoji") == nil)
+        #expect(layer.contents as AnyObject? === animation.frames.last)
     }
 }

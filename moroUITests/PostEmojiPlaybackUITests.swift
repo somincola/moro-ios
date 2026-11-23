@@ -96,26 +96,21 @@ final class PostEmojiPlaybackUITests: XCTestCase {
         defer { app.terminate() }
         let toggle = app.switches["emoji.playback"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 10))
+        let screenSize = app.frame.size
         for surface in ["Timeline", "Detail"] {
             if surface == "Detail" { app.buttons["emoji.detail"].tap() }
-            let staticScreen = try baseline(in: app, below: toggle.frame.maxY)
+            let staticScreen = try postGlyphs(in: app, below: toggle.frame.maxY)
             let slots = staticScreen.1
             let originals = slots.map { staticScreen.0.color(in: $0) }
             XCTAssertEqual(originals, [.green, .red, .green, .green, .green], surface)
             toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
 
-            var colors = Array(repeating: Set<PixelColor>(), count: slots.count)
-            let deadline = Date().addingTimeInterval(12)
-            repeat {
-                let pixels = try Pixels(app)
-                for (index, slot) in slots.enumerated() { colors[index].insert(pixels.color(in: slot)) }
-                if colors.dropLast().allSatisfy({ $0.contains(.red) && $0.contains(.blue) }) { break }
-                RunLoop.current.run(until: Date().addingTimeInterval(0.09))
-            } while Date() < deadline
-            for seen in colors.dropLast() {
-                XCTAssertTrue(seen.contains(.red) && seen.contains(.blue), "\(surface): \(colors), \(slots)")
-            }
-            XCTAssertEqual(colors.last, [.green], surface)
+            try verifyPostFrames(in: app, size: screenSize, slots: slots, surface: surface)
+            XCUIDevice.shared.press(.home)
+            XCTAssertTrue(app.wait(for: .runningBackground, timeout: 6) || app.state == .runningBackgroundSuspended)
+            app.activate()
+            try verifyPostFrames(in: app, size: screenSize, slots: slots, surface: "\(surface) after foreground",
+                                 returningToApp: true)
             // The GIF's upper right corner is transparent. The green server poster must disappear.
             let first = slots[0]
             let running = try Pixels(app)
@@ -131,25 +126,112 @@ final class PostEmojiPlaybackUITests: XCTestCase {
             XCTAssertEqual(running.at(x: Int(first.maxX) - 3, y: Int(first.minY) + 2), .other, surface)
 
             toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
-            let restored = try baseline(in: app, below: toggle.frame.maxY)
+            let restored = try postGlyphs(in: app, below: toggle.frame.maxY)
             XCTAssertEqual(restored.1, slots, "\(surface) moved the text when playback changed")
             XCTAssertEqual(slots.map { restored.0.color(in: $0) }, originals)
         }
     }
 
-    private func baseline(in app: XCUIApplication, below top: CGFloat) throws -> (Pixels, [CGRect]) {
+    private func verifyPostFrames(in app: XCUIApplication, size: CGSize, slots: [CGRect], surface: String,
+                                  returningToApp: Bool = false) throws {
+        let deadline = Date().addingTimeInterval(12)
+        let region = slots.reduce(CGRect.null) { $0.union($1) }.insetBy(dx: -2, dy: -2)
+        var waitingForLayout = returningToApp
+        var seen = Array(repeating: Set<PixelColor>(), count: slots.count)
+        repeat {
+            let pixels = try Pixels(app, size: size)
+            // activate() returns during SpringBoard's zoom. Require every original slot
+            // back at its resting location, then check that it remains visible and plays.
+            if waitingForLayout {
+                let restored = pixels.glyphs(in: region)
+                waitingForLayout = restored.count != slots.count || !zip(restored, slots).allSatisfy {
+                    abs($0.midX - $1.midX) <= 1 && abs($0.midY - $1.midY) <= 1
+                }
+            }
+            if !waitingForLayout {
+                for (index, slot) in slots.enumerated() { seen[index].insert(pixels.color(in: slot)) }
+            }
+            if seen.dropLast().allSatisfy({ $0.contains(.red) && $0.contains(.blue) }) { break }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.13))
+        } while Date() < deadline
+        if waitingForLayout { add(XCTAttachment(screenshot: app.screenshot())) }
+        XCTAssertFalse(waitingForLayout, "\(surface) did not restore all \(slots.count) glyphs")
+        for colors in seen.dropLast() {
+            XCTAssertTrue(colors.contains(.red) && colors.contains(.blue), "\(surface): \(seen)")
+        }
+        XCTAssertEqual(seen.last, [.green], surface)
+    }
+
+    func testRetainedHomeTimelinePageResumesVisibleEmojiWithoutScrolling() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_TIMELINE_LIVE", "UITEST_POST_EMOJI"]
+        app.launchEnvironment = ["UITEST_USE_FULL_APP": "1"]
+        app.launch(isolatedFor: self)
+        defer { app.terminate() }
+        XCTAssertTrue(app.staticTexts["timeline.fixture.count"].waitForExistence(timeout: 10))
+        let size = app.frame.size
+        let (_, slots) = try postGlyphs(in: app, below: size.height * 0.08, postersOnly: false)
+        try verifyPostFrames(in: app, size: size, slots: slots, surface: "Home pager")
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 6) || app.state == .runningBackgroundSuspended)
+        app.activate()
+        try verifyPostFrames(in: app, size: size, slots: slots, surface: "Home pager after foreground",
+                             returningToApp: true)
+    }
+
+    func testProfileEmojiResumeAfterDraggingAndReturningFromHome() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_PROFILE_EXPERIENCE", "UITEST_POST_EMOJI"]
+        app.launchEnvironment = ["UITEST_PROFILE_LONG_TABS": "1", "UITEST_USE_FULL_APP": "1"]
+        app.launch(isolatedFor: self)
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["profile.moreButton"].waitForExistence(timeout: 10))
+        app.swipeUp()
+        app.swipeUp()
+        let size = app.frame.size
+        let rows = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Scroll post '"))
+        let candidate = try XCTUnwrap(rows.allElementsBoundByIndex.first {
+            (size.height * 0.48...size.height * 0.70).contains($0.frame.midY)
+        })
+        let row = app.staticTexts[candidate.label]
+        try waitForProfileFrame(.blue, in: row, app: app, size: size)
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.66))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.48))
+        start.press(forDuration: 0.08, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 1.6)
+        // This previously visible row would stay blue for two minutes if its original
+        // sequence kept running throughout the drag.
+        try waitForProfileFrame(.red, in: row, app: app, size: size)
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 6) || app.state == .runningBackgroundSuspended)
+        app.activate()
+        try waitForProfileFrame(.blue, in: row, app: app, size: size)
+    }
+
+    private func waitForProfileFrame(_ color: PixelColor, in row: XCUIElement, app: XCUIApplication, size: CGSize) throws {
+        let deadline = Date().addingTimeInterval(20)
+        repeat {
+            let frame = row.frame.insetBy(dx: -2, dy: -2)
+            let pixels = try Pixels(app, size: size)
+            if pixels.glyphs(in: frame).contains(where: { pixels.color(in: $0) == color }) { return }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.13))
+        } while Date() < deadline
+        add(XCTAttachment(screenshot: app.screenshot()))
+        XCTFail("Expected \(color) in \(row.label) at \(row.frame)")
+    }
+
+    private func postGlyphs(in app: XCUIApplication, below top: CGFloat, postersOnly: Bool = true) throws -> (Pixels, [CGRect]) {
         let deadline = Date().addingTimeInterval(8)
         repeat {
             let pixels = try Pixels(app)
             let slots = pixels.glyphs(below: Int(top))
-            if slots.count == 5 && slots.filter({ pixels.color(in: $0) == .green }).count == 4 {
+            if slots.count == 5 && (!postersOnly || slots.filter({ pixels.color(in: $0) == .green }).count == 4) {
                 return (pixels, slots)
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         } while Date() < deadline
         let last = try Pixels(app)
         add(XCTAttachment(screenshot: app.screenshot()))
-        XCTFail("Expected five posters; found \(last.glyphs(below: Int(top))). \(app.debugDescription)")
+        XCTFail("Expected five emoji; found \(last.glyphs(below: Int(top))). \(app.debugDescription)")
         throw NSError(domain: "postEmojiPosters", code: 1)
     }
 

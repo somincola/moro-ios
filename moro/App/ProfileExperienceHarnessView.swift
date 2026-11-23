@@ -15,6 +15,9 @@ struct ProfileExperienceHarnessView: View {
     }
 
     private static func makeState() -> AppState {
+        if ProcessInfo.processInfo.arguments.contains("UITEST_POST_EMOJI") {
+            ProfileFixtureProtocol.usePostEmoji(PostEmojiPlaybackFixture.scrollGIF)
+        }
         if ProcessInfo.processInfo.environment["UITEST_PROFILE_ANIMATED_MEDIA"] == "1" || ProfileFixtureProtocol.hasGallery {
             ProfileMediaFixture.prepare()
         }
@@ -95,6 +98,13 @@ private final class ProfileFixtureToken: AuthTokenProvider {
 final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     private var pushResponseTask: Task<Void, Never>?
     private static let lock = NSLock()
+    private static var postEmoji: [String: String]?
+    static func usePostEmoji(_ emoji: Status.Emoji) {
+        lock.withLock {
+            postEmoji = ["shortcode": emoji.shortcode, "url": emoji.url.absoluteString,
+                         "static_url": emoji.staticURL.absoluteString]
+        }
+    }
     private static let legacy = ProcessInfo.processInfo.environment["UITEST_PROFILE_LEGACY"] == "1"
     private static let compactInfo = ProcessInfo.processInfo.environment["UITEST_PROFILE_COMPACT_INFO"] == "1"
     private static let showsConnectionCounts = ProcessInfo.processInfo.environment["UITEST_PROFILE_CONNECTION_COUNTS"] == "1"
@@ -382,7 +392,13 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
                 return (200, page.map { id in
                     if media { return mediaPost(String(id)) }
                     var status = post(String(id))
-                    status["content"] = "<p>Scroll \(replies ? "reply" : "post") \(id)</p>"
+                    let label = "Scroll \(replies ? "reply" : "post") \(id)"
+                    if let postEmoji {
+                        status["content"] = "<p>\(label) :gif:</p>"
+                        status["emojis"] = [postEmoji]
+                    } else {
+                        status["content"] = "<p>\(label)</p>"
+                    }
                     if replies { status["in_reply_to_id"] = "88" }
                     return status
                 })

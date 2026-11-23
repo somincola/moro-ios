@@ -36,6 +36,14 @@ enum PostEmojiPlaybackFixture {
                       favouritesCount: 0, reblogsCount: 0, repliesCount: 0, bookmarked: false, favourited: false,
                       reblogged: false, emojis: emojis)
     }()
+
+    // A scroll restart is visible on the same row: red for 6.5 s, then blue for 120 s.
+    static let scrollGIF: Status.Emoji = {
+        let data = Data(base64Encoded: "R0lGODlhIAAUAPAAAAAAAP8AACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJigIAACwAAAAAIAAUAAACK4yPmcDtrGJ8FMh76sNYO355DSiJEKmYFrqYbCu+iCrX9o3n+s73/g/EFQAAIfkECeAuAAAsAAAAACAAFACAAAAAAAD/AiuMj5nA7axifBTIe+rDWDt+eQ0oiRCpmBa6mGwrvogq1/aN5/rO9/4PxBUAADs=")!
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("profile-scroll.gif")
+        try! data.write(to: url, options: .atomic)
+        return Status.Emoji(shortcode: "gif", url: url, staticURL: post.emojis![0].staticURL)
+    }()
 }
 
 struct PostEmojiPlaybackHarness: View {

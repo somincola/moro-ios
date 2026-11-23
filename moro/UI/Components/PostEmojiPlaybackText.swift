@@ -5,6 +5,27 @@ extension EnvironmentValues {
     @Entry var postEmojiIsScrolling = false
 }
 
+/// Each retained scroll page owns its phase; a hidden tab must not pause another page.
+struct PostEmojiScrollPlayback: ViewModifier {
+    var isActive = true
+    var phaseChanged: (ScrollPhase, ScrollPhase) -> Void = { _, _ in }
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isScrolling = false
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.postEmojiIsScrolling, isScrolling)
+            .onScrollPhaseChange { old, new in
+                isScrolling = isActive && scenePhase == .active && new != .idle
+                phaseChanged(old, new)
+            }
+            .onChange(of: isActive && scenePhase == .active) { _, active in
+                if !active { isScrolling = false }
+            }
+            .onDisappear { isScrolling = false }
+    }
+}
+
 /// The native Text owns wrapping, links and accessibility. Only visible animated glyphs
 /// get a layer; Core Animation advances their frames without updating the text or row.
 struct PostEmojiPlaybackText: View {
@@ -12,7 +33,6 @@ struct PostEmojiPlaybackText: View {
     let content: (Set<InlineEmojiMarker>) -> Text
 
     @Environment(\.displayScale) private var displayScale
-    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.moroPlaybackScope) private var scope
     @Environment(\.postEmojiIsScrolling) private var isScrolling
     @Environment(\.moroUIKitScrollVisibility) private var uiKitVisibility
@@ -20,34 +40,43 @@ struct PostEmojiPlaybackText: View {
     @Environment(\.accessibilityPlayAnimatedImages) private var playAnimatedImages
     @State private var isVisible = false
     @State private var isLowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+    @State private var slots: [InlineEmojiSlot] = []
     @State private var playing: [InlineEmojiMarker: PostEmojiAnimation] = [:]
 
     private var canPlay: Bool {
-        MediaPlaybackPolicy.canPlay(isVisible: isVisible, isActive: scope.isActive, isSceneActive: scenePhase == .active,
-                                    isCovered: MediaPlaybackPresentation.shared.coversInlinePlayback)
+        isVisible && scope.isActive && !MediaPlaybackPresentation.shared.coversInlinePlayback
             && !isScrolling && !scope.isScrolling && scope.systemAllowsAnimatedAvatars
             && playAnimatedImages && !reduceMotion && !isLowPower
     }
 
     var body: some View {
         let allowed = canPlay
-        content(allowed ? Set(playing.keys) : [])
-            .overlayPreferenceValue(Text.LayoutKey.self) { layouts in
+        let visible = allowed ? slots : []
+        let markers = visible.map(\.marker)
+        let request = Request(markers: markers, pixelSize: Int(ceil(emojiSize * displayScale)))
+        let mask = Set(markers).intersection(playing.keys)
+        // The text cutouts and the actual layers must use the same measured positions,
+        // including when Text temporarily publishes an empty layout after foregrounding.
+        content(mask)
+            .backgroundPreferenceValue(Text.LayoutKey.self) { layouts in
                 if allowed {
                     GeometryReader { proxy in
-                        let slots = visibleSlots(layouts, in: proxy)
-                        let request = Request(markers: slots.map(\.marker), pixelSize: Int(ceil(emojiSize * displayScale)))
-                        Color.clear.overlay {
-                            if !playing.isEmpty {
-                                PostEmojiLayers(slots: slots, playing: playing)
-                            }
+                        Color.clear.onChange(of: visibleSlots(layouts, in: proxy), initial: true) { _, measured in
+                            if slots != measured { slots = measured }
                         }
-                        .task(id: request) { await load(request) }
                     }
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
                 }
             }
+            .overlay {
+                if !mask.isEmpty {
+                    PostEmojiLayers(slots: visible, playing: playing)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+            .task(id: request) { await load(request) }
             .background {
                 if let uiKitVisibility {
                     UIKitScrollVisibilityProbe(visibility: uiKitVisibility, threshold: 0.001) { isVisible = $0 }
@@ -58,9 +87,12 @@ struct PostEmojiPlaybackText: View {
             .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
                 isLowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
             }
-            .onChange(of: allowed) { _, enabled in if !enabled { playing.removeAll() } }
+            .onChange(of: allowed) { _, enabled in
+                if !enabled { slots.removeAll(); playing.removeAll() }
+            }
             .onDisappear {
                 isVisible = false
+                slots.removeAll()
                 playing.removeAll()
             }
     }
@@ -92,6 +124,7 @@ struct PostEmojiPlaybackText: View {
     }
 
     private func load(_ request: Request) async {
+        guard !Task.isCancelled else { return }
         let visible = Set(request.markers)
         playing = playing.filter { visible.contains($0.key) }
         guard !visible.isEmpty else { return }

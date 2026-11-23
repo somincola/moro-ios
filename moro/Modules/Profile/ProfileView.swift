@@ -304,11 +304,11 @@ struct ProfileView: View {
         .scrollBounceBehavior(.always, axes: .vertical)
         .scrollDisabled(!isActive)
         .ignoresSafeArea(.container, edges: .top)
-        .onScrollPhaseChange { oldPhase, newPhase in
+        .modifier(PostEmojiScrollPlayback(isActive: isActive) { oldPhase, newPhase in
             if id == viewModel.selectedContentID, chromeState.didReleasePull(oldPhase: oldPhase, newPhase: newPhase) {
                 startPullRefreshIfNeeded()
             }
-        }
+        })
         .onPreferenceChange(ProfileHeaderHeightKey.self) { height in
             if id == viewModel.selectedContentID { chromeState.updateHeaderHeight(height) }
         }
