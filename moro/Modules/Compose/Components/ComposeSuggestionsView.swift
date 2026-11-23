@@ -8,10 +8,20 @@ struct ComposeSuggestionsView: View {
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 56
 
     private var suggestions: [ComposeSuggestion] {
-        model.token == token ? model.suggestions : []
+        if token.kind == .emoji {
+            return model.emojiCatalog?.emojiTrie?.search(token.query, limit: 8).map(ComposeSuggestion.emoji) ?? []
+        }
+        return model.token == token ? model.suggestions : []
     }
 
     var body: some View {
+        let suggestions = suggestions
+        if token.kind != .emoji || !suggestions.isEmpty {
+            panel(suggestions)
+        }
+    }
+
+    private func panel(_ suggestions: [ComposeSuggestion]) -> some View {
         VStack(spacing: 0) {
             Divider()
             if suggestions.isEmpty {
@@ -71,6 +81,12 @@ struct ComposeSuggestionsView: View {
     private func suggestionRow(_ suggestion: ComposeSuggestion) -> some View {
         HStack(spacing: 10) {
             switch suggestion {
+            case .emoji(let emoji):
+                EmojiPickerThumbnail(url: emoji.staticURL, size: 30)
+                    .accessibilityHidden(true)
+                Text(":\(emoji.shortcode):")
+                    .font(theme.typography.body)
+                    .foregroundStyle(theme.colors.textPrimary)
             case .account(let account):
                 MoroAvatar(
                     imageURL: account.avatarAnimatedURL,

@@ -10,9 +10,13 @@ enum ComposeTextHighlighter {
         options: .caseInsensitive
     )
 
+    static func urlRanges(in text: String) -> [NSRange] {
+        urlExpression.matches(in: text, range: NSRange(location: 0, length: text.utf16.count)).map(\.range)
+    }
+
     static func ranges(in text: String) -> [NSRange] {
         let fullRange = NSRange(location: 0, length: text.utf16.count)
-        let urls = urlExpression.matches(in: text, range: fullRange).map(\.range)
+        let urls = urlRanges(in: text)
         return tokenExpression.matches(in: text, range: fullRange).map(\.range).filter { token in
             !urls.contains { NSIntersectionRange($0, token).length > 0 }
         }

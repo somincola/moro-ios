@@ -421,7 +421,7 @@ struct EmojiTrie {
         nonisolated deinit {}
 
         var children: [Character: Node] = [:]
-        var value: CustomEmoji?
+        var values: [CustomEmoji] = []
     }
     
     private let root = Node()
@@ -434,10 +434,12 @@ struct EmojiTrie {
             }
             current = current.children[char]!
         }
-        current.value = value
+        if !current.values.contains(where: { $0.shortcode == value.shortcode }) {
+            current.values.append(value)
+        }
     }
     
-    func search(_ prefix: String) -> [CustomEmoji] {
+    func search(_ prefix: String, limit: Int = .max) -> [CustomEmoji] {
         var current = root
         for char in prefix.lowercased() {
             guard let next = current.children[char] else {
@@ -448,16 +450,16 @@ struct EmojiTrie {
         
         // Collect all emojis with this prefix
         var results: [CustomEmoji] = []
-        collectEmojis(from: current, into: &results)
+        collectEmojis(from: current, into: &results, limit: limit)
         return results
     }
     
-    private func collectEmojis(from node: Node, into results: inout [CustomEmoji]) {
-        if let value = node.value {
-            results.append(value)
-        }
-        for child in node.children.values {
-            collectEmojis(from: child, into: &results)
+    private func collectEmojis(from node: Node, into results: inout [CustomEmoji], limit: Int) {
+        guard results.count < limit else { return }
+        results.append(contentsOf: node.values.prefix(limit - results.count))
+        for key in node.children.keys.sorted() {
+            guard results.count < limit else { break }
+            if let child = node.children[key] { collectEmojis(from: child, into: &results, limit: limit) }
         }
     }
 }

@@ -251,8 +251,8 @@ struct ComposeFixesTests {
             selection: NSRange(location: 5, length: 0)
         )
 
-        #expect(result.text == "hello :cat: world")
-        #expect(result.selection == NSRange(location: 11, length: 0))
+        #expect(result.range == NSRange(location: 5, length: 0))
+        #expect(result.replacement == " :cat:")
     }
 
     @Test func composerEmojiInsertionReplacesSelectionAndNormalizesSpacing() {
@@ -262,8 +262,8 @@ struct ComposeFixesTests {
             selection: NSRange(location: 6, length: 6)
         )
 
-        #expect(result.text == "hello :wave: ")
-        #expect(result.selection == NSRange(location: 13, length: 0))
+        #expect(result.range == NSRange(location: 6, length: 6))
+        #expect(result.replacement == ":wave: ")
     }
 
     @Test func emojiPickerExcludesServerHiddenEmoji() {
