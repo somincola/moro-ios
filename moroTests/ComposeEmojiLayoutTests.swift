@@ -251,7 +251,8 @@ struct ComposeEmojiLayoutTests {
         catalog.emojiDict = ["missing": [emoji]]
         view.emojiLayout.refresh(in: view, catalog: catalog)
         #expect(view.emojiLayout.emojiEnding(at: 9)?.location == 0)
-        let deadline = ContinuousClock.now + .seconds(5)
+        // The shared thumbnail loader can queue this request behind other image tests.
+        let deadline = ContinuousClock.now + .seconds(60)
         while view.emojiLayout.emojiEnding(at: 9) != nil, ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }

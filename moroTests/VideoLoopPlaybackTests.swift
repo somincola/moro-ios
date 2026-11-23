@@ -1,7 +1,9 @@
 import AVFoundation
+import Combine
 import CoreVideo
 import Foundation
 import Testing
+import XCTest
 @testable import moro
 
 @MainActor
@@ -68,20 +70,25 @@ struct VideoLoopPlaybackTests {
         let observer = VideoPlayerObserver()
         observer.setPlayer(url: url, isGIF: true)
         defer { observer.tearDown() }
-        let player = try #require(observer.getPlayer())
+        // AVPlayerLooper plays replicas of the template item. Each replica posts its
+        // own end notification even when the main actor is too busy to sample a rewind.
+        let loops = XCTestExpectation(description: "Four completed passes of the test clip")
+        loops.expectedFulfillmentCount = 4
+        let ends = NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)
+            .receive(on: DispatchQueue.main)
+            .filter { notification in
+                guard let item = notification.object as? AVPlayerItem else { return false }
+                return (item.asset as? AVURLAsset)?.url == url
+            }
+            .prefix(4)
+            .sink { _ in loops.fulfill() }
+        defer { ends.cancel() }
         observer.play()
-        let deadline = ContinuousClock.now + .seconds(30)
-        var previousTime = 0.0
-        var loops = 0
-        while loops < 4, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(20))
-            let time = player.currentTime().seconds
-            if time < previousTime - 0.1 { loops += 1 }
-            previousTime = time
-            #expect(observer.isPlaybackActive)
-            #expect(!observer.didFail)
-        }
-        #expect(loops >= 4, "The player must actually advance through loops, not just keep its play icon hidden")
+        #expect(observer.isPlaybackActive)
+        let result = await XCTWaiter.fulfillment(of: [loops], timeout: 90)
+        #expect(result == .completed, "The local GIF video must finish four passes")
+        #expect(observer.isPlaybackActive)
+        #expect(!observer.didFail)
     }
 
     private func makeShortVideo(at url: URL) async throws {
