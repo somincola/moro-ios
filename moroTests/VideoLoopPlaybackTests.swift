@@ -37,11 +37,13 @@ struct VideoLoopPlaybackTests {
         observer.setPlayer(url: url, isGIF: true, shouldLoop: false)
         defer { observer.tearDown() }
         let player = try #require(observer.getPlayer())
+        let item = try #require(player.currentItem)
+        let firstEnd = XCTestExpectation(description: "The observer stopped after the first pass")
+        let firstPass = observer.$didReachEnd.first(where: { $0 }).sink { _ in firstEnd.fulfill() }
+        defer { firstPass.cancel() }
         observer.play()
-        let deadline = ContinuousClock.now + .seconds(30)
-        while !observer.didReachEnd, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        let stopped = await XCTWaiter.fulfillment(of: [firstEnd], timeout: 90)
+        try #require(stopped == .completed)
         #expect(observer.didReachEnd)
         #expect(observer.hasPlayedToEnd)
         #expect(!observer.isPlaybackRequested)
@@ -49,18 +51,15 @@ struct VideoLoopPlaybackTests {
         let end = player.currentTime()
         try await Task.sleep(for: .milliseconds(600))
         #expect(player.currentTime() == end, "A manual GIF must stay stopped after its first pass")
+        // Record the seek and the second complete pass even if the short clip finishes
+        // before the test next gets to read the player's current time.
+        let rewind = XCTNSNotificationExpectation(name: .AVPlayerItemTimeJumped, object: item)
+        let replayEnd = XCTNSNotificationExpectation(name: .AVPlayerItemDidPlayToEndTime, object: item)
         observer.play()
         #expect(!observer.didReachEnd)
         #expect(observer.isPlaybackRequested)
-        // Replay rewinds to the start. Watch for the rewind rather than checking after a fixed
-        // pause: on a busy runner the half-second clip can play through again within it.
-        let rewindDeadline = ContinuousClock.now + .seconds(15)
-        var rewound = false
-        while !rewound, ContinuousClock.now < rewindDeadline {
-            rewound = player.currentTime() < end
-            if !rewound { try await Task.sleep(for: .milliseconds(5)) }
-        }
-        #expect(rewound, "Replaying a GIF that played through starts it over")
+        let replayed = await XCTWaiter.fulfillment(of: [rewind, replayEnd], timeout: 90)
+        #expect(replayed == .completed, "Replay must seek and play through the end of the same clip again")
     }
 
     @Test func aLocalGIFVideoContinuesThroughFourLoopBoundaries() async throws {
