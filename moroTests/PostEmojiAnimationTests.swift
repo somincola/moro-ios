@@ -1,6 +1,7 @@
 import SDWebImage
 import Testing
 import UIKit
+import XCTest
 @testable import moro
 
 @MainActor
@@ -22,17 +23,6 @@ struct PostEmojiAnimationTests {
         let image = UIGraphicsImageRenderer(size: CGSize(width: 12, height: 12)).image { _ in }
         #expect(PostEmojiAnimation.decode(try #require(image.pngData()), pixelSize: 24) == nil)
         #expect(PostEmojiAnimation.decode(Data("invalid".utf8), pixelSize: 24) == nil)
-    }
-
-    @Test func pickerOriginalCanStartAnAnimationWithoutAnotherDownload() async throws {
-        let data = PostEmojiPlaybackFixture.originals[0].data
-        let image = try #require(SDAnimatedImage(data: data))
-        let url = URL(string: "https://picker.invalid/\(UUID()).gif")!
-        await SDImageCache.shared.store(image, imageData: data, forKey: url.absoluteString, toDisk: false)
-        let store = PostEmojiAnimationStore()
-        let animation = try #require(await store.animation(for: url, pixelSize: 48))
-        #expect(animation.frames.count == 2)
-        #expect(store.cachedAnimation(for: url, pixelSize: 48) === animation)
     }
 
     @Test func deltaAPNGKeepsItsCanvasAndPaintsOnlyTheChangedPixel() throws {
@@ -102,5 +92,25 @@ struct PostEmojiAnimationTests {
         host.update(slots: [slot], playing: [marker: animation])
         #expect(layer.animation(forKey: "postEmoji") == nil)
         #expect(layer.contents as AnyObject? === animation.frames.last)
+    }
+}
+
+// XCTest runs this warm-cache case separately from Swift Testing's app-wide memory warnings.
+final class PostEmojiPickerCacheTests: XCTestCase {
+    @MainActor
+    func testPickerOriginalCanStartAnAnimationWithoutAnotherDownload() async throws {
+        let data = PostEmojiPlaybackFixture.originals[0].data
+        let image = try XCTUnwrap(SDAnimatedImage(data: data))
+        // A missing file URL makes a cache miss fail immediately.
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).gif")
+        let cache = SDImageCache.shared
+        await cache.store(image, imageData: data, forKey: url.absoluteString, toDisk: false)
+        defer { cache.removeImageFromMemory(forKey: url.absoluteString) }
+
+        let store = PostEmojiAnimationStore()
+        let result = await store.animation(for: url, pixelSize: 48)
+        let animation = try XCTUnwrap(result)
+        XCTAssertEqual(animation.frames.count, 2)
+        XCTAssertTrue(store.cachedAnimation(for: url, pixelSize: 48) === animation)
     }
 }
