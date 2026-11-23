@@ -573,7 +573,7 @@ struct ComposeView: View {
     private func composeSheet(for destination: ComposeDestination) -> some View {
         switch destination {
         case .preview:
-            ComposePreviewSheet(viewModel: viewModel, account: appState.currentAccount)
+            ComposePreviewSheet(viewModel: viewModel, autocomplete: autocomplete, account: appState.currentAccount)
                 .moroSheetSurface(detents: [.large])
         case .mediaOrder:
             ComposeMediaOrderSheet(viewModel: viewModel)
@@ -2236,8 +2236,7 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
         textView.backgroundColor = .clear
         textView.isOpaque = false
         textView.textColor = textColor
-        textView.font = UIFont.preferredFont(forTextStyle: .body)
-        textView.adjustsFontForContentSizeCategory = true
+        context.coordinator.updateFont(textView)
         textView.isScrollEnabled = isExpanded
         textView.alwaysBounceVertical = isExpanded
         textView.showsVerticalScrollIndicator = isExpanded
@@ -2258,6 +2257,7 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
 
     func updateUIView(_ textView: ComposeUIKitTextView, context: Context) {
         context.coordinator.parent = self
+        context.coordinator.updateFont(textView)
         textView.isScrollEnabled = isExpanded
         textView.alwaysBounceVertical = isExpanded
         textView.showsVerticalScrollIndicator = isExpanded
@@ -2295,6 +2295,9 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
         textView.updateInputMode(
             inputMode,
             emojiPickerHeight: emojiPickerHeight,
+            configuration: ComposeEmojiPickerConfiguration(catalog: emojiViewModel.map(ObjectIdentifier.init),
+                hasHost: hasEmojiHost, isSceneActive: isSceneActive, playAnimations: playAnimations,
+                colors: theme.colors, dynamicTypeSize: theme.dynamicTypeSize),
             emojiRootView: {
                 AnyView(
                     ComposeEmojiInputSurface(
@@ -2338,9 +2341,23 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
         var parent: ComposeTextViewRepresentable
         var isUpdatingFromSwiftUI = false
         var lastAppliedSelectionCommandID: UUID?
+        private var fontSize: MoroPostFontSize?
+        private var dynamicType: DynamicTypeSize?
+        private var highlightedRevision: Int?
+        private var highlightedColors: MoroColors?
 
         init(parent: ComposeTextViewRepresentable) {
             self.parent = parent
+        }
+
+        func updateFont(_ textView: UITextView) {
+            let theme = parent.theme
+            guard textView.markedTextRange == nil,
+                  fontSize != theme.postFontSize || dynamicType != theme.dynamicTypeSize else { return }
+            fontSize = theme.postFontSize
+            dynamicType = theme.dynamicTypeSize
+            textView.font = theme.postUIFont()
+            highlightedRevision = nil
         }
 
         func finishSelectionCommand(_ id: UUID) {
@@ -2393,14 +2410,21 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
             guard !isUpdatingFromSwiftUI else { return }
             isUpdatingFromSwiftUI = true
             defer { isUpdatingFromSwiftUI = false }
-            if let editor = textView as? ComposeUIKitTextView {
-                editor.emojiLayout.refresh(in: editor, catalog: parent.emojiViewModel)
+            guard let editor = textView as? ComposeUIKitTextView else { return }
+            editor.emojiLayout.refresh(in: editor, catalog: parent.emojiViewModel)
+            guard editor.markedTextRange == nil else { return }
+            let revision = editor.emojiLayout.textRevision
+            if highlightedRevision == revision, highlightedColors == parent.theme.colors {
+                ComposeTextHighlighter.resetTypingColor(in: editor, to: parent.textColor)
+                return
             }
             ComposeTextHighlighter.apply(
                 to: textView,
                 textColor: parent.textColor,
                 tokenColor: UIColor(parent.theme.colors.contentLink)
             )
+            highlightedRevision = revision
+            highlightedColors = parent.theme.colors
         }
 
         private func updateMarkedText(_ textView: UITextView) {
@@ -2602,25 +2626,25 @@ final class ComposeUIKitTextView: UITextView {
     func updateInputMode(
         _ mode: ComposeInputMode,
         emojiPickerHeight: CGFloat,
+        configuration: ComposeEmojiPickerConfiguration,
         emojiRootView: () -> AnyView
     ) {
         var shouldReloadInputViews = false
 
         switch mode {
         case .emoji:
-            let rootView = emojiRootView()
             let pickerInputView: ComposeEmojiInputView
             if let emojiInputView {
                 pickerInputView = emojiInputView
                 if pickerInputView.update(
-                    rootView: rootView,
+                    configuration: configuration, rootView: emojiRootView,
                     preferredHeight: emojiPickerHeight
                 ) {
                     shouldReloadInputViews = true
                 }
             } else {
                 let newInputView = ComposeEmojiInputView(
-                    rootView: rootView,
+                    configuration: configuration, rootView: emojiRootView(),
                     preferredHeight: emojiPickerHeight
                 )
                 emojiInputView = newInputView
@@ -2646,14 +2670,25 @@ final class ComposeUIKitTextView: UITextView {
 
 }
 
+struct ComposeEmojiPickerConfiguration: Equatable {
+    let catalog: ObjectIdentifier?
+    let hasHost: Bool
+    let isSceneActive: Bool
+    let playAnimations: Bool
+    let colors: MoroColors
+    let dynamicTypeSize: DynamicTypeSize
+}
+
 private final class ComposeEmojiInputView: UIInputView {
     // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
     nonisolated deinit {}
 
     private let hostingController: UIHostingController<AnyView>
     private var preferredHeight: CGFloat
+    private var configuration: ComposeEmojiPickerConfiguration
 
-    init(rootView: AnyView, preferredHeight: CGFloat) {
+    init(configuration: ComposeEmojiPickerConfiguration, rootView: AnyView, preferredHeight: CGFloat) {
+        self.configuration = configuration
         self.hostingController = UIHostingController(rootView: rootView)
         self.preferredHeight = preferredHeight
         super.init(
@@ -2690,8 +2725,11 @@ private final class ComposeEmojiInputView: UIInputView {
     }
 
     @discardableResult
-    func update(rootView: AnyView, preferredHeight: CGFloat) -> Bool {
-        hostingController.rootView = rootView
+    func update(configuration: ComposeEmojiPickerConfiguration, rootView: () -> AnyView, preferredHeight: CGFloat) -> Bool {
+        if self.configuration != configuration {
+            self.configuration = configuration
+            hostingController.rootView = rootView()
+        }
         guard self.preferredHeight != preferredHeight else { return false }
 
         self.preferredHeight = preferredHeight
@@ -2893,9 +2931,8 @@ struct EmojiPickerThumbnail: View {
     let url: URL
     let size: CGFloat
 
-    @Environment(\.displayScale) private var displayScale
     @Environment(\.moroTheme) private var theme
-    @State private var image: UIImage?
+    @State private var loaded: (url: URL, image: UIImage)?
 
     init(url: URL, size: CGFloat = 40) {
         self.url = url
@@ -2904,8 +2941,8 @@ struct EmojiPickerThumbnail: View {
 
     var body: some View {
         Group {
-            if let image {
-                Image(uiImage: image)
+            if let loaded, loaded.url == url {
+                Image(uiImage: loaded.image)
                     .resizable()
                     .scaledToFit()
             } else {
@@ -2919,14 +2956,9 @@ struct EmojiPickerThumbnail: View {
             }
         }
         .frame(width: size, height: size)
-        .task(id: "\(url.absoluteString)#\(size)") {
-            image = nil
-            let loadedImage = await ImageCache.shared.loadThumbnail(
-                from: url,
-                maxPixelSize: size * displayScale
-            )
-            guard !Task.isCancelled else { return }
-            image = loadedImage
+        .task(id: url) {
+            guard let image = await InlineEmojiRendering.loadThumbnail(for: url), !Task.isCancelled else { return }
+            loaded = (url, image)
         }
     }
 }
@@ -2940,7 +2972,6 @@ private struct AnimatedEmojiPickerThumbnail: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
-    @Environment(\.moroTheme) private var theme
     @State private var isLoaded = false
     @State private var isVisible = false
     @State private var usesStaticFallback = false
@@ -2986,39 +3017,33 @@ private struct AnimatedEmojiPickerThumbnail: View {
     }
 
     var body: some View {
+        let showsOriginal = animationsEnabled && !reduceMotion && !usesStaticFallback
         ZStack {
-            if !isLoaded {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(theme.colors.surfaceSubtle)
-                    .overlay {
-                        Image(systemName: "face.smiling")
-                            .moroScaledFont(size: max(size * 0.32, 10))
-                            .foregroundStyle(theme.colors.textTertiary)
-                    }
+            if isVisible {
+                // Keep the server's still ready for insertion even when the grid plays
+                // its original. Hiding the still avoids stacking two transparent frames.
+                EmojiPickerThumbnail(url: staticURL, size: size)
+                    .opacity(showsOriginal && isLoaded ? 0 : 1)
             }
-
-            SDWebRemoteImage(
-                url: activeURL,
-                thumbnailPixelSize: size * displayScale,
-                contentMode: .scaleAspectFit,
-                allowsAnimation: shouldAnimate,
-                animationLoadingMode: .boundedPreview,
-                maximumAnimatedBufferSize: 2 * 1024 * 1024,
-                onLoadStateChange: { loaded in
-                    isLoaded = loaded
-                },
-                onLoadFailure: {
-                    // A server may advertise a static PNG as its original URL or return an
-                    // animation format this OS cannot decode. Never leave the picker blank:
-                    // retry once with Mastodon's guaranteed static_url variant.
-                    guard ComposeEmojiAnimationPolicy.shouldFallbackAfterLoadFailure(
-                        animationsEnabled: animationsEnabled,
-                        reduceMotion: reduceMotion,
-                        usesStaticFallback: usesStaticFallback
-                    ) else { return }
-                    usesStaticFallback = true
-                }
-            )
+            if showsOriginal, let activeURL {
+                SDWebRemoteImage(
+                    url: activeURL,
+                    thumbnailPixelSize: size * displayScale,
+                    contentMode: .scaleAspectFit,
+                    allowsAnimation: true,
+                    isAnimationPlaybackActive: shouldAnimate,
+                    animationLoadingMode: .boundedPreview,
+                    maximumAnimatedBufferSize: 2 * 1024 * 1024,
+                    onLoadStateChange: { isLoaded = $0 },
+                    onLoadFailure: {
+                        if ComposeEmojiAnimationPolicy.shouldFallbackAfterLoadFailure(
+                            animationsEnabled: animationsEnabled, reduceMotion: reduceMotion,
+                            usesStaticFallback: usesStaticFallback
+                        ) { usesStaticFallback = true }
+                    }
+                )
+                .opacity(isLoaded ? 1 : 0)
+            }
         }
         .frame(width: size, height: size)
         .onAppear {
@@ -3026,6 +3051,7 @@ private struct AnimatedEmojiPickerThumbnail: View {
         }
         .onDisappear {
             isVisible = false
+            isLoaded = false
         }
         .onChange(of: animatedURL) {
             isLoaded = false

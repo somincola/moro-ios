@@ -190,6 +190,12 @@ final class ComposeEditorUITests: XCTestCase {
         XCTAssertFalse(cat.exists)
         editor.typeKey("z", modifierFlags: .command)
         XCTAssertEqual(editor.value as? String, ":BLoops :blobcat: ")
+        app.buttons["compose.editorOptions"].tap()
+        app.buttons["compose.preview"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["compose.previewBody"].firstMatch.waitForExistence(timeout: 5))
+        attach(app, name: "compose-preview-inline-static-emoji")
+        app.toolbarButton("compose.previewDone", labels: ["完成", "Done"]).tap()
+        XCTAssertEqual(editor.value as? String, ":BLoops :blobcat: ")
     }
 
     @MainActor func testReplyPickerAndTypedEmojiKeepMentionCompletionAndCaret() {
@@ -202,15 +208,17 @@ final class ComposeEditorUITests: XCTestCase {
         let emoji = app.buttons[":blobcat:"]
         XCTAssertTrue(emoji.waitForExistence(timeout: 5))
         emoji.tap()
+        app.buttons[":wave:"].tap()
         app.buttons["compose.emojiToggle"].tap()
-        XCTAssertEqual(editor.value as? String, prefix + ":blobcat: ")
+        let fromPicker = prefix + ":blobcat: :wave: "
+        XCTAssertEqual(editor.value as? String, fromPicker)
         editor.typeText(":wave:" + XCUIKeyboardKey.delete.rawValue)
-        XCTAssertEqual(editor.value as? String, prefix + ":blobcat: ")
+        XCTAssertEqual(editor.value as? String, fromPicker)
         editor.typeText("@han")
         let account = app.buttons["compose.suggestion.account.hanna"]
         XCTAssertTrue(account.waitForExistence(timeout: 5))
         account.tap()
-        XCTAssertEqual(editor.value as? String, prefix + ":blobcat: @hanna@remote.example ")
+        XCTAssertEqual(editor.value as? String, fromPicker + "@hanna@remote.example ")
         attach(app, name: "reply-inline-static-emoji")
     }
 

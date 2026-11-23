@@ -1,8 +1,27 @@
 import SwiftUI
 
 enum ComposePreviewContent {
-    static func elements(for text: String) -> [ContentElement] {
-        ContentParser.parseToElements(html: html(for: text), options: [.autoDetectPlainLinks, .preserveInlineWhitespace])
+    static func elements(for text: String, emojiLookup: [String: [CustomEmoji]]? = nil) -> [ContentElement] {
+        let elements = ContentParser.parseToElements(html: html(for: text),
+                                                     options: [.autoDetectPlainLinks, .preserveInlineWhitespace])
+        guard let emojiLookup, !emojiLookup.isEmpty else { return elements }
+        return elements.flatMap { element -> [ContentElement] in
+            guard case .text(let body) = element else { return [element] }
+            let matches = ComposeEmojiShortcodes.matches(in: body, using: emojiLookup)
+            guard !matches.isEmpty else { return [element] }
+            let source = body as NSString
+            var runs: [ContentElement] = []
+            var start = 0
+            for (range, emoji) in matches {
+                if start < range.location {
+                    runs.append(.text(source.substring(with: NSRange(location: start, length: range.location - start))))
+                }
+                runs.append(.emoji(shortcode: emoji.shortcode, url: emoji.url, staticURL: emoji.staticURL))
+                start = NSMaxRange(range)
+            }
+            if start < source.length { runs.append(.text(source.substring(from: start))) }
+            return runs
+        }
     }
 
     /// Compose accepts plain source text. Escape it before using the native HTML renderer.
@@ -18,6 +37,7 @@ enum ComposePreviewContent {
 
 struct ComposePreviewSheet: View {
     @ObservedObject var viewModel: ComposeViewModel
+    @ObservedObject var autocomplete: ComposeAutocompleteModel
     let account: Account?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
@@ -44,8 +64,9 @@ struct ComposePreviewSheet: View {
                         MoroDivider()
                     }
                     RichTextContentView(
-                        elements: ComposePreviewContent.elements(for: viewModel.content),
-                        emojiSize: bodyFont.pointSize * 1.25,
+                        elements: ComposePreviewContent.elements(for: viewModel.content,
+                            emojiLookup: autocomplete.emojiCatalog?.emojiDict),
+                        emojiSize: InlineEmojiRendering.size(for: bodyFont),
                         fontOverride: Font(bodyFont),
                         uiFontOverride: bodyFont,
                         lineSpacing: 4 * bodyFont.pointSize / 16,

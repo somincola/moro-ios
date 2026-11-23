@@ -1,3 +1,5 @@
+import SDWebImage
+import SwiftUI
 import Testing
 import UIKit
 @testable import moro
@@ -36,7 +38,7 @@ struct ComposeEmojiLayoutTests {
         #expect(view.emojiLayout.propertyForGlyph(at: glyphs.location).contains(.controlCharacter))
         #expect(view.emojiLayout.propertyForGlyph(at: glyphs.location + 1).contains(.null))
         let rect = view.emojiLayout.boundingRect(forGlyphRange: glyphs, in: view.textContainer)
-        #expect(abs(rect.width - ceil(view.font!.lineHeight)) < 2)
+        #expect(abs(rect.width - InlineEmojiRendering.size(for: view.font!)) < 1)
         #expect(view.text == source)
         #expect(view.emojiLayout.atomicSelection(NSRange(location: range.location + 1, length: 2),
                                                   previous: range) == range)
@@ -49,6 +51,162 @@ struct ComposeEmojiLayoutTests {
         view.selectedRange = NSRange(location: NSMaxRange(range), length: 0)
         view.emojiLayout.refresh(in: view, catalog: catalog)
         #expect(view.emojiLayout.emojiEnding(at: NSMaxRange(range)) == range)
+    }
+
+    @Test func pickerThumbnailPaintsImmediatelyAtTheReadingBaseline() async throws {
+        let (view, catalog) = makeEditor()
+        let font = MoroTheme(postFontSize: .small).postUIFont()
+        view.font = font
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).png")
+        // A wide solid image makes it possible to check the actual painted pixels as
+        // well as the square the text system reserves for it.
+        let still = UIGraphicsImageRenderer(size: CGSize(width: 100, height: 50)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 100, height: 50))
+        }
+        try #require(still.pngData()).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let emoji = CustomEmoji(shortcode: "wide", url: URL(string: "https://animated.invalid/wide.gif")!,
+                                staticURL: url, visibleInPicker: true, category: nil)
+        catalog.emojiDict = ["wide": [emoji]]
+        // Load through the same path the visible suggestion and picker use.
+        _ = try #require(await InlineEmojiRendering.loadThumbnail(for: url))
+        #expect(ImageCache.shared.image(for: url) == nil)
+        #expect(InlineEmojiRendering.cachedImage(for: url) != nil)
+        view.insertEmoji("wide")
+        view.emojiLayout.refresh(in: view, catalog: catalog)
+        let manager = view.emojiLayout
+        manager.ensureLayout(for: view.textContainer)
+        let glyphs = manager.glyphRange(forCharacterRange: NSRange(location: 0, length: 6), actualCharacterRange: nil)
+        let cell = manager.boundingRect(forGlyphRange: glyphs, in: view.textContainer)
+        let size = InlineEmojiRendering.size(for: font)
+        #expect(abs(cell.width - size) < 1)
+        let origin = CGPoint(x: 4, y: 20)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let bitmap = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64), format: format).image { _ in
+            manager.drawGlyphs(forGlyphRange: glyphs, at: origin)
+        }
+        let image = try #require(bitmap.cgImage)
+        var pixels = [UInt8](repeating: 0, count: 64 * 64 * 4)
+        let painted = pixels.withUnsafeMutableBytes { buffer -> CGRect in
+            let context = CGContext(data: buffer.baseAddress, width: 64, height: 64, bitsPerComponent: 8,
+                                    bytesPerRow: 64 * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            context.draw(image, in: CGRect(x: 0, y: 0, width: 64, height: 64))
+            var bounds = CGRect.null
+            for offset in stride(from: 0, to: buffer.count, by: 4)
+                where buffer[offset] > 150 && buffer[offset + 1] < 20 {
+                let pixel = offset / 4
+                bounds = bounds.union(CGRect(x: pixel % 64, y: pixel / 64, width: 1, height: 1))
+            }
+            return bounds
+        }
+        let baseline = origin.y + manager.lineFragmentRect(forGlyphAt: 0, effectiveRange: nil).minY
+            + manager.location(forGlyphAt: 0).y
+        #expect(abs(painted.width - size) < 2)
+        #expect(abs(painted.height - size / 2) < 2)
+        #expect(abs(painted.midY - (baseline + InlineEmojiRendering.descent(for: size) - size / 2)) < 1)
+        #expect(view.text == ":wide: ")
+    }
+
+    @Test func accessibilitySizeKeepsTheWholeEmojiInsideItsLine() {
+        let (view, catalog) = makeEditor()
+        view.font = MoroTheme(dynamicTypeSize: .accessibility5).postUIFont()
+        view.text = ":blobcat:\n:blobcat:"
+        let manager = view.emojiLayout
+        manager.refresh(in: view, catalog: catalog)
+        manager.ensureLayout(for: view.textContainer)
+        let size = InlineEmojiRendering.size(for: view.font!)
+        var previousBottom: CGFloat = 0
+        for character in [0, ":blobcat:\n".utf16.count] {
+            let glyph = manager.glyphIndexForCharacter(at: character)
+            let line = manager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let baseline = line.minY + manager.location(forGlyphAt: glyph).y
+            let bottom = baseline + InlineEmojiRendering.descent(for: size)
+            #expect(bottom - size >= max(line.minY, previousBottom) - 1)
+            #expect(bottom <= line.maxY + 1)
+            previousBottom = bottom
+        }
+    }
+
+    @Test func visiblePickerPlaysTheOriginalWhileKeepingTheServerStillReady() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = directory.appendingPathComponent("original.gif")
+        let still = directory.appendingPathComponent("static.png")
+        try ProfileMediaFixture.gifData(frameDuration: 0.2).write(to: original)
+        let posterBounds = CGRect(x: 0, y: 0, width: 16, height: 16)
+        let poster = UIGraphicsImageRenderer(size: posterBounds.size).image { $0.fill(posterBounds) }
+        try #require(poster.pngData()).write(to: still)
+        let emoji = CustomEmoji(shortcode: "animated", url: original, staticURL: still, visibleInPicker: true, category: nil)
+        let catalog = CustomEmojiViewModel(domain: "picker.example", service: .shared)
+        catalog.emojiGroups = [EmojiGroup(name: "Test", emojis: [emoji])]
+        let host = UIHostingController(rootView: EmojiPickerContentView(emojiViewModel: catalog, isSceneActive: true,
+                                                                       playAnimations: true, onEmojiSelected: { _ in }))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 280))
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        host.view.layoutIfNeeded()
+        func player(in view: UIView) -> SDAnimatedImageView? {
+            if let view = view as? SDAnimatedImageView { return view }
+            return view.subviews.lazy.compactMap { player(in: $0) }.first
+        }
+        let deadline = ContinuousClock.now + .seconds(30)
+        var frames = Set<UInt>()
+        while ContinuousClock.now < deadline {
+            if let view = player(in: window), view.isAnimating { frames.insert(view.currentFrameIndex) }
+            if frames.count > 1, InlineEmojiRendering.cachedImage(for: still) != nil { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(frames.count == 2)
+        #expect(InlineEmojiRendering.cachedImage(for: still) != nil)
+    }
+
+    @Test func coldEmojiReservesOneSlotAndShowsItsCodeIfTheStillFails() async throws {
+        let (view, catalog) = makeEditor()
+        let missing = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).png")
+        let emoji = CustomEmoji(shortcode: "missing", url: missing, staticURL: missing, visibleInPicker: true, category: nil)
+        view.text = ":missing: "
+        view.emojiLayout.refresh(in: view, catalog: catalog)
+        #expect(view.emojiLayout.emojiEnding(at: 9) == nil)
+        catalog.emojiDict = ["missing": [emoji]]
+        view.emojiLayout.refresh(in: view, catalog: catalog)
+        #expect(view.emojiLayout.emojiEnding(at: 9)?.location == 0)
+        let deadline = ContinuousClock.now + .seconds(5)
+        while view.emojiLayout.emojiEnding(at: 9) != nil, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(view.emojiLayout.emojiEnding(at: 9) == nil)
+        #expect(view.text == ":missing: ")
+    }
+
+    @Test func movingCaretAndSwitchingKeyboardsReusesThePickerContent() {
+        let (view, catalog) = makeEditor()
+        let theme = MoroTheme()
+        func config(playing: Bool) -> ComposeEmojiPickerConfiguration {
+            .init(catalog: ObjectIdentifier(catalog), hasHost: true, isSceneActive: true, playAnimations: playing,
+                  colors: theme.colors, dynamicTypeSize: theme.dynamicTypeSize)
+        }
+        var builds = 0
+        func update(_ mode: ComposeInputMode, height: CGFloat = 320, playing: Bool = true) {
+            view.updateInputMode(mode, emojiPickerHeight: height, configuration: config(playing: playing)) {
+                builds += 1
+                return AnyView(EmptyView())
+            }
+        }
+        update(.emoji)
+        view.insertEmoji("blobcat")
+        view.selectedRange = NSRange(location: 0, length: 0)
+        update(.emoji)
+        update(.emoji, height: 280)
+        update(.keyboard)
+        update(.emoji)
+        #expect(builds == 1)
+        update(.emoji, playing: false)
+        #expect(builds == 2)
     }
 
     @Test func deletesOnlyRenderedEmojiAndItsOwnAutomaticSeparator() {

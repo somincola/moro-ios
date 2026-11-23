@@ -152,7 +152,10 @@ final class CustomEmojiViewModel: ObservableObject {
     @Published var loadState: LoadState = .initial
     @Published var emojis: [CustomEmoji]? = nil
     @Published private(set) var orderedGroupNames: [String] = []
-    @Published var emojiDict: [String: [CustomEmoji]]? = nil
+    private(set) var emojiCatalogRevision = 0
+    @Published var emojiDict: [String: [CustomEmoji]]? = nil {
+        didSet { emojiCatalogRevision &+= 1 }
+    }
     @Published var emojiMapping: [String: String] = [:]
     @Published var emojiTrie: EmojiTrie? = nil
     

@@ -58,8 +58,12 @@ enum ComposeTextHighlighter {
             storage.endEditing()
         }
 
-        // Selection changes can inherit the preceding token's color. Always start
-        // ordinary typing in the body color; valid tokens are recolored after editing.
+        resetTypingColor(in: textView, to: textColor)
+    }
+
+    /// A caret move can inherit the previous token's color without changing any styled text.
+    @MainActor
+    static func resetTypingColor(in textView: UITextView, to textColor: UIColor) {
         if (textView.typingAttributes[.foregroundColor] as? UIColor) != textColor {
             var attributes = textView.typingAttributes
             attributes[.foregroundColor] = textColor

@@ -112,9 +112,6 @@ struct InlineEmojiText: View {
     var trailingSystemImageColor: Color = .primary
     var trailingSystemImageSize: CGFloat = 11
 
-    /// Lowers the emoji slightly so it sits centred on the text, like the TextKit attachment.
-    private static let baselineRatio: CGFloat = 0.08
-
     @State private var failedURLs: Set<URL> = []
     /// Bumped when downloads finish so the view picks the images up from the cache.
     @State private var loadGeneration = 0
@@ -158,7 +155,7 @@ struct InlineEmojiText: View {
         let swiftUIImage = image.cgImage.map { Image($0, scale: image.scale, label: label) }
             ?? Image(uiImage: image)
         // Same baseline shift as the TextKit attachment, so both renderers agree.
-        return Text(swiftUIImage).baselineOffset(-emojiSize * Self.baselineRatio)
+        return Text(swiftUIImage).baselineOffset(-InlineEmojiRendering.descent(for: emojiSize))
     }
 
     /// Joins the pieces as a balanced tree. A long left-leaning chain of nested `Text`
@@ -201,6 +198,11 @@ struct InlineEmojiText: View {
 /// Shared pieces for drawing custom emoji inline (SwiftUI text, TextKit bios, names).
 @MainActor
 enum InlineEmojiRendering {
+    static func size(for font: UIFont) -> CGFloat { font.pointSize * 1.25 }
+
+    /// Portion of the square below the text baseline in both SwiftUI and TextKit.
+    static func descent(for size: CGFloat) -> CGFloat { size * 0.08 }
+
     // NSCache is thread-safe; it just isn't annotated Sendable.
     nonisolated(unsafe) private static let imageCache: NSCache<NSURL, UIImage> = {
         let cache = NSCache<NSURL, UIImage>()
@@ -215,8 +217,19 @@ enum InlineEmojiRendering {
     }()
     private static var inFlight: [URL: Task<UIImage?, Never>] = [:]
 
+    // The picker, suggestions and text use one SDWebImage thumbnail key. A static
+    // preview that is already visible can be painted synchronously in either renderer.
+    private nonisolated static let thumbnailPixels: CGFloat = 128
+
     nonisolated static func cachedImage(for url: URL) -> UIImage? {
         imageCache.object(forKey: url as NSURL)
+            ?? ImageCache.shared.thumbnail(for: url, maxPixelSize: thumbnailPixels)
+            ?? ImageCache.shared.image(for: url)
+    }
+
+    static func loadThumbnail(for url: URL) async -> UIImage? {
+        if let image = cachedImage(for: url) { return image }
+        return await ImageCache.shared.loadThumbnail(from: url, maxPixelSize: thumbnailPixels)
     }
 
     nonisolated static func store(_ image: UIImage, for url: URL) {

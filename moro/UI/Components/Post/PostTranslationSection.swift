@@ -291,7 +291,7 @@ struct PostTranslationSection: View {
                         tags: status.tags,
                         emojis: status.emojis,
                         parsingOptions: .statusBody,
-                        emojiSize: bodyFont.pointSize * 1.25,
+                        emojiSize: InlineEmojiRendering.size(for: bodyFont),
                         // Post text is not selectable; "Copy text" in the ⋯ menu copies it.
                         isSelectable: false,
                         lineSpacing: lineSpacing,

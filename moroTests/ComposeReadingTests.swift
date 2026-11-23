@@ -10,6 +10,17 @@ import Testing
         #expect(elements.contains { if case .link(_, let url) = $0 { return url.absoluteString == "https://example.com/path?a=1&b=2" }; return false })
     }
 
+    @Test func previewUsesTheCurrentServersEmojiAndKeepsUnknownCodesAndLinks() {
+        let original = URL(string: "https://example.org/cat.gif")!
+        let still = URL(string: "https://example.org/cat.png")!
+        let emoji = CustomEmoji(shortcode: "cat", url: original, staticURL: still, visibleInPicker: true, category: nil)
+        let text = ":cat: :unknown: word:cat: :CAT: :cat: https://example.org/:cat:"
+        let elements = ComposePreviewContent.elements(for: text, emojiLookup: ["cat": [emoji]])
+        #expect(elements.filter { $0 == .emoji(shortcode: "cat", url: original, staticURL: still) }.count == 2)
+        #expect(elements.contains(.text(" :unknown: word:cat: :CAT: ")))
+        #expect(elements.contains { if case .link = $0 { return true }; return false })
+    }
+
     @Test func reorderingPreservesMediaIdentityMetadataAndDraftOrder() {
         let model = ComposeViewModel(context: .newPost, apiClient: SearchFixtureProtocol.makeClient())
         model.mediaAttachments = (1...3).map { index in

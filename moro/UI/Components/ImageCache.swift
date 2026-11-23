@@ -54,10 +54,21 @@ nonisolated public final class ImageCache: @unchecked Sendable {
     /// size (dense grids such as the emoji picker). Cached apart from the full image; the
     /// original bytes stay on disk so other sizes don't download again.
     public func loadThumbnail(from url: URL, maxPixelSize: CGFloat) async -> UIImage? {
+        if let image = thumbnail(for: url, maxPixelSize: maxPixelSize) { return image }
+        return await request(url, context: thumbnailContext(maxPixelSize))?.image
+    }
+
+    /// Memory-only lookup using the same SDWebImage key as the thumbnail request.
+    func thumbnail(for url: URL, maxPixelSize: CGFloat) -> UIImage? {
+        guard let key = manager.cacheKey(for: url, context: thumbnailContext(maxPixelSize)) else { return nil }
+        return cache.imageFromMemoryCache(forKey: key).map(Self.still)
+    }
+
+    private func thumbnailContext(_ maxPixelSize: CGFloat) -> [SDWebImageContextOption: Any] {
         let pixels = max(1, maxPixelSize.rounded(.up))
-        return await request(url, context: [
+        return [
             .imageThumbnailPixelSize: NSValue(cgSize: CGSize(width: pixels, height: pixels))
-        ])?.image
+        ]
     }
 
     /// Seeds the cache (memory, and disk when `data` is given). Used by test harnesses.
