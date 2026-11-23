@@ -3,5 +3,6 @@
   "keywords": "fediverso,activitypub,microblog,cronologia,segnalibri,offline,liste,hashtag,bozze,conversazioni",
   "marketingUrl": "https://getmoro.app/",
   "promotionalText": "Scopri Moro — client Mastodon raffinato e sereno. Acceda con il Suo account e goda del fediverse senza distrazioni.",
-  "supportUrl": "https://getmoro.app/support"
+  "supportUrl": "https://getmoro.app/support",
+  "whatsNew": "Il lettore multimediale ha un’interfaccia più chiara e comandi più semplici.\nLa navigazione nei profili è più fluida."
 }

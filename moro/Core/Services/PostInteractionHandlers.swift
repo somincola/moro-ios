@@ -13,9 +13,17 @@ struct PostInteractionHandlers {
     let actionSurface: PostActionSurfaceCenter
     let postMenuActionCenter: PostMenuActionCenter
     let apiClient: MastodonAPI
-    let currentUserID: String?
+    let appState: AppState
+    var currentUserID: String? { appState.currentAccount?.id }
     let router: AppRouter
     let onRemoveStatus: ((String) -> Void)?
+
+    /// The media viewer presents its own confirmation and compose sheets above the playing item.
+    func forMediaPreview() -> Self {
+        Self(interactionService: PostInteractionService(apiClient: apiClient), actionSurface: PostActionSurfaceCenter(),
+             postMenuActionCenter: postMenuActionCenter, apiClient: apiClient, appState: appState,
+             router: router, onRemoveStatus: onRemoveStatus)
+    }
 
     func handleLike(_ status: Status) {
         Task { await interactionService.toggleFavourite(status) }
@@ -109,9 +117,10 @@ struct PostInteractionHandlers {
 
     func buildPostActions(
         for status: Status,
-        onPollVote: ((String, [Int]) async -> Bool)? = nil
+        onPollVote: ((String, [Int]) async -> Bool)? = nil,
+        prefetchRelationship: Bool = true
     ) -> PostActions {
-        let menuHandlers = moreMenuHandlers(for: status)
+        let menuHandlers = moreMenuHandlers(for: status, prefetchRelationship: prefetchRelationship)
         let navHandlers = PostNavigationActionCenter.handlers(for: status, router: router)
         return PostActions(
             navigation: navHandlers,
@@ -132,7 +141,8 @@ struct PostInteractionHandlers {
             onTap: navHandlers.onTapDetail,
             isOwnPost: PostMoreMenuPolicy.isOwnPost(
                 status, currentUserID: currentUserID
-            )
+            ),
+            mediaHandlers: self
         )
     }
 }

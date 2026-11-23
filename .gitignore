@@ -64,5 +64,8 @@ moro/Config/Secrets.swift
 # Local recordings
 docs/app-review/**/*.mp4
 
+# Local legal correspondence
+/docs/*referential trademark confirmation*.pdf
+
 # Project-specific local Xcode state
 moro.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings

@@ -3,5 +3,6 @@
   "keywords": "fediverso,activitypub,microblog,cronologia,marcadores,leitura offline,listas,etiquetas,rascunhos",
   "marketingUrl": "https://getmoro.app/",
   "promotionalText": "Conheça o Moro — um cliente Mastodon calmo e refinado, leve, simples e simpático. Use a sua conta e aproveite o fediverso sem ruído.",
-  "supportUrl": "https://getmoro.app/support"
+  "supportUrl": "https://getmoro.app/support",
+  "whatsNew": "O leitor multimédia tem uma interface mais clara e controlos mais simples.\nAgora é mais fácil navegar pelos perfis."
 }

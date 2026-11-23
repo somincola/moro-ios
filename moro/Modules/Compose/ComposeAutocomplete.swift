@@ -6,6 +6,7 @@ struct ComposeAutocompleteToken: Hashable {
     enum Kind: String, Hashable {
         case account = "@"
         case hashtag = "#"
+        case emoji = ":"
 
         // A search can use a localized display name; insertion uses the result's acct.
         private static let accountCharacters = CharacterSet.alphanumerics.union(.nonBaseCharacters)
@@ -22,6 +23,8 @@ struct ComposeAutocompleteToken: Hashable {
                 return character == "#" || character == "_" || character.unicodeScalars.allSatisfy {
                     Self.hashtagCharacters.contains($0)
                 }
+            case .emoji:
+                return character == "_" || (character.isASCII && (character.isLetter || character.isNumber))
             }
         }
     }
@@ -36,19 +39,27 @@ struct ComposeAutocompleteToken: Hashable {
               let caret = Range(selection, in: text)?.lowerBound,
               caret == text.endIndex || text.indices.contains(caret) else { return nil }
 
-        for kind in [Kind.account, .hashtag] {
+        for kind in [Kind.account, .hashtag, .emoji] {
             var start = caret
             while start > text.startIndex {
                 let previous = text.index(before: start)
                 guard kind.contains(text[previous]) else { break }
                 start = previous
             }
+            if kind == .emoji {
+                guard start > text.startIndex, text[text.index(before: start)] == ":" else { continue }
+                start = text.index(before: start)
+            }
             guard start < caret, String(text[start]) == kind.rawValue else { continue }
             if start > text.startIndex {
                 let previous = text[text.index(before: start)]
                 // Do not treat an email address, URL path or fragment as a completion.
-                guard previous.isWhitespace || "([{\"'“‘，。！？；：、（【《「『,;!".contains(previous) else { continue }
+                let followsLocalizedText = kind == .emoji && !previous.isASCII
+                guard followsLocalizedText || previous.isWhitespace || "([{\"'“‘，。！？；：、（【《「『,;!".contains(previous) else { continue }
             }
+            if kind == .emoji, ComposeTextHighlighter.urlRanges(in: text).contains(where: {
+                NSLocationInRange(start.utf16Offset(in: text), $0)
+            }) { continue }
 
             var end = caret
             while end < text.endIndex, kind.contains(text[end]) {
@@ -62,6 +73,9 @@ struct ComposeAutocompleteToken: Hashable {
                 guard parts.count <= 2, parts.count == 1 || !parts[0].isEmpty else { continue }
             case .hashtag:
                 guard !body.contains("#") else { continue }
+            case .emoji:
+                // Also replace a closing colon when completing from the middle of a word.
+                if end < text.endIndex, text[end] == ":" { end = text.index(after: end) }
             }
             return Self(kind: kind, query: String(text[bodyStart..<caret]), range: NSRange(start..<end, in: text))
         }
@@ -84,11 +98,13 @@ struct ComposeAutocompleteToken: Hashable {
 enum ComposeSuggestion: Identifiable {
     case account(Account)
     case hashtag(SearchTag)
+    case emoji(CustomEmoji)
 
     var id: String {
         switch self {
         case .account(let account): return "account.\(account.id)"
         case .hashtag(let tag): return "hashtag.\(tag.id)"
+        case .emoji(let emoji): return "emoji.\(emoji.shortcode)"
         }
     }
 
@@ -96,6 +112,7 @@ enum ComposeSuggestion: Identifiable {
         switch self {
         case .account(let account): return "@\(account.acct)"
         case .hashtag(let tag): return "#\(tag.name)"
+        case .emoji(let emoji): return ":\(emoji.shortcode):"
         }
     }
 }
@@ -112,10 +129,19 @@ final class ComposeAutocompleteModel: ObservableObject {
 
     private let apiClient: MastodonAPI
     private let debounce: Duration
+    private(set) var emojiCatalog: CustomEmojiViewModel?
+    private var catalogUpdates: AnyCancellable?
 
     init(apiClient: MastodonAPI, debounce: Duration = .milliseconds(250)) {
         self.apiClient = apiClient
         self.debounce = debounce
+    }
+
+    func useEmojiCatalog(for host: String?) {
+        guard host != emojiCatalog?.domain else { return }
+        objectWillChange.send()
+        emojiCatalog = host.flatMap { EmojiService.shared.dequeueCustomEmojiViewModel(for: $0, apiClient: apiClient) }
+        catalogUpdates = emojiCatalog?.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
 
     /// Owned by SwiftUI's task(id:); changing text, caret or input mode cancels the old task.
@@ -124,7 +150,7 @@ final class ComposeAutocompleteModel: ObservableObject {
         suggestions = []
         searchFailed = false
         isSearching = false
-        guard let token, !token.query.isEmpty else { return }
+        guard let token, token.kind != .emoji, !token.query.isEmpty else { return }
         isSearching = true
 
         do {

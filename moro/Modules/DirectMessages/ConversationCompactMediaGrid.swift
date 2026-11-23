@@ -207,7 +207,7 @@ struct ConversationCompactMediaGrid: View {
             selectedImageIndex = index
             selectedImageAttachment = attachment
         } else {
-            NativeVideoPlayer.present(url: attachment.url, isGIF: type == "gifv")
+            NativeVideoPlayer.present(attachment: attachment)
         }
     }
 

@@ -608,8 +608,35 @@ final class ProfileExperienceUITests: XCTestCase {
         XCTAssertTrue(more.waitForExistence(timeout: 5))
     }
 
+    func testPinnedPostKeepsInteractionCountsAndSelectionAfterAcknowledgement() {
+        let app = launch(extra: ["UITEST_STALE_INTERACTION_RESPONSE": "1"], animations: true)
+        defer { app.terminate() }
+        let section = app.otherElements["profile.pinnedPosts"].firstMatch
+        let like = section.buttons["Like"]
+        reveal(like, in: app)
+        like.tap()
+        let unlike = section.buttons["Unlike"]
+        XCTAssertTrue(unlike.waitForExistence(timeout: 4))
+        XCTAssertEqual(unlike.value as? String, "1")
+        section.buttons["Boost"].tap()
+        app.buttons["boostDialog.boost"].tap()
+        let unboost = section.buttons["Undo boost"]
+        XCTAssertTrue(unboost.waitForExistence(timeout: 4))
+        XCTAssertEqual(unboost.value as? String, "1")
+        section.buttons["Bookmark"].tap()
+        let unbookmark = section.buttons["Remove bookmark"]
+        XCTAssertTrue(unbookmark.waitForExistence(timeout: 4))
+        XCTAssertEqual(unlike.value as? String, "1")
+        XCTAssertEqual(unboost.value as? String, "1")
+        unbookmark.tap()
+        XCTAssertTrue(section.buttons["Bookmark"].waitForExistence(timeout: 4))
+        unlike.tap()
+        XCTAssertTrue(like.waitForExistence(timeout: 4))
+        XCTAssertEqual(like.value as? String ?? "", "")
+    }
+
     func testMediaGalleryOpensPhotosAndKeepsWarningsConcealed() {
-        let app = launch(extra: ["UITEST_PROFILE_GALLERY": "1"])
+        let app = launch(extra: ["UITEST_PROFILE_GALLERY": "1", "UITEST_OTHER_PROFILE": "1"])
         defer { app.terminate() }
         let media = app.buttons["profile.tab.media"].firstMatch
         reveal(media, in: app)
@@ -629,7 +656,32 @@ final class ProfileExperienceUITests: XCTestCase {
         photo.tap()
         let close = app.buttons["imagePreview.close"]
         XCTAssertTrue(close.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["imagePreview.page"].exists)
+        XCTAssertTrue(app.pageIndicators["imagePreview.pages"].exists)
+        XCTAssertTrue(app.buttons["mediaPreview.share"].exists)
+        for action in ["Reply", "Boost", "Like", "Bookmark"] {
+            XCTAssertTrue(app.buttons[action].exists, action)
+        }
+        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.tap()
+        XCTAssertTrue(close.waitForNonExistence(timeout: 3))
+        app.swipeLeft()
+        let secondPhoto = app.images.matching(identifier: "imagePreview.image")
+            .matching(NSPredicate(format: "label == 'Second gallery photo'")).firstMatch
+        XCTAssertTrue(secondPhoto.waitForExistence(timeout: 4))
+        XCTAssertFalse(close.exists)
+        center.tap()
+        app.buttons["Reply"].tap()
+        XCTAssertTrue(app.textViews["compose.textInput"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons["Cancel"].tap()
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        XCTAssertTrue(secondPhoto.isHittable)
+        let pages = app.pageIndicators["imagePreview.pages"]
+        XCTAssertEqual((pages.value as? String)?.split { !$0.isNumber }.compactMap { Int($0) }, [2, 2])
+        app.buttons["mediaPreview.more"].tap()
+        XCTAssertTrue(app.buttons["mediaPreview.openPost"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["mediaPreview.report"].exists)
+        XCTAssertTrue(app.buttons["Save to Photos"].exists)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.65)).tap()
         close.tap()
 
         contentWarning.tap()
@@ -637,6 +689,50 @@ final class ProfileExperienceUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Gallery post 318"].exists)
         app.buttons["Show more"].tap()
         XCTAssertTrue(app.staticTexts["Gallery post 318"].waitForExistence(timeout: 5))
+    }
+
+    func testVideoReplyReturnsToItsPlayheadAndPreviewActionsStaySelected() {
+        let app = launch(extra: ["UITEST_PROFILE_GALLERY": "1"], animations: true)
+        defer { app.terminate() }
+        let media = app.buttons["profile.tab.media"].firstMatch
+        reveal(media, in: app)
+        media.tap()
+        let tile = app.buttons["profile.media.tile.316"]
+        reveal(tile, in: app)
+        tile.tap()
+        let play = app.buttons["videoPreview.play"]
+        XCTAssertTrue(play.waitForExistence(timeout: 6))
+        if play.label == "Pause" { play.tap() }
+        let scrubber = app.descendants(matching: .any)["videoPreview.scrubber"].firstMatch
+        scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)).tap()
+        let rate = app.buttons["videoPreview.rate"]
+        rate.tap()
+        let time = scrubber.value as? String
+        XCTAssertNotEqual(time, "0:00")
+        app.buttons["Like"].tap()
+        XCTAssertTrue(app.buttons["Unlike"].waitForExistence(timeout: 4))
+        app.buttons["Bookmark"].tap()
+        XCTAssertTrue(app.buttons["Remove bookmark"].waitForExistence(timeout: 4))
+        app.buttons["Boost"].tap()
+        app.buttons["boostDialog.boost"].tap()
+        XCTAssertTrue(app.buttons["Undo boost"].waitForExistence(timeout: 4))
+        app.buttons["Reply"].tap()
+        let editor = app.textViews["compose.textInput"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("Reply from the video preview")
+        app.composePostButton.tap()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 8))
+        XCTAssertEqual(play.label, "Play")
+        XCTAssertEqual(scrubber.value as? String, time)
+        XCTAssertEqual(rate.value as? String, "1.25×")
+        play.tap()
+        app.buttons["Reply"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        app.navigationBars.buttons["Cancel"].tap()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(play.label, "Pause")
+        XCTAssertTrue(app.buttons["Unlike"].exists)
     }
 
     func testMediaTabOpensGalleryAndPaginates() {
@@ -655,6 +751,76 @@ final class ProfileExperienceUITests: XCTestCase {
         media.tap()
         XCTAssertTrue(lastTile.isHittable)
         XCTAssertFalse(app.buttons["List"].exists)
+    }
+
+    func testSwitchingProfileTabsShowsNewContentAndRestoresEachReadingPosition() {
+        let app = launch(extra: ["UITEST_PROFILE_LONG_TABS": "1", "UITEST_PROFILE_GALLERY": "1",
+                                 "UITEST_PROFILE_GALLERY_LOADING": "1"], animations: true)
+        defer { app.terminate() }
+        let posts = app.buttons["profile.tab.posts"].firstMatch
+        let replies = app.buttons["profile.tab.replies"].firstMatch
+        let media = app.buttons["profile.tab.media"].firstMatch
+
+        func scrollToItem(_ item: XCUIElement, file: StaticString = #filePath, line: UInt = #line) -> CGFloat {
+            let window = app.frame
+            for _ in 0..<16 {
+                var start = 0.78
+                var end = 0.43
+                if item.exists {
+                    let frame = item.frame
+                    if item.isHittable, (window.height * 0.23 ... window.height * 0.89).contains(frame.midY) {
+                        return frame.minY
+                    }
+                    if !frame.isEmpty, frame.midY < window.height * 0.23 {
+                        start = 0.42
+                        end = 0.67
+                    }
+                }
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: start)).press(forDuration: 0.06,
+                    thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: end)),
+                    withVelocity: .fast, thenHoldForDuration: 0.15)
+            }
+            XCTFail("Could not reach \(item)", file: file, line: line)
+            return 0
+        }
+        func assertRestored(_ item: XCUIElement, at y: CGFloat, file: StaticString = #filePath, line: UInt = #line) {
+            let restored = NSPredicate { _, _ in item.exists && item.isHittable && abs(item.frame.minY - y) < 8 }
+            let result = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: restored, object: nil)], timeout: 5)
+            if result != .completed {
+                XCTFail("Expected reading position at y=\(y), found \(item.exists ? String(describing: item.frame) : "no item")",
+                        file: file, line: line)
+            }
+        }
+
+        let post = app.staticTexts["Scroll post 485"].firstMatch
+        let postY = scrollToItem(post)
+        media.tap()
+        let skeleton = app.descendants(matching: .any)["profile.media.loading"].firstMatch
+        XCTAssertTrue(skeleton.waitForExistence(timeout: 4))
+        XCTAssertGreaterThanOrEqual(skeleton.frame.minY, media.frame.maxY - 2)
+        XCTAssertLessThan(skeleton.frame.minY, app.frame.midY)
+        posts.tap()
+        assertRestored(post, at: postY)
+        media.tap()
+        let firstTile = app.buttons["profile.media.tile.320"]
+        XCTAssertTrue(firstTile.waitForExistence(timeout: 12))
+        XCTAssertGreaterThanOrEqual(firstTile.frame.minY, media.frame.maxY - 2)
+        XCTAssertLessThan(firstTile.frame.minY, app.frame.midY)
+
+        let tile = app.buttons["profile.media.tile.289"]
+        let tileY = scrollToItem(tile)
+        replies.tap()
+        XCTAssertTrue(app.staticTexts["Scroll reply 700"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Scroll reply 700"].firstMatch.isHittable)
+        let reply = app.staticTexts["Scroll reply 690"].firstMatch
+        let replyY = scrollToItem(reply)
+
+        posts.tap()
+        assertRestored(post, at: postY)
+        media.tap()
+        assertRestored(tile, at: tileY)
+        replies.tap()
+        assertRestored(reply, at: replyY)
     }
 
     func testMediaGalleryShowsGridSkeletonAndRetriesThumbnailInPlace() {

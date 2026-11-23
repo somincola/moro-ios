@@ -39,10 +39,11 @@ extension EnvironmentValues {
 
 struct UIKitScrollVisibilityProbe: UIViewRepresentable {
     let visibility: UIKitScrollVisibility
+    var threshold = MediaPlaybackPolicy.visibleFraction
     let onChange: (Bool) -> Void
 
     func makeUIView(context: Context) -> UIKitScrollVisibilityProbeView {
-        UIKitScrollVisibilityProbeView(visibility: visibility)
+        UIKitScrollVisibilityProbeView(visibility: visibility, threshold: threshold)
     }
 
     func updateUIView(_ view: UIKitScrollVisibilityProbeView, context: Context) {
@@ -57,12 +58,14 @@ struct UIKitScrollVisibilityProbe: UIViewRepresentable {
 
 final class UIKitScrollVisibilityProbeView: UIView {
     private let visibility: UIKitScrollVisibility
+    private let threshold: Double
     var onChange: ((Bool) -> Void)?
     private var lastVisible: Bool?
     private var notificationTask: Task<Void, Never>?
 
-    init(visibility: UIKitScrollVisibility) {
+    init(visibility: UIKitScrollVisibility, threshold: Double = MediaPlaybackPolicy.visibleFraction) {
         self.visibility = visibility
+        self.threshold = threshold
         super.init(frame: .zero)
         isUserInteractionEnabled = false
         isAccessibilityElement = false
@@ -94,7 +97,7 @@ final class UIKitScrollVisibilityProbeView: UIView {
             ancestor = view.superview
         }
         let fraction = visible.isNull ? 0 : visible.width * visible.height / (frame.width * frame.height)
-        report(Double(fraction) >= MediaPlaybackPolicy.visibleFraction)
+        report(Double(fraction) >= threshold)
     }
 
     private func report(_ visible: Bool) {

@@ -27,18 +27,22 @@ struct ComposePublishingTests {
         let status = try makeStatus()
         for context: ComposeViewModel.ComposeContext in [.newPost, .reply(to: status), .quote(original: status)] {
             let api = MockMastodonAPI()
+            let model = makeModel(api, context: context)
+            model.content += ":blobcat: :unknown:"
+            let source = model.content
             var serverPosts = Set<String>()
-            api.publishStatusResultHandler = { _, _, _, _, _, _, _, _, _, _ in
+            api.publishStatusResultHandler = { text, _, _, _, _, _, _, _, _, _ in
+                #expect(text == source)
                 let key = try #require(api.publishIdempotencyKeys.last ?? nil)
                 if serverPosts.insert(key).inserted { throw APIError.timeout }
                 return .posted(status)
             }
-            let model = makeModel(api, context: context)
             do { _ = try await model.publish(); Issue.record("Expected the lost response") }
             catch { #expect(error is APIError) }
             #expect(model.canPublish && !model.hasPublished)
             let draft = model.makeDraft(category: .auto)
             let restoredDraft = try JSONDecoder().decode(ComposeDraft.self, from: JSONEncoder().encode(draft))
+            #expect(restoredDraft.payload.content == source)
             let restored = ComposeViewModel(context: context, apiClient: api, currentUserID: "me", initialDraft: restoredDraft)
             restored.maxCharacters = 5_000
             _ = try await restored.publish()

@@ -3,5 +3,6 @@
   "keywords": "fédivers,activitypub,microblog,fil,chronologique,signets,hors ligne,listes,hashtags,brouillons",
   "marketingUrl": "https://getmoro.app/",
   "promotionalText": "Découvrez Moro — un client Mastodon calme et raffiné, conçu pour être léger, simple et convivial. Connectez votre compte et profitez du fédivers sans le bruit.",
-  "supportUrl": "https://getmoro.app/support"
+  "supportUrl": "https://getmoro.app/support",
+  "whatsNew": "Le lecteur multimédia a été repensé avec une interface plus claire et des commandes plus simples.\nLa navigation sur les profils est plus fluide."
 }

@@ -257,6 +257,8 @@ class VideoPlayerObserver: ObservableObject {
     private let pool: TimelineVideoPlayerPool?
     /// Fullscreen: continue the player already showing this video, whatever its setup.
     private let continuesExistingPlayer: Bool
+    /// Repeat a regular video for the fullscreen viewer without replacing the timeline's player.
+    private var repeatsAtEnd = false
     private var entry: PooledVideoPlayer?
     private var player: AVPlayer?
     private var timeObserverToken: Any?
@@ -344,6 +346,10 @@ class VideoPlayerObserver: ObservableObject {
                 Task { @MainActor [observer] in
                     guard let observer, observer.playbackGeneration == generation else { return }
                     observer.didReachEnd = true
+                    if observer.repeatsAtEnd && observer.isPlaybackRequested {
+                        observer.play()
+                        return
+                    }
                     observer.isPlaybackRequested = false
                     observer.playingState = .paused
                 }
@@ -355,10 +361,17 @@ class VideoPlayerObserver: ObservableObject {
         return player
     }
 
-    /// A looping GIF keeps its playback UI through queue-item handoffs. Regular videos
-    /// still expose their replay button when AVPlayer reaches the end and pauses.
+    func setFullscreenLooping(_ enabled: Bool) {
+        guard repeatsAtEnd != enabled else { return }
+        repeatsAtEnd = enabled
+        // Native PiP can play or pause the shared player while the fullscreen controls are gone.
+        if enabled, let player { isPlaybackRequested = player.timeControlStatus != .paused }
+    }
+
+    /// Keep the pause control through queue handoffs and fullscreen rewinds. A one-pass
+    /// inline video exposes replay when AVPlayer reaches the end.
     var isPlaybackActive: Bool {
-        playingState != .paused || ((entry?.isGIF == true || entry?.loops == true) && isPlaybackRequested)
+        playingState != .paused || ((repeatsAtEnd || entry?.isGIF == true || entry?.loops == true) && isPlaybackRequested)
     }
 
     /// A video (not a looping GIF) that has played through to its last frame.
@@ -394,6 +407,12 @@ class VideoPlayerObserver: ObservableObject {
     func setMuted(_ muted: Bool) {
         guard let entry, !entry.isGIF else { return }
         entry.player.isMuted = muted
+    }
+
+    func seek(to time: CMTime, precise: Bool) {
+        didReachEnd = false
+        let tolerance = precise ? .zero : CMTime(seconds: 0.15, preferredTimescale: 600)
+        player?.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance)
     }
 
     func pause() {

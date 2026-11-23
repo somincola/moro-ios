@@ -119,7 +119,9 @@ final class TimelineLiveFixtureProtocol: URLProtocol, @unchecked Sendable {
             let isInitial = request.url!.path.contains("timelines") && query.isEmpty == false
                 && !query.contains { $0.name == "max_id" || $0.name == "since_id" }
             let posts: [Status]
-            if isInitial {
+            if isInitial, ProcessInfo.processInfo.arguments.contains("UITEST_POST_EMOJI") {
+                posts = [PostEmojiPlaybackFixture.post]
+            } else if isInitial {
                 posts = (41...100).reversed().map(Self.post)
             } else if request.value(forHTTPHeaderField: "X-Moro-Fixture-Gaps") == "1",
                 let upper = query.first(where: { $0.name == "max_id" })?.value.flatMap(Int.init),

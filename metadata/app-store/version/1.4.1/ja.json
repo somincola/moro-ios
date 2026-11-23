@@ -3,5 +3,6 @@
   "keywords": "マストドン,フェディバース,時系列,ハッシュタグ,ブックマーク,下書き",
   "marketingUrl": "https://getmoro.app/",
   "promotionalText": "Moroは、静かで洗練されたMastodonクライアントです。軽快・シンプル・フレンドリーをコンセプトに、どのサーバーのアカウントでもそのまま持ち込んでフェディバースを楽しめます。",
-  "supportUrl": "https://getmoro.app/support"
+  "supportUrl": "https://getmoro.app/support",
+  "whatsNew": "メディアプレーヤーのレイアウトを見直し、操作をシンプルにしました。\nプロフィールの閲覧もスムーズになりました。"
 }

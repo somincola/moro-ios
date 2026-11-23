@@ -106,27 +106,21 @@ enum ComposeTextEditing {
         shortcode: String,
         into text: String,
         selection: NSRange
-    ) -> ComposeTextInsertionResult {
+    ) -> (range: NSRange, replacement: String) {
         let source = text as NSString
         let safeSelection = clamped(selection, in: source.length)
         let replacedEnd = NSMaxRange(safeSelection)
 
         var insertion = ":\(shortcode):"
         if safeSelection.location > 0,
-           !isWhitespace(in: source, at: safeSelection.location - 1) {
+           needsSeparator(in: source, at: safeSelection.location - 1) {
             insertion.insert(" ", at: insertion.startIndex)
         }
-        if replacedEnd == source.length || !isWhitespace(in: source, at: replacedEnd) {
+        if replacedEnd == source.length || needsSeparator(in: source, at: replacedEnd) {
             insertion.append(" ")
         }
 
-        let updated = NSMutableString(string: text)
-        updated.replaceCharacters(in: safeSelection, with: insertion)
-        let caretLocation = safeSelection.location + (insertion as NSString).length
-        return ComposeTextInsertionResult(
-            text: updated as String,
-            selection: NSRange(location: caretLocation, length: 0)
-        )
+        return (safeSelection, insertion)
     }
 
     private static func clamped(_ range: NSRange, in length: Int) -> NSRange {
@@ -135,10 +129,9 @@ enum ComposeTextEditing {
         return NSRange(location: location, length: min(max(range.length, 0), remaining))
     }
 
-    private static func isWhitespace(in text: NSString, at location: Int) -> Bool {
-        guard location >= 0, location < text.length else { return false }
-        let character = text.substring(with: NSRange(location: location, length: 1))
-        return character.rangeOfCharacter(from: .whitespacesAndNewlines) != nil
+    private static func needsSeparator(in text: NSString, at location: Int) -> Bool {
+        let character = text.substring(with: text.rangeOfComposedCharacterSequence(at: location))
+        return character == ":" || character.rangeOfCharacter(from: .alphanumerics) != nil
     }
 }
 
@@ -149,6 +142,9 @@ struct ComposeView: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceEmojiMotion
+    @Environment(\.accessibilityPlayAnimatedImages) private var systemPlaysAnimatedImages
+    @State private var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
     @EnvironmentObject private var appState: AppState
     
     @State private var selectedPhotos: [PhotosPickerItem] = []
@@ -162,7 +158,7 @@ struct ComposeView: View {
     @State private var editingAltText: String = ""
     @State private var hasMarkedText = false
     @State private var completedAutocompleteToken: ComposeAutocompleteToken?
-    @State private var emojiViewModel: CustomEmojiViewModel?
+    @State private var emojiInput = ComposeEmojiInputTarget()
     @State private var pendingScheduledDate = ComposeViewModel.defaultScheduledDate()
     @State private var hasProcessedSharedImport = false
     @StateObject private var sharedEditingSession = SharedComposeEditingSession()
@@ -310,6 +306,7 @@ struct ComposeView: View {
                     .scrollContentBackground(.hidden)
                     .contentShape(Rectangle())
                     .scrollDismissesKeyboard(.interactively)
+                    .onScrollPhaseChange { _, phase in emojiInput.editor?.setEmojiPageScrolling(phase != .idle) }
                     .accessibilityIdentifier("compose.contentScroll")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -512,6 +509,9 @@ struct ComposeView: View {
                     startSharedImports(retry: resume)
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+                lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+            }
             .task(priority: .utility) {
                 await viewModel.loadInstanceLimits()
             }
@@ -520,6 +520,9 @@ struct ComposeView: View {
             }
             .task(id: autocompleteToken) {
                 await autocomplete.load(for: autocompleteToken)
+            }
+            .task(id: accountHost) {
+                autocomplete.useEmojiCatalog(for: accountHost)
             }
         }
     }
@@ -577,7 +580,7 @@ struct ComposeView: View {
     private func composeSheet(for destination: ComposeDestination) -> some View {
         switch destination {
         case .preview:
-            ComposePreviewSheet(viewModel: viewModel, account: appState.currentAccount)
+            ComposePreviewSheet(viewModel: viewModel, autocomplete: autocomplete, account: appState.currentAccount)
                 .moroSheetSurface(detents: [.large])
         case .mediaOrder:
             ComposeMediaOrderSheet(viewModel: viewModel)
@@ -818,11 +821,7 @@ struct ComposeView: View {
     }
 
     private func toggleEmojiPicker() {
-        let nextMode = inputMode.togglingEmojiPicker()
-        if nextMode == .emoji {
-            loadEmojiViewModelIfNeeded()
-        }
-        inputMode = nextMode
+        inputMode = inputMode.togglingEmojiPicker()
     }
 
     private func updateEmojiPickerHeight(from notification: Notification) {
@@ -861,16 +860,24 @@ struct ComposeView: View {
             minimumHeight: usesCompactReplyComposerLayout ? 120 : 180,
             inputMode: inputMode,
             emojiPickerHeight: emojiPickerHeight,
-            emojiViewModel: emojiViewModel,
+            emojiViewModel: autocomplete.emojiCatalog,
+            emojiInput: emojiInput,
             hasEmojiHost: accountHost != nil,
             isSceneActive: scenePhase == .active,
             playAnimations: settings.playAnimations,
+            playsInlineEmoji: settings.playAnimations && systemPlaysAnimatedImages && !reduceEmojiMotion
+                && !lowPowerMode && scenePhase == .active && destination == nil && !isPublishingOrClosing,
             theme: theme,
             textColor: UIColor(theme.colors.textPrimary),
             placeholder: placeholderText,
-            placeholderColor: UIColor(theme.colors.textSecondary),
-            onEmojiSelected: insertEmoji
+            placeholderColor: UIColor(theme.colors.textSecondary)
         )
+        .onGeometryChange(for: CGRect.self) { proxy in
+            let bounds = CGRect(origin: .zero, size: proxy.size)
+            return bounds.intersection(proxy.bounds(of: .scrollView) ?? bounds)
+        } action: { rect in
+            emojiInput.editor?.setEmojiViewport(rect)
+        }
     }
 
     private var inlineCharacterCounter: some View {
@@ -1681,28 +1688,11 @@ struct ComposeView: View {
         return compact.uppercased()
     }
     
-    // Computed property to extract account host domain
+    // Some accounts use a different public profile domain from the server handling this post.
     private var accountHost: String? {
-        guard let account = appState.currentAccount,
-              let urlString = account.url,
-              let url = URL(string: urlString) else {
-            return nil
-        }
-        return url.host
-    }
-
-    private func insertEmoji(shortcode: String) {
-        let result = ComposeTextEditing.insertingEmoji(
-            shortcode: shortcode,
-            into: viewModel.content,
-            selection: textSelection
-        )
-        viewModel.content = result.text
-        textSelection = result.selection
-        textSelectionCommand = ComposeTextSelectionCommand(
-            range: result.selection,
-            scrollsToSelection: true
-        )
+        let instance = viewModel.apiClient.instanceURL ?? appState.currentAccount?.url.flatMap(URL.init(string:))
+        guard let instance, let host = instance.host?.lowercased() else { return nil }
+        return host + (instance.port.map { ":\($0)" } ?? "")
     }
 
     private var autocompleteToken: ComposeAutocompleteToken? {
@@ -1716,21 +1706,17 @@ struct ComposeView: View {
     }
 
     private func insertSuggestion(_ suggestion: ComposeSuggestion, for token: ComposeAutocompleteToken) {
-        guard !hasMarkedText, autocompleteToken == token,
-              let result = token.inserting(suggestion.completion, into: viewModel.content, selection: textSelection)
+        guard !hasMarkedText, autocompleteToken == token else { return }
+        if case .emoji(let emoji) = suggestion {
+            emojiInput.editor?.insertEmoji(emoji.shortcode, replacing: token.range)
+            return
+        }
+        guard let result = token.inserting(suggestion.completion, into: viewModel.content, selection: textSelection)
         else { return }
         viewModel.content = result.text
         textSelection = result.selection
         textSelectionCommand = ComposeTextSelectionCommand(range: result.selection, scrollsToSelection: true)
         completedAutocompleteToken = ComposeAutocompleteToken.active(in: result.text, selection: result.selection)
-    }
-    
-    private func loadEmojiViewModelIfNeeded() {
-        guard let host = accountHost else { return }
-        let fetchedViewModel = EmojiService.shared.dequeueCustomEmojiViewModel(for: host, apiClient: viewModel.apiClient)
-        if emojiViewModel?.domain != host || emojiViewModel == nil {
-            emojiViewModel = fetchedViewModel
-        }
     }
     
     private func openSchedulePicker() {
@@ -2233,6 +2219,11 @@ struct CameraView: UIViewControllerRepresentable {
     }
 }
 
+private final class ComposeEmojiInputTarget {
+    nonisolated deinit {}
+    weak var editor: ComposeUIKitTextView?
+}
+
 private struct ComposeTextViewRepresentable: UIViewRepresentable {
     @Binding var text: String
     @Binding var selection: NSRange
@@ -2245,22 +2236,23 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
     let inputMode: ComposeInputMode
     let emojiPickerHeight: CGFloat
     let emojiViewModel: CustomEmojiViewModel?
+    let emojiInput: ComposeEmojiInputTarget
     let hasEmojiHost: Bool
     let isSceneActive: Bool
     let playAnimations: Bool
+    let playsInlineEmoji: Bool
     let theme: MoroTheme
     let textColor: UIColor
     let placeholder: String
     let placeholderColor: UIColor
-    let onEmojiSelected: (String) -> Void
 
     func makeUIView(context: Context) -> ComposeUIKitTextView {
-        let textView = ComposeUIKitTextView()
+        let textView = ComposeUIKitTextView(emojiLayout: ComposeEmojiLayoutManager())
+        emojiInput.editor = textView
         textView.backgroundColor = .clear
         textView.isOpaque = false
         textView.textColor = textColor
-        textView.font = UIFont.preferredFont(forTextStyle: .body)
-        textView.adjustsFontForContentSizeCategory = true
+        context.coordinator.updateFont(textView)
         textView.isScrollEnabled = isExpanded
         textView.alwaysBounceVertical = isExpanded
         textView.showsVerticalScrollIndicator = isExpanded
@@ -2275,12 +2267,14 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
         textView.selectedRange = clampedRange(selection, in: textView.textStorage.length)
         context.coordinator.updateHighlighting(textView)
         textView.delegate = context.coordinator
+        textView.setEmojiPlaybackEnabled(playsInlineEmoji)
         textView.updateFocusRequest(isFocused)
         return textView
     }
 
     func updateUIView(_ textView: ComposeUIKitTextView, context: Context) {
         context.coordinator.parent = self
+        context.coordinator.updateFont(textView)
         textView.isScrollEnabled = isExpanded
         textView.alwaysBounceVertical = isExpanded
         textView.showsVerticalScrollIndicator = isExpanded
@@ -2315,9 +2309,13 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
         }
 
         context.coordinator.updateHighlighting(textView)
+        textView.setEmojiPlaybackEnabled(playsInlineEmoji)
         textView.updateInputMode(
             inputMode,
             emojiPickerHeight: emojiPickerHeight,
+            configuration: ComposeEmojiPickerConfiguration(catalog: emojiViewModel.map(ObjectIdentifier.init),
+                hasHost: hasEmojiHost, isSceneActive: isSceneActive, playAnimations: playAnimations,
+                colors: theme.colors, dynamicTypeSize: theme.dynamicTypeSize),
             emojiRootView: {
                 AnyView(
                     ComposeEmojiInputSurface(
@@ -2325,8 +2323,8 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
                         hasEmojiHost: hasEmojiHost,
                         isSceneActive: isSceneActive,
                         playAnimations: playAnimations,
-                        onEmojiSelected: { [weak coordinator = context.coordinator] shortcode in
-                            coordinator?.parent.onEmojiSelected(shortcode)
+                        onEmojiSelected: { [weak textView] shortcode in
+                            textView?.insertEmoji(shortcode)
                         }
                     )
                     .environment(\.moroTheme, theme)
@@ -2361,9 +2359,23 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
         var parent: ComposeTextViewRepresentable
         var isUpdatingFromSwiftUI = false
         var lastAppliedSelectionCommandID: UUID?
+        private var fontSize: MoroPostFontSize?
+        private var dynamicType: DynamicTypeSize?
+        private var highlightedRevision: Int?
+        private var highlightedColors: MoroColors?
 
         init(parent: ComposeTextViewRepresentable) {
             self.parent = parent
+        }
+
+        func updateFont(_ textView: UITextView) {
+            let theme = parent.theme
+            guard textView.markedTextRange == nil,
+                  fontSize != theme.postFontSize || dynamicType != theme.dynamicTypeSize else { return }
+            fontSize = theme.postFontSize
+            dynamicType = theme.dynamicTypeSize
+            textView.font = theme.postUIFont()
+            highlightedRevision = nil
         }
 
         func finishSelectionCommand(_ id: UUID) {
@@ -2396,6 +2408,11 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
             guard !isUpdatingFromSwiftUI else { return }
             updateMarkedText(textView)
             updateHighlighting(textView)
+            if let editor = textView as? ComposeUIKitTextView, editor.markedTextRange == nil {
+                isUpdatingFromSwiftUI = true
+                editor.normalizeEmojiSelection(previous: parent.selection)
+                isUpdatingFromSwiftUI = false
+            }
             updateSelectionIfNeeded(textView.selectedRange)
             (textView as? ComposeUIKitTextView)?.requestSelectionReveal()
         }
@@ -2411,11 +2428,21 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
             guard !isUpdatingFromSwiftUI else { return }
             isUpdatingFromSwiftUI = true
             defer { isUpdatingFromSwiftUI = false }
+            guard let editor = textView as? ComposeUIKitTextView else { return }
+            editor.emojiLayout.refresh(in: editor, catalog: parent.emojiViewModel)
+            guard editor.markedTextRange == nil else { return }
+            let revision = editor.emojiLayout.textRevision
+            if highlightedRevision == revision, highlightedColors == parent.theme.colors {
+                ComposeTextHighlighter.resetTypingColor(in: editor, to: parent.textColor)
+                return
+            }
             ComposeTextHighlighter.apply(
                 to: textView,
                 textColor: parent.textColor,
                 tokenColor: UIColor(parent.theme.colors.contentLink)
             )
+            highlightedRevision = revision
+            highlightedColors = parent.theme.colors
         }
 
         private func updateMarkedText(_ textView: UITextView) {
@@ -2435,7 +2462,7 @@ private struct ComposeTextViewRepresentable: UIViewRepresentable {
     }
 }
 
-private final class ComposeUIKitTextView: UITextView {
+final class ComposeUIKitTextView: UITextView {
     // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
     nonisolated deinit {}
 
@@ -2447,18 +2474,74 @@ private final class ComposeUIKitTextView: UITextView {
     private var placeholderMeasurementWidth: CGFloat = -1
     private var placeholderMeasuredSize: CGSize = .zero
 
-    override init(frame: CGRect, textContainer: NSTextContainer?) {
-        super.init(frame: frame, textContainer: textContainer)
+    let emojiLayout: ComposeEmojiLayoutManager
+    private var emojiPlayback: ComposeEmojiPlayback?
+    private var emojiPlaybackEnabled = false
+    private var emojiPageScrolling = false
+    private var emojiViewport: CGRect?
+    // Remember only the separators inserted by the picker/completion, until the caret moves.
+    private var recentEmojiInsertion: (range: NSRange, shortcodeRange: NSRange)?
+
+    init(emojiLayout: ComposeEmojiLayoutManager) {
+        self.emojiLayout = emojiLayout
+        let storage = NSTextStorage()
+        let container = NSTextContainer(size: .zero)
+        container.widthTracksTextView = true
+        storage.addLayoutManager(emojiLayout)
+        emojiLayout.addTextContainer(container)
+        super.init(frame: .zero, textContainer: container)
+        emojiLayout.delegate = emojiLayout
         configure()
     }
 
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        configure()
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func insertEmoji(_ shortcode: String, replacing range: NSRange? = nil) {
+        guard markedTextRange == nil else { return }
+        let edit = ComposeTextEditing.insertingEmoji(shortcode: shortcode, into: text, selection: range ?? selectedRange)
+        selectedRange = edit.range
+        insertText(edit.replacement)
+        let insertion = NSRange(location: edit.range.location, length: edit.replacement.utf16.count)
+        let code = NSRange(location: edit.range.location + (edit.replacement.hasPrefix(" ") ? 1 : 0),
+                           length: shortcode.utf16.count + 2)
+        recentEmojiInsertion = (insertion, code)
+    }
+
+    func normalizeEmojiSelection(previous: NSRange) {
+        if let inserted = recentEmojiInsertion, selectedRange != NSRange(location: NSMaxRange(inserted.range), length: 0) {
+            recentEmojiInsertion = nil
+        }
+        let atomic = emojiLayout.atomicSelection(selectedRange, previous: previous)
+        if selectedRange != atomic { selectedRange = atomic }
+    }
+
+    override func deleteBackward() {
+        let inserted = recentEmojiInsertion
+        recentEmojiInsertion = nil
+        let caret = selectedRange.location
+        guard markedTextRange == nil, selectedRange.length == 0 else { return super.deleteBackward() }
+        let range: NSRange
+        if let inserted, NSMaxRange(inserted.range) == caret,
+           emojiLayout.emojiEnding(at: NSMaxRange(inserted.shortcodeRange)) == inserted.shortcodeRange {
+            range = inserted.range
+        } else if let emoji = emojiLayout.emojiEnding(at: caret) {
+            range = emoji
+        } else {
+            return super.deleteBackward()
+        }
+        // UIKit's smart selection deletion can also eat a space that the author typed.
+        // An explicit text replacement targets exactly the emoji and retains native undo.
+        guard let start = position(from: beginningOfDocument, offset: range.location),
+              let end = position(from: beginningOfDocument, offset: NSMaxRange(range)),
+              let emojiRange = textRange(from: start, to: end) else { return super.deleteBackward() }
+        replace(emojiRange, withText: "")
     }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        if window == nil { stopEmojiPlayback() }
+        else if emojiPlaybackEnabled { setNeedsLayout() }
         // The initial focus request can arrive before UIKit attaches the editor.
         // Apply it here once attached; normal resigning still updates ComposeInputMode.
         if window != nil, requestsFocus, !isFirstResponder { becomeFirstResponder() }
@@ -2509,6 +2592,44 @@ private final class ComposeUIKitTextView: UITextView {
             let caret = caretRect(for: selectedTextRange.end).insetBy(dx: 0, dy: -12)
             scrollRectToVisible(caret, animated: false)
         }
+        updateEmojiPlayback()
+    }
+
+    func setEmojiPlaybackEnabled(_ enabled: Bool) {
+        guard emojiPlaybackEnabled != enabled else { return }
+        emojiPlaybackEnabled = enabled
+        if enabled { setNeedsLayout() } else { stopEmojiPlayback() }
+    }
+
+    func setEmojiPageScrolling(_ scrolling: Bool) {
+        guard emojiPageScrolling != scrolling else { return }
+        emojiPageScrolling = scrolling
+        if scrolling { stopEmojiPlayback() } else if emojiPlaybackEnabled { setNeedsLayout() }
+    }
+
+    /// SwiftUI supplies the outer page clip. An expanded editor also scrolls its native content.
+    func setEmojiViewport(_ rect: CGRect) {
+        guard emojiViewport != rect else { return }
+        emojiViewport = rect
+        if emojiPlaybackEnabled && !emojiPageScrolling && emojiLayout.hasEmoji { setNeedsLayout() }
+    }
+
+    private func updateEmojiPlayback() {
+        guard emojiPlaybackEnabled, !emojiPageScrolling, emojiLayout.hasEmoji, let window else {
+            stopEmojiPlayback()
+            return
+        }
+        let clip = emojiViewport?.offsetBy(dx: bounds.minX, dy: bounds.minY) ?? bounds
+        let visible = bounds.intersection(clip).intersection(convert(window.bounds, from: window))
+        guard !visible.isEmpty else { stopEmojiPlayback(); return }
+        let playback = emojiPlayback ?? ComposeEmojiPlayback()
+        emojiPlayback = playback
+        playback.update(in: self, viewport: visible)
+    }
+
+    private func stopEmojiPlayback() {
+        emojiPlayback?.stop(in: self)
+        emojiPlayback = nil
     }
 
     override func scrollRectToVisible(_ rect: CGRect, animated: Bool) {
@@ -2567,25 +2688,25 @@ private final class ComposeUIKitTextView: UITextView {
     func updateInputMode(
         _ mode: ComposeInputMode,
         emojiPickerHeight: CGFloat,
+        configuration: ComposeEmojiPickerConfiguration,
         emojiRootView: () -> AnyView
     ) {
         var shouldReloadInputViews = false
 
         switch mode {
         case .emoji:
-            let rootView = emojiRootView()
             let pickerInputView: ComposeEmojiInputView
             if let emojiInputView {
                 pickerInputView = emojiInputView
                 if pickerInputView.update(
-                    rootView: rootView,
+                    configuration: configuration, rootView: emojiRootView,
                     preferredHeight: emojiPickerHeight
                 ) {
                     shouldReloadInputViews = true
                 }
             } else {
                 let newInputView = ComposeEmojiInputView(
-                    rootView: rootView,
+                    configuration: configuration, rootView: emojiRootView(),
                     preferredHeight: emojiPickerHeight
                 )
                 emojiInputView = newInputView
@@ -2611,14 +2732,25 @@ private final class ComposeUIKitTextView: UITextView {
 
 }
 
+struct ComposeEmojiPickerConfiguration: Equatable {
+    let catalog: ObjectIdentifier?
+    let hasHost: Bool
+    let isSceneActive: Bool
+    let playAnimations: Bool
+    let colors: MoroColors
+    let dynamicTypeSize: DynamicTypeSize
+}
+
 private final class ComposeEmojiInputView: UIInputView {
     // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
     nonisolated deinit {}
 
     private let hostingController: UIHostingController<AnyView>
     private var preferredHeight: CGFloat
+    private var configuration: ComposeEmojiPickerConfiguration
 
-    init(rootView: AnyView, preferredHeight: CGFloat) {
+    init(configuration: ComposeEmojiPickerConfiguration, rootView: AnyView, preferredHeight: CGFloat) {
+        self.configuration = configuration
         self.hostingController = UIHostingController(rootView: rootView)
         self.preferredHeight = preferredHeight
         super.init(
@@ -2655,8 +2787,11 @@ private final class ComposeEmojiInputView: UIInputView {
     }
 
     @discardableResult
-    func update(rootView: AnyView, preferredHeight: CGFloat) -> Bool {
-        hostingController.rootView = rootView
+    func update(configuration: ComposeEmojiPickerConfiguration, rootView: () -> AnyView, preferredHeight: CGFloat) -> Bool {
+        if self.configuration != configuration {
+            self.configuration = configuration
+            hostingController.rootView = rootView()
+        }
         guard self.preferredHeight != preferredHeight else { return false }
 
         self.preferredHeight = preferredHeight
@@ -2854,13 +2989,12 @@ struct EmojiPickerContentView: View {
     }
 }
 
-private struct EmojiPickerThumbnail: View {
+struct EmojiPickerThumbnail: View {
     let url: URL
     let size: CGFloat
 
-    @Environment(\.displayScale) private var displayScale
     @Environment(\.moroTheme) private var theme
-    @State private var image: UIImage?
+    @State private var loaded: (url: URL, image: UIImage)?
 
     init(url: URL, size: CGFloat = 40) {
         self.url = url
@@ -2869,8 +3003,8 @@ private struct EmojiPickerThumbnail: View {
 
     var body: some View {
         Group {
-            if let image {
-                Image(uiImage: image)
+            if let loaded, loaded.url == url {
+                Image(uiImage: loaded.image)
                     .resizable()
                     .scaledToFit()
             } else {
@@ -2884,14 +3018,9 @@ private struct EmojiPickerThumbnail: View {
             }
         }
         .frame(width: size, height: size)
-        .task(id: "\(url.absoluteString)#\(size)") {
-            image = nil
-            let loadedImage = await ImageCache.shared.loadThumbnail(
-                from: url,
-                maxPixelSize: size * displayScale
-            )
-            guard !Task.isCancelled else { return }
-            image = loadedImage
+        .task(id: url) {
+            guard let image = await InlineEmojiRendering.loadThumbnail(for: url), !Task.isCancelled else { return }
+            loaded = (url, image)
         }
     }
 }
@@ -2905,7 +3034,6 @@ private struct AnimatedEmojiPickerThumbnail: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
-    @Environment(\.moroTheme) private var theme
     @State private var isLoaded = false
     @State private var isVisible = false
     @State private var usesStaticFallback = false
@@ -2951,39 +3079,33 @@ private struct AnimatedEmojiPickerThumbnail: View {
     }
 
     var body: some View {
+        let showsOriginal = animationsEnabled && !reduceMotion && !usesStaticFallback
         ZStack {
-            if !isLoaded {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(theme.colors.surfaceSubtle)
-                    .overlay {
-                        Image(systemName: "face.smiling")
-                            .moroScaledFont(size: max(size * 0.32, 10))
-                            .foregroundStyle(theme.colors.textTertiary)
-                    }
+            if isVisible {
+                // Keep the server's still ready for insertion even when the grid plays
+                // its original. Hiding the still avoids stacking two transparent frames.
+                EmojiPickerThumbnail(url: staticURL, size: size)
+                    .opacity(showsOriginal && isLoaded ? 0 : 1)
             }
-
-            SDWebRemoteImage(
-                url: activeURL,
-                thumbnailPixelSize: size * displayScale,
-                contentMode: .scaleAspectFit,
-                allowsAnimation: shouldAnimate,
-                animationLoadingMode: .boundedPreview,
-                maximumAnimatedBufferSize: 2 * 1024 * 1024,
-                onLoadStateChange: { loaded in
-                    isLoaded = loaded
-                },
-                onLoadFailure: {
-                    // A server may advertise a static PNG as its original URL or return an
-                    // animation format this OS cannot decode. Never leave the picker blank:
-                    // retry once with Mastodon's guaranteed static_url variant.
-                    guard ComposeEmojiAnimationPolicy.shouldFallbackAfterLoadFailure(
-                        animationsEnabled: animationsEnabled,
-                        reduceMotion: reduceMotion,
-                        usesStaticFallback: usesStaticFallback
-                    ) else { return }
-                    usesStaticFallback = true
-                }
-            )
+            if showsOriginal, let activeURL {
+                SDWebRemoteImage(
+                    url: activeURL,
+                    thumbnailPixelSize: size * displayScale,
+                    contentMode: .scaleAspectFit,
+                    allowsAnimation: true,
+                    isAnimationPlaybackActive: shouldAnimate,
+                    animationLoadingMode: .boundedPreview,
+                    maximumAnimatedBufferSize: 2 * 1024 * 1024,
+                    onLoadStateChange: { isLoaded = $0 },
+                    onLoadFailure: {
+                        if ComposeEmojiAnimationPolicy.shouldFallbackAfterLoadFailure(
+                            animationsEnabled: animationsEnabled, reduceMotion: reduceMotion,
+                            usesStaticFallback: usesStaticFallback
+                        ) { usesStaticFallback = true }
+                    }
+                )
+                .opacity(isLoaded ? 1 : 0)
+            }
         }
         .frame(width: size, height: size)
         .onAppear {
@@ -2991,6 +3113,7 @@ private struct AnimatedEmojiPickerThumbnail: View {
         }
         .onDisappear {
             isVisible = false
+            isLoaded = false
         }
         .onChange(of: animatedURL) {
             isLoaded = false

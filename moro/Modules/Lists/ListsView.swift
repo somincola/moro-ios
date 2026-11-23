@@ -686,6 +686,7 @@ private struct ListTimelineTitle: ViewModifier {
 }
 
 struct ListTimelineView: View {
+    private let apiClient: MastodonAPI
     let list: MastodonList
     /// False beside the lists (iPhone Duo), where the page keeps the Lists title.
     var setsNavigationTitle = true
@@ -699,6 +700,7 @@ struct ListTimelineView: View {
         timelineCache: TimelineCache? = nil, setsNavigationTitle: Bool = true
     ) {
         self.list = list
+        self.apiClient = apiClient
         self.setsNavigationTitle = setsNavigationTitle
         _viewModel = StateObject(
             wrappedValue: TimelineViewModel(apiClient: apiClient, timelineType: .list(id: list.id, title: list.title),
@@ -710,6 +712,7 @@ struct ListTimelineView: View {
         ContentStateContainer(state: contentState) {
             timelineList
         }
+        .modifier(MediaPreviewActionSource(apiClient: apiClient))
         .modifier(ListTimelineTitle(title: setsNavigationTitle ? list.title : nil))
         .toolbar {
             if setsNavigationTitle {

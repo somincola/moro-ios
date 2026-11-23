@@ -82,7 +82,15 @@ struct VideoPlayerView: View {
         GeometryReader { geometry in
             ZStack {
                 // Video player or preview
-                if !isConcealed {
+                if !isConcealed, presentation.dockedURL == attachment.url {
+                    Button { onTap?() } label: {
+                        ZStack {
+                            Color.black.opacity(0.85)
+                            Label(MoroL10n.VideoPreview.docked, systemImage: "pip")
+                                .font(.footnote.weight(.medium)).foregroundStyle(.white)
+                        }
+                    }.buttonStyle(.plain)
+                } else if !isConcealed {
                     videoContent
                 } else {
                     // Sensitive content overlay
@@ -110,7 +118,7 @@ struct VideoPlayerView: View {
                 if !active { playRequested = false }
                 updatePlayback()
             }
-            .onChange(of: presentation.coversInlinePlayback) { _, covered in
+            .onChange(of: presentation.coversInlineVideoPlayback) { _, covered in
                 if covered {
                     if isGIF { playRequested = false }
                     isFrameReady = false
@@ -248,7 +256,7 @@ struct VideoPlayerView: View {
     }
 
     private func playInPlace() {
-        guard !presentation.coversInlinePlayback else { return }
+        guard !presentation.coversInlineVideoPlayback else { return }
         playRequested = true
         hasFinishedVideo = false
         setupPlayer()
@@ -260,7 +268,7 @@ struct VideoPlayerView: View {
     /// Plays the video while it may (on screen, app active, revealed, and allowed by the
     /// autoplay setting or a press of play) and pauses it otherwise.
     private func updatePlayback() {
-        guard !presentation.coversInlinePlayback else {
+        guard !presentation.coversInlineVideoPlayback else {
             playerObserver.tearDown()
             return
         }

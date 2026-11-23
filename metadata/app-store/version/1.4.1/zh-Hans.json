@@ -3,5 +3,6 @@
   "keywords": "长毛象,联邦宇宙,去中心化,时间线,离线阅读,话题标签,多账号,草稿箱",
   "marketingUrl": "https://getmoro.app/",
   "promotionalText": "认识 Moro —— 一款平静、精致的 Mastodon 客户端，带来轻盈、简单、友善的体验。带上你的账号，享受纯粹的联邦宇宙。",
-  "supportUrl": "https://getmoro.app/support"
+  "supportUrl": "https://getmoro.app/support",
+  "whatsNew": "重构了媒体播放器，布局更清晰，操作更顺手。\n优化了个人主页的浏览体验。"
 }

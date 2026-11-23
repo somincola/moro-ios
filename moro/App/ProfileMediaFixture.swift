@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 /// Offline animated profile media, shared by the real-screen harness and renderer tests.
 @MainActor
 enum ProfileMediaFixture {
+    static let videoURL = FileManager.default.temporaryDirectory.appendingPathComponent("profile-gallery-video.mp4")
     static let avatarURL = URL(string: "https://profile-media-fixture.invalid/avatar.gif")!
     static let staticAvatarURL = URL(string: "https://profile-media-fixture.invalid/avatar.png")!
     static let headerURL = URL(string: "https://profile-media-fixture.invalid/header.gif")!

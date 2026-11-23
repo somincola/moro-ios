@@ -197,10 +197,11 @@ struct RichTextImmediateRenderingTests {
 
     @Test func emojiTextGroupsTextIntoAsFewRunsAsPossible() throws {
         let a = URL(string: "https://example.com/a.png")!
+        let original = URL(string: "https://example.com/a-original")!
         let b = URL(string: "https://example.com/b.png")!
         let site = URL(string: "https://example.com/site")!
         let elements: [ContentElement] = [
-            .text("Hi"), .emoji(shortcode: "a", url: a, staticURL: a), .text("there"),
+            .text("Hi"), .emoji(shortcode: "a", url: original, staticURL: a), .text("there"),
             .link(text: "site", url: site), .lineBreak, .emoji(shortcode: "b", url: b, staticURL: b),
         ]
         let style = InlineTextStyle(textColor: .primary, linkColor: .blue,
@@ -208,8 +209,8 @@ struct RichTextImmediateRenderingTests {
         let runs = InlineTextRunBuilder.runs(for: elements, style: style)
 
         #expect(runs.count == 4)
-        guard case .text(let first) = runs[0], case .emoji("a", a) = runs[1],
-              case .text(let middle) = runs[2], case .emoji("b", b) = runs[3] else {
+        guard case .text(let first) = runs[0], case .emoji("a", original, a) = runs[1],
+              case .text(let middle) = runs[2], case .emoji("b", b, b) = runs[3] else {
             Issue.record("Unexpected runs: \(runs)")
             return
         }

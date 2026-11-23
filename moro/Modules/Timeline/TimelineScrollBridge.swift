@@ -214,10 +214,16 @@ final class TimelineScrollBridge: ObservableObject {
         settlingTop[timeline] = nil
     }
 
-    /// Called when the app returns to the foreground.
-    func holdReadingPositionAfterResume() {
+    func resumeAfterBackground() {
         holdsPositionAfterResume = true
         releasedFromResumeHold.removeAll()
+        // Suspending a drag or deceleration can drop its final idle callback.
+        // Consult the native scroll views before resuming visible media.
+        phases = phases.filter { timeline, phase in
+            guard phase != .idle, let scroll = nativeScrollViews[timeline]?.value else { return false }
+            return scroll.isTracking || scroll.isDragging || scroll.isDecelerating || scroll.isScrollAnimating
+        }
+        updatePlaybackScopes()
     }
 
     private func followsLatestAtTop(_ timeline: TimelineType) -> Bool {

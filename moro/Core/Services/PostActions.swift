@@ -23,6 +23,7 @@ struct PostActions {
     var onDelete: (() -> Void)?
     var onTap: (() -> Void)?
     var isOwnPost: Bool = false
+    var mediaHandlers: PostInteractionHandlers?
 
     static let empty = PostActions()
 }

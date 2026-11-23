@@ -2,46 +2,49 @@
 //  ProfileContentStream.swift
 //  moro
 //
-//  Isolated status stream for the selected profile tab.
+//  Isolated status stream for one profile tab.
 //
 
 import SwiftUI
 
-/// Equatable on the view model only: the profile re-renders on every scroll frame (header
+/// Equatable on tab and view model: the profile re-renders on every scroll frame (header
 /// stretch, sticky tabs), and without this the closure input made every row list re-diff
 /// per frame. Content changes still arrive through `@ObservedObject` and the environment.
 struct ProfileContentStream: View, Equatable {
     nonisolated static func == (lhs: ProfileContentStream, rhs: ProfileContentStream) -> Bool {
-        MainActor.assumeIsolated { lhs.viewModel === rhs.viewModel }
+        MainActor.assumeIsolated { lhs.viewModel === rhs.viewModel && lhs.tab == rhs.tab }
     }
 
     @Environment(\.moroTheme) private var theme
     @Environment(\.cacheManager) private var cacheManager
 
     @ObservedObject var viewModel: ProfileViewModel
+    let tab: ProfileViewModel.Tab
 
     let apiClient: MastodonAPI
     let postActions: (Status) -> PostActions
 
     var body: some View {
-        let statuses = viewModel.currentStatuses
-        let displayedStatuses = viewModel.selectedTab == .media
-            ? statuses.filter { !$0.displayStatus.mediaAttachments.isEmpty }
-            : statuses
+        let statuses = viewModel.displayedStatuses(for: tab)
+        let contentID = viewModel.contentID(for: tab)
+        Group {
+            if tab == .media {
+                // The grid owns laziness for its tiles. An outer lazy stack would also
+                // estimate the height of the entire grid while its pages are changing.
+                VStack(spacing: 0) {
+                    contentRows(statuses.filter { !$0.displayStatus.mediaAttachments.isEmpty }, for: contentID)
+                }
+            } else {
+                LazyVStack(spacing: 0) {
+                    if tab == .posts && !viewModel.pinnedStatuses.isEmpty {
+                        PinnedStatusSection(viewModel: viewModel, translationAPIClient: apiClient,
+                                            accountCache: cacheManager.accountCache, postActions: postActions)
 
-        LazyVStack(spacing: 0) {
-            if viewModel.selectedTab == .posts && !viewModel.pinnedStatuses.isEmpty {
-                PinnedStatusSection(
-                    pinnedStatuses: viewModel.pinnedStatuses,
-                    translationAPIClient: apiClient,
-                    accountCache: cacheManager.accountCache,
-                    postActions: postActions
-                )
-
-                pinnedSectionSeparator
+                        pinnedSectionSeparator
+                    }
+                    contentRows(statuses, for: contentID)
+                }
             }
-
-            contentRows(displayedStatuses)
         }
         .background(theme.colors.surfaceBase)
     }
@@ -57,10 +60,10 @@ struct ProfileContentStream: View, Equatable {
     }
 
     @ViewBuilder
-    private func contentRows(_ statuses: [Status]) -> some View {
+    private func contentRows(_ statuses: [Status], for contentID: ProfileViewModel.TabContentID) -> some View {
         switch contentState(isEmpty: statuses.isEmpty) {
         case .loading(let skeletonStyle):
-            if viewModel.selectedTab == .media {
+            if tab == .media {
                 ProfileMediaGallery(content: .loading)
             } else {
                 ContentSkeletonView(style: skeletonStyle)
@@ -72,30 +75,27 @@ struct ProfileContentStream: View, Equatable {
             ErrorStateView(spec: spec)
                 .frame(minHeight: 320)
         case .loaded:
-            if viewModel.selectedTab == .media {
+            if tab == .media {
                 if !statuses.isEmpty {
-                    ProfileMediaGallery(content: .posts(statuses) { postActions($0).onTap?() })
-                    if viewModel.hasMore, !viewModel.didFailLoadMore(.media) {
+                    ProfileMediaGallery(content: .posts(statuses, actions: postActions))
+                    if viewModel.selectedTab == tab, viewModel.hasMore(for: tab), !viewModel.didFailLoadMore(tab) {
                         Color.clear
                             .frame(height: 1)
                             .accessibilityHidden(true)
-                            .id(viewModel.paginationCursor)
-                            .onAppear {
-                                Task {
-                                    guard viewModel.selectedTab == .media else { return }
-                                    await viewModel.loadMore()
-                                }
+                            .id(viewModel.maxID(for: tab))
+                            .onScrollVisibilityChange(threshold: 0.1) { visible in
+                                if visible { Task { await viewModel.loadMore(ifCurrent: contentID) } }
                             }
                     }
                 }
             } else {
-                listRows(statuses)
+                listRows(statuses, for: contentID)
             }
-            paginationFooter(isEmpty: statuses.isEmpty)
+            paginationFooter(isEmpty: statuses.isEmpty, for: contentID)
         }
     }
 
-    private func listRows(_ statuses: [Status]) -> some View {
+    private func listRows(_ statuses: [Status], for contentID: ProfileViewModel.TabContentID) -> some View {
         ForEach(statuses.indexed(), id: \.element.id) {
             index, status in
             let prefetchWindowSize = 2
@@ -109,13 +109,11 @@ struct ProfileContentStream: View, Equatable {
                     accountCache: cacheManager.accountCache,
                     actions: postActions(status)
                 )
-                .onAppear {
-                    loadVisibleStatus(
-                        status,
-                        index: index,
-                        prefetchWindowSize: prefetchWindowSize,
-                        isNearBottom: isNearBottom
-                    )
+                .onChange(of: viewModel.selectedTab == tab, initial: true) { _, active in
+                    if active {
+                        loadVisibleStatus(status, index: index, prefetchWindowSize: prefetchWindowSize,
+                                          isNearBottom: isNearBottom, contentID: contentID)
+                    }
                 }
 
                 MoroDivider()
@@ -124,34 +122,34 @@ struct ProfileContentStream: View, Equatable {
     }
 
     @ViewBuilder
-    private func paginationFooter(isEmpty: Bool) -> some View {
-        let selectedTab = viewModel.selectedTab
-        if isEmpty && viewModel.hasMore && !viewModel.didFailLoadMore(selectedTab) {
+    private func paginationFooter(isEmpty: Bool, for contentID: ProfileViewModel.TabContentID) -> some View {
+        if isEmpty && viewModel.hasMore(for: tab) && !viewModel.didFailLoadMore(tab) {
             // Replies are filtered from server pages of posts. Keep paging when an
             // otherwise full page contains no replies, instead of showing a false end.
-            let canContinue = viewModel.currentStatuses.isEmpty && viewModel.shouldAutomaticallyContinueEmptyPage
-            if canContinue || viewModel.isLoadingMore(selectedTab) {
+            let canContinue = viewModel.selectedTab == tab && viewModel.displayedStatuses(for: tab).isEmpty
+                && viewModel.shouldAutomaticallyContinueEmptyPage(for: tab)
+            if canContinue || viewModel.isLoadingMore(tab) {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 64)
-                    .task(id: viewModel.paginationCursor) {
-                        if canContinue, selectedTab == viewModel.selectedTab { await viewModel.loadMore() }
+                    .task(id: viewModel.maxID(for: tab)) {
+                        if canContinue { await viewModel.loadMore(ifCurrent: contentID) }
                     }
             } else {
-                Button(MoroL10n.Topics.loadMore) { Task { await viewModel.loadMore() } }
+                Button(MoroL10n.Topics.loadMore) { requestMore(for: contentID) }
                     .frame(maxWidth: .infinity, minHeight: 64)
                     .accessibilityIdentifier("profile.loadMoreEmptyPage")
             }
-        } else if viewModel.isLoadingMore(selectedTab) || viewModel.didFailLoadMore(selectedTab) {
+        } else if viewModel.isLoadingMore(tab) || viewModel.didFailLoadMore(tab) {
             PaginationFooter(
-                isLoadingMore: viewModel.isLoadingMore(selectedTab),
-                didFail: viewModel.didFailLoadMore(selectedTab),
-                onRetry: retrySelectedTabPagination
+                isLoadingMore: viewModel.isLoadingMore(tab),
+                didFail: viewModel.didFailLoadMore(tab),
+                onRetry: { requestMore(for: contentID) }
             )
         }
     }
 
     private func contentState(isEmpty: Bool) -> ContentState {
-        switch viewModel.tabLoadState(for: viewModel.selectedTab) {
+        switch viewModel.tabLoadState(for: tab) {
         case .notLoaded, .loading:
             return .loading(.timeline)
         case .error(let message):
@@ -164,7 +162,7 @@ struct ProfileContentStream: View, Equatable {
                 )
             )
         case .loaded:
-            if isEmpty && !viewModel.hasMore && !(viewModel.selectedTab == .posts && !viewModel.pinnedStatuses.isEmpty) {
+            if isEmpty && !viewModel.hasMore(for: tab) && !(tab == .posts && !viewModel.pinnedStatuses.isEmpty) {
                 return .empty(emptyStateSpec)
             }
             return .loaded
@@ -177,7 +175,7 @@ struct ProfileContentStream: View, Equatable {
                 message: "#\(viewModel.selectedFeaturedTag ?? "")", actionTitle: MoroL10n.ProfileEditing.clearFilter,
                 action: { Task { await viewModel.selectFeaturedTag(nil) } })
         }
-        switch viewModel.selectedTab {
+        switch tab {
         case .posts:
             return EmptyStateSpec(
                 icon: "square.and.pencil",
@@ -203,9 +201,11 @@ struct ProfileContentStream: View, Equatable {
         _ status: Status,
         index: Int,
         prefetchWindowSize: Int,
-        isNearBottom: Bool
+        isNearBottom: Bool,
+        contentID: ProfileViewModel.TabContentID
     ) {
         Task {
+            guard contentID == viewModel.selectedContentID else { return }
             if index < prefetchWindowSize {
                 await StatusDetailPrefetchCoordinator.shared.prefetchStatusAndQuoteIfNeeded(
                     for: status.displayStatus,
@@ -215,17 +215,16 @@ struct ProfileContentStream: View, Equatable {
                 )
             }
             if isNearBottom {
-                await viewModel.loadMore()
+                await viewModel.loadMore(ifCurrent: contentID)
             }
         }
     }
 
     private func retrySelectedTab() {
-        let tab = viewModel.selectedTab
         Task { await viewModel.retryTab(tab) }
     }
 
-    private func retrySelectedTabPagination() {
-        Task { await viewModel.loadMore() }
+    private func requestMore(for contentID: ProfileViewModel.TabContentID) {
+        Task { await viewModel.loadMore(ifCurrent: contentID) }
     }
 }

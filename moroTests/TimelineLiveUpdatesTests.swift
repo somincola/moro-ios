@@ -276,13 +276,14 @@ struct TimelineLiveUpdatesTests {
         defer { model.clearStatuses() }
         model.statuses = [post("100")]
         model.receiveDetectedPage(TimelinePage(statuses: [post("108"), post("107")]), sinceID: "100")
-        model.fillRecentGapsIfNeeded()
-        try await waitForGapWork { cursors.count == 2 && model.loadingGapIDs.isEmpty }
+        await model.fillRecentGapsIfNeeded()?.value
+        #expect(cursors == ["107", "105"])
+        #expect(model.loadingGapIDs.isEmpty)
         #expect(model.gaps.count == 1)
         #expect(model.statuses.count == 7)
 
-        model.fillRecentGapsIfNeeded(near: ["103", "100"])
-        try await waitForGapWork { model.gaps.isEmpty }
+        await model.fillRecentGapsIfNeeded(near: ["103", "100"])?.value
+        #expect(model.gaps.isEmpty)
         #expect(cursors == ["107", "105", "103", "101"])
         let expectedIDs = (100...108).reversed().map { String($0) }
         #expect(model.statuses.map(\.id) == expectedIDs)

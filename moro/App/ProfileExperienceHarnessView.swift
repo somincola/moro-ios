@@ -15,6 +15,9 @@ struct ProfileExperienceHarnessView: View {
     }
 
     private static func makeState() -> AppState {
+        if ProcessInfo.processInfo.arguments.contains("UITEST_POST_EMOJI") {
+            ProfileFixtureProtocol.usePostEmoji(PostEmojiPlaybackFixture.scrollGIF)
+        }
         if ProcessInfo.processInfo.environment["UITEST_PROFILE_ANIMATED_MEDIA"] == "1" || ProfileFixtureProtocol.hasGallery {
             ProfileMediaFixture.prepare()
         }
@@ -56,6 +59,11 @@ struct ProfileExperienceHarnessView: View {
         .environment(\.moroMediaPrefs, MoroMediaPreferences(
             autoplayGIFs: ProcessInfo.processInfo.environment["UITEST_PROFILE_AUTOPLAY_OFF"] != "1"))
         .moroTheme(theme)
+        .task {
+            if ProfileFixtureProtocol.hasGallery, !FileManager.default.fileExists(atPath: ProfileMediaFixture.videoURL.path) {
+                try? await TimelineMediaFixture.makeVideo(at: ProfileMediaFixture.videoURL, secondsPerFrame: 2)
+            }
+        }
         .sheet(isPresented: $showsSettings) {
             SettingsSheetView(apiClient: client)
                 .environmentObject(appState)
@@ -90,6 +98,13 @@ private final class ProfileFixtureToken: AuthTokenProvider {
 final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     private var pushResponseTask: Task<Void, Never>?
     private static let lock = NSLock()
+    private static var postEmoji: [String: String]?
+    static func usePostEmoji(_ emoji: Status.Emoji) {
+        lock.withLock {
+            postEmoji = ["shortcode": emoji.shortcode, "url": emoji.url.absoluteString,
+                         "static_url": emoji.staticURL.absoluteString]
+        }
+    }
     private static let legacy = ProcessInfo.processInfo.environment["UITEST_PROFILE_LEGACY"] == "1"
     private static let compactInfo = ProcessInfo.processInfo.environment["UITEST_PROFILE_COMPACT_INFO"] == "1"
     private static let showsConnectionCounts = ProcessInfo.processInfo.environment["UITEST_PROFILE_CONNECTION_COUNTS"] == "1"
@@ -114,6 +129,7 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
         ["id": "tag-daily", "name": "daily", "statuses_count": "1"],
     ]
     private static var pushSaveAttempts = 0
+    private static var interactions: [String: Set<String>] = [:]
     /// Visitor-mode relationship. Unset keeps the historical empty `/relationships` reply.
     private static let relationshipMode = ProcessInfo.processInfo.environment["UITEST_PROFILE_RELATIONSHIP"]
     private static var relationship: [String: Any] = [
@@ -359,7 +375,34 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             }
             return (200, [connection])
         }
+        if path == "/api/v1/statuses", method == "POST",
+           let payload = (try? JSONSerialization.jsonObject(with: body(request))) as? [String: Any] {
+            var reply = post("321")
+            reply["in_reply_to_id"] = payload["in_reply_to_id"]
+            reply["content"] = payload["status"]
+            return (200, reply)
+        }
         if path.hasSuffix("/statuses") {
+            if ProcessInfo.processInfo.environment["UITEST_PROFILE_LONG_TABS"] == "1", parameter("pinned") != "true" {
+                let media = parameter("only_media") == "true"
+                let replies = !media && parameter("exclude_replies") == "false"
+                let first = media ? 320 : (replies ? 700 : 500)
+                let cursor = Int(parameter("max_id") ?? "") ?? (first + 1)
+                let page = (1...20).map { cursor - $0 }.filter { $0 > first - 60 }
+                return (200, page.map { id in
+                    if media { return mediaPost(String(id)) }
+                    var status = post(String(id))
+                    let label = "Scroll \(replies ? "reply" : "post") \(id)"
+                    if let postEmoji {
+                        status["content"] = "<p>\(label) :gif:</p>"
+                        status["emojis"] = [postEmoji]
+                    } else {
+                        status["content"] = "<p>\(label)</p>"
+                    }
+                    if replies { status["in_reply_to_id"] = "88" }
+                    return status
+                })
+            }
             if parameter("only_media") == "true" {
                 guard hasGallery else { return (200, []) }
                 let cursor = parameter("max_id")
@@ -384,6 +427,20 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
         }
         if path.hasSuffix("/context") { return (200, ["ancestors": [], "descendants": []]) }
         if path.contains("/statuses/") {
+            if method == "POST" {
+                let id = url.deletingLastPathComponent().lastPathComponent
+                let action = url.lastPathComponent
+                let key = action.hasPrefix("un") ? String(action.dropFirst(2)) : action
+                if ["favourite", "reblog", "bookmark"].contains(key) {
+                    let previous = hasGallery ? mediaPost(id) : post(id)
+                    if action == key { interactions[id, default: []].insert(key) }
+                    else { interactions[id]?.remove(key) }
+                    if ProcessInfo.processInfo.environment["UITEST_STALE_INTERACTION_RESPONSE"] == "1" {
+                        return (200, previous)
+                    }
+                    return (200, hasGallery ? mediaPost(id) : post(id))
+                }
+            }
             let id = url.lastPathComponent
             return (200, hasGallery && (300...320).contains(Int(id) ?? 0) ? mediaPost(id) : post(id))
         }
@@ -398,9 +455,13 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     }
 
     private static func post(_ id: String) -> [String: Any] {
-        ["id": id, "content": "<p>\(id == "100" ? "Pinned app post" : id == "99" ? "Latest app post" : "Daily garden post")</p>",
+        let active = interactions[id] ?? []
+        return ["id": id, "content": "<p>\(id == "100" ? "Pinned app post" : id == "99" ? "Latest app post" : "Daily garden post")</p>",
          "created_at": "2026-09-05T10:00:00.000Z", "account": accountPayload(),
-         "media_attachments": [], "favourites_count": 0, "reblogs_count": 0, "replies_count": 0,
+         "media_attachments": [], "favourites_count": active.contains("favourite") ? 1 : 0,
+         "reblogs_count": active.contains("reblog") ? 1 : 0, "replies_count": 0,
+         "favourited": active.contains("favourite"), "reblogged": active.contains("reblog"),
+         "bookmarked": active.contains("bookmark"), "pinned": id == "100",
          "visibility": "public", "sensitive": false, "spoiler_text": ""]
     }
 
@@ -413,7 +474,7 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
 
         let preview = ProfileMediaFixture.staticAvatarURL.absoluteString
         let type = id == "317" ? "gifv" : id == "316" ? "video" : "image"
-        let url = type == "image" ? preview : "https://profile-media-fixture.invalid/video.mp4"
+        let url = type == "image" ? preview : ProfileMediaFixture.videoURL.absoluteString
         var attachments = [["id": "media-\(id)", "type": type, "url": url,
                             "preview_url": preview, "description": "Gallery media \(id)"]]
         if testsGalleryLoading && id == "320" {
