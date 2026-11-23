@@ -34,6 +34,23 @@ final class ProfileViewModel: ObservableObject {
         case loaded
         case error(String)
     }
+
+    /// A tab's data survives navigation until its query or media inclusion settings change.
+    struct TabContentID: Hashable {
+        let tab: Tab
+        let query: UUID
+        let mediaRevision: UUID?
+    }
+
+    var selectedContentID: TabContentID { contentID(for: selectedTab) }
+
+    func contentID(for tab: Tab) -> TabContentID {
+        TabContentID(tab: tab, query: queryGeneration, mediaRevision: tab == .media ? mediaPreferenceRevision : nil)
+    }
+
+    func hasContent(for tab: Tab) -> Bool {
+        !statuses(for: tab).isEmpty || (tab == .posts && !pinnedStatuses.isEmpty)
+    }
     
     enum LoadingState: Equatable {
         case idle
@@ -169,8 +186,8 @@ final class ProfileViewModel: ObservableObject {
     
     // MARK: - Computed Properties
     
-    var currentStatuses: [Status] {
-        switch selectedTab {
+    func displayedStatuses(for tab: Tab) -> [Status] {
+        switch tab {
         case .posts:
             let pinnedIDs = Set(pinnedStatuses.map(\.id))
             return posts.filter { !pinnedIDs.contains($0.id) }
@@ -180,13 +197,16 @@ final class ProfileViewModel: ObservableObject {
             return media
         }
     }
+
+    var currentStatuses: [Status] { displayedStatuses(for: selectedTab) }
     
     var hasMore: Bool {
         hasMore(for: selectedTab)
     }
 
     var paginationCursor: String? { maxID(for: selectedTab) }
-    var shouldAutomaticallyContinueEmptyPage: Bool { (consecutiveEmptyPages[selectedTab] ?? 0) < 3 }
+    var shouldAutomaticallyContinueEmptyPage: Bool { shouldAutomaticallyContinueEmptyPage(for: selectedTab) }
+    func shouldAutomaticallyContinueEmptyPage(for tab: Tab) -> Bool { (consecutiveEmptyPages[tab] ?? 0) < 3 }
 
     func tabLoadState(for tab: Tab) -> TabLoadState {
         tabLoadStates[tab] ?? .notLoaded
@@ -211,7 +231,7 @@ final class ProfileViewModel: ObservableObject {
         }
     }
 
-    private func hasMore(for tab: Tab) -> Bool {
+    func hasMore(for tab: Tab) -> Bool {
         switch tab {
         case .posts:
             return hasMorePosts
@@ -380,7 +400,8 @@ final class ProfileViewModel: ObservableObject {
         }
     }
 
-    func loadMore() async {
+    func loadMore(ifCurrent contentID: TabContentID? = nil) async {
+        if let contentID, selectedContentID != contentID { return }
         let tab = selectedTab
         let mediaRevision = mediaPreferenceRevision
         let generation = queryGeneration
@@ -548,7 +569,7 @@ final class ProfileViewModel: ObservableObject {
         return existing + newStatuses.filter { !existingIDs.contains($0.id) }
     }
 
-    private func maxID(for tab: Tab) -> String? {
+    func maxID(for tab: Tab) -> String? {
         switch tab {
         case .posts:
             return postsMaxID
@@ -567,6 +588,15 @@ final class ProfileViewModel: ObservableObject {
         let requestID = UUID()
         let tag = selectedFeaturedTag
         pinnedRequestID = requestID
+        // A refresh can return the snapshot taken before a tap on an already visible pin.
+        var changes: [UpdatedElement] = []
+        let subscription = feedCoordinator.updates.sink { update in
+            switch update {
+            case .post, .deletedPost: changes.append(update)
+            default: break
+            }
+        }
+        defer { subscription.cancel() }
         do {
             let statuses = try await apiClient.fetchAccountStatuses(
                 id: resolvedAccountID, maxID: nil, sinceID: nil, limit: 20,
@@ -574,7 +604,11 @@ final class ProfileViewModel: ObservableObject {
                 pinned: true, tagged: tag
             )
             guard generation == queryGeneration, requestID == pinnedRequestID else { return }
-            pinnedStatuses = statuses
+            var pins = statuses
+            for change in changes {
+                if let updated = applyingPinChange(change, to: pins) { pins = updated }
+            }
+            pinnedStatuses = pins
             accountCache.cacheFromStatuses(statuses)
         } catch {
             // Keep the existing pinned section when refreshing fails.
@@ -753,6 +787,7 @@ final class ProfileViewModel: ObservableObject {
     
     /// Incorporate status updates from FeedCoordinator (e.g., like/boost state changes, pin/unpin)
     private func incorporateUpdate(_ update: UpdatedElement) {
+        if let pins = applyingPinChange(update, to: pinnedStatuses) { pinnedStatuses = pins }
         switch update {
         case .createdPost(let status):
             guard status.account.id == resolvedAccountID, matchesSelectedTag(status) else { break }
@@ -783,9 +818,6 @@ final class ProfileViewModel: ObservableObject {
                 if media.contains(where: { $0.displayStatus.id == updatedStatus.id }) {
                     media.removeAll { $0.displayStatus.id == updatedStatus.id }
                 }
-                if pinnedStatuses.contains(where: { $0.displayStatus.id == updatedStatus.id }) {
-                    pinnedStatuses.removeAll { $0.displayStatus.id == updatedStatus.id }
-                }
                 break
             }
             // Update status in all tabs if it exists
@@ -797,29 +829,6 @@ final class ProfileViewModel: ObservableObject {
             }
             if let index = media.firstIndex(where: { $0.id == updatedStatus.id || $0.displayStatus.id == updatedStatus.id }) {
                 media[index] = media[index].incorporatingDisplayStatusUpdate(updatedStatus)
-            }
-            
-            // Handle pinned status changes
-            let wasInPinned = pinnedStatuses.contains(where: {
-                $0.id == updatedStatus.id || $0.displayStatus.id == updatedStatus.id
-            })
-            
-            if wasInPinned && updatedStatus.pinned == false {
-                // Only an explicit false is an unpin. Interaction responses commonly omit this
-                // optional field, which must not make an existing profile pin disappear.
-                pinnedStatuses.removeAll { $0.id == updatedStatus.id || $0.displayStatus.id == updatedStatus.id }
-            } else if wasInPinned {
-                if let index = pinnedStatuses.firstIndex(where: {
-                    $0.id == updatedStatus.id || $0.displayStatus.id == updatedStatus.id
-                }) {
-                    pinnedStatuses[index] = pinnedStatuses[index].incorporatingDisplayStatusUpdate(updatedStatus)
-                }
-            } else if updatedStatus.pinned == true, updatedStatus.account.id == resolvedAccountID {
-                // Newly pinned AND authored by THIS profile's account. The feed coordinator is
-                // global, so without the ownership check a pin of ANY account's post was
-                // inserted into every live profile's carousel (including hidden/covered ones) —
-                // a cross-account leak, not just a redundant write.
-                pinnedStatuses.insert(updatedStatus, at: 0)
             }
             
         case .deletedPost(let deletedID):
@@ -835,9 +844,6 @@ final class ProfileViewModel: ObservableObject {
             if media.contains(where: { $0.id == deletedID }) {
                 media.removeAll { $0.id == deletedID }
             }
-            if pinnedStatuses.contains(where: { $0.id == deletedID }) {
-                pinnedStatuses.removeAll { $0.id == deletedID }
-            }
             
         case .relationship(let updatedRelationship):
             guard updatedRelationship.id == resolvedAccountID else { break }
@@ -849,6 +855,29 @@ final class ProfileViewModel: ObservableObject {
             relationship = updatedRelationship
         case .hashtag:
             break
+        }
+    }
+
+    private func applyingPinChange(_ update: UpdatedElement, to pins: [Status]) -> [Status]? {
+        switch update {
+        case .post(let status):
+            let target = status.displayStatus
+            if let index = pins.firstIndex(where: { $0.displayStatus.id == target.id }) {
+                var result = pins
+                if target.pinned == false || !matchesSelectedTag(target) {
+                    result.remove(at: index)
+                } else {
+                    result[index] = pins[index].incorporatingDisplayStatusUpdate(target)
+                }
+                return result
+            }
+            guard target.pinned == true, target.account.id == resolvedAccountID, matchesSelectedTag(target) else { return nil }
+            return [target] + pins
+        case .deletedPost(let id):
+            guard pins.contains(where: { $0.id == id || $0.displayStatus.id == id }) else { return nil }
+            return pins.filter { $0.id != id && $0.displayStatus.id != id }
+        default:
+            return nil
         }
     }
 

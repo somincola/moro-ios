@@ -55,8 +55,8 @@ struct SDWebRemoteImage: UIViewRepresentable {
 
     func updateUIView(_ view: SDAnimatedImageView, context: Context) {
         let usesBoundedPreview = animationLoadingMode == .boundedPreview
-        context.coordinator.onLoadStateChange = usesBoundedPreview ? onLoadStateChange : nil
-        context.coordinator.onLoadFailure = usesBoundedPreview ? onLoadFailure : nil
+        context.coordinator.onLoadStateChange = onLoadStateChange
+        context.coordinator.onLoadFailure = onLoadFailure
         view.contentMode = contentMode
         if usesBoundedPreview {
             view.maxBufferSize = maximumAnimatedBufferSize
@@ -72,7 +72,8 @@ struct SDWebRemoteImage: UIViewRepresentable {
             || context.coordinator.lastAllowsAnimation != allowsAnimation
             || context.coordinator.lastAnimationLoadingMode != animationLoadingMode
         else { return }
-        let requestID = usesBoundedPreview ? UUID() : nil
+        let reportsLoadEvents = onLoadStateChange != nil || onLoadFailure != nil
+        let requestID = usesBoundedPreview || reportsLoadEvents ? UUID() : nil
         context.coordinator.loadRequestID = requestID
         context.coordinator.lastURL = url
         context.coordinator.lastAllowsAnimation = allowsAnimation
@@ -111,9 +112,8 @@ struct SDWebRemoteImage: UIViewRepresentable {
             imageContext = [.imageThumbnailPixelSize: thumbnail]
         }
 
-        guard usesBoundedPreview, let requestID else {
-            // Preserve the exact pre-feature loading path for timeline media and all other
-            // shared-image consumers: no completion callback or extra main-queue work.
+        guard let requestID else {
+            // Callers that draw just the image need no completion callback or main-queue work.
             view.sd_setImage(
                 with: url,
                 placeholderImage: nil,

@@ -119,8 +119,7 @@ final class ImagePreviewUITests: XCTestCase {
         XCTAssertTrue(image.exists)
         center(app).press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)))
         center(app).tap()
-        XCTAssertTrue(app.staticTexts["imagePreview.page"].waitForExistence(timeout: 3))
-        XCTAssertEqual(app.staticTexts["imagePreview.page"].label, "1 / 3")
+        assertPage(1, in: app)
         attach(app, "long-image-width-reading")
     }
 
@@ -141,10 +140,10 @@ final class ImagePreviewUITests: XCTestCase {
             XCTAssertEqual(image.value as? String, "100%")
         }
         center(app).tap()
-        XCTAssertEqual(app.staticTexts["imagePreview.page"].label, "1 / 3")
+        assertPage(1, in: app)
         app.swipeLeft()
         XCTAssertTrue(app.buttons["imagePreview.alt"].waitForExistence(timeout: 3))
-        XCTAssertEqual(app.staticTexts["imagePreview.page"].label, "2 / 3")
+        assertPage(2, in: app)
         attach(app, "short-drags-preserve-viewport-and-paging")
     }
 
@@ -168,7 +167,7 @@ final class ImagePreviewUITests: XCTestCase {
         XCTAssertGreaterThan(displacement, 5)
         XCTAssertLessThanOrEqual(displacement, 26)
         center(app).tap()
-        XCTAssertEqual(app.staticTexts["imagePreview.page"].label, "1 / 3")
+        assertPage(1, in: app)
     }
 
     func testPagingUpdatesAltAndOverviewCanDismiss() {
@@ -176,11 +175,9 @@ final class ImagePreviewUITests: XCTestCase {
         defer { app.terminate() }
         app.swipeLeft()
         XCTAssertTrue(app.buttons["imagePreview.alt"].waitForExistence(timeout: 3))
-        XCTAssertEqual(app.staticTexts["imagePreview.page"].label, "2 / 3")
+        assertPage(2, in: app)
         app.swipeLeft()
-        let page = app.staticTexts["imagePreview.page"]
-        expectation(for: NSPredicate(format: "label == '3 / 3'"), evaluatedWith: page)
-        waitForExpectations(timeout: 4)
+        assertPage(3, in: app)
         XCTAssertFalse(app.buttons["imagePreview.alt"].exists)
         attach(app, "wide-image-blank-alt")
         center(app).press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)))
@@ -217,31 +214,60 @@ final class ImagePreviewUITests: XCTestCase {
         attach(app, "long-image-bottom-unobscured")
     }
 
-    func testShareButtonAndLongPressActionsLeaveTheImageUncovered() {
+    func testMoreMenuExportsTheCurrentImageAndLongPressLeavesItAlone() {
         let app = launch(index: 1)
         defer { app.terminate() }
-        let share = app.buttons["imagePreview.share"]
-        XCTAssertTrue(share.isHittable)
-        XCTAssertGreaterThanOrEqual(share.frame.height, 44)
-        // Chrome stays in the top bar: nothing is pinned over the image's lower half.
-        XCTAssertLessThan(share.frame.maxY, app.frame.height * 0.2)
-        XCTAssertLessThan(app.buttons["imagePreview.alt"].frame.maxY, app.frame.height * 0.2)
-        attach(app, "preview-top-bar-with-share")
+        let menu = app.buttons["mediaPreview.more"]
+        XCTAssertGreaterThanOrEqual(menu.frame.height, 44)
+        XCTAssertLessThan(menu.frame.maxY, app.frame.height * 0.2)
+        let pages = app.pageIndicators["imagePreview.pages"]
+        assertPage(2, in: app)
+        XCTAssertGreaterThan(pages.frame.midY, app.frame.height * 0.75)
+        XCTAssertEqual(pages.frame.midX, app.frame.midX, accuracy: 2)
+        attach(app, "preview-with-bottom-page-dots")
 
         center(app).press(forDuration: 0.8)
-        let copy = app.buttons["拷贝"]
-        XCTAssertTrue(copy.waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["保存到相册"].exists)
+        XCTAssertFalse(app.buttons["保存到相册"].exists)
+        XCTAssertFalse(menu.waitForNonExistence(timeout: 1), "Holding the image must not toggle the controls on release")
+        menu.tap()
+        XCTAssertTrue(app.buttons["保存到相册"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["分享…"].exists)
-        attach(app, "preview-long-press-actions")
-        copy.tap()
-        let notice = app.staticTexts["imagePreview.notice"]
-        XCTAssertTrue(notice.waitForExistence(timeout: 5))
-        XCTAssertEqual(notice.label, "已拷贝图片")
-        XCTAssertTrue(notice.waitForNonExistence(timeout: 5))
-        // The long press must not have zoomed, paged or dismissed.
+        app.buttons["拷贝"].tap()
         XCTAssertEqual(app.images["imagePreview.image"].firstMatch.value as? String, "100%")
-        XCTAssertEqual(app.staticTexts["imagePreview.page"].label, "2 / 3")
+        assertPage(2, in: app)
+        app.buttons["imagePreview.close"].tap()
+        let reopen = app.buttons["imagePreview.open"]
+        expectation(for: NSPredicate(format: "value == 'Copied image'"), evaluatedWith: reopen)
+        waitForExpectations(timeout: 5)
+    }
+
+    func testImmersivePagingKeepsControlsHiddenUntilTheNextTap() {
+        let app = launch()
+        defer { app.terminate() }
+        let close = app.buttons["imagePreview.close"]
+        let pages = app.pageIndicators["imagePreview.pages"]
+        assertPage(1, in: app)
+        center(app).tap()
+        XCTAssertTrue(close.waitForNonExistence(timeout: 3))
+        app.swipeLeft()
+        app.swipeLeft()
+        XCTAssertFalse(close.exists)
+        XCTAssertFalse(pages.exists)
+        XCTAssertFalse(app.buttons["mediaPreview.more"].exists)
+        center(app).tap()
+        assertPage(3, in: app)
+        XCTAssertTrue(close.exists)
+    }
+
+    private func assertPage(_ number: Int, in app: XCUIApplication,
+                            file: StaticString = #filePath, line: UInt = #line) {
+        let pages = app.pageIndicators["imagePreview.pages"]
+        let matches = NSPredicate { _, _ in
+            guard pages.exists, let value = pages.value as? String else { return false }
+            return value.split { !$0.isNumber }.compactMap { Int($0) } == [number, 3]
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: matches, object: nil)], timeout: 4),
+                       .completed, file: file, line: line)
     }
 
     private func launch(index: Int = 0, altText: String? = nil,

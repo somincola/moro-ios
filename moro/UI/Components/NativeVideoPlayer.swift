@@ -1,218 +1,287 @@
-//
-//  NativeVideoPlayer.swift
-//  moro
-//
-//  Opens a video in the system player (AVPlayerViewController): the standard close
-//  button, scrubber, volume, AirPlay and swipe-down to dismiss. It continues the
-//  player the timeline is already showing, so the frame and position carry over.
-//
-
 import AVKit
-import ObjectiveC
-import UIKit
+import Combine
+import SwiftUI
 
+/// Presents the same player in an overlay so an interactive dismissal can reveal the source.
 @MainActor
 enum NativeVideoPlayer {
-    private static var sessionKey: UInt8 = 0
-
-    static func present(url: URL, isGIF: Bool, attachment: Status.Attachment? = nil) {
-        guard let presenter = topViewController(),
-              !(presenter is AVPlayerViewController) else { return }
-
-        let session = NativeVideoSession(url: url, isGIF: isGIF)
-        guard let player = session.player else {
-            session.end()
-            return
+    @discardableResult
+    static func present(attachment: Status.Attachment, post: MediaPreviewPost? = nil) -> Bool {
+        guard let presenter = UIApplication.shared.moroTopViewController(),
+              !(presenter is MediaPreviewHostingController) else { return false }
+        if let docked = NativeVideoSession.docked {
+            if docked.attachment.url == attachment.url, docked.post?.status.id == post?.status.id {
+                docked.returnToFullscreen()
+                return true
+            }
+            docked.end()
         }
-
-        let controller = AVPlayerViewController()
-        controller.player = player
-        controller.videoGravity = .resizeAspect
-        // Picture in Picture needs a background audio mode the app doesn't have.
-        controller.allowsPictureInPicturePlayback = false
-        controller.modalPresentationStyle = .fullScreen
-        controller.delegate = session
-        session.controller = controller
-        // The controller keeps the session alive; when it goes away, so does the session.
-        objc_setAssociatedObject(controller, &sessionKey, session, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-
-        presenter.present(controller, animated: true) {
-            if let attachment { session.installExportActions(for: attachment, on: controller) }
-            session.observer.play()
-        }
+        let session = NativeVideoSession(attachment: attachment, post: post)
+        show(session, from: presenter)
+        return true
     }
 
-    private static func topViewController() -> UIViewController? {
-        UIApplication.shared.moroTopViewController()
+    static func show(_ session: NativeVideoSession, from presenter: UIViewController,
+                     completion: (() -> Void)? = nil) {
+        let controller = MediaPreviewHostingController(rootView: AnyView(EmptyView()))
+        session.host = controller
+        session.post?.closeBeforeAction = { [weak controller] action in controller?.close(completion: action) }
+        controller.rootView = AnyView(VideoFullscreenView(session: session))
+        controller.onClosed = { [weak session, weak controller] in
+            if session?.host === controller { session?.leftFullscreen() }
+        }
+        controller.view.backgroundColor = .clear
+        controller.modalPresentationStyle = .overFullScreen
+        controller.modalTransitionStyle = .crossDissolve
+        controller.modalPresentationCapturesStatusBarAppearance = true
+        presenter.present(controller, animated: !UIAccessibility.isReduceMotionEnabled, completion: completion)
     }
 }
 
-/// One fullscreen viewing: holds the shared player with sound on, and gives it back
-/// (silent again, other audio resumed) when the player is closed.
+/// The playback lease belongs to this viewing session, including any time spent in system PiP.
 @MainActor
-final class NativeVideoSession: NSObject, AVPlayerViewControllerDelegate, UIContextMenuInteractionDelegate {
-    let observer: VideoPlayerObserver
-    weak var controller: AVPlayerViewController?
-    private var hasEnded = false
-    private let playbackToken: UUID
-    private let needsAudioFocus: Bool
-    private var attachment: Status.Attachment?
-    private weak var exportSourceView: UIView?
-    private weak var exportOverlay: VideoExportOverlayView?
-    private var exportTask: Task<Void, Never>?
-    private var noticeTask: Task<Void, Never>?
+final class NativeVideoSession: NSObject, ObservableObject, AVPictureInPictureControllerDelegate {
+    private(set) static var docked: NativeVideoSession?
+    let attachment: Status.Attachment
+    let post: MediaPreviewPost?
+    let observer = VideoPlayerObserver(pool: .shared, continuesExistingPlayer: true)
+    let layer = AVPlayerLayer()
+    weak var host: MediaPreviewHostingController?
+    var dismissRoute: (() -> Void)?
 
-    init(url: URL, isGIF: Bool) {
-        let observer = VideoPlayerObserver(pool: .shared, continuesExistingPlayer: true)
-        // Take the fullscreen lease before inline views react to the presentation.
-        observer.setPlayer(url: url, isGIF: isGIF, shouldLoop: isGIF ? true : nil)
-        self.observer = observer
-        needsAudioFocus = !isGIF
-        playbackToken = MediaPlaybackPresentation.shared.begin()
-        super.init()
-        // Opened on purpose, so it plays with sound.
-        observer.setMuted(false)
-        if needsAudioFocus { VideoAudioSession.beginAudiblePlayback() }
-    }
+    @Published private(set) var canDock = false
+    @Published private(set) var selectedRate: Float = 1
+    @Published private(set) var isSpeedLocked = false
+    @Published private(set) var isMuted: Bool
+    @Published private(set) var pipFailed = false
+    private var pip: AVPictureInPictureController?
+    private var possibleObservation: NSKeyValueObservation?
+    private var playbackToken: UUID?
+    private var started = false
+    private var restored = false
+    private var heldRate: Float?
+    private var wasPlayingBeforeHold = false
+    private var holdingSpeed = false
+    private var resumeWhenComposerCloses = false
+    private var holdsAudioFocus = false
 
     var player: AVPlayer? { observer.getPlayer() }
+    var isGIF: Bool { attachment.type == "gifv" }
 
-    func end() {
-        guard !hasEnded else { return }
-        hasEnded = true
-        // AVKit must stop owning the player before the inline row resumes it; otherwise a
-        // late controller teardown can pause the same player after the handoff.
-        controller?.player = nil
-        exportTask?.cancel()
-        noticeTask?.cancel()
-        observer.setMuted(true)
-        if needsAudioFocus { VideoAudioSession.endAudiblePlayback() }
-        observer.tearDown()
-        MediaPlaybackPresentation.shared.end(playbackToken)
-    }
-
-    func installExportActions(for attachment: Status.Attachment, on controller: AVPlayerViewController) {
+    init(attachment: Status.Attachment, post: MediaPreviewPost? = nil) {
         self.attachment = attachment
-        controller.view.addInteraction(UIContextMenuInteraction(delegate: self))
-        guard let host = controller.view else { return }
-        let overlay = VideoExportOverlayView(frame: host.bounds)
-        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        host.addSubview(overlay)
-        exportOverlay = overlay
-        let share = UIButton(type: .system)
-        share.setImage(UIImage(systemName: "square.and.arrow.up"), for: .normal)
-        share.tintColor = .white
-        share.backgroundColor = UIColor.black.withAlphaComponent(0.55)
-        share.layer.cornerRadius = 22
-        share.accessibilityLabel = MoroL10n.MediaExport.share
-        share.accessibilityIdentifier = "videoPreview.share"
-        share.addAction(UIAction { [weak self] _ in self?.run(.share) }, for: .touchUpInside)
-        overlay.addSubview(share)
-        overlay.shareButton = share
-        exportSourceView = share
-    }
-
-    func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
-                               configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
-        guard let attachment else { return nil }
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-            UIMenu(children: MediaExportAction.available(for: attachment).map { action in
-                UIAction(title: action.title, image: UIImage(systemName: action.systemImage)) { [weak self] _ in
-                    self?.run(action)
+        self.post = post
+        let gif = attachment.type == "gifv"
+        isMuted = gif
+        super.init()
+        observer.setPlayer(url: attachment.url, isGIF: gif, shouldLoop: gif ? true : nil)
+        playbackToken = MediaPlaybackPresentation.shared.begin()
+        observer.setMuted(false)
+        layer.player = player
+        layer.videoGravity = .resizeAspect
+        if !gif {
+            holdsAudioFocus = true
+            VideoAudioSession.beginAudiblePlayback()
+            if AVPictureInPictureController.isPictureInPictureSupported() {
+                pip = AVPictureInPictureController(playerLayer: layer)
+                pip?.delegate = self
+                pip?.canStartPictureInPictureAutomaticallyFromInline = true
+                possibleObservation = pip?.observe(\.isPictureInPicturePossible, options: [.initial, .new]) {
+                    [weak self] _, change in
+                    let possible = change.newValue == true
+                    Task { @MainActor [weak self] in self?.canDock = possible }
                 }
-            })
-        }
-    }
-
-    private func run(_ action: MediaExportAction) {
-        guard !hasEnded, exportTask == nil, let attachment else { return }
-        exportTask = Task { [weak self] in
-            guard let self else { return }
-            defer { self.exportTask = nil }
-            do {
-                if let message = try await action.perform(on: attachment, sourceView: self.exportSourceView) {
-                    self.showNotice(message)
-                }
-            } catch is CancellationError {
-            } catch {
-                self.showNotice(MediaExportService.message(for: error))
             }
         }
     }
 
-    private func showNotice(_ message: String) {
-        guard !hasEnded, let overlay = exportOverlay else { return }
-        noticeTask?.cancel()
-        overlay.subviews.filter { $0.accessibilityIdentifier == "videoPreview.notice" }.forEach { $0.removeFromSuperview() }
-        let notice = UILabel()
-        notice.text = message
-        notice.textColor = .white
-        notice.backgroundColor = UIColor.black.withAlphaComponent(0.75)
-        notice.textAlignment = .center
-        notice.font = .preferredFont(forTextStyle: .subheadline)
-        notice.numberOfLines = 0
-        notice.accessibilityIdentifier = "videoPreview.notice"
-        overlay.addSubview(notice)
-        overlay.notice = notice
-        overlay.setNeedsLayout()
-        UIAccessibility.post(notification: .announcement, argument: message)
-        noticeTask = Task { [weak notice] in
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled else { return }
-            notice?.removeFromSuperview()
+    func startIfNeeded() {
+        guard playbackToken != nil else { return }
+        observer.setFullscreenLooping(true)
+        guard !started else { return }
+        started = true
+        observer.play()
+    }
+
+    func togglePlayback() {
+        if observer.isPlaybackActive { observer.pause() } else { observer.play() }
+    }
+
+    func pauseForComposer() {
+        guard observer.isPlaybackActive else { return }
+        resumeWhenComposerCloses = true
+        observer.pause()
+    }
+
+    func resumeAfterComposer() {
+        guard resumeWhenComposerCloses else { return }
+        resumeWhenComposerCloses = false
+        if playbackToken != nil, Self.docked !== self { observer.play() }
+    }
+
+    func toggleMute() {
+        isMuted.toggle()
+        observer.setMuted(isMuted)
+    }
+
+    func cycleRate() {
+        let rates: [Float] = [1, 1.25, 1.5, 2]
+        holdingSpeed = false
+        isSpeedLocked = false
+        heldRate = nil
+        let next = ((rates.firstIndex(of: selectedRate) ?? 0) + 1) % rates.count
+        setRate(rates[next])
+    }
+
+    private func setRate(_ rate: Float) {
+        selectedRate = rate
+        player?.defaultRate = rate
+        if player?.timeControlStatus != .paused { player?.rate = rate }
+    }
+
+    func beginSpeedHold() {
+        guard !holdingSpeed else { return }
+        holdingSpeed = true
+        guard !isSpeedLocked else { return }
+        heldRate = selectedRate
+        wasPlayingBeforeHold = observer.isPlaybackActive
+        setRate(2)
+        if !wasPlayingBeforeHold { observer.play() }
+    }
+
+    func finishSpeedHold(completedDrag: Bool) {
+        guard holdingSpeed else { return }
+        holdingSpeed = false
+        if isSpeedLocked {
+            if completedDrag { unlockSpeed() }
+        } else if completedDrag {
+            isSpeedLocked = true
+        } else {
+            if !wasPlayingBeforeHold { observer.pause() }
+            setRate(heldRate ?? 1)
+            heldRate = nil
         }
     }
 
-    func playerViewController(
-        _ playerViewController: AVPlayerViewController,
-        willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
-    ) {
-        coordinator.animate(alongsideTransition: nil) { [weak self] context in
-            guard !context.isCancelled else { return }
-            self?.end()
+    func unlockSpeed() {
+        guard isSpeedLocked else { return }
+        isSpeedLocked = false
+        setRate(heldRate ?? 1)
+        heldRate = nil
+    }
+
+    func retry() {
+        observer.tearDown()
+        observer.setPlayer(url: attachment.url, isGIF: isGIF, shouldLoop: isGIF ? true : nil)
+        observer.setMuted(isMuted)
+        layer.player = player
+        player?.defaultRate = selectedRate
+        observer.play()
+    }
+
+    @discardableResult
+    func startPictureInPicture() -> Bool {
+        guard let pip, pip.isPictureInPicturePossible, Self.docked == nil else { return false }
+        pipFailed = false
+        pip.startPictureInPicture()
+        return true
+    }
+
+    func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        guard playbackToken != nil else { return }
+        restored = false
+        Self.docked = self
+    }
+
+    func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        guard Self.docked === self, let token = playbackToken else { return }
+        observer.setFullscreenLooping(false)
+        MediaPlaybackPresentation.shared.dock(token, url: attachment.url)
+        if let host { host.close() } else { dismissRoute?() }
+    }
+
+    func pictureInPictureController(_ controller: AVPictureInPictureController,
+                                    failedToStartPictureInPictureWithError error: Error) {
+        guard playbackToken != nil else { return }
+        clearDock()
+        pipFailed = true
+    }
+
+    func pictureInPictureController(_ controller: AVPictureInPictureController,
+                                    restoreUserInterfaceForPictureInPictureStopWithCompletionHandler complete: @escaping (Bool) -> Void) {
+        restore(complete)
+    }
+
+    func returnToFullscreen() {
+        restore { [weak self] success in
+            if success { self?.pip?.stopPictureInPicture() }
         }
     }
 
-    deinit {
-        // Closed some other way: still give the player back.
-        guard !hasEnded else { return }
-        let observer = self.observer
-        let token = playbackToken
-        let needsAudioFocus = needsAudioFocus
+    private func restore(_ complete: @escaping (Bool) -> Void) {
+        guard Self.docked === self else { complete(false); return }
+        if let host, host.isBeingDismissed, let transition = host.transitionCoordinator {
+            transition.animate(alongsideTransition: nil) { [weak self] _ in
+                guard let self else { complete(false); return }
+                self.restore(complete)
+            }
+            return
+        }
+        if let host, host.presentingViewController != nil {
+            restored = true
+            complete(true)
+            return
+        }
+        guard let presenter = UIApplication.shared.moroTopViewController() else { complete(false); return }
+        restored = true
+        NativeVideoPlayer.show(self, from: presenter) { complete(true) }
+    }
+
+    func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
+        guard Self.docked === self else { return }
+        clearDock()
+        if !restored { end() }
+    }
+
+    func leftFullscreen() {
+        dismissRoute = nil
+        if Self.docked !== self { end() }
+    }
+
+    private func clearDock() {
+        guard Self.docked === self else { return }
+        Self.docked = nil
+        if let playbackToken { MediaPlaybackPresentation.shared.undock(playbackToken) }
+    }
+
+    func end() {
+        guard let token = playbackToken else { return }
+        playbackToken = nil
+        clearDock()
+        pip?.delegate = nil
+        pip?.canStartPictureInPictureAutomaticallyFromInline = false
+        if pip?.isPictureInPictureActive == true { pip?.stopPictureInPicture() }
+        possibleObservation = nil
+        pip = nil
+        layer.player = nil
+        player?.defaultRate = 1
+        observer.setMuted(true)
+        if holdsAudioFocus { VideoAudioSession.endAudiblePlayback() }
+        observer.tearDown()
+        MediaPlaybackPresentation.shared.end(token)
+    }
+
+    nonisolated deinit {
+        // A presentation interrupted before appearing still owns the pool and audio tokens.
+        guard let token = playbackToken else { return }
+        let observer = observer
+        let hasFocus = holdsAudioFocus
         Task { @MainActor in
+            observer.getPlayer()?.defaultRate = 1
             observer.setMuted(true)
-            if needsAudioFocus { VideoAudioSession.endAudiblePlayback() }
+            if hasFocus { VideoAudioSession.endAudiblePlayback() }
             observer.tearDown()
             MediaPlaybackPresentation.shared.end(token)
         }
-    }
-}
-
-/// Installed above AVKit after presentation. Use the containing window's safe area, while
-/// allowing every touch outside the export controls to reach the system playback controls.
-private final class VideoExportOverlayView: UIView {
-    // Avoid the isolated-deinit back-deployment crash on iOS 26.2 and earlier.
-    nonisolated deinit {}
-
-    weak var shareButton: UIButton?
-    weak var notice: UILabel?
-
-    override func didMoveToWindow() { super.didMoveToWindow(); setNeedsLayout() }
-    override func safeAreaInsetsDidChange() { super.safeAreaInsetsDidChange(); setNeedsLayout() }
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        guard let window else { return }
-        let usable = convert(window.bounds.inset(by: window.safeAreaInsets), from: window)
-        shareButton?.frame = CGRect(x: usable.maxX - 60, y: usable.minY + 12, width: 44, height: 44)
-        if let notice {
-            let size = notice.sizeThatFits(CGSize(width: max(1, usable.width - 80), height: .greatestFiniteMagnitude))
-            let width = min(usable.width - 48, size.width + 32)
-            let height = max(44, size.height + 20)
-            notice.frame = CGRect(x: usable.midX - width / 2, y: usable.maxY - 100 - height, width: width, height: height)
-        }
-    }
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        let target = super.hitTest(point, with: event)
-        return target === self ? nil : target
     }
 }

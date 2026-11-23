@@ -424,7 +424,12 @@ struct SharedComposeHandoffTests {
     }
 
     @Test func briefIndexContentionIsRetriedAndDoesNotFlipThePublishButton() async throws {
-        let fixture = try StoreFixture()
+        var peerDescriptor: Int32 = -1
+        var retries = 0
+        let fixture = try StoreFixture(waitForIndexLockRetry: { _ in
+            retries += 1
+            #expect(flock(peerDescriptor, LOCK_UN) == 0)
+        })
         defer { fixture.cleanup() }
         let api = MockMastodonAPI()
         api.uploadMediaHandler = { _, _, _ in Self.serverAttachment("uploaded") }
@@ -434,15 +439,18 @@ struct SharedComposeHandoffTests {
         #expect(model.canPublish)
 
         let lockURL = fixture.directory.appendingPathComponent("staging/.index.lock")
-        let descriptor = Darwin.open(lockURL.path, O_RDWR)
-        try #require(descriptor >= 0)
-        defer { Darwin.close(descriptor) }
-        try #require(flock(descriptor, LOCK_EX | LOCK_NB) == 0)
+        peerDescriptor = Darwin.open(lockURL.path, O_RDWR)
+        try #require(peerDescriptor >= 0)
+        defer {
+            Darwin.close(peerDescriptor)
+            peerDescriptor = -1
+        }
+        try #require(flock(peerDescriptor, LOCK_EX | LOCK_NB) == 0)
         // Rendering reads the snapshot and never touches the cross-process lock.
         #expect(model.canPublish && !model.hasPendingSharedMedia)
-        // A peer releasing within the retry window is waited for, not reported as a failure.
-        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(50)) { flock(descriptor, LOCK_UN) }
+        #expect(retries == 0)
         #expect(try fixture.store.pendingSharedStagingItemsForPublishing().isEmpty)
+        #expect(retries == 1)
     }
 
     @Test func aSharedBatchReservesEveryTileUpFrontAndKeepsLocalPreviews() async throws {
@@ -662,13 +670,14 @@ struct SharedComposeHandoffTests {
         let store: ComposeDraftStore
         let directory: URL
         let suites: [String]
-        init() throws {
+        init(waitForIndexLockRetry: ((useconds_t) -> Void)? = nil) throws {
             suites = ["share-drafts-\(UUID())", "share-staging-\(UUID())"]
             directory = FileManager.default.temporaryDirectory.appendingPathComponent("share-test-\(UUID())")
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             store = ComposeDraftStore(userDefaults: try #require(UserDefaults(suiteName: suites[0])),
                 stagingStore: SharedComposeDraftStagingStore(userDefaults: try #require(UserDefaults(suiteName: suites[1])),
-                    baseDirectoryURL: directory.appendingPathComponent("staging")))
+                    baseDirectoryURL: directory.appendingPathComponent("staging"),
+                    waitForIndexLockRetry: waitForIndexLockRetry))
         }
         func stage(text: String, count: Int) throws -> SharedComposeDraftStagingItem {
             let image = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { context in

@@ -20,6 +20,7 @@ struct MoroApp: App {
         #if DEBUG
         // First, before anything reads a setting.
         UITestDefaultsIsolation.applyIfRequested()
+        if ProfileFixtureProtocol.testsGalleryLoading { ProfileMediaFixture.prepareGalleryLoading() }
         #endif
         StorageManagementStore.configureImageCache()
         MoroTips.configure()
@@ -273,7 +274,11 @@ struct MoroApp: App {
 
     @ViewBuilder private var timelineMediaHarness: some View {
         #if DEBUG
-        TimelineMediaHarnessView()
+        if launchArguments.contains("UITEST_POST_EMOJI") {
+            PostEmojiPlaybackHarness()
+        } else {
+            TimelineMediaHarnessView()
+        }
         #endif
     }
 

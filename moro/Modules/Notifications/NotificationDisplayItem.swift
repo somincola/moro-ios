@@ -15,6 +15,7 @@ struct NotificationDisplayItem: Identifiable {
     var status: Status?
     var fallback: NotificationFallback?
     var collection: NotificationCollectionSummary?
+    let report: ReportResponse?
     var sourceNotificationIDs: [String]
 
     var primaryAccount: Account? { accounts.first }
@@ -38,6 +39,24 @@ struct NotificationDisplayItem: Identifiable {
         return status.displayStatus
     }
 
+    func reportURL(on instanceURL: URL?) -> URL? {
+        guard kind == .adminReport, let instanceURL,
+              var components = URLComponents(url: instanceURL, resolvingAgainstBaseURL: false),
+              let scheme = components.scheme?.lowercased(), ["https", "http"].contains(scheme),
+              components.host?.isEmpty == false else { return nil }
+
+        components.user = nil
+        components.password = nil
+        components.query = nil
+        components.fragment = nil
+        components.path = "/admin/reports"
+        // Older cached notifications may only identify the event, not the underlying report.
+        if let id = report?.id, !id.isEmpty, id != ".", id != "..", !id.contains("/") {
+            components.path += "/\(id)"
+        }
+        return components.url
+    }
+
     init(from notification: NotificationItem, groupKey: String? = nil) {
         self.id = groupKey ?? notification.id
         self.type = notification.type
@@ -46,6 +65,7 @@ struct NotificationDisplayItem: Identifiable {
         self.status = notification.status
         self.fallback = notification.fallback
         self.collection = notification.collection
+        self.report = notification.report
         self.sourceNotificationIDs = [notification.id]
     }
 
@@ -118,5 +138,30 @@ struct NotificationDisplayItem: Identifiable {
 
         guard let statusID = notification.status?.id else { return nil }
         return "\(notification.type)-\(statusID)-\(Int(dayBucket))"
+    }
+}
+
+extension ReportResponse {
+    func notificationTitle(usernameAttributes: AttributeContainer = .init()) -> AttributedString {
+        let count = statusIds?.count ?? 0
+        guard let username = targetAccount?.username, !username.isEmpty else {
+            return AttributedString(MoroL10n.Notifications.reportTitle(target: nil, postCount: count))
+        }
+
+        // Resolve the plural before inserting the styled name. A username may itself
+        // be a word in the translation, such as "reported".
+        let namePlaceholder = "\u{FFFC}"
+        var title = AttributedString(MoroL10n.Notifications.reportTitle(target: namePlaceholder, postCount: count))
+        if let slot = title.range(of: namePlaceholder) {
+            title.replaceSubrange(slot, with: AttributedString(username, attributes: usernameAttributes))
+        }
+        return title
+    }
+
+    var notificationReason: String? {
+        guard let reason = comment?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty else {
+            return nil
+        }
+        return reason
     }
 }

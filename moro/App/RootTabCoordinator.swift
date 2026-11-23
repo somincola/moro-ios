@@ -2,7 +2,7 @@
 //  RootTabCoordinator.swift
 //  moro
 //
-//  Owns the four app-level navigation destinations and their independent route stacks.
+//  Owns app-level navigation destinations and their independent route stacks.
 //
 
 import Combine
@@ -13,6 +13,14 @@ enum MainTab: String, Hashable, CaseIterable {
     case explore
     case inbox
     case me
+    case lists
+    case bookmarks
+    case favourites
+    case settings
+
+    var isRequired: Bool {
+        NavigationTabLayout.requiredTabs.contains(self)
+    }
 
     var defaultIcon: String {
         switch self {
@@ -20,6 +28,10 @@ enum MainTab: String, Hashable, CaseIterable {
         case .explore: return "magnifyingglass"
         case .inbox: return "bell"
         case .me: return "person"
+        case .lists: return "list.bullet"
+        case .bookmarks: return "bookmark"
+        case .favourites: return "heart"
+        case .settings: return "gearshape"
         }
     }
 
@@ -29,6 +41,10 @@ enum MainTab: String, Hashable, CaseIterable {
         case .explore: return "magnifyingglass"
         case .inbox: return "bell.fill"
         case .me: return "person.fill"
+        case .lists: return defaultIcon
+        case .bookmarks: return "bookmark.fill"
+        case .favourites: return "heart.fill"
+        case .settings: return "gearshape.fill"
         }
     }
 
@@ -38,6 +54,7 @@ enum MainTab: String, Hashable, CaseIterable {
         case .explore: return "safari"
         case .inbox: return "bell"
         case .me: return "person.crop.circle"
+        case .lists, .bookmarks, .favourites, .settings: return defaultIcon
         }
     }
 
@@ -47,6 +64,7 @@ enum MainTab: String, Hashable, CaseIterable {
         case .explore: return "safari.fill"
         case .inbox: return "bell.fill"
         case .me: return "person.crop.circle.fill"
+        case .lists, .bookmarks, .favourites, .settings: return defaultFilledIcon
         }
     }
 
@@ -67,12 +85,17 @@ enum MainTab: String, Hashable, CaseIterable {
         case .explore: return MoroL10n.Navigation.explore
         case .inbox: return MoroL10n.Navigation.inbox
         case .me: return MoroL10n.Navigation.me
+        case .lists: return MoroL10n.Navigation.lists
+        case .bookmarks: return MoroL10n.Navigation.bookmarks
+        case .favourites: return MoroL10n.Navigation.favourites
+        case .settings: return MoroL10n.Navigation.settings
         }
     }
 }
 
 enum RootSheetDestination: String, Identifiable {
     case settings
+    case navigationCustomization
 
     var id: String { rawValue }
 }
@@ -84,6 +107,7 @@ final class RootTabCoordinator: ObservableObject {
             if oldValue != selectedTab { noteTabActivated(selectedTab) }
         }
     }
+    @Published private(set) var tabLayout: NavigationTabLayout
     @Published var inboxFilter: NotificationFilter
     @Published var composeContext: ComposeContextWrapper?
     @Published var presentedSheet: RootSheetDestination?
@@ -100,19 +124,26 @@ final class RootTabCoordinator: ObservableObject {
     /// status row on the inner display. Other iPhones keep the custom hide-on-scroll header.
     @Published var usesSystemHomeBar = false
     @Published private(set) var isExploreSearchEntryActive = false
+    @Published private(set) var homeShowsInbox = false
     @Published private var rootStateByTab: [MainTab: Bool]
 
+    private let tabPreferences: NavigationTabPreferences?
     let homeRouter = AppRouter()
     let exploreRouter = AppRouter()
     let inboxRouter = AppRouter()
     let meRouter = AppRouter()
+    private var additionalRouters: [MainTab: AppRouter] = [:]
 
     init(
         selectedTab: MainTab = .home,
         inboxFilter: NotificationFilter = .all,
-        presentedSheet: RootSheetDestination? = nil
+        presentedSheet: RootSheetDestination? = nil,
+        tabPreferences: NavigationTabPreferences? = nil
     ) {
-        self.selectedTab = selectedTab
+        let layout = tabPreferences?.load() ?? NavigationTabLayout()
+        self.tabPreferences = tabPreferences
+        self.tabLayout = layout
+        self.selectedTab = layout.tabs.contains(selectedTab) ? selectedTab : .home
         self.inboxFilter = inboxFilter
         self.presentedSheet = presentedSheet
         self.rootStateByTab = Dictionary(
@@ -152,6 +183,32 @@ final class RootTabCoordinator: ObservableObject {
         presentedSheet = .settings
     }
 
+    func presentNavigationCustomization() {
+        guard presentedSheet == nil, composeContext == nil, !showAddAccountLogin else { return }
+        presentedSheet = .navigationCustomization
+    }
+
+    func toggleTab(_ tab: MainTab) {
+        var layout = tabLayout
+        layout.toggle(tab)
+        applyTabLayout(layout)
+    }
+
+    func moveTab(_ tab: MainTab, to index: Int) {
+        applyTabLayout(tabLayout.moving(tab, to: index))
+    }
+
+    func restoreDefaultTabLayout() {
+        applyTabLayout(NavigationTabLayout())
+    }
+
+    private func applyTabLayout(_ layout: NavigationTabLayout) {
+        guard layout != tabLayout else { return }
+        if !layout.tabs.contains(selectedTab) { selectedTab = .home }
+        tabLayout = layout
+        tabPreferences?.save(layout)
+    }
+
     /// Work that must wait until the root sheet has finished dismissing (switching
     /// accounts, pushing onto the now-visible stack). Run from the sheet's `onDismiss`
     /// instead of guessing the animation length with a timer.
@@ -173,6 +230,7 @@ final class RootTabCoordinator: ObservableObject {
     }
 
     func selectTab(_ tab: MainTab) {
+        guard tabLayout.tabs.contains(tab) else { return }
         guard tab == selectedTab else {
             selectedTab = tab
             return
@@ -186,39 +244,63 @@ final class RootTabCoordinator: ObservableObject {
         triggerScrollToTopEvent(for: tab)
     }
 
+    func openExplore() {
+        if tabLayout.tabs.contains(.explore) {
+            selectTab(.explore)
+        } else {
+            navigate(to: .search(query: nil), on: .home)
+        }
+    }
+
+    func openProfile(_ account: Account?) {
+        if tabLayout.tabs.contains(.me) {
+            selectTab(.me)
+        } else if let account {
+            navigate(to: .userProfile(account), on: .home)
+        }
+    }
+
+    var isInboxVisible: Bool {
+        (selectedTab == .inbox && isAtRoot(.inbox)) || (selectedTab == .home && homeShowsInbox)
+    }
+
+    func setHomeShowsInbox(_ visible: Bool) {
+        if homeShowsInbox != visible { homeShowsInbox = visible }
+    }
+
     func openInbox(_ filter: NotificationFilter) {
         inboxFilter = filter
-        if selectedTab != .inbox {
-            selectedTab = .inbox
+        let target: MainTab = tabLayout.tabs.contains(.inbox) ? .inbox : .home
+        if selectedTab != target { selectedTab = target }
+        if target == .home && !homeShowsInbox {
+            homeRouter.navigate(to: .inbox)
+            setHomeShowsInbox(true)
         }
     }
 
     func openConversation(_ conversation: Conversation) {
-        openInbox(.mentions)
-        inboxRouter.replace(with: .conversationDetail(conversation))
+        openPushNotification(.conversation(conversation))
     }
 
     func openPushNotification(_ destination: PushNotificationDestination) {
-        switch destination {
-        case .notifications:
-            openInbox(.all)
-            inboxRouter.popToRoot()
-        case .messages:
-            openInbox(.mentions)
-            inboxRouter.popToRoot()
-        case .status(let status):
-            openInbox(.all)
-            inboxRouter.replace(with: .statusDetail(status))
-        case .profile(let account):
-            openInbox(.all)
-            inboxRouter.replace(with: .userProfile(account))
-        case .conversation(let conversation):
-            openConversation(conversation)
+        let (filter, detail): (NotificationFilter, Route?) = switch destination {
+        case .notifications: (.all, nil)
+        case .messages: (.mentions, nil)
+        case .status(let status): (.all, .statusDetail(status))
+        case .profile(let account): (.all, .userProfile(account))
+        case .conversation(let conversation): (.mentions, .conversationDetail(conversation))
+        }
+        openInbox(filter)
+        if selectedTab == .inbox {
+            if let detail { inboxRouter.replace(with: detail) } else { inboxRouter.popToRoot() }
+        } else if let detail {
+            homeRouter.navigate(to: detail)
+            setHomeShowsInbox(false)
         }
     }
 
     func navigate(to route: Route, on tab: MainTab? = nil) {
-        let targetTab = tab ?? selectedTab
+        let targetTab = tab.flatMap { tabLayout.tabs.contains($0) ? $0 : nil } ?? selectedTab
         let router = router(for: targetTab)
         if selectedTab != targetTab {
             selectedTab = targetTab
@@ -236,6 +318,11 @@ final class RootTabCoordinator: ObservableObject {
             return inboxRouter
         case .me:
             return meRouter
+        case .lists, .bookmarks, .favourites, .settings:
+            if let router = additionalRouters[tab] { return router }
+            let router = AppRouter()
+            additionalRouters[tab] = router
+            return router
         }
     }
 
@@ -262,7 +349,7 @@ final class RootTabCoordinator: ObservableObject {
     }
 
     func popAllToRoot() {
-        for tab in MainTab.allCases {
+        for tab in NavigationTabLayout.defaultTabs + Array(additionalRouters.keys) {
             router(for: tab).popToRoot()
             setIsAtRoot(true, for: tab)
         }

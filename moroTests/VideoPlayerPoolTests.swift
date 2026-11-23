@@ -20,13 +20,100 @@ struct VideoPlayerPoolTests {
     @Test func fullscreenGIFStaysSilentAndReleasesItsPlaybackOwnership() {
         let wasAudible = VideoAudioSession.isAudible
         let wasCovered = MediaPlaybackPresentation.shared.coversInlinePlayback
-        let session = NativeVideoSession(url: url("silent-fullscreen"), isGIF: true)
+        let session = NativeVideoSession(attachment: Status.Attachment(id: "silent", type: "gifv", url: url("silent-fullscreen")))
         #expect(session.player?.isMuted == true)
         #expect(VideoAudioSession.isAudible == wasAudible)
         #expect(MediaPlaybackPresentation.shared.coversInlinePlayback)
         session.end()
         #expect(MediaPlaybackPresentation.shared.coversInlinePlayback == wasCovered)
     }
+
+    @Test func testSpeedCycleAndTemporaryHoldRestoreTheSelectedRate() {
+        let video = NativeVideoSession(attachment: .init(id: "speed", type: "video", url: url("speed")))
+        defer { video.end() }
+        for rate: Float in [1.25, 1.5, 2, 1, 1.25] {
+            video.cycleRate()
+            #expect(video.selectedRate == rate)
+            #expect(video.observer.isPlaybackRequested == false)
+        }
+        video.beginSpeedHold()
+        #expect(video.selectedRate == 2)
+        video.finishSpeedHold(completedDrag: false)
+        #expect(video.selectedRate == 1.25)
+        #expect(!video.observer.isPlaybackRequested)
+        video.beginSpeedHold()
+        video.finishSpeedHold(completedDrag: true)
+        #expect(video.isSpeedLocked && video.selectedRate == 2)
+        video.beginSpeedHold()
+        video.finishSpeedHold(completedDrag: false)
+        #expect(video.isSpeedLocked && video.selectedRate == 2)
+        video.beginSpeedHold()
+        video.finishSpeedHold(completedDrag: true)
+        #expect(!video.isSpeedLocked && video.selectedRate == 1.25)
+    }
+
+    @Test func testDismissDragCanBackOutOfPictureInPictureBeforeRelease() {
+        let target = CGPoint(x: 200, y: 750)
+        func drag(_ distance: CGFloat, from startY: CGFloat = 350, x: CGFloat = 200) -> VideoPreviewDrag {
+            VideoPreviewDrag(distance: distance, height: 800, finger: CGPoint(x: x, y: startY + distance), target: target)
+        }
+        #expect(!drag(35).closes)
+        #expect(drag(140).closes && !drag(140).offersPiP)
+        #expect(drag(195).offersPiP && drag(195).approachProgress < 0.02)
+        #expect(drag(270).approachProgress > drag(230).approachProgress * 2)
+        #expect(!drag(300).isInDockRange(wasArmed: false))
+        #expect(drag(310).isInDockRange(wasArmed: false))
+        #expect(!drag(310, from: 180).isInDockRange(wasArmed: false))
+        #expect(!drag(310, x: 12).isInDockRange(wasArmed: false))
+        #expect(drag(80, from: 600).isInDockRange(wasArmed: false))
+        #expect(!drag(8, from: 690).isInDockRange(wasArmed: false))
+        #expect(drag(300).isInDockRange(wasArmed: true))
+        #expect(!drag(280).isInDockRange(wasArmed: true))
+        #expect(!drag(135).offersPiP && drag(135).approachProgress == 0)
+    }
+
+    @Test func shortVideosUseMoreOfTheirLetterboxSpaceAboveTheControls() {
+        let session = NativeVideoSession(attachment: .init(id: "framing", type: "gifv", url: url("framing")))
+        defer { session.end() }
+        let viewport = VideoViewport(session: session)
+        viewport.frame = CGRect(x: 0, y: 0, width: 400, height: 840)
+        viewport.layoutIfNeeded()
+        #expect(viewport.contentInset.bottom - viewport.contentInset.top == 108)
+        #expect(abs(viewport.contentOffset.y + viewport.contentInset.top) <= 0.5)
+        #expect(session.layer.bounds.width == 400)
+        #expect(VideoViewport.pictureLift(viewportHeight: 840, pictureHeight: 740) == 10)
+        #expect(VideoViewport.pictureLift(viewportHeight: 840, pictureHeight: 840) == 0)
+
+        for height: CGFloat in [340, 800] {
+            let target = CGPoint(x: 200, y: height - 46)
+            let drag = VideoPreviewDrag(distance: height * 0.5, height: height, finger: target, target: target)
+            for pictureHeight in [height * 0.3, height] {
+                let lift = VideoViewport.pictureLift(viewportHeight: height, pictureHeight: pictureHeight)
+                let offset = drag.pictureOffset(canvasHeight: height, canvasMidY: height / 2, pictureHeight: pictureHeight)
+                #expect(drag.isInDockRange(wasArmed: false))
+                let pictureBottom = height / 2 + (pictureHeight / 2 - lift) * drag.scale + offset
+                #expect(pictureBottom <= target.y - VideoPreviewDrag.targetRadius)
+            }
+        }
+    }
+
+    @Test func dockedVideoKeepsItsLeaseWhileOtherInlineAnimationsResume() {
+        let presentation = MediaPlaybackPresentation()
+        let token = presentation.begin()
+        let source = url("docked")
+        presentation.dock(token, url: source)
+        #expect(presentation.dockedURL == source)
+        #expect(presentation.coversInlineVideoPlayback && !presentation.coversInlinePlayback)
+        let image = presentation.begin()
+        #expect(presentation.coversInlinePlayback)
+        presentation.end(image)
+        #expect(presentation.dockedURL == source && !presentation.coversInlinePlayback)
+        presentation.undock(token)
+        #expect(presentation.coversInlinePlayback && presentation.dockedURL == nil)
+        presentation.end(token)
+        #expect(!presentation.coversInlineVideoPlayback)
+    }
+
     @Test func loopingGIFDoesNotOfferPlayDuringAQueueHandoff() {
         let gif = VideoPlayerObserver()
         gif.setPlayer(url: url("handoff"), isGIF: true)

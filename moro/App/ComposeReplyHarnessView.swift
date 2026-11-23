@@ -25,6 +25,20 @@ struct ComposeReplyHarnessView: View {
             authInterceptor: AuthInterceptor(tokenProvider: ReplyFixtureTokenProvider())
         )
         self.client = client
+        if let playback = ProcessInfo.processInfo.environment["UITEST_COMPOSE_EMOJI_PLAYBACK"] {
+            AppSettings.shared.playAnimations = playback == "1"
+            ReplyFixtureProtocol.useEmoji(PostEmojiPlaybackFixture.post.emojis!.map {
+                CustomEmoji(shortcode: $0.shortcode, url: $0.url, staticURL: $0.staticURL, visibleInPicker: true, category: "Motion")
+            })
+        } else {
+            for (index, emoji) in ReplyFixtureProtocol.stillEmojis.enumerated() {
+                let image = UIGraphicsImageRenderer(size: CGSize(width: 48, height: 48)).image { _ in
+                    let label = ["🐈", "🐈‍⬛", "👋"][index] as NSString
+                    label.draw(at: .zero, withAttributes: [.font: UIFont.systemFont(ofSize: 38)])
+                }
+                ImageCache.shared.setImage(image, for: emoji.staticURL, data: image.pngData())
+            }
+        }
         let cache = AccountCache()
         if mode == "cached" { cache.set(Self.account("alice")) }
         _accountCache = StateObject(wrappedValue: cache)
@@ -80,7 +94,14 @@ private final class ReplyFixtureTokenProvider: AuthTokenProvider {
 }
 
 private final class ReplyFixtureProtocol: URLProtocol, @unchecked Sendable {
+    static let stillEmojis = ["blobcat", "blobcat_sleep", "wave"].map { code in
+        CustomEmoji(shortcode: code, url: URL(string: "https://reply-fixture.invalid/animated/\(code).gif")!,
+                    staticURL: URL(string: "https://reply-fixture.invalid/static/\(code).png")!,
+                    visibleInPicker: true, category: "Cats")
+    }
     private static let lock = NSLock()
+    private static var emojis = stillEmojis
+    static func useEmoji(_ items: [CustomEmoji]) { lock.withLock { emojis = items } }
     private static var recipientRequests = 0
     static var recipientRequestCount: Int { lock.withLock { recipientRequests } }
 
@@ -89,6 +110,13 @@ private final class ReplyFixtureProtocol: URLProtocol, @unchecked Sendable {
 
     override func startLoading() {
         let path = request.url?.path ?? ""
+        if path == "/api/v1/custom_emojis", let url = request.url {
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: try! JSONEncoder().encode(Self.lock.withLock { Self.emojis }))
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
         if path.hasPrefix("/api/v1/accounts/") || path.hasPrefix("/api/v1/statuses/") {
             Self.lock.withLock { Self.recipientRequests += 1 }
         }

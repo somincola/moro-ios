@@ -19,6 +19,7 @@ private struct ProfileStatButtonStyle: ButtonStyle {
 
 struct ProfileView: View {
     @Environment(\.moroTheme) private var theme
+    @Environment(\.moroPlaybackScope) private var playbackScope
     @Environment(\.moroSceneDescriptor) private var sceneDescriptor
     /// iPhone Duo: a post is open in the Me tab's panel and its controls take over the bar.
     @Environment(\.threadSplitPanelOwnsBar) private var panelOwnsBar
@@ -39,6 +40,7 @@ struct ProfileView: View {
     let account: Account?
     let accountID: String?
     let onLogout: () -> Void
+    private let onExplore: (() -> Void)?
     private let apiClient: MastodonAPI
     @StateObject private var postMenuActionCenter: PostMenuActionCenter
 
@@ -46,7 +48,9 @@ struct ProfileView: View {
     /// The Me tab's own profile refreshes quietly on coming back to it once older than five
     /// minutes (pushed profiles never get tab activations).
     @State private var autoRefresh = AutoRefreshSchedule(ttl: 5 * 60)
-    @State private var scrollPosition = ScrollPosition(edge: .top)
+    @State private var retainedTabs: Set<ProfileViewModel.TabContentID> = []
+    @State private var inactivePlayback = MediaPlaybackScope()
+    @State private var scrollToTopRequest = 0
     @State private var actionPresentation = ProfileActionPresentationState()
     @State private var avatarPreview: Status.Attachment?
     @State private var isAvatarVisible = true
@@ -98,11 +102,13 @@ struct ProfileView: View {
         account: Account?,
         accountID: String? = nil,
         onLogout: @escaping () -> Void,
-        apiClient: MastodonAPI
+        apiClient: MastodonAPI,
+        onExplore: (() -> Void)? = nil
     ) {
         self.account = account
         self.accountID = accountID
         self.onLogout = onLogout
+        self.onExplore = onExplore
 
         let resolvedAccountID = accountID ?? account?.id ?? ""
         // Required: a fallback client built here had no token, so every request on the
@@ -127,6 +133,15 @@ struct ProfileView: View {
                 viewportHeight: geometry.size.height,
                 topChromeHeight: topChromeHeight
             )
+            let contentID = viewModel.selectedContentID
+            // Keep a tab's native list and measured rows only while it has content to return to.
+            let pages = viewModel.availableTabs.map { viewModel.contentID(for: $0) }.filter {
+                $0 == contentID || (retainedTabs.contains($0) && viewModel.hasContent(for: $0.tab))
+            }
+            let pin = ProfileStickyTabLogic.pinThreshold(headerHeight: chromeState.headerHeight,
+                                                         topChromeHeight: topChromeHeight)
+            let firstOffset = chromeLayout.tabPlacement == .bottomDocked && !retainedTabs.isEmpty
+                ? pin : min(max(0, chromeState.scrollOffset), pin)
 
             ZStack(alignment: .top) {
                 sceneCanvasColor
@@ -142,59 +157,9 @@ struct ProfileView: View {
                 // vertical side bar, instead of stopping beside them.
                 .ignoresSafeArea(.container, edges: .horizontal)
 
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        profileHeaderRow(topSafeInset: topSafeInset)
-                            .background(
-                                GeometryReader { proxy in
-                                    Color.clear.preference(
-                                        key: ProfileHeaderHeightKey.self,
-                                        value: proxy.size.height
-                                    )
-                                }
-                            )
-
-                        naturalTabBarSection(isHidden: chromeLayout.hidesNaturalTab)
-                            .background(
-                                GeometryReader { proxy in
-                                    Color.clear.preference(
-                                        key: ProfileTabBarHeightKey.self,
-                                        value: proxy.size.height
-                                    )
-                                }
-                            )
-
-                        ProfileContentStream(
-                            viewModel: viewModel,
-                            apiClient: apiClient,
-                            postActions: postActions
-                        )
-                            .equatable()
-                            .moroReadableColumn()
-                            .frame(minHeight: chromeLayout.pinnedContentHeight, alignment: .top)
-                            .background(theme.colors.surfaceBase)
-                    }
-                }
-                .scrollPosition($scrollPosition)
-                .scrollIndicators(.hidden)
-                .scrollBounceBehavior(.always, axes: .vertical)
-                .ignoresSafeArea(.container, edges: .top)
-                .background(Color.clear)
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentOffset.y + geometry.contentInsets.top
-                } action: { _, scrolled in
-                    updateScrollState(scrolled)
-                }
-                .onScrollPhaseChange { oldPhase, newPhase in
-                    if chromeState.didReleasePull(oldPhase: oldPhase, newPhase: newPhase) {
-                        startPullRefreshIfNeeded()
-                    }
-                }
-                .onPreferenceChange(ProfileHeaderHeightKey.self) { height in
-                    chromeState.updateHeaderHeight(height)
-                }
-                .onPreferenceChange(ProfileTabBarHeightKey.self) { height in
-                    chromeState.updateTabBarHeight(height)
+                ForEach(pages, id: \.self) { page in
+                    profileScrollPage(page, isActive: page == contentID, topSafeInset: topSafeInset,
+                                      chromeLayout: chromeLayout, initialOffset: firstOffset)
                 }
 
                 profileNavigationChromeBackground(
@@ -215,6 +180,7 @@ struct ProfileView: View {
                 profilePullRefreshIndicator(topChromeHeight: topChromeHeight)
                     .zIndex(3)
             }
+            .onChange(of: pages, initial: true) { _, pages in retainedTabs = Set(pages) }
         }
         .ignoresSafeArea(.container, edges: .top)
         .background(sceneCanvasColor)
@@ -274,7 +240,7 @@ struct ProfileView: View {
         // Only the Me tab's root profile receives re-tap events (pushed profiles don't).
         .onTabReselect(.me) {
             if chromeState.scrollOffset > 1 {
-                withAnimation(.snappy) { scrollPosition.scrollTo(edge: .top) }
+                scrollToTopRequest += 1
             } else if chromeState.beginRefresh() {
                 MoroRefreshFeedback.armed()
                 runRefresh()
@@ -296,6 +262,63 @@ struct ProfileView: View {
             refreshProfile: refreshProfileData,
             performDelete: performDelete
         )
+    }
+
+    private func profileScrollPage(_ id: ProfileViewModel.TabContentID, isActive: Bool, topSafeInset: CGFloat,
+                                   chromeLayout: ProfileChromeLayout, initialOffset: CGFloat) -> some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                if isActive {
+                    profileHeaderRow(topSafeInset: topSafeInset)
+                        .background {
+                            GeometryReader { proxy in
+                                Color.clear.preference(key: ProfileHeaderHeightKey.self, value: proxy.size.height)
+                            }
+                        }
+                } else {
+                    Color.clear.frame(height: chromeState.headerHeight)
+                }
+                if isActive {
+                    naturalTabBarSection(isHidden: chromeLayout.hidesNaturalTab)
+                        .background {
+                            GeometryReader { proxy in
+                                Color.clear.preference(key: ProfileTabBarHeightKey.self, value: proxy.size.height)
+                            }
+                        }
+                } else {
+                    Color.clear.frame(height: chromeState.tabBarHeight)
+                }
+
+                ProfileContentStream(viewModel: viewModel, tab: id.tab, apiClient: apiClient, postActions: postActions)
+                    .equatable()
+                    .moroReadableColumn()
+                    .frame(minHeight: chromeLayout.pinnedContentHeight, alignment: .top)
+                    .background(theme.colors.surfaceBase)
+            }
+        }
+        .modifier(ProfileTabScrollPosition(initialOffset: initialOffset, isActive: isActive,
+                                           scrollToTopRequest: scrollToTopRequest) { offset in
+            if id == viewModel.selectedContentID { updateScrollState(offset) }
+        })
+        .scrollIndicators(.hidden)
+        .scrollBounceBehavior(.always, axes: .vertical)
+        .scrollDisabled(!isActive)
+        .ignoresSafeArea(.container, edges: .top)
+        .modifier(PostEmojiScrollPlayback(isActive: isActive) { oldPhase, newPhase in
+            if id == viewModel.selectedContentID, chromeState.didReleasePull(oldPhase: oldPhase, newPhase: newPhase) {
+                startPullRefreshIfNeeded()
+            }
+        })
+        .onPreferenceChange(ProfileHeaderHeightKey.self) { height in
+            if id == viewModel.selectedContentID { chromeState.updateHeaderHeight(height) }
+        }
+        .onPreferenceChange(ProfileTabBarHeightKey.self) { height in
+            if id == viewModel.selectedContentID { chromeState.updateTabBarHeight(height) }
+        }
+        .environment(\.moroPlaybackScope, isActive ? playbackScope : inactivePlayback)
+        .opacity(isActive ? 1 : 0)
+        .accessibilityHidden(!isActive)
+        .allowsHitTesting(isActive)
     }
 
     private var sceneCanvasColor: Color {
@@ -412,6 +435,7 @@ struct ProfileView: View {
                 onSettings: presentSettings,
                 onBookmarks: { router.navigate(to: .bookmarks) },
                 onFavourites: { router.navigate(to: .favourites) },
+                onExplore: onExplore,
                 onCopyLink: copyUserLink,
                 onOpenInBrowser: openUserInBrowser
             )
@@ -958,13 +982,13 @@ struct ProfileView: View {
         profileStatButton(
             account: account,
             kind: .following,
-            value: formatCount(account.followingCount),
+            count: account.followingCount,
             label: MoroL10n.Profile.statFollowing
         )
         profileStatButton(
             account: account,
             kind: .followers,
-            value: formatCount(account.followersCount),
+            count: account.followersCount,
             label: MoroL10n.Profile.statFollowers
         )
     }
@@ -972,16 +996,17 @@ struct ProfileView: View {
     private func profileStatButton(
         account: Account,
         kind: ProfileConnectionKind,
-        value: String,
+        count: Int,
         label: String
     ) -> some View {
         let collectionsAreHidden = account.hideCollections == true && !isCurrentUser
+        let value = formatCount(count)
 
         return Button {
             if collectionsAreHidden {
                 AppFeedbackCenter.shared.showInfo(MoroL10n.Profile.collectionsHiddenMessage)
             } else {
-                router.navigate(to: .profileConnections(accountID: account.id, kind: kind))
+                router.navigate(to: .profileConnections(accountID: account.id, kind: kind, totalCount: count))
             }
         } label: {
             profileStatItem(
@@ -1215,7 +1240,7 @@ struct ProfileView: View {
             actionSurface: actionSurface,
             postMenuActionCenter: postMenuActionCenter,
             apiClient: apiClient,
-            currentUserID: appState.currentAccount?.id,
+            appState: appState,
             router: router,
             onRemoveStatus: { id in viewModel.removeStatus(id: id) }
         )

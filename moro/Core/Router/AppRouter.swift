@@ -35,6 +35,8 @@ final class AppRouter: ObservableObject {
     /// Navigate to a specific route by pushing it onto the navigation stack
     /// - Parameter route: The route to navigate to
     func navigate(to route: Route) {
+        if case .mediaPreview(let url) = route, let video = RouteMediaPreviewView.videoAttachment(for: url),
+           NativeVideoPlayer.present(attachment: video) { return }
         if let inPlaceRouteHandler, inPlaceRouteHandler(route) { return }
         if let navigator {
             navigator.navigate(to: route)
@@ -126,6 +128,9 @@ struct AppRouteViewFactory {
                     .toolbar(.hidden, for: .tabBar)
             )
 
+        case .inbox:
+            return AnyView(InboxRouteView(apiClient: apiClient).toolbar(.hidden, for: .tabBar))
+
         case .followedTopics:
             return AnyView(FollowedTopicsRouteView(apiClient: apiClient).toolbar(.hidden, for: .tabBar))
 
@@ -172,11 +177,12 @@ struct AppRouteViewFactory {
                 .toolbar(.hidden, for: .tabBar)
             )
 
-        case .profileConnections(let accountID, let kind):
+        case .profileConnections(let accountID, let kind, let totalCount):
             return AnyView(
                 ProfileConnectionsView(
                     accountID: accountID,
                     kind: kind,
+                    totalCount: totalCount,
                     apiClient: apiClient
                 )
                 .toolbar(.hidden, for: .tabBar)
@@ -226,6 +232,19 @@ struct AppRouteViewFactory {
         case .lists:
             return AnyView(
                 ListsView(apiClient: apiClient)
+                    .toolbar(.hidden, for: .tabBar)
+            )
+
+        case .listTimeline(let list, let accountKey):
+            return AnyView(
+                ListTimelineView(list: list, apiClient: apiClient, cacheClientID: accountKey)
+                    .id(accountKey + ":" + list.id)
+                    .toolbar(.hidden, for: .tabBar)
+            )
+
+        case .listMembers(let list):
+            return AnyView(
+                ListMembersView(list: list, apiClient: apiClient)
                     .toolbar(.hidden, for: .tabBar)
             )
 
@@ -529,14 +548,8 @@ private struct RouteMediaPreviewView: View {
     let url: URL
 
     var body: some View {
-        if isVideoURL {
-            VideoFullscreenView(
-                attachment: Status.Attachment(
-                    id: url.absoluteString,
-                    type: "video",
-                    url: url
-                )
-            )
+        if let attachment = Self.videoAttachment(for: url) {
+            RoutedVideoPreview(attachment: attachment)
         } else {
             ImagePreviewView(
                 attachments: [
@@ -551,9 +564,23 @@ private struct RouteMediaPreviewView: View {
         }
     }
 
-    private var isVideoURL: Bool {
+    static func videoAttachment(for url: URL) -> Status.Attachment? {
         let ext = url.pathExtension.lowercased()
-        return ["mp4", "mov", "m4v", "webm", "mkv", "avi", "gif", "gifv"].contains(ext)
+        guard ["mp4", "mov", "m4v", "webm", "mkv", "avi", "gifv", "m3u8"].contains(ext) else { return nil }
+        return Status.Attachment(id: url.absoluteString, type: ext == "gifv" ? "gifv" : "video", url: url)
+    }
+}
+
+private struct RoutedVideoPreview: View {
+    let attachment: Status.Attachment
+    @State private var session: NativeVideoSession?
+
+    var body: some View {
+        Group {
+            if let session { VideoFullscreenView(session: session) }
+            else { Color.black.ignoresSafeArea() }
+        }
+        .onAppear { if session == nil { session = NativeVideoSession(attachment: attachment) } }
     }
 }
 

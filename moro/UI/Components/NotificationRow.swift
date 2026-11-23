@@ -10,6 +10,7 @@ import UIKit
 
 struct NotificationRow: View {
     let notification: NotificationDisplayItem
+    var reportURL: URL? = nil
     var onAvatarTap: (() -> Void)? = nil
     var onStatusTap: ((Status) -> Void)? = nil
     var onAccountTap: (() -> Void)? = nil
@@ -23,6 +24,7 @@ struct NotificationRow: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .subheadline) private var identityLineHeight: CGFloat = 20
+    @ScaledMetric(relativeTo: .body) private var timestampPointSize: CGFloat = 13
 
     private enum Metrics {
         static let leadingSize: CGFloat = 44
@@ -67,6 +69,19 @@ struct NotificationRow: View {
     }
 
     var body: some View {
+        if let reportURL {
+            Link(destination: reportURL) {
+                rowContent.contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .environment(\.openURL, OpenURLAction { _ in .systemAction })
+            .accessibilityIdentifier("notifications.report.\(notification.id)")
+        } else {
+            rowContent
+        }
+    }
+
+    private var rowContent: some View {
         Group {
             switch descriptor.layoutFamily {
             case .postAction:
@@ -154,14 +169,18 @@ struct NotificationRow: View {
 
     private var actionLabel: some View {
         eventButton(part: "action") {
-            Text(actionText)
-                .moroScaledFont(size: 14, weight: .medium)
-                .foregroundStyle(theme.colors.textSecondary)
+            styledAction(Text(actionText))
                 .lineLimit(2)
-                .lineSpacing(1)
-                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private func styledAction(_ text: Text) -> some View {
+        text
+            .moroScaledFont(size: 14, weight: .medium)
+            .foregroundStyle(theme.colors.textSecondary)
+            .lineSpacing(1)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var systemEventRow: some View {
@@ -169,7 +188,9 @@ struct NotificationRow: View {
             semanticIconColumn
 
             VStack(alignment: .leading, spacing: 5) {
-                if let fallback = notification.fallback {
+                if kind == .adminReport {
+                    reportSummary
+                } else if let fallback = notification.fallback {
                     fallbackSummary(fallback, includesTitle: true)
                 } else {
                     Text(actionText)
@@ -189,6 +210,32 @@ struct NotificationRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var reportSummary: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            styledAction(Text("\(reportTitle) \(timestampWithSeparator)"))
+            if let reason = notification.report?.notificationReason {
+                Text(verbatim: reason)
+                    .moroScaledFont(size: 14)
+                    .foregroundStyle(theme.colors.textSecondary)
+            } else if notification.report == nil, let fallback = notification.fallback {
+                fallbackSummary(fallback, includesTitle: false)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var reportTitle: Text {
+        if let report = notification.report {
+            var usernameStyle = AttributeContainer()
+            usernameStyle.foregroundColor = theme.colors.textPrimary
+            usernameStyle.inlinePresentationIntent = .stronglyEmphasized
+            return Text(report.notificationTitle(usernameAttributes: usernameStyle))
+        }
+        let title = notification.fallback.map { plainText(fromHTML: $0.title) } ?? MoroL10n.Notifications.badgeReport
+        return Text(verbatim: title)
     }
 
     // MARK: - Leading content
@@ -434,15 +481,14 @@ struct NotificationRow: View {
         return actionText
     }
 
+    private var timestampWithSeparator: Text {
+        Text(verbatim: "·\u{00a0}\(DateFormatting.relativeString(for: notification.createdAt))")
+            .font(.system(size: timestampPointSize))
+            .foregroundStyle(subtleMetaColor)
+    }
+
     private var metaTime: some View {
-        HStack(spacing: 4) {
-            Text("·")
-            Text(DateFormatting.relativeString(for: notification.createdAt))
-                .lineLimit(1)
-        }
-        .moroScaledFont(size: 13)
-        .foregroundStyle(subtleMetaColor)
-        .fixedSize()
+        timestampWithSeparator.lineLimit(1).fixedSize()
     }
 
     private func actorTapAction() {

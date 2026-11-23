@@ -7,6 +7,24 @@
 
 import SwiftUI
 
+struct InboxRouteView: View {
+    @Environment(\.settingsContext) private var settings
+    let apiClient: MastodonAPI
+
+    var body: some View {
+        Group {
+            if let coordinator = settings.tabCoordinator {
+                InboxView(coordinator: coordinator, apiClient: apiClient, sessionID: settings.activeSessionID,
+                          isPushed: true)
+            } else {
+                NotificationsView(apiClient: apiClient, sessionID: settings.activeSessionID)
+            }
+        }
+        .navigationTitle(MoroL10n.Navigation.inbox)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 struct InboxView: View {
     @ObservedObject var coordinator: RootTabCoordinator
     @ObservedObject private var notificationUnreadStore = NotificationUnreadStore.shared
@@ -21,13 +39,14 @@ struct InboxView: View {
 
     let apiClient: MastodonAPI
     var sessionID: String? = nil
+    var isPushed = false
 
     var body: some View {
         NotificationsView(
             apiClient: apiClient,
             sessionID: sessionID,
             presentation: .inbox,
-            isActive: coordinator.selectedTab == .inbox && coordinator.isAtRoot(.inbox),
+            isActive: coordinator.isInboxVisible && coordinator.selectedTab == (isPushed ? .home : .inbox),
             selectedFilter: $coordinator.inboxFilter
         )
         .background(sceneCanvasColor)
@@ -84,7 +103,7 @@ struct InboxView: View {
         let isSelected = coordinator.inboxFilter == filter
         let unreadCount = filter == .all ? notificationUnreadStore.activeUnreadCount : 0
         return Button {
-            coordinator.openInbox(filter)
+            coordinator.inboxFilter = filter
         } label: {
             Image(systemName: filter.barIcon(filled: isSelected))
                 .fontWeight(isSelected ? .semibold : .regular)
@@ -146,7 +165,7 @@ struct InboxView: View {
         let unreadCount = filter == .all ? notificationUnreadStore.activeUnreadCount : 0
 
         return Button {
-            coordinator.openInbox(filter)
+            coordinator.inboxFilter = filter
         } label: {
             HStack(spacing: 6) {
                 Text(filter.title)

@@ -1,0 +1,62 @@
+{
+  "zh-Hans": [
+    ["首页", "看看朋友", "分享的日常。"],
+    ["通知", "谁回了你，", "谁点了赞？"],
+    ["个人中心", "一张封面，", "一段自我介绍。"],
+    ["外观设置", "换个主题色，", "调一调字号。"]
+  ],
+  "zh-Hant": [
+    ["首頁", "看看朋友", "分享的日常。"],
+    ["通知", "誰回覆了你，", "誰按了讚？"],
+    ["個人檔案", "一張封面，", "一段自我介紹。"],
+    ["外觀設定", "換個主題色，", "調整文字大小。"]
+  ],
+  "en-US": [
+    ["Home", "See what friends", "are sharing."],
+    ["Notifications", "See who replied", "or left a like."],
+    ["Profile", "A photo and", "a little about you."],
+    ["Appearance", "Pick a color.", "Set the text size."]
+  ],
+  "de-DE": [
+    ["Startseite", "Lies, was Freunde", "gerade teilen."],
+    ["Mitteilungen", "Wer antwortet?", "Wem gefällt’s?"],
+    ["Profil", "Ein Titelbild.", "Ein Satz über dich."],
+    ["Darstellung", "Deine Farbe.", "Deine Schriftgröße."]
+  ],
+  "es-ES": [
+    ["Inicio", "Mira qué comparten", "tus amistades."],
+    ["Notificaciones", "Mira quién responde", "o deja un favorito."],
+    ["Perfil", "Una portada.", "Un poco sobre ti."],
+    ["Apariencia", "Elige el color", "y el tamaño de letra."]
+  ],
+  "fr-FR": [
+    ["Accueil", "Suivez les nouvelles", "de vos proches."],
+    ["Notifications", "Qui a répondu ?", "Qui a aimé ?"],
+    ["Profil", "Votre photo.", "Votre histoire."],
+    ["Apparence", "Choisissez la couleur", "et la taille du texte."]
+  ],
+  "it": [
+    ["Home", "Scopri le novità", "dei tuoi amici."],
+    ["Notifiche", "Chi ha risposto?", "A chi è piaciuto?"],
+    ["Profilo", "Una copertina.", "Due righe su di te."],
+    ["Aspetto", "Scegli il colore", "e la misura del testo."]
+  ],
+  "ja": [
+    ["ホーム", "友だちがつづる", "日々を読む。"],
+    ["通知", "返信もお気に入りも", "ひと目で。"],
+    ["プロフィール", "カバー写真と、", "ひと言の自己紹介。"],
+    ["外観設定", "好きな色と、", "読みやすい文字に。"]
+  ],
+  "pt-PT": [
+    ["Início", "Vê o que os amigos", "partilham."],
+    ["Notificações", "Quem respondeu?", "Quem gostou?"],
+    ["Perfil", "Uma capa.", "Umas linhas sobre ti."],
+    ["Aparência", "Escolhe a cor", "e o tamanho do texto."]
+  ],
+  "ar-SA": [
+    ["الرئيسية", "اكتشف ما يشاركه", "أصدقاؤك اليوم."],
+    ["الإشعارات", "من ردّ عليك؟", "ومن أعجبه منشورك؟"],
+    ["الملف الشخصي", "صورة غلاف وكلمات", "قليلة عنك."],
+    ["المظهر", "اختر اللون", "وحجم النص."]
+  ]
+}

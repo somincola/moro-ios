@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 /// Offline animated profile media, shared by the real-screen harness and renderer tests.
 @MainActor
 enum ProfileMediaFixture {
+    static let videoURL = FileManager.default.temporaryDirectory.appendingPathComponent("profile-gallery-video.mp4")
     static let avatarURL = URL(string: "https://profile-media-fixture.invalid/avatar.gif")!
     static let staticAvatarURL = URL(string: "https://profile-media-fixture.invalid/avatar.png")!
     static let headerURL = URL(string: "https://profile-media-fixture.invalid/header.gif")!
@@ -22,7 +23,7 @@ enum ProfileMediaFixture {
             SDImageCache.shared.store(image, imageData: data, forKey: animatedURL.absoluteString, toDisk: false)
             let still = UIImage(cgImage: image.cgImage!)
             SDImageCache.shared.store(still, forKey: staticURL.absoluteString, toDisk: false)
-            for side: CGFloat in [228, 2000, 8192] {
+            for side: CGFloat in [228, 2000, 8192, ProfileMediaGallery.thumbnailPixelSize] {
                 let context: [SDWebImageContextOption: Any] = [
                     .imageThumbnailPixelSize: NSValue(cgSize: CGSize(width: side, height: side))
                 ]
@@ -32,6 +33,12 @@ enum ProfileMediaFixture {
                 SDImageCache.shared.store(still, forKey: staticKey, toDisk: false)
             }
         }
+    }
+
+    static func prepareGalleryLoading() {
+        let session = URLSessionConfiguration.ephemeral
+        session.protocolClasses = [ProfileGalleryPreviewFixture.self]
+        SDWebImageDownloaderConfig.default.sessionConfiguration = session
     }
 
     static func gifData(size: CGSize = CGSize(width: 80, height: 80), frameDuration: TimeInterval = 0.4) -> Data {
@@ -57,5 +64,37 @@ enum ProfileMediaFixture {
         precondition(CGImageDestinationFinalize(destination))
         return data as Data
     }
+}
+
+/// The gallery's first thumbnail fails once, then returns an image on retry.
+final class ProfileGalleryPreviewFixture: URLProtocol, @unchecked Sendable {
+    static let url = URL(string: "https://gallery-preview-fixture.invalid/\(UUID()).png")!
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var didFail = false
+    private var responseTask: Task<Void, Never>?
+
+    override class func canInit(with request: URLRequest) -> Bool { request.url == url }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let shouldFail = Self.lock.withLock {
+            defer { Self.didFail = true }
+            return !Self.didFail
+        }
+        responseTask = Task { [weak self] in
+            if shouldFail { try? await Task.sleep(for: .seconds(3)) }
+            let data = shouldFail ? Data() : ProfileMediaFixture.gifData()
+            guard let self, !Task.isCancelled else { return }
+            let response = HTTPURLResponse(
+                url: Self.url, statusCode: shouldFail ? 503 : 200, httpVersion: nil,
+                headerFields: ["Content-Type": "image/gif"]
+            )!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            if !data.isEmpty { client?.urlProtocol(self, didLoad: data) }
+            client?.urlProtocolDidFinishLoading(self)
+        }
+    }
+
+    override func stopLoading() { responseTask?.cancel() }
 }
 #endif

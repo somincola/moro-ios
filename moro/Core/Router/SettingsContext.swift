@@ -17,6 +17,14 @@ struct SettingsContext {
     /// Closes Settings and opens an account (`user@domain`) in the app's own profile view.
     /// Nil outside the main shell; callers fall back to the web profile.
     var onOpenAccount: ((String) -> Void)? = nil
+    var tabCoordinator: RootTabCoordinator? = nil
+    var isSettingsTab = false
+
+    var activeAccountHandle: String? {
+        guard let session = accountSessions.first(where: { $0.id == activeSessionID }) else { return nil }
+        let handle = session.account.acct
+        return handle.contains("@") ? "@\(handle)" : "@\(handle)@\(session.instanceHost)"
+    }
 }
 
 private struct SettingsContextKey: EnvironmentKey {

@@ -32,6 +32,9 @@ enum Route: Hashable {
     /// Navigate to hashtag timeline
     case hashtag(String)
 
+    /// The notification inbox when it is opened outside the tab bar.
+    case inbox
+
     /// Navigate to search/discovery
     case search(query: String?, scope: Int = 1)
 
@@ -55,7 +58,7 @@ enum Route: Hashable {
     case userProfile(Account)
 
     /// Navigate to the accounts this profile follows or is followed by.
-    case profileConnections(accountID: String, kind: ProfileConnectionKind)
+    case profileConnections(accountID: String, kind: ProfileConnectionKind, totalCount: Int)
 
     // MARK: - Media
 
@@ -81,6 +84,8 @@ enum Route: Hashable {
 
     /// Navigate to lists management page
     case lists
+    case listTimeline(MastodonList, accountKey: String)
+    case listMembers(MastodonList)
 
     case followedTopics
 
@@ -109,6 +114,8 @@ enum Route: Hashable {
         case .hashtag(let tag):
             hasher.combine("hashtag")
             hasher.combine(tag)
+        case .inbox:
+            hasher.combine("inbox")
         case .search(let query, let scope):
             hasher.combine("search")
             hasher.combine(query)
@@ -129,7 +136,7 @@ enum Route: Hashable {
         case .userProfile(let account):
             hasher.combine("userProfile")
             hasher.combine(account.id)
-        case .profileConnections(let accountID, let kind):
+        case .profileConnections(let accountID, let kind, _):
             hasher.combine("profileConnections")
             hasher.combine(accountID)
             hasher.combine(kind)
@@ -154,6 +161,13 @@ enum Route: Hashable {
             hasher.combine("followedTopics")
         case .lists:
             hasher.combine("lists")
+        case .listTimeline(let list, let accountKey):
+            hasher.combine("listTimeline")
+            hasher.combine(list.id)
+            hasher.combine(accountKey)
+        case .listMembers(let list):
+            hasher.combine("listMembers")
+            hasher.combine(list.id)
         case .scheduledStatuses:
             hasher.combine("scheduledStatuses")
         case .instanceDetails:
@@ -173,6 +187,8 @@ enum Route: Hashable {
             return l == r
         case (.hashtag(let l), .hashtag(let r)):
             return l == r
+        case (.inbox, .inbox):
+            return true
         case (.search(let l, let ls), .search(let r, let rs)):
             return l == r && ls == rs
         case (.savedSearches, .savedSearches):
@@ -187,7 +203,7 @@ enum Route: Hashable {
             return l.id == r.id
         case (.userProfile(let l), .userProfile(let r)):
             return l.id == r.id
-        case (.profileConnections(let lAccountID, let lKind), .profileConnections(let rAccountID, let rKind)):
+        case (.profileConnections(let lAccountID, let lKind, _), .profileConnections(let rAccountID, let rKind, _)):
             return lAccountID == rAccountID && lKind == rKind
         case (.mediaPreview(let l), .mediaPreview(let r)):
             return l == r
@@ -205,6 +221,10 @@ enum Route: Hashable {
             return true
         case (.lists, .lists):
             return true
+        case (.listTimeline(let l, let lKey), .listTimeline(let r, let rKey)):
+            return l.id == r.id && lKey == rKey
+        case (.listMembers(let l), .listMembers(let r)):
+            return l.id == r.id
         case (.scheduledStatuses, .scheduledStatuses):
             return true
         case (.instanceDetails, .instanceDetails):

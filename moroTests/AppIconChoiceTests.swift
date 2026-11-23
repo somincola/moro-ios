@@ -47,8 +47,13 @@ final class AppIconChoiceTests: XCTestCase {
                 named: choice.previewAssetName, in: bundle,
                 compatibleWith: UITraitCollection(userInterfaceStyle: .dark)
             ), "Missing dark preview for \(choice.rawValue)")
-            XCTAssertNotEqual(try XCTUnwrap(light.pngData()), try XCTUnwrap(dark.pngData()),
-                              "Dark preview must resolve its own resource for \(choice.rawValue)")
+            let lightData = try XCTUnwrap(light.pngData())
+            let darkData = try XCTUnwrap(dark.pngData())
+            if choice == .default {
+                XCTAssertEqual(lightData, darkData, "The brand mark uses the same colors in both appearances")
+            } else {
+                XCTAssertNotEqual(lightData, darkData, "Dark preview must resolve its own resource for \(choice.rawValue)")
+            }
         }
     }
 

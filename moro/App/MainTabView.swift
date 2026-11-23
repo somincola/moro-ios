@@ -56,15 +56,36 @@ struct MainTabView: View {
     let onSwitchAccount: (String) -> Void
     let onRemoveAccount: (String) -> Void
     let onAccountAuthenticated: (String, Account, URL) -> Void
-    #if DEBUG
-    /// Store screenshots: the tab to open and a post to open in it.
-    var showcaseStart: ShowcaseStart? = nil
-    #endif
+    private let showcaseStart: ShowcaseStart?
 
-    @StateObject private var coordinator = RootTabCoordinator()
+    @StateObject private var coordinator: RootTabCoordinator
     @ObservedObject private var notificationUnreadStore = NotificationUnreadStore.shared
     @ObservedObject private var inboxUnreadStore = InboxUnreadStore.shared
     private let sharedComposeImportCoordinator = SharedComposeImportCoordinator()
+
+    init(
+        apiClient: MastodonAPI,
+        onLogout: @escaping () -> Void,
+        accountSessions: [StoredAccountSession],
+        activeSessionID: String?,
+        onSwitchAccount: @escaping (String) -> Void,
+        onRemoveAccount: @escaping (String) -> Void,
+        onAccountAuthenticated: @escaping (String, Account, URL) -> Void,
+        showcaseStart: ShowcaseStart? = nil
+    ) {
+        self.apiClient = apiClient
+        self.onLogout = onLogout
+        self.accountSessions = accountSessions
+        self.activeSessionID = activeSessionID
+        self.onSwitchAccount = onSwitchAccount
+        self.onRemoveAccount = onRemoveAccount
+        self.onAccountAuthenticated = onAccountAuthenticated
+        self.showcaseStart = showcaseStart
+        let session = accountSessions.first { $0.id == activeSessionID }
+        _coordinator = StateObject(wrappedValue: RootTabCoordinator(
+            tabPreferences: NavigationTabPreferences(session: session)
+        ))
+    }
 
     private struct NotificationOpenTaskID: Equatable {
         let requestID: UUID?
@@ -128,7 +149,8 @@ struct MainTabView: View {
                 inboxView: inboxRootView,
                 meView: meRootView,
                 routeView: routeView(for:router:),
-                accountSwitcher: accountSwitcherConfiguration
+                accountSwitcher: accountSwitcherConfiguration,
+                additionalRootView: additionalRootView(for:)
             )
 
         }
@@ -155,6 +177,19 @@ struct MainTabView: View {
                     .environment(\.settingsContext, settingsContext)
                     .environment(\.activeAccountKey, activeSessionID ?? "no-active-session")
                     .moroSheetSurface(detents: [.large], cornerRadius: 20)
+            case .navigationCustomization:
+                NavigationStack {
+                    NavigationCustomizationView(
+                        coordinator: coordinator, accountHandle: settingsContext.activeAccountHandle
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button(MoroL10n.Common.done) { coordinator.dismissPresentedSheet() }
+                                .accessibilityIdentifier("navigationCustomization.done")
+                        }
+                    }
+                }
+                .moroSheetSurface(detents: [.large], cornerRadius: 20)
             }
         }
         .fullScreenCover(isPresented: $coordinator.showAddAccountLogin) {
@@ -221,13 +256,7 @@ struct MainTabView: View {
             consumePendingWidgetHandoffIfNeeded()
             consumePendingSharedDraftIfNeeded()
         }
-        .onChange(of: coordinator.selectedTab) { _, _ in
-            updateNotificationListVisibility()
-        }
-        .onChange(of: coordinator.inboxFilter) { _, _ in
-            updateNotificationListVisibility()
-        }
-        .onChange(of: coordinator.isAtRoot(.inbox)) { _, _ in
+        .onChange(of: coordinator.isInboxVisible) { _, _ in
             updateNotificationListVisibility()
         }
         .task(id: notificationOpenTaskID) {
@@ -261,7 +290,8 @@ struct MainTabView: View {
             onOpenAccount: { acct in
                 // Push once the sheet is gone so the profile lands on the visible stack.
                 coordinator.dismissPresentedSheet { coordinator.navigate(to: .accountLookup(acct)) }
-            }
+            },
+            tabCoordinator: coordinator
         )
     }
 
@@ -321,6 +351,28 @@ struct MainTabView: View {
             ),
             router: coordinator.meRouter
         )
+    }
+
+    private func additionalRootView(for tab: MainTab) -> AnyView {
+        let content: AnyView
+        switch tab {
+        case .lists:
+            content = AnyView(ListsView(apiClient: apiClient))
+        case .bookmarks:
+            content = AnyView(BookmarksRouteView(apiClient: apiClient))
+        case .favourites:
+            content = AnyView(FavouritesView(apiClient: apiClient))
+        case .settings:
+            var context = settingsContext
+            context.isSettingsTab = true
+            content = AnyView(
+                SettingsSheetView(apiClient: apiClient, showsCloseButton: false)
+                    .environment(\.settingsContext, context)
+            )
+        case .home, .explore, .inbox, .me:
+            return AnyView(EmptyView())
+        }
+        return routedView(content, router: coordinator.router(for: tab))
     }
 
     private func routeView(for route: Route, router: AppRouter) -> AnyView {
@@ -402,20 +454,17 @@ struct MainTabView: View {
         case .compose:
             coordinator.openCompose()
         case .search:
-            coordinator.selectTab(.explore)
+            coordinator.openExplore()
         case .inbox:
             coordinator.openInbox(.all)
             updateNotificationListVisibility()
         case .profile:
-            coordinator.selectTab(.me)
+            coordinator.openProfile(appState.currentAccount ?? accountSessions.first { $0.id == activeSessionID }?.account)
         }
     }
 
     private func updateNotificationListVisibility() {
-        notificationUnreadStore.setNotificationListVisible(
-            coordinator.selectedTab == .inbox
-                && coordinator.isAtRoot(.inbox)
-        )
+        notificationUnreadStore.setNotificationListVisible(coordinator.isInboxVisible)
     }
 
     private func handlePendingNotificationOpenIfNeeded() async {
@@ -447,8 +496,8 @@ struct MainTabView: View {
 
         notificationUnreadStore.consumePendingNotificationOpen(id: request.id)
         // Do not pull the user away if they started navigating while resolution ran.
-        guard notificationOpenTaskID.isUnobstructed, coordinator.selectedTab == .inbox,
-            coordinator.inboxFilter == .all, coordinator.inboxRouter.path.isEmpty
+        guard notificationOpenTaskID.isUnobstructed, coordinator.isInboxVisible,
+            coordinator.inboxFilter == .all
         else { return }
         coordinator.openPushNotification(destination)
         updateNotificationListVisibility()
@@ -561,6 +610,7 @@ private struct MeTabRootView: View {
     let coordinator: RootTabCoordinator
     @State private var tabReselection: TabReselection?
     @State private var tabActivation: TabActivation?
+    @State private var isExploreHidden: Bool
     @EnvironmentObject private var appState: AppState
 
     let apiClient: MastodonAPI
@@ -580,6 +630,7 @@ private struct MeTabRootView: View {
         // Start from the current event so an earlier re-tap is not mistaken for a new one.
         _tabReselection = State(initialValue: coordinator.tabReselection)
         _tabActivation = State(initialValue: coordinator.tabActivation)
+        _isExploreHidden = State(initialValue: !coordinator.tabLayout.tabs.contains(.explore))
     }
 
     private var currentAccount: Account? {
@@ -595,7 +646,8 @@ private struct MeTabRootView: View {
                     account: account,
                     accountID: account.id,
                     onLogout: {},
-                    apiClient: apiClient
+                    apiClient: apiClient,
+                    onExplore: isExploreHidden ? { coordinator.meRouter.navigate(to: .search(query: nil)) } : nil
                 )
                 // The page's view models are created once per identity. While switching,
                 // `currentAccount` can resolve to a fallback first; without this the real
@@ -615,6 +667,9 @@ private struct MeTabRootView: View {
         .environment(\.tabActivation, tabActivation)
         .onReceive(coordinator.$tabReselection.removeDuplicates()) { tabReselection = $0 }
         .onReceive(coordinator.$tabActivation.removeDuplicates()) { tabActivation = $0 }
+        .onReceive(coordinator.$tabLayout.map { !$0.tabs.contains(.explore) }.removeDuplicates()) {
+            isExploreHidden = $0
+        }
     }
 }
 
@@ -650,10 +705,8 @@ private struct AddAccountLoginContainer: View {
     .moroTheme(MoroTheme())
 }
 
-#if DEBUG
 /// Store screenshots: where `MainTabView` starts, set by the screenshot harness.
 struct ShowcaseStart {
     let tab: MainTab
     let status: Status?
 }
-#endif

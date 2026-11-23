@@ -50,8 +50,11 @@ final class MediaPlaybackPresentation {
     nonisolated deinit {}
 
     static let shared = MediaPlaybackPresentation()
+    private(set) var dockedURL: URL?
+    private var dockedToken: UUID?
     private var presentations: Set<UUID> = []
-    var coversInlinePlayback: Bool { !presentations.isEmpty }
+    var coversInlinePlayback: Bool { presentations.count > (dockedToken == nil ? 0 : 1) }
+    var coversInlineVideoPlayback: Bool { !presentations.isEmpty }
 
     func begin() -> UUID {
         let token = UUID()
@@ -59,5 +62,20 @@ final class MediaPlaybackPresentation {
         return token
     }
 
-    func end(_ token: UUID) { presentations.remove(token) }
+    func dock(_ token: UUID, url: URL) {
+        guard presentations.contains(token) else { return }
+        dockedToken = token
+        dockedURL = url
+    }
+
+    func undock(_ token: UUID) {
+        guard dockedToken == token else { return }
+        dockedToken = nil
+        dockedURL = nil
+    }
+
+    func end(_ token: UUID) {
+        undock(token)
+        presentations.remove(token)
+    }
 }

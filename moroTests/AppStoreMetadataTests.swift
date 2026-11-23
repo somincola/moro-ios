@@ -132,7 +132,7 @@ final class AppStoreMetadataTests: XCTestCase {
 
         for (locale, metadata) in version {
             XCTAssertLessThanOrEqual(metadata.description.count, 4_000, "\(locale) description")
-            XCTAssertLessThanOrEqual(metadata.keywords.count, 100, "\(locale) keywords")
+            XCTAssertLessThanOrEqual(metadata.keywords.utf8.count, 100, "\(locale) keyword bytes")
             XCTAssertLessThanOrEqual(metadata.promotionalText.count, 170, "\(locale) promotional text")
         }
     }

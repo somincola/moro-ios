@@ -30,6 +30,22 @@ struct ComposeAutocompleteTests {
         #expect(ComposeAutocompleteToken.active(in: "👋 @h", selection: NSRange(location: 1, length: 0)) == nil)
     }
 
+    @Test func emojiPrefixUsesCaretAndReplacesTheWholeShortcode() throws {
+        for text in [":", "你好，:blO", "你好:cat", "👩🏽‍💻 :blob_cat2"] {
+            let token = try #require(ComposeAutocompleteToken.active(in: text, selection: end(of: text)))
+            #expect(token.kind == .emoji)
+            #expect(token.query == String(text.split(separator: ":", omittingEmptySubsequences: false).last!))
+        }
+        let text = "👋 :blobcat_sleep: bye"
+        let token = try #require(ComposeAutocompleteToken.active(in: text, selection: end(of: "👋 :bl")))
+        #expect(token.query == "bl")
+        #expect((text as NSString).substring(with: token.range) == ":blobcat_sleep:")
+        for invalid in [":blobcat:", "12:30", "https:", "https://a.example/:bl", "x::", "::bl"] {
+            #expect(ComposeAutocompleteToken.active(in: invalid, selection: end(of: invalid)) == nil)
+        }
+        #expect(ComposeAutocompleteToken.active(in: ":bl", selection: end(of: ":bl"), isComposing: true) == nil)
+    }
+
     @Test func replacingAtMiddleCaretKeepsUnicodePrefixAndTrailingBody() throws {
         let text = "👨‍👩‍👧‍👦 你好 @hanna 保留后面的正文"
         let selection = NSRange(location: ("👨‍👩‍👧‍👦 你好 @ha" as NSString).length, length: 0)
@@ -69,6 +85,7 @@ struct ComposeAutocompleteTests {
             return SearchResults(hashtags: type == .hashtags ? [tag("SwiftUI"), tag("SwiftUI")] : [])
         }
         let model = ComposeAutocompleteModel(apiClient: api, debounce: .zero)
+        await model.load(for: ComposeAutocompleteToken.active(in: ":cat", selection: end(of: ":cat")))
         await model.load(for: ComposeAutocompleteToken.active(in: "@", selection: end(of: "@")))
         #expect(queries.isEmpty)
         await model.load(for: ComposeAutocompleteToken.active(in: "@han", selection: end(of: "@han")))

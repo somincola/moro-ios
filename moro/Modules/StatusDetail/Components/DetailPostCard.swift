@@ -54,6 +54,7 @@ struct DetailPostCard: View {
                 onPollVote: actions.onPollVote,
                 onQuotedStatusTap: actions.navigation?.onQuotedStatusTap,
                 onImageTap: actions.navigation?.onImageTap,
+                mediaActions: actions,
                 isFocused: true,
                 quoteStyle: .card
             )

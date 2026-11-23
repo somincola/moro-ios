@@ -450,7 +450,7 @@ struct TimelineHomeView: View {
             case .active:
                 // Coming back to the app is not "watching live": keep the post that was
                 // showing, even at the top, and let new posts wait behind the notice.
-                if lastInactiveAt != nil { scrollBridge.holdReadingPositionAfterResume() }
+                if lastInactiveAt != nil { scrollBridge.resumeAfterBackground() }
                 guard hasLoadedHome else { return }
                 refreshAnnouncementBadge(initialDelay: false)
                 detectionManager.startDetection()
@@ -743,7 +743,7 @@ struct TimelineHomeView: View {
             actionSurface: actionSurface,
             postMenuActionCenter: postMenuActionCenter,
             apiClient: apiClient,
-            currentUserID: appState.currentAccount?.id,
+            appState: appState,
             router: router,
             onRemoveStatus: { id in viewModel.removeStatus(id: id) }
         )

@@ -596,9 +596,10 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         persistCurrentStatusesToCache()
     }
 
-    func fillRecentGapsIfNeeded(near visibleStatusIDs: Set<String> = []) {
+    @discardableResult
+    func fillRecentGapsIfNeeded(near visibleStatusIDs: Set<String> = []) -> Task<Void, Never>? {
         guard automaticGapTask == nil,
-            nextAutomaticGap(near: visibleStatusIDs) != nil else { return }
+            nextAutomaticGap(near: visibleStatusIDs) != nil else { return automaticGapTask }
         let generation = dataGeneration
         automaticGapTask = Task { [weak self] in
             guard let self else { return }
@@ -614,6 +615,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
                 guard await self.loadGap(id: gap.id) else { break }
             }
         }
+        return automaticGapTask
     }
 
     private func nextAutomaticGap(near visibleStatusIDs: Set<String>) -> TimelineGap? {

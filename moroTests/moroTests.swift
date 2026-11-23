@@ -2323,6 +2323,38 @@ struct moroTests {
         #expect(viewModel.pinnedStatuses.isEmpty)
     }
 
+    @Test @MainActor func pinnedRefreshKeepsChangesAcknowledgedWhileItWasLoading() async {
+        let api = MockMastodonAPI()
+        let coordinator = FeedCoordinator()
+        let account = makeAccount(id: "owner")
+        let pin = makeStatus(id: "100", account: account, pinned: true)
+        let removed = makeStatus(id: "99", account: account, pinned: true)
+        let other = makeStatus(id: "98", account: account, pinned: true)
+        let model = ProfileViewModel(apiClient: api, accountID: account.id, feedCoordinator: coordinator)
+        model.pinnedStatuses = [pin, removed]
+        api.fetchAccountStatusesHandler = { _, _, _, _, _, _, _, _ in
+            coordinator.publishUpdate(.post(pin.updating(favouritesCount: 1, reblogsCount: 1, bookmarked: true, favourited: true, reblogged: true)))
+            coordinator.publishUpdate(.deletedPost(removed.id))
+            return [pin, removed, other]
+        }
+        await model.fetchPinnedStatuses()
+        #expect(model.pinnedStatuses.map(\.id) == [pin.id, other.id])
+        #expect(model.pinnedStatuses.first?.favouritesCount == 1)
+        #expect(model.pinnedStatuses.first?.reblogsCount == 1)
+        #expect(model.pinnedStatuses.first?.bookmarked == true)
+    }
+
+    @Test @MainActor func inlineEmojiNameLeavesRoomForAnAdjacentHandle() {
+        let url = URL(string: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7")!
+        let account = makeAccount(displayName: "Lin :mark:",
+                                  emojis: [.init(shortcode: "mark", url: url, staticURL: url)])
+        let host = UIHostingController(rootView: AccountDisplayNameView(
+            account: account, typography: .bodyStrong, textColor: .primary, fitsInlineWidth: true))
+        let fitting = host.sizeThatFits(in: CGSize(width: 320, height: 60))
+        #expect(fitting.width > 20 && fitting.width < 100)
+        #expect(fitting.height > 0)
+    }
+
     @Test @MainActor func accountDisplayNameParserKeepsPlainTextVisibleWhileResolvingEmoji()
         async throws
     {
@@ -2855,10 +2887,12 @@ struct moroTests {
         surface.presentBoostOrToggle(for: status, currentUserID: "me") { toggledDirectly = true }
         #expect(toggledDirectly)
         #expect(surface.boostDialogStatus == nil)
+        let appState = AppState()
+        appState.currentAccount = makeAccount(id: "me")
         let handlers = PostInteractionHandlers(
             interactionService: PostInteractionService(apiClient: api), actionSurface: surface,
             postMenuActionCenter: PostMenuActionCenter(apiClient: api), apiClient: api,
-            currentUserID: "me", router: AppRouter(), onRemoveStatus: nil
+            appState: appState, router: AppRouter(), onRemoveStatus: nil
         )
         let quote = try #require(handlers.buildPostActions(for: status).onQuote)
         quote()
@@ -2873,10 +2907,12 @@ struct moroTests {
         let surface = PostActionSurfaceCenter()
         let original = makeStatus(id: "original-to-quote", visibility: visibility)
         let wrapper = makeStatus(id: "boost-wrapper", reblog: Indirect(original))
+        let appState = AppState()
+        appState.currentAccount = makeAccount(id: "me")
         let handlers = PostInteractionHandlers(
             interactionService: PostInteractionService(apiClient: api), actionSurface: surface,
             postMenuActionCenter: PostMenuActionCenter(apiClient: api), apiClient: api,
-            currentUserID: "me", router: AppRouter(), onRemoveStatus: nil
+            appState: appState, router: AppRouter(), onRemoveStatus: nil
         )
         for status in [original, wrapper] {
             let quote = handlers.buildPostActions(for: status).onQuote
@@ -2894,12 +2930,14 @@ struct moroTests {
         let api = MockMastodonAPI()
         let actionSurface = PostActionSurfaceCenter()
         let status = makeStatus(id: "delete-and-redraft", account: makeAccount(id: "me"))
+        let appState = AppState()
+        appState.currentAccount = makeAccount(id: "me")
         let handlers = PostInteractionHandlers(
             interactionService: PostInteractionService(apiClient: api),
             actionSurface: actionSurface,
             postMenuActionCenter: PostMenuActionCenter(apiClient: api),
             apiClient: api,
-            currentUserID: "me",
+            appState: appState,
             router: AppRouter(),
             onRemoveStatus: nil
         )
@@ -3397,6 +3435,37 @@ struct moroTests {
                 tabBarHeight: 50
             ) == 750
         )
+    }
+
+    @Test @MainActor func cachedProfileTabsTrackTheirContentAndIgnorePaginationFromAnInactivePage() async {
+        let api = MockMastodonAPI()
+        let replies = (0..<20).map { makeStatus(id: String($0), inReplyToID: "parent") }
+        api.fetchAccountStatusesHandler = { _, _, _, _, _, _, _, _ in replies }
+        api.accountFeaturedTagsHandler = { _ in [FeaturedTag(id: "app", name: "app")] }
+        let model = ProfileViewModel(apiClient: api, accountID: "target")
+        let posts = model.selectedContentID
+        let media = model.contentID(for: .media)
+        model.pinnedStatuses = [makeStatus(id: "pin")]
+        #expect(model.hasContent(for: .posts))
+        #expect(!model.hasContent(for: .replies))
+
+        model.selectTab(.replies)
+        await model.loadTabIfNeeded(.replies)
+        #expect(model.hasContent(for: .replies))
+        #expect(model.displayedStatuses(for: .replies).count == 20)
+        let count = api.fetchAccountStatusesCalls.count
+        await model.loadMore(ifCurrent: posts)
+        #expect(api.fetchAccountStatusesCalls.count == count)
+        #expect(model.contentID(for: .posts) == posts)
+
+        model.account = makeAccount(showMedia: true, showMediaReplies: true)
+        #expect(model.contentID(for: .media) != media)
+        #expect(model.contentID(for: .posts) == posts)
+        let unfilteredReplies = model.selectedContentID
+        await model.loadFeaturedTags()
+        await model.selectFeaturedTag("app")
+        #expect(model.selectedContentID != unfilteredReplies)
+        #expect(model.contentID(for: .posts) != posts)
     }
 
     @Test @MainActor func profileHeaderChromeProgressClampsAcrossTransition() async throws {
@@ -8365,6 +8434,10 @@ final class MockMastodonAPI: MastodonAPI {
     var fetchAccountFollowersCalls: [(id: String, maxID: String?, limit: Int)] = []
     var fetchAccountFollowingCalls: [(id: String, maxID: String?, limit: Int)] = []
     var searchHandler: ((String, MastodonSearchType?, Bool, Int, Int?) async throws -> SearchResults)?
+    var searchFollowedAccountsHandler: ((String, Int) async throws -> [Account])?
+    var listAccountsHandler: ((String, Int) async throws -> [Account])?
+    var addListAccountsHandler: ((String, [String]) async throws -> Void)?
+    var removeListAccountsHandler: ((String, [String]) async throws -> Void)?
     var fetchStatusDetailHandler: ((String) async throws -> Status)?
     var fetchStatusSourceHandler: ((String) async throws -> StatusSource)?
     var fetchStatusContextHandler: ((String) async throws -> StatusContext)?
@@ -8842,6 +8915,10 @@ final class MockMastodonAPI: MastodonAPI {
         throw MockError.unimplemented
     }
     func fetchLists() async throws -> [MastodonList] { throw MockError.unimplemented }
+    func searchFollowedAccounts(query: String, limit: Int) async throws -> [Account] {
+        guard let searchFollowedAccountsHandler else { throw MockError.unimplemented }
+        return try await searchFollowedAccountsHandler(query, limit)
+    }
     func fetchAccountLists(accountID: String) async throws -> [MastodonList] { throw MockError.unimplemented }
     func createList(title: String, repliesPolicy: MastodonList.RepliesPolicy?) async throws
         -> MastodonList
@@ -8857,13 +8934,16 @@ final class MockMastodonAPI: MastodonAPI {
     func fetchListAccounts(listID: String, maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Account]
     {
-        throw MockError.unimplemented
+        guard let listAccountsHandler else { throw MockError.unimplemented }
+        return try await listAccountsHandler(listID, limit)
     }
     func addAccountsToList(listID: String, accountIDs: [String]) async throws {
-        throw MockError.unimplemented
+        guard let addListAccountsHandler else { throw MockError.unimplemented }
+        try await addListAccountsHandler(listID, accountIDs)
     }
     func removeAccountsFromList(listID: String, accountIDs: [String]) async throws {
-        throw MockError.unimplemented
+        guard let removeListAccountsHandler else { throw MockError.unimplemented }
+        try await removeListAccountsHandler(listID, accountIDs)
     }
     func fetchListTimeline(id: String, maxID: String?, sinceID: String?, limit: Int) async throws
         -> [Status]

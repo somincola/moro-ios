@@ -205,6 +205,7 @@ struct PostCard: View {
                         onPollVote: actions.onPollVote,
                         onQuotedStatusTap: actions.navigation?.onQuotedStatusTap,
                         onImageTap: actions.navigation?.onImageTap,
+                        mediaActions: actions,
                         contentLineSpacing: density.contentLineSpacing,
                         isQuoted: isQuoted
                     )

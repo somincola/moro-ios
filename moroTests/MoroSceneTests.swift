@@ -71,7 +71,7 @@ final class MoroSceneTests: XCTestCase {
     func testRoutesDeclareSceneSemantics() throws {
         XCTAssertEqual(Route.bookmarks.sceneDescriptor.kind, .stream)
         XCTAssertEqual(
-            Route.profileConnections(accountID: "account", kind: .followers).sceneDescriptor.kind,
+            Route.profileConnections(accountID: "account", kind: .followers, totalCount: 1).sceneDescriptor.kind,
             .stream
         )
         XCTAssertEqual(Route.search(query: nil).sceneDescriptor.kind, .discovery)

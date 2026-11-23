@@ -4,6 +4,7 @@
 from collections import deque
 from pathlib import Path
 import json
+import subprocess
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -112,10 +113,6 @@ def derive(rgb, slug):
     maximum = rgb.max(axis=-1)
     minimum = rgb.min(axis=-1)
     spread = maximum - minimum
-    if slug == "default":
-        core = np.linalg.norm(rgb - background, axis=-1) > 140
-        foreground, alpha = matte(rgb, core, background)
-        return foreground, alpha
     if slug == "rainbow":
         core = np.linalg.norm(rgb - background, axis=-1) > 145
         foreground, alpha = matte(rgb, core, background)
@@ -285,7 +282,7 @@ def dark_backdrop(size):
 
 
 def save_preview(name, slug, source, dark):
-    preview_name = "AppIconPreview" + ("Default" if slug == "default" else name.removeprefix("AppIcon"))
+    preview_name = "AppIconPreview" + name.removeprefix("AppIcon")
     folder = ASSETS / f"{preview_name}.imageset"
     filename = f"appicon-preview-{slug}.png"
     if slug in ADJUSTED_SLUGS:
@@ -349,7 +346,10 @@ def comparison():
 
 
 def main():
+    subprocess.run(["bash", str(ROOT / "scripts/export-default-app-icon.sh")], check=True)
     for name, slug, _ in ICONS:
+        if slug == "default":
+            continue
         folder = ASSETS / f"{name}.appiconset"
         # Always start geometry edits from the preserved source, never an output.
         source_path = (ORIGINALS if slug in ADJUSTED_SLUGS else folder) / f"appicon-{slug}-1024.png"

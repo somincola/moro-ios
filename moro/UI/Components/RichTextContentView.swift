@@ -548,7 +548,7 @@ struct MixedTextEmojiView: UIViewRepresentable {
         attachment.image = displayImage
         attachment.bounds = CGRect(
             x: 0,
-            y: -emojiSize * 0.08,
+            y: -InlineEmojiRendering.descent(for: emojiSize),
             width: emojiSize,
             height: emojiSize
         )

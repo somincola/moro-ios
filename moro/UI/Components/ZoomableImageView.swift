@@ -14,7 +14,6 @@ struct ZoomableImageView: UIViewRepresentable {
     var onSingleTap: () -> Void
     var onInteractionBegan: () -> Void
     var onDismiss: () -> Void
-    var onLongPress: () -> Void = {}
 
     func makeUIView(context: Context) -> ImagePreviewPageView { ImagePreviewPageView() }
 
@@ -25,7 +24,6 @@ struct ZoomableImageView: UIViewRepresentable {
         view.scrollView.onSingleTap = onSingleTap
         view.scrollView.onInteractionBegan = onInteractionBegan
         view.scrollView.onDismiss = onDismiss
-        view.scrollView.onLongPress = onLongPress
         view.scrollView.configure(url: url, previewURL: previewURL, altText: altText)
     }
 
@@ -137,7 +135,6 @@ final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestur
     var onInteractionBegan: (() -> Void)?
     var onDismissDrag: ((CGFloat, Bool) -> Void)?
     var onDismiss: (() -> Void)?
-    var onLongPress: (() -> Void)?
 
     private let spinner = UIActivityIndicatorView(style: .large)
     private let retryButton = UIButton(type: .system)
@@ -154,12 +151,6 @@ final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestur
     private var isUpdatingLayout = false
     private weak var lockedPager: UIScrollView?
     private lazy var dismissPan = UIPanGestureRecognizer(target: self, action: #selector(dragToDismiss(_:)))
-    private lazy var longPress: UILongPressGestureRecognizer = {
-        let recognizer = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
-        recognizer.minimumPressDuration = 0.45
-        recognizer.delegate = self
-        return recognizer
-    }()
 
     var isAtMinimumZoom: Bool { zoomScale <= minimumZoomScale * 1.01 }
 
@@ -206,14 +197,17 @@ final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestur
         let singleTap = UITapGestureRecognizer(target: self, action: #selector(singleTapped))
         singleTap.delegate = self
         singleTap.require(toFail: doubleTap)
+        // A finger held still can otherwise deliver a deferred tap on release and hide the menu button.
+        let stationaryHold = UILongPressGestureRecognizer()
+        stationaryHold.minimumPressDuration = 0.45
+        stationaryHold.cancelsTouchesInView = false
+        addGestureRecognizer(stationaryHold)
+        singleTap.require(toFail: stationaryHold)
         addGestureRecognizer(singleTap)
 
         dismissPan.maximumNumberOfTouches = 1
         dismissPan.delegate = self
         addGestureRecognizer(dismissPan)
-        // Long press opens save/share/copy. It only fires on a still finger, so it
-        // never competes with pinch, pan, paging or drag-to-dismiss.
-        addGestureRecognizer(longPress)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -445,11 +439,6 @@ final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestur
     }
 
     @objc private func singleTapped() { onSingleTap?() }
-    @objc private func longPressed(_ gesture: UILongPressGestureRecognizer) {
-        guard gesture.state == .began else { return }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        onLongPress?()
-    }
     @objc private func doubleTapped(_ gesture: UITapGestureRecognizer) {
         toggleZoom(at: gesture.location(in: imageView), animated: !UIAccessibility.isReduceMotionEnabled)
     }
@@ -504,9 +493,6 @@ final class ImagePreviewScrollView: UIScrollView, UIScrollViewDelegate, UIGestur
             let velocity = dismissPan.velocity(in: self)
             return isAtMinimumZoom && !isZooming && dismissPan.numberOfTouches == 1
                 && velocity.y > abs(velocity.x)
-        }
-        if gestureRecognizer === longPress {
-            return imageView.image != nil && !isZooming && !isDragging && !isDecelerating
         }
         if gestureRecognizer === panGestureRecognizer {
             // At overview scale horizontal drags belong to the surrounding pager;

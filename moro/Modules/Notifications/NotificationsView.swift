@@ -319,6 +319,7 @@ private struct NotificationFeedView: View {
                             VStack(spacing: 0) {
                                 NotificationRow(
                                     notification: notification,
+                                    reportURL: notification.reportURL(on: viewModel.instanceURL),
                                     onAvatarTap: {
                                         if let account = notification.presentationAccount {
                                             router.navigate(to: .userProfile(account))

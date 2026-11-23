@@ -106,6 +106,9 @@ struct AppCoordinatorView: View {
             }
         }
         .moroTheme(effectiveTheme)
+        .onChange(of: coordinator.activeSessionID) { _, _ in
+            NativeVideoSession.docked?.end()
+        }
         .environment(
             \.moroMediaPrefs,
             MoroMediaPreferences(settings: settings)

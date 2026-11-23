@@ -197,7 +197,7 @@ final class PostInteractionService: ObservableObject {
                 : apiClient.bookmarkStatus(id: targetStatusID))
             
             // Publish real update
-            feedCoordinator.publishUpdate(.post(result))
+            feedCoordinator.publishUpdate(.post(result.displayStatus.updating(bookmarked: !isCurrentlyBookmarked)))
         } catch {
             // Rollback on error
             feedCoordinator.publishUpdate(.post(status))
@@ -221,11 +221,10 @@ final class PostInteractionService: ObservableObject {
         expectedCount: Int,
         shouldBeFavourited: Bool
     ) -> Status {
-        let needsCountFallback =
-            result.favourited == shouldBeFavourited && result.favouritesCount == originalCount
-
+        // A successful write can still serialize the pre-write flag and aggregate count.
+        // Keep its acknowledged delta unless the server supplies a different count.
         return result.updating(
-            favouritesCount: needsCountFallback ? expectedCount : result.favouritesCount,
+            favouritesCount: result.favouritesCount == originalCount ? expectedCount : result.favouritesCount,
             favourited: shouldBeFavourited
         )
     }
@@ -236,11 +235,8 @@ final class PostInteractionService: ObservableObject {
         expectedCount: Int,
         shouldBeReblogged: Bool
     ) -> Status {
-        let needsCountFallback =
-            result.reblogged == shouldBeReblogged && result.reblogsCount == originalCount
-
         return result.updating(
-            reblogsCount: needsCountFallback ? expectedCount : result.reblogsCount,
+            reblogsCount: result.reblogsCount == originalCount ? expectedCount : result.reblogsCount,
             reblogged: shouldBeReblogged
         )
     }

@@ -15,7 +15,10 @@ struct ProfileExperienceHarnessView: View {
     }
 
     private static func makeState() -> AppState {
-        if ProcessInfo.processInfo.environment["UITEST_PROFILE_ANIMATED_MEDIA"] == "1" {
+        if ProcessInfo.processInfo.arguments.contains("UITEST_POST_EMOJI") {
+            ProfileFixtureProtocol.usePostEmoji(PostEmojiPlaybackFixture.scrollGIF)
+        }
+        if ProcessInfo.processInfo.environment["UITEST_PROFILE_ANIMATED_MEDIA"] == "1" || ProfileFixtureProtocol.hasGallery {
             ProfileMediaFixture.prepare()
         }
         let state = AppState()
@@ -56,6 +59,11 @@ struct ProfileExperienceHarnessView: View {
         .environment(\.moroMediaPrefs, MoroMediaPreferences(
             autoplayGIFs: ProcessInfo.processInfo.environment["UITEST_PROFILE_AUTOPLAY_OFF"] != "1"))
         .moroTheme(theme)
+        .task {
+            if ProfileFixtureProtocol.hasGallery, !FileManager.default.fileExists(atPath: ProfileMediaFixture.videoURL.path) {
+                try? await TimelineMediaFixture.makeVideo(at: ProfileMediaFixture.videoURL, secondsPerFrame: 2)
+            }
+        }
         .sheet(isPresented: $showsSettings) {
             SettingsSheetView(apiClient: client)
                 .environmentObject(appState)
@@ -90,8 +98,18 @@ private final class ProfileFixtureToken: AuthTokenProvider {
 final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     private var pushResponseTask: Task<Void, Never>?
     private static let lock = NSLock()
+    private static var postEmoji: [String: String]?
+    static func usePostEmoji(_ emoji: Status.Emoji) {
+        lock.withLock {
+            postEmoji = ["shortcode": emoji.shortcode, "url": emoji.url.absoluteString,
+                         "static_url": emoji.staticURL.absoluteString]
+        }
+    }
     private static let legacy = ProcessInfo.processInfo.environment["UITEST_PROFILE_LEGACY"] == "1"
     private static let compactInfo = ProcessInfo.processInfo.environment["UITEST_PROFILE_COMPACT_INFO"] == "1"
+    private static let showsConnectionCounts = ProcessInfo.processInfo.environment["UITEST_PROFILE_CONNECTION_COUNTS"] == "1"
+    static let hasGallery = ProcessInfo.processInfo.environment["UITEST_PROFILE_GALLERY"] == "1"
+    static let testsGalleryLoading = ProcessInfo.processInfo.environment["UITEST_PROFILE_GALLERY_LOADING"] == "1"
     // Keep persisted instance limits isolated between test app launches.
     private static let instanceURL = URL(string: "https://\(UUID().uuidString.lowercased()).profile-fixture.invalid")!
     private static var profile: [String: Any] = [
@@ -111,6 +129,7 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
         ["id": "tag-daily", "name": "daily", "statuses_count": "1"],
     ]
     private static var pushSaveAttempts = 0
+    private static var interactions: [String: Set<String>] = [:]
     /// Visitor-mode relationship. Unset keeps the historical empty `/relationships` reply.
     private static let relationshipMode = ProcessInfo.processInfo.environment["UITEST_PROFILE_RELATIONSHIP"]
     private static var relationship: [String: Any] = [
@@ -155,6 +174,10 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             "statuses_count": 3, "url": "https://profile-fixture.invalid/@moro",
             "source": ["note": profile["note"]!, "fields": profile["fields"]!, "privacy": "public"],
         ]) { _, new in new }
+        if showsConnectionCounts {
+            payload["followers_count"] = 12_458
+            payload["following_count"] = 6_789
+        }
         if compactInfo {
             payload["note"] = "<p>Indie developer and creator of Moro for Mastodon.</p><p>Building thoughtful products for the open web.</p><p>Happy to be here—nice to meet you all! 👋</p>"
             payload["fields"] = [
@@ -188,6 +211,19 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        if Self.testsGalleryLoading,
+           let url = request.url,
+           url.path.hasSuffix("/statuses"),
+           let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+           query.contains(URLQueryItem(name: "only_media", value: "true")),
+           !query.contains(where: { $0.name == "max_id" }) {
+            pushResponseTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(6))
+                guard !Task.isCancelled else { return }
+                self?.completeLoading()
+            }
+            return
+        }
         if request.url?.path.hasSuffix("/relationships") == true,
            let delay = ProcessInfo.processInfo.environment["UITEST_PROFILE_RELATIONSHIP_DELAY"].flatMap(Double.init) {
             pushResponseTask = Task { [weak self] in
@@ -329,10 +365,50 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             connection["username"] = "connection"
             connection["acct"] = "connection"
             connection["display_name"] = "Connection Tester"
+            if showsConnectionCounts {
+                connection["acct"] = "connection@example.social"
+                connection["display_name"] = "Con :badge:"
+                let badge = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAYklEQVR42r3UsQ0AIAgEQAZxbLd0CI2Fic3Dg+AnllyiICK/0vqY2kmDXLAXU9EoBtFUMALsQDSCnTyDCFNBVKBhFHgXWph5ZRSq08x7WRjdFBZLmcV/P6VkOZSsr5IF+5oFQgn3o7F5mdoAAAAASUVORK5CYII="
+                connection["emojis"] = [["shortcode": "badge", "url": badge, "static_url": badge, "visible_in_picker": true]]
+                connection["followers_count"] = 18_500
+                connection["following_count"] = 2_345
+            }
             return (200, [connection])
         }
+        if path == "/api/v1/statuses", method == "POST",
+           let payload = (try? JSONSerialization.jsonObject(with: body(request))) as? [String: Any] {
+            var reply = post("321")
+            reply["in_reply_to_id"] = payload["in_reply_to_id"]
+            reply["content"] = payload["status"]
+            return (200, reply)
+        }
         if path.hasSuffix("/statuses") {
-            if parameter("only_media") == "true" { return (200, []) }
+            if ProcessInfo.processInfo.environment["UITEST_PROFILE_LONG_TABS"] == "1", parameter("pinned") != "true" {
+                let media = parameter("only_media") == "true"
+                let replies = !media && parameter("exclude_replies") == "false"
+                let first = media ? 320 : (replies ? 700 : 500)
+                let cursor = Int(parameter("max_id") ?? "") ?? (first + 1)
+                let page = (1...20).map { cursor - $0 }.filter { $0 > first - 60 }
+                return (200, page.map { id in
+                    if media { return mediaPost(String(id)) }
+                    var status = post(String(id))
+                    let label = "Scroll \(replies ? "reply" : "post") \(id)"
+                    if let postEmoji {
+                        status["content"] = "<p>\(label) :gif:</p>"
+                        status["emojis"] = [postEmoji]
+                    } else {
+                        status["content"] = "<p>\(label)</p>"
+                    }
+                    if replies { status["in_reply_to_id"] = "88" }
+                    return status
+                })
+            }
+            if parameter("only_media") == "true" {
+                guard hasGallery else { return (200, []) }
+                let cursor = parameter("max_id")
+                if cursor == nil { return (200, (301...320).reversed().map { mediaPost(String($0)) }) }
+                return (200, cursor == "301" ? [mediaPost("300")] : [])
+            }
             if parameter("exclude_replies") == "false", parameter("pinned") != "true" {
                 if ProcessInfo.processInfo.environment["UITEST_PROFILE_NO_REPLIES"] == "1" {
                     let cursor = Int(parameter("max_id") ?? "1000") ?? 1000
@@ -350,7 +426,24 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             return (200, ids.filter { selected == nil || ($0 == "98" ? "daily" : "app") == selected }.map { post($0) })
         }
         if path.hasSuffix("/context") { return (200, ["ancestors": [], "descendants": []]) }
-        if path.contains("/statuses/") { return (200, post(url.lastPathComponent)) }
+        if path.contains("/statuses/") {
+            if method == "POST" {
+                let id = url.deletingLastPathComponent().lastPathComponent
+                let action = url.lastPathComponent
+                let key = action.hasPrefix("un") ? String(action.dropFirst(2)) : action
+                if ["favourite", "reblog", "bookmark"].contains(key) {
+                    let previous = hasGallery ? mediaPost(id) : post(id)
+                    if action == key { interactions[id, default: []].insert(key) }
+                    else { interactions[id]?.remove(key) }
+                    if ProcessInfo.processInfo.environment["UITEST_STALE_INTERACTION_RESPONSE"] == "1" {
+                        return (200, previous)
+                    }
+                    return (200, hasGallery ? mediaPost(id) : post(id))
+                }
+            }
+            let id = url.lastPathComponent
+            return (200, hasGallery && (300...320).contains(Int(id) ?? 0) ? mediaPost(id) : post(id))
+        }
         if path.contains("/accounts/") { return (200, accountPayload()) }
         if path.hasSuffix("/instance") {
             let fieldValueLimit = ProcessInfo.processInfo.environment["UITEST_PROFILE_LOWER_FIELD_LIMIT"] == "1" ? 20 : 255
@@ -362,10 +455,39 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     }
 
     private static func post(_ id: String) -> [String: Any] {
-        ["id": id, "content": "<p>\(id == "100" ? "Pinned app post" : id == "99" ? "Latest app post" : "Daily garden post")</p>",
+        let active = interactions[id] ?? []
+        return ["id": id, "content": "<p>\(id == "100" ? "Pinned app post" : id == "99" ? "Latest app post" : "Daily garden post")</p>",
          "created_at": "2026-09-05T10:00:00.000Z", "account": accountPayload(),
-         "media_attachments": [], "favourites_count": 0, "reblogs_count": 0, "replies_count": 0,
+         "media_attachments": [], "favourites_count": active.contains("favourite") ? 1 : 0,
+         "reblogs_count": active.contains("reblog") ? 1 : 0, "replies_count": 0,
+         "favourited": active.contains("favourite"), "reblogged": active.contains("reblog"),
+         "bookmarked": active.contains("bookmark"), "pinned": id == "100",
          "visibility": "public", "sensitive": false, "spoiler_text": ""]
+    }
+
+    private static func mediaPost(_ id: String) -> [String: Any] {
+        var status = post(id)
+        status["content"] = "<p>Gallery post \(id)</p>"
+        status["sensitive"] = id == "319"
+        status["spoiler_text"] = id == "318" ? "Gallery content warning" : ""
+        if id == "315" { status["filtered"] = [["filter": ["title": "Gallery filter warning"]]] }
+
+        let preview = ProfileMediaFixture.staticAvatarURL.absoluteString
+        let type = id == "317" ? "gifv" : id == "316" ? "video" : "image"
+        let url = type == "image" ? preview : ProfileMediaFixture.videoURL.absoluteString
+        var attachments = [["id": "media-\(id)", "type": type, "url": url,
+                            "preview_url": preview, "description": "Gallery media \(id)"]]
+        if testsGalleryLoading && id == "320" {
+            attachments[0]["preview_url"] = ProfileGalleryPreviewFixture.url.absoluteString
+            attachments[0]["blurhash"] = "LEHV6nWB2yk8pyo0adR*.7kCMdnj"
+        }
+        if id == "320" {
+            let second = ProfileMediaFixture.staticHeaderURL.absoluteString
+            attachments.append(["id": "media-\(id)-second", "type": "image", "url": second,
+                                "preview_url": second, "description": "Second gallery photo"])
+        }
+        status["media_attachments"] = attachments
+        return status
     }
 
     private static func body(_ request: URLRequest) -> Data {

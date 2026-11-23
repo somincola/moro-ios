@@ -8,12 +8,14 @@
 import SwiftUI
 
 struct FavouritesView: View {
+    private let apiClient: MastodonAPI
     @StateObject private var viewModel: FavouritesViewModel
     @Environment(\.moroTheme) private var theme
     @Environment(\.appRouter) private var router
     @EnvironmentObject private var appState: AppState
 
     init(apiClient: MastodonAPI) {
+        self.apiClient = apiClient
         _viewModel = StateObject(wrappedValue: FavouritesViewModel(apiClient: apiClient))
     }
 
@@ -21,6 +23,7 @@ struct FavouritesView: View {
         ContentStateContainer(state: contentState) {
             contentList
         }
+        .modifier(MediaPreviewActionSource(apiClient: apiClient))
         .navigationTitle(MoroL10n.Favourites.navTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task {

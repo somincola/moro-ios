@@ -6,6 +6,23 @@ import UIKit
 
 @Suite(.serialized) @MainActor
 struct TimelinePresentationTests {
+    @Test func foregroundRestoresPlaybackAfterInterruptedDecelerationWithoutMovingTheReader() {
+        let bridge = TimelineScrollBridge()
+        let scroll = UIScrollView(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
+        scroll.contentSize = CGSize(width: 400, height: 3000)
+        bridge.register(scroll, for: .home)
+        bridge.setActive(true)
+        scroll.contentOffset.y = 440
+        let scope = bridge.playbackScope(for: .home)
+        bridge.updatePhase(.decelerating, for: .home)
+        #expect(scope.isScrolling)
+        bridge.setActive(false)
+        bridge.setActive(true)
+        bridge.resumeAfterBackground()
+        #expect(scope.isActive && !scope.isScrolling)
+        #expect(scroll.contentOffset.y == 440)
+    }
+
     @Test(arguments: 0..<3, 0..<3)
     func switchingRegistersTheDisplayedPageBeforeSuspending(fromIndex: Int, toIndex: Int) {
         let from = TimelineType.builtin[fromIndex]

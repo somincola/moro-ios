@@ -14,11 +14,105 @@ final class RootTabCoordinatorTests: XCTestCase {
     func testTabsOwnIndependentRouters() async {
         let coordinator = RootTabCoordinator()
 
-        XCTAssertEqual(MainTab.allCases, [.home, .explore, .inbox, .me])
+        XCTAssertEqual(coordinator.tabLayout.tabs, [.home, .explore, .inbox, .me])
         XCTAssertTrue(coordinator.router(for: .home) === coordinator.homeRouter)
         XCTAssertTrue(coordinator.router(for: .explore) === coordinator.exploreRouter)
         XCTAssertTrue(coordinator.router(for: .inbox) === coordinator.inboxRouter)
         XCTAssertTrue(coordinator.router(for: .me) === coordinator.meRouter)
+    }
+
+    func testTabLayoutKeepsRequiredTabsAndAppendsReaddedTabs() {
+        let coordinator = RootTabCoordinator()
+        coordinator.toggleTab(.bookmarks)
+        coordinator.toggleTab(.favourites)
+        for tab in NavigationTabLayout.requiredTabs { coordinator.toggleTab(tab) }
+        XCTAssertEqual(coordinator.tabLayout.tabs, [.home, .explore, .inbox, .me, .bookmarks])
+
+        coordinator.toggleTab(.explore)
+        coordinator.toggleTab(.explore)
+        coordinator.moveTab(.me, to: 0)
+        XCTAssertEqual(coordinator.tabLayout.tabs, [.me, .home, .inbox, .bookmarks, .explore])
+        coordinator.restoreDefaultTabLayout()
+        XCTAssertEqual(coordinator.tabLayout.tabs, NavigationTabLayout.defaultTabs)
+    }
+
+    func testTabLayoutRepairsIncompleteOrOversizedSavedOrder() {
+        let layout = NavigationTabLayout(tabs: [.favourites, .favourites, .lists, .explore, .inbox, .settings])
+        XCTAssertEqual(layout.tabs, [.favourites, .lists, .explore, .inbox, .home])
+        XCTAssertEqual(NavigationTabLayout(tabs: [.home, .home]).tabs, [.home, .explore])
+        XCTAssertEqual(NavigationTabLayout(tabs: [.lists]).tabs, [.lists, .home])
+        XCTAssertEqual(NavigationTabLayout(tabs: []).tabs, NavigationTabLayout.defaultTabs)
+    }
+
+    func testInboxAndProfileCanBeRemovedDownToTwoTabsAndReaddedAtTheEnd() {
+        let coordinator = RootTabCoordinator(selectedTab: .me)
+        coordinator.toggleTab(.me)
+        XCTAssertEqual(coordinator.selectedTab, .home)
+        coordinator.toggleTab(.inbox)
+        XCTAssertFalse(coordinator.tabLayout.canToggle(.explore))
+        coordinator.toggleTab(.explore)
+        coordinator.toggleTab(.home)
+        XCTAssertEqual(coordinator.tabLayout.tabs, [.home, .explore])
+        coordinator.toggleTab(.lists)
+        coordinator.toggleTab(.explore)
+        coordinator.toggleTab(.me)
+        coordinator.toggleTab(.inbox)
+        XCTAssertEqual(coordinator.tabLayout.tabs, [.home, .lists, .me, .inbox])
+    }
+
+    func testDeepLinksToHiddenProfileAndInboxUseHomeWithoutChangingTheLayout() {
+        let coordinator = RootTabCoordinator(selectedTab: .explore)
+        coordinator.toggleTab(.inbox)
+        coordinator.toggleTab(.me)
+        let account = Account(id: "viewer", username: "viewer", acct: "viewer", displayName: "Viewer",
+                              note: "", avatar: "", avatarStatic: "", header: "", headerStatic: "",
+                              followersCount: 0, followingCount: 0, statusesCount: 0)
+        coordinator.openProfile(account)
+        var expected = NavigationPath([Route.userProfile(account)])
+        XCTAssertEqual(coordinator.selectedTab, .home)
+        XCTAssertEqual(coordinator.homeRouter.path, expected)
+
+        coordinator.openPushNotification(.notifications)
+        expected.append(Route.inbox)
+        XCTAssertTrue(coordinator.isInboxVisible)
+        XCTAssertEqual(coordinator.homeRouter.path, expected)
+        coordinator.openPushNotification(.profile(account))
+        expected.append(Route.userProfile(account))
+        XCTAssertFalse(coordinator.isInboxVisible)
+        XCTAssertEqual(coordinator.homeRouter.path, expected)
+        XCTAssertTrue(coordinator.inboxRouter.path.isEmpty)
+        XCTAssertEqual(coordinator.tabLayout.tabs, [.home, .explore])
+    }
+
+    func testRemovingActiveTabKeepsItsRouterAndLeavesEditorOpen() {
+        let coordinator = RootTabCoordinator()
+        coordinator.toggleTab(.settings)
+        coordinator.selectTab(.settings)
+        let router = coordinator.router(for: .settings)
+        router.navigate(to: .bookmarks)
+        coordinator.presentNavigationCustomization()
+
+        coordinator.toggleTab(.settings)
+        XCTAssertEqual(coordinator.selectedTab, .home)
+        XCTAssertEqual(coordinator.presentedSheet, .navigationCustomization)
+        coordinator.selectTab(.settings)
+        XCTAssertEqual(coordinator.selectedTab, .home)
+
+        coordinator.toggleTab(.settings)
+        XCTAssertTrue(coordinator.router(for: .settings) === router)
+        XCTAssertEqual(router.path.count, 1)
+    }
+
+    func testWidgetSearchUsesHomeStackWhenExploreIsHidden() {
+        let coordinator = RootTabCoordinator(selectedTab: .me)
+        coordinator.homeRouter.navigate(to: .bookmarks)
+        coordinator.toggleTab(.explore)
+
+        coordinator.openExplore()
+
+        XCTAssertEqual(coordinator.selectedTab, .home)
+        XCTAssertEqual(coordinator.homeRouter.path.count, 2)
+        XCTAssertTrue(coordinator.exploreRouter.path.isEmpty)
     }
 
     func testSearchEntryHidesOnlyTheExploreTabBar() {

@@ -2,526 +2,284 @@
 //  ListMembersView.swift
 //  moro
 //
-//  Manage list members: view, search, add and remove accounts.
-//
 
-import SwiftUI
 import Combine
+import SwiftUI
 
 struct ListMembersView: View {
     let list: MastodonList
     @Environment(\.moroTheme) private var theme
+    @FocusState private var searchFocused: Bool
     @StateObject private var viewModel: ListMembersViewModel
-    @State private var showPicker = false
 
     init(list: MastodonList, apiClient: MastodonAPI) {
         self.list = list
-        _viewModel = StateObject(
-            wrappedValue: ListMembersViewModel(apiClient: apiClient, listID: list.id)
-        )
+        _viewModel = StateObject(wrappedValue: ListMembersViewModel(apiClient: apiClient, listID: list.id))
     }
 
     var body: some View {
-        NavigationStack {
+        let request = viewModel.searchRequest
+        VStack(spacing: 0) {
+            searchField
+                .padding(.horizontal, theme.spacing.contentHorizontalInset)
+                .padding(.vertical, theme.spacing.s)
+                .moroReadableColumn()
             ContentStateContainer(state: contentState) {
-                memberList
-            }
-            .navigationTitle(MoroL10n.ListMembers.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showPicker = true
-                    } label: {
-                        Image(systemName: "person.badge.plus")
-                    }
-                    .accessibilityLabel(MoroL10n.ListMembers.addMember)
+                if case .searching = viewModel.searchState {
+                    ProgressView(MoroL10n.ListMembers.searching)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    accountList
                 }
             }
-            .background(theme.colors.background.ignoresSafeArea())
         }
-        .task {
-            await viewModel.loadInitial()
-        }
-        .refreshable {
-            await viewModel.refresh()
-        }
-        .sheet(isPresented: $showPicker) {
-            ListMemberPickerSheet(
-                viewModel: viewModel,
-                listTitle: list.title,
-                onClose: {
-                    showPicker = false
+        .background(theme.colors.surfaceBase)
+        .navigationTitle(MoroL10n.ListMembers.membersOf(list.title))
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await viewModel.loadInitial() }
+        .task(id: request) { await viewModel.search(request) }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: theme.spacing.s) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(theme.colors.textSecondary)
+                .accessibilityHidden(true)
+            TextField(MoroL10n.ListMembers.searchFollowing, text: $viewModel.searchQuery)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($searchFocused)
+                .accessibilityIdentifier("listMembers.search")
+            if !viewModel.searchQuery.isEmpty {
+                Button {
+                    viewModel.searchQuery = ""
+                    searchFocused = true
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(theme.colors.textSecondary)
+                        .frame(minWidth: 36, minHeight: 44)
                 }
-            )
+                .accessibilityLabel(MoroL10n.NewConversation.clearSearch)
+                .accessibilityIdentifier("listMembers.clear")
+            }
         }
+        .padding(.horizontal, theme.spacing.m)
+        .frame(minHeight: 44)
+        .background(theme.colors.surfaceSubtle, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var contentState: ContentState {
-        if viewModel.members.isEmpty, case .loading = viewModel.loadingState {
-            return .loading(.list)
+        switch viewModel.loadingState {
+        case .idle, .loading: return .loading(.list)
+        case .failed where viewModel.members.isEmpty:
+            return .error(ErrorStateSpec(title: MoroL10n.ListMembers.loadFailed,
+                message: MoroL10n.ListMembers.toastLoadFailed, action: { Task { await viewModel.refresh() } }))
+        default: break
         }
-        if viewModel.members.isEmpty, case .error(let error) = viewModel.loadingState {
-            return .error(
-                ErrorStateSpec(
-                    title: MoroL10n.ListMembers.loadFailed,
-                    message: error.localizedDescription,
-                    actionTitle: MoroL10n.ListMembers.retry,
-                    action: {
-                        Task { await viewModel.refresh() }
-                    }
-                )
-            )
-        }
-        if viewModel.members.isEmpty {
-            return .empty(
-                EmptyStateSpec(
-                    icon: "person.2",
-                    title: MoroL10n.ListMembers.emptyTitle,
-                    message: MoroL10n.ListMembers.emptyMessage,
-                    actionTitle: MoroL10n.ListMembers.addMember,
-                    action: {
-                        showPicker = true
-                    }
-                )
-            )
-        }
-        return .loaded
-    }
-
-    @ViewBuilder
-    private var memberList: some View {
-        ScrollView {
-            LazyVStack(spacing: theme.spacing.s) {
-                if let transientErrorMessage = viewModel.transientErrorMessage {
-                    HStack(alignment: .top, spacing: theme.spacing.s) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(theme.colors.error)
-                            .padding(.top, 2)
-                        Text(transientErrorMessage)
-                            .font(theme.typography.caption)
-                            .foregroundStyle(theme.colors.textPrimary)
-                        Spacer()
-                    }
-                    .padding(theme.spacing.s)
-                    .background(theme.colors.surfaceBase)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(theme.colors.borderSubtle, lineWidth: 1)
-                    )
-                }
-
-                ForEach(viewModel.members) { account in
-                    memberRow(account)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                Task { await viewModel.removeAccount(account) }
-                            } label: {
-                                Label(MoroL10n.ListMembers.remove, systemImage: "person.crop.circle.badge.minus")
-                            }
-                            .disabled(viewModel.isMutating(accountID: account.id))
-                        }
-                }
-            }
-            .padding(.horizontal, theme.spacing.m)
-            .padding(.vertical, theme.spacing.s)
-            .moroReadableColumn()
+        switch viewModel.searchState {
+        case .idle where viewModel.members.isEmpty:
+            return .empty(EmptyStateSpec(icon: "person.2", title: MoroL10n.ListMembers.emptyTitle,
+                message: MoroL10n.ListMembers.emptyMessage, actionTitle: MoroL10n.ListMembers.addMember,
+                action: { searchFocused = true }))
+        case .results(let accounts) where accounts.isEmpty:
+            return .empty(EmptyStateSpec(icon: "person.crop.circle.badge.questionmark",
+                title: MoroL10n.ListMembers.searchNoResultTitle, message: MoroL10n.ListMembers.searchNoResultMessage))
+        case .failed(let message):
+            return .error(ErrorStateSpec(title: MoroL10n.Search.errorSearchFailed,
+                message: message, action: viewModel.retrySearch))
+        default:
+            return .loaded
         }
     }
 
-    @ViewBuilder
-    private func memberRow(_ account: Account) -> some View {
-        HStack(spacing: theme.spacing.m) {
-            MoroAvatar(
-                imageURL: account.avatarAnimatedURL,
-                staticImageURL: account.avatarURL,
-                initials: account.displayNameInitials, seed: account.placeholderSeed,
-                size: 36
-            )
-
-            VStack(alignment: .leading, spacing: 2) {
-                AccountDisplayNameView(
-                    account: account,
-                    typography: .body,
-                    textColor: theme.colors.textPrimary,
-                    lineLimit: 1
-                )
-                Text("@\(account.acct)")
+    private var accountList: some View {
+        let searching = !viewModel.searchRequest.query.isEmpty
+        let accounts = if case .results(let accounts) = viewModel.searchState { accounts } else { viewModel.members }
+        return List {
+            if viewModel.loadingState == .failed {
+                Button(MoroL10n.ListMembers.toastLoadFailed) { Task { await viewModel.refresh() } }
                     .font(theme.typography.caption)
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .lineLimit(1)
             }
-
-            Spacer(minLength: 8)
-
-            if viewModel.isMutating(accountID: account.id) {
-                ProgressView()
-                    .scaleEffect(0.9)
-            } else {
-                Button {
-                    Task { await viewModel.removeAccount(account) }
-                } label: {
-                    Image(systemName: "person.crop.circle.badge.minus")
-                        .moroScaledFont(size: 16, weight: .semibold)
-                        .foregroundStyle(theme.colors.error)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(MoroL10n.ListMembers.removeAccessibility)
+            ForEach(accounts) { account in
+                accountRow(account, searching: searching)
+                    .listRowBackground(theme.colors.surfaceBase)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(theme.colors.surfaceBase)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(theme.colors.borderSubtle, lineWidth: 1)
-        )
+        .listStyle(.plain)
+        .moroReadableListMargins()
+        .contentMargins(.top, 0, for: .scrollContent)
+        .scrollContentBackground(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+        .refreshable { await viewModel.refresh() }
     }
-}
 
-private struct ListMemberPickerSheet: View {
-    @Environment(\.moroTheme) private var theme
-    @ObservedObject var viewModel: ListMembersViewModel
-
-    let listTitle: String
-    let onClose: () -> Void
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: theme.spacing.m) {
-                HStack(spacing: theme.spacing.s) {
-                    Image(systemName: "magnifyingglass")
+    private func accountRow(_ account: Account, searching: Bool) -> some View {
+        let alreadyAdded = searching && viewModel.members.contains { $0.id == account.id }
+        let failure = alreadyAdded ? nil : viewModel.mutationErrors[account.id]
+        return VStack(alignment: .leading, spacing: theme.spacing.xs) {
+            HStack(spacing: theme.spacing.m) {
+                MoroAvatar(imageURL: account.avatarAnimatedURL, staticImageURL: account.avatarURL,
+                    initials: account.displayNameInitials, seed: account.placeholderSeed, size: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    AccountDisplayNameView(account: account, typography: .bodyStrong,
+                        textColor: theme.colors.textPrimary, lineLimit: 1)
+                    Text(verbatim: "@\(account.acct)")
+                        .font(theme.typography.caption)
                         .foregroundStyle(theme.colors.textSecondary)
-                    TextField(MoroL10n.ListMembers.searchPlaceholder, text: $viewModel.searchQuery)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                 }
-                .padding(.horizontal, theme.spacing.m)
-                .padding(.vertical, theme.spacing.s)
-                .background(theme.colors.surfaceBase)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(theme.colors.borderSubtle, lineWidth: 1)
-                )
-
-                if let message = viewModel.searchErrorMessage {
-                    HStack(spacing: theme.spacing.s) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(theme.colors.error)
-                        Text(message)
-                            .font(theme.typography.caption)
-                            .foregroundStyle(theme.colors.textPrimary)
-                        Spacer()
+                Spacer(minLength: theme.spacing.s)
+                if viewModel.mutatingAccountIDs.contains(account.id) {
+                    ProgressView()
+                        .frame(minWidth: 44, minHeight: 44)
+                        .accessibilityLabel(searching ? MoroL10n.ListMembers.add : MoroL10n.ListMembers.remove)
+                        .accessibilityIdentifier("listMembers.pending.\(account.id)")
+                } else if alreadyAdded {
+                    Label(MoroL10n.ListMembers.added, systemImage: "checkmark")
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textSecondary)
+                        .accessibilityIdentifier("listMembers.added.\(account.id)")
+                } else {
+                    Button {
+                        Task { await viewModel.setMembership(of: account, included: searching) }
+                    } label: {
+                        Group {
+                            if searching || failure != nil {
+                                Text(failure == nil ? MoroL10n.ListMembers.add : MoroL10n.ListMembers.retry)
+                                    .font(theme.typography.caption.bold())
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(theme.colors.themeTint.opacity(0.12), in: Capsule())
+                            } else {
+                                Image(systemName: "minus.circle")
+                                    .font(.title3)
+                            }
+                        }
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                     }
-                    .padding(theme.spacing.s)
-                    .background(theme.colors.surfaceBase)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(theme.colors.borderSubtle, lineWidth: 1)
-                    )
-                }
-
-                pickerContent
-            }
-            .padding(theme.spacing.m)
-            .navigationTitle(MoroL10n.ListMembers.addToList(listTitle))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    MoroToolbarButton(MoroL10n.ListMembers.done, kind: .confirm) {
-                        onClose()
-                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(searching ? theme.colors.themeTint : theme.colors.textSecondary)
+                    .accessibilityLabel(failure != nil ? MoroL10n.ListMembers.retry
+                        : searching ? MoroL10n.ListMembers.addMember : MoroL10n.ListMembers.removeAccessibility)
+                    .accessibilityIdentifier("listMembers.\(searching ? "add" : "remove").\(account.id)")
                 }
             }
-        }
-        .onDisappear {
-            viewModel.resetSearch()
-        }
-        .moroTheme(MoroTheme())
-    }
-
-    @ViewBuilder
-    private var pickerContent: some View {
-        let trimmedQuery = viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if trimmedQuery.count < 2 {
-            infoPlaceholder(
-                icon: "text.magnifyingglass",
-                title: MoroL10n.ListMembers.searchEmptyTitle,
-                message: MoroL10n.ListMembers.searchEmptyMessage
-            )
-        } else if viewModel.isSearching {
-            VStack(spacing: theme.spacing.s) {
-                ProgressView()
-                Text(MoroL10n.ListMembers.searching)
+            if let failure {
+                Label(failure, systemImage: "exclamationmark.circle")
                     .font(theme.typography.caption)
-                    .foregroundStyle(theme.colors.textSecondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if viewModel.searchResults.isEmpty {
-            infoPlaceholder(
-                icon: "person.crop.circle.badge.questionmark",
-                title: MoroL10n.ListMembers.searchNoResultTitle,
-                message: MoroL10n.ListMembers.searchNoResultMessage
-            )
-        } else {
-            ScrollView {
-                LazyVStack(spacing: theme.spacing.s) {
-                    ForEach(viewModel.searchResults) { account in
-                        searchResultRow(account)
-                    }
-                }
-                .padding(.bottom, theme.spacing.m)
+                    .foregroundStyle(theme.colors.error)
+                    .accessibilityIdentifier("listMembers.error.\(account.id)")
             }
         }
-    }
-
-    @ViewBuilder
-    private func searchResultRow(_ account: Account) -> some View {
-        HStack(spacing: theme.spacing.m) {
-            MoroAvatar(
-                imageURL: account.avatarAnimatedURL,
-                staticImageURL: account.avatarURL,
-                initials: account.displayNameInitials, seed: account.placeholderSeed,
-                size: 34
-            )
-
-            VStack(alignment: .leading, spacing: 2) {
-                AccountDisplayNameView(
-                    account: account,
-                    typography: .body,
-                    textColor: theme.colors.textPrimary,
-                    lineLimit: 1
-                )
-                Text("@\(account.acct)")
-                    .font(theme.typography.caption)
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 8)
-
-            if viewModel.isMutating(accountID: account.id) {
-                ProgressView()
-                    .scaleEffect(0.9)
-            } else {
-                Button {
-                    Task { await viewModel.addAccount(account) }
-                } label: {
-                    Text(MoroL10n.ListMembers.add)
-                        .font(theme.typography.caption.bold())
-                        .foregroundStyle(theme.colors.primary600)
-                        .padding(.horizontal, theme.spacing.s)
-                        .padding(.vertical, 6)
-                        .background(theme.colors.primary50)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(theme.colors.surfaceBase)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(theme.colors.borderSubtle, lineWidth: 1)
-        )
-    }
-
-    @ViewBuilder
-    private func infoPlaceholder(icon: String, title: String, message: String) -> some View {
-        VStack(spacing: theme.spacing.s) {
-            Image(systemName: icon)
-                .moroScaledFont(size: 26, weight: .semibold)
-                .foregroundStyle(theme.colors.textTertiary)
-            Text(title)
-                .font(theme.typography.subtitle)
-                .foregroundStyle(theme.colors.textPrimary)
-            Text(message)
-                .font(theme.typography.caption)
-                .foregroundStyle(theme.colors.textSecondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(theme.spacing.l)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.colors.surfaceBase)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(theme.colors.borderSubtle, lineWidth: 1)
-        )
+        .padding(.vertical, 2)
     }
 }
 
 @MainActor
 final class ListMembersViewModel: ObservableObject {
-    enum LoadingState {
-        case idle
-        case loading
-        case loaded
-        case error(Error)
+    nonisolated deinit {}
+
+    enum LoadingState { case idle, loading, loaded, failed }
+    enum SearchState {
+        case idle, searching, results([Account]), failed(String)
+    }
+
+    struct SearchRequest: Equatable {
+        let query: String
+        let immediate: Bool
+        private let id = UUID()
     }
 
     @Published private(set) var members: [Account] = []
     @Published private(set) var loadingState: LoadingState = .idle
-    @Published var transientErrorMessage: String?
-
-    @Published var searchQuery: String = "" {
-        didSet { scheduleSearch() }
-    }
-    @Published private(set) var searchResults: [Account] = []
-    @Published private(set) var isSearching = false
-    @Published private(set) var searchErrorMessage: String?
     @Published private(set) var mutatingAccountIDs: Set<String> = []
+    @Published private(set) var mutationErrors: [String: String] = [:]
+    @Published private(set) var searchState: SearchState = .idle
+    @Published private(set) var searchRequest = SearchRequest(query: "", immediate: false)
+    @Published var searchQuery = "" {
+        didSet {
+            let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard query != searchRequest.query else { return }
+            searchState = query.isEmpty ? .idle : .searching
+            searchRequest = SearchRequest(query: query, immediate: false)
+        }
+    }
 
     private let apiClient: MastodonAPI
     private let listID: String
-    private var searchTask: Task<Void, Never>?
+    // Keep edits acknowledged by the server while a membership read is in flight.
+    private var editsDuringRefresh: Set<String>?
 
     init(apiClient: MastodonAPI, listID: String) {
         self.apiClient = apiClient
         self.listID = listID
     }
 
-    deinit {
-        searchTask?.cancel()
-    }
-
     func loadInitial() async {
-        guard case .idle = loadingState else { return }
-        loadingState = .loading
+        guard loadingState == .idle else { return }
         await refresh()
     }
 
     func refresh() async {
+        guard editsDuringRefresh == nil else { return }
+        editsDuringRefresh = []
+        defer { editsDuringRefresh = nil }
+        if members.isEmpty { loadingState = .loading }
         do {
-            members = try await apiClient.fetchListAccounts(
-                listID: listID,
-                maxID: nil,
-                sinceID: nil,
-                limit: 80
-            )
+            // Mastodon uses limit=0 to return the complete membership, including beyond the first 80.
+            let fetched = try await apiClient.fetchListAccounts(listID: listID, maxID: nil, sinceID: nil, limit: 0)
+            let edited = editsDuringRefresh ?? []
+            members = fetched.filter { !edited.contains($0.id) } + members.filter { edited.contains($0.id) }
             loadingState = .loaded
-            transientErrorMessage = nil
-            filterSearchResultsAgainstMembers()
         } catch {
-            if members.isEmpty {
-                loadingState = .error(error)
+            if Task.isCancelled {
+                if loadingState == .loading { loadingState = .idle }
             } else {
-                loadingState = .loaded
+                loadingState = .failed
             }
-            transientErrorMessage = MoroL10n.ListMembers.toastLoadFailed
         }
     }
 
-    func addAccount(_ account: Account) async {
-        guard !mutatingAccountIDs.contains(account.id) else { return }
-        mutatingAccountIDs.insert(account.id)
+    func retrySearch() {
+        guard !searchRequest.query.isEmpty else { return }
+        searchState = .searching
+        searchRequest = SearchRequest(query: searchRequest.query, immediate: true)
+    }
+
+    func search(_ request: SearchRequest) async {
+        guard !request.query.isEmpty, request == searchRequest else { return }
+        do {
+            if !request.immediate { try await Task.sleep(for: .milliseconds(300)) }
+            try Task.checkCancellation()
+            guard request == searchRequest else { return }
+            let accounts = try await apiClient.searchFollowedAccounts(query: request.query, limit: 20)
+            guard !Task.isCancelled, request == searchRequest else { return }
+            searchState = .results(accounts)
+        } catch {
+            guard !Task.isCancelled, request == searchRequest else { return }
+            searchState = .failed(error.localizedDescription)
+        }
+    }
+
+    func setMembership(of account: Account, included: Bool) async {
+        guard members.contains(where: { $0.id == account.id }) != included,
+              mutatingAccountIDs.insert(account.id).inserted else { return }
+        mutationErrors[account.id] = nil
         defer { mutatingAccountIDs.remove(account.id) }
-
         do {
-            try await apiClient.addAccountsToList(listID: listID, accountIDs: [account.id])
-            if members.contains(where: { $0.id == account.id }) == false {
-                members.append(account)
+            if included {
+                try await apiClient.addAccountsToList(listID: listID, accountIDs: [account.id])
+                if !members.contains(where: { $0.id == account.id }) { members.append(account) }
+            } else {
+                try await apiClient.removeAccountsFromList(listID: listID, accountIDs: [account.id])
+                members.removeAll { $0.id == account.id }
             }
-            filterSearchResultsAgainstMembers()
-            transientErrorMessage = nil
-            searchErrorMessage = nil
-            AppFeedbackCenter.shared.showSuccess(MoroL10n.ListMembers.toastAdded)
+            editsDuringRefresh?.insert(account.id)
         } catch {
-            searchErrorMessage = MoroL10n.ListMembers.toastAddFailed
-            AppFeedbackCenter.shared.showError(MoroL10n.ListMembers.toastAddFailedShort)
+            mutationErrors[account.id] = included ? MoroL10n.ListMembers.toastAddFailed : MoroL10n.ListMembers.toastRemoveFailed
         }
-    }
-
-    func removeAccount(_ account: Account) async {
-        guard !mutatingAccountIDs.contains(account.id) else { return }
-        mutatingAccountIDs.insert(account.id)
-        defer { mutatingAccountIDs.remove(account.id) }
-
-        do {
-            try await apiClient.removeAccountsFromList(listID: listID, accountIDs: [account.id])
-            members.removeAll { $0.id == account.id }
-            transientErrorMessage = nil
-            AppFeedbackCenter.shared.showSuccess(MoroL10n.ListMembers.toastRemoved)
-            scheduleSearch(immediate: true)
-        } catch {
-            transientErrorMessage = MoroL10n.ListMembers.toastRemoveFailed
-            AppFeedbackCenter.shared.showError(MoroL10n.ListMembers.toastRemoveFailedShort)
-        }
-    }
-
-    func isMutating(accountID: String) -> Bool {
-        mutatingAccountIDs.contains(accountID)
-    }
-
-    func resetSearch() {
-        searchTask?.cancel()
-        searchQuery = ""
-        searchResults = []
-        isSearching = false
-        searchErrorMessage = nil
-    }
-
-    private func scheduleSearch(immediate: Bool = false) {
-        searchTask?.cancel()
-        searchErrorMessage = nil
-
-        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard query.count >= 2 else {
-            searchResults = []
-            isSearching = false
-            return
-        }
-
-        searchTask = Task { [weak self] in
-            guard let self else { return }
-            if !immediate {
-                try? await Task.sleep(nanoseconds: 300_000_000)
-            }
-            await self.performSearch(query: query)
-        }
-    }
-
-    private func performSearch(query: String) async {
-        isSearching = true
-        defer { isSearching = false }
-
-        do {
-            let result = try await apiClient.search(
-                query: query,
-                type: .accounts,
-                resolve: true,
-                limit: 20,
-                offset: nil
-            )
-            if query != searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) {
-                return
-            }
-            searchResults = result.accounts
-            filterSearchResultsAgainstMembers()
-        } catch {
-            if query != searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) {
-                return
-            }
-            searchResults = []
-            searchErrorMessage = MoroL10n.ListMembers.toastSearchFailed
-        }
-    }
-
-    private func filterSearchResultsAgainstMembers() {
-        let memberIDs = Set(members.map(\.id))
-        searchResults = searchResults.filter { memberIDs.contains($0.id) == false }
     }
 }

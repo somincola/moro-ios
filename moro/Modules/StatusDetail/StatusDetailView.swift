@@ -361,6 +361,7 @@ struct StatusDetailView: View {
             .moroReadableColumn()
         }
         .scrollPosition(id: $visibleStatusID, anchor: .top)
+        .modifier(PostEmojiScrollPlayback())
         // Pull for new replies. The loaded thread stays on screen while it reloads, so a
         // failure keeps it and says so instead of falling back to the inline retry row.
         .refreshable {
@@ -470,7 +471,7 @@ struct StatusDetailView: View {
             actionSurface: actionSurface,
             postMenuActionCenter: postMenuActionCenter,
             apiClient: apiClient,
-            currentUserID: appState.currentAccount?.id,
+            appState: appState,
             router: router,
             onRemoveStatus: { statusID in
                 if statusID == viewModel.focusedStatus.id {

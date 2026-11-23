@@ -10,14 +10,31 @@ import SwiftUI
 /// Circular backed icon for floating controls shown over full-screen media.
 struct FloatingNavIconLabel: View {
     let systemName: String
+    var isLoading = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
-        Image(systemName: systemName)
-            .moroScaledFont(size: 15, weight: .semibold)
-            .foregroundStyle(.white)
-            .frame(width: 34, height: 34)
-            .background(Circle().fill(.black.opacity(0.4)))
-            .contentShape(Circle())
+        Group {
+            if #available(iOS 26, *), !reduceTransparency, contrast != .increased {
+                glyph.glassEffect(.regular.tint(.black.opacity(0.28)).interactive(), in: .circle)
+                    .environment(\.colorScheme, .dark)
+            } else {
+                glyph.background(Color(white: 0.16).opacity(reduceTransparency || contrast == .increased ? 1 : 0.82), in: Circle())
+                    .overlay { Circle().strokeBorder(.white.opacity(0.22), lineWidth: 1) }
+            }
+        }
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
+    }
+
+    private var glyph: some View {
+        ZStack {
+            if isLoading { ProgressView().tint(.white) }
+            else { Image(systemName: systemName).moroScaledFont(size: 16, weight: .semibold) }
+        }
+        .foregroundStyle(.white)
+        .frame(width: 40, height: 40)
     }
 }
 
@@ -31,6 +48,7 @@ struct ProfileMoreButton: View {
     var onSettings: (() -> Void)? = nil
     var onBookmarks: (() -> Void)? = nil
     var onFavourites: (() -> Void)? = nil
+    var onExplore: (() -> Void)? = nil
     var onCopyLink: (() -> Void)? = nil
     var onOpenInBrowser: (() -> Void)? = nil
     var onAddToList: (() -> Void)? = nil
@@ -47,6 +65,7 @@ struct ProfileMoreButton: View {
         onSettings: (() -> Void)? = nil,
         onBookmarks: (() -> Void)? = nil,
         onFavourites: (() -> Void)? = nil,
+        onExplore: (() -> Void)? = nil,
         onCopyLink: (() -> Void)? = nil,
         onOpenInBrowser: (() -> Void)? = nil,
         onAddToList: (() -> Void)? = nil,
@@ -62,6 +81,7 @@ struct ProfileMoreButton: View {
         self.onSettings = onSettings
         self.onBookmarks = onBookmarks
         self.onFavourites = onFavourites
+        self.onExplore = onExplore
         self.onCopyLink = onCopyLink
         self.onOpenInBrowser = onOpenInBrowser
         self.onAddToList = onAddToList
@@ -81,7 +101,7 @@ struct ProfileMoreButton: View {
                 }
             }
 
-            if onBookmarks != nil || onFavourites != nil {
+            if onBookmarks != nil || onFavourites != nil || onExplore != nil {
                 if onEditProfile != nil {
                     Divider()
                 }
@@ -103,10 +123,17 @@ struct ProfileMoreButton: View {
                         )
                     }
                 }
+
+                if let onExplore {
+                    Button(action: onExplore) {
+                        MoroMenuItemLabel(title: MoroL10n.Navigation.explore, systemImage: MainTab.explore.icon)
+                    }
+                    .accessibilityIdentifier("profile.menu.explore")
+                }
             }
 
             if onEditProfile != nil || onBookmarks != nil
-                || onFavourites != nil
+                || onFavourites != nil || onExplore != nil
             {
                 Divider()
             }

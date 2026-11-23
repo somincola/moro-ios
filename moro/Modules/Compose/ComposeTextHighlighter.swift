@@ -10,9 +10,13 @@ enum ComposeTextHighlighter {
         options: .caseInsensitive
     )
 
+    static func urlRanges(in text: String) -> [NSRange] {
+        urlExpression.matches(in: text, range: NSRange(location: 0, length: text.utf16.count)).map(\.range)
+    }
+
     static func ranges(in text: String) -> [NSRange] {
         let fullRange = NSRange(location: 0, length: text.utf16.count)
-        let urls = urlExpression.matches(in: text, range: fullRange).map(\.range)
+        let urls = urlRanges(in: text)
         return tokenExpression.matches(in: text, range: fullRange).map(\.range).filter { token in
             !urls.contains { NSIntersectionRange($0, token).length > 0 }
         }
@@ -54,8 +58,12 @@ enum ComposeTextHighlighter {
             storage.endEditing()
         }
 
-        // Selection changes can inherit the preceding token's color. Always start
-        // ordinary typing in the body color; valid tokens are recolored after editing.
+        resetTypingColor(in: textView, to: textColor)
+    }
+
+    /// A caret move can inherit the previous token's color without changing any styled text.
+    @MainActor
+    static func resetTypingColor(in textView: UITextView, to textColor: UIColor) {
         if (textView.typingAttributes[.foregroundColor] as? UIColor) != textColor {
             var attributes = textView.typingAttributes
             attributes[.foregroundColor] = textColor

@@ -26,6 +26,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
     let meView: AnyView
     let routeView: (Route, AppRouter) -> AnyView
     var accountSwitcher = AccountSwitcherConfiguration()
+    var additionalRootView: (MainTab) -> AnyView = { _ in AnyView(EmptyView()) }
 
     func makeUIViewController(context: Context) -> MainShellViewController {
         MainShellViewController(
@@ -39,7 +40,8 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             inboxView: inboxView,
             meView: meView,
             routeView: routeView,
-            accountSwitcher: accountSwitcher
+            accountSwitcher: accountSwitcher,
+            additionalRootView: additionalRootView
         )
     }
 
@@ -54,7 +56,8 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             inboxView: inboxView,
             meView: meView,
             routeView: routeView,
-            accountSwitcher: accountSwitcher
+            accountSwitcher: accountSwitcher,
+            additionalRootView: additionalRootView
         )
     }
 }
@@ -66,10 +69,8 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         private let mainTabController = UITabBarController()
 
         private var currentContentVersion: String
-        private var homeRootView: AnyView
-        private var exploreRootView: AnyView
-        private var inboxRootView: AnyView
-        private var meRootView: AnyView
+        private var rootViews: [MainTab: AnyView]
+        private var additionalRootView: (MainTab) -> AnyView
         private var routeView: (Route, AppRouter) -> AnyView
         private var appliedTheme: MoroTheme
         private var appliedUnreadInboxCount: Int
@@ -86,26 +87,9 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             theme: appliedTheme
         )
 
-        private lazy var homeNavigationController = makeNavigationController(
-            tab: .home,
-            router: coordinator.homeRouter,
-            rootView: homeRootView
-        )
-        private lazy var exploreNavigationController = makeNavigationController(
-            tab: .explore,
-            router: coordinator.exploreRouter,
-            rootView: exploreRootView
-        )
-        private lazy var inboxNavigationController = makeNavigationController(
-            tab: .inbox,
-            router: coordinator.inboxRouter,
-            rootView: inboxRootView
-        )
-        private lazy var meNavigationController = makeNavigationController(
-            tab: .me,
-            router: coordinator.meRouter,
-            rootView: meRootView
-        )
+        // Keep each visited destination's controller when it moves or is hidden.
+        private var navigationControllers: [MainTab: MainShellNavigationController] = [:]
+        private var appliedTabs: [MainTab] = []
 
         init(
             coordinator: RootTabCoordinator,
@@ -118,7 +102,8 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             inboxView: AnyView,
             meView: AnyView,
             routeView: @escaping (Route, AppRouter) -> AnyView,
-            accountSwitcher: AccountSwitcherConfiguration? = nil
+            accountSwitcher: AccountSwitcherConfiguration? = nil,
+            additionalRootView: @escaping (MainTab) -> AnyView = { _ in AnyView(EmptyView()) }
         ) {
             self.accountSwitcherConfiguration = accountSwitcher ?? AccountSwitcherConfiguration()
             self.coordinator = coordinator
@@ -126,10 +111,8 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             self.appliedUnreadInboxCount = unreadInboxCount
             self.appliedAvatarURL = currentUserAvatarURL
             self.currentContentVersion = contentVersion
-            self.homeRootView = homeView
-            self.exploreRootView = exploreView
-            self.inboxRootView = inboxView
-            self.meRootView = meView
+            self.rootViews = [.home: homeView, .explore: exploreView, .inbox: inboxView, .me: meView]
+            self.additionalRootView = additionalRootView
             self.routeView = routeView
             super.init(nibName: nil, bundle: nil)
         }
@@ -148,7 +131,8 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             super.viewDidLoad()
             configureHierarchy()
             installHingeObserver()
-            configureTabs()
+            mainTabController.delegate = self
+            updateTabLayout()
             apply(theme: appliedTheme)
             updateAvatar(appliedAvatarURL, force: true)
             updateSelectedTab(coordinator.selectedTab)
@@ -191,7 +175,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             guard retapTipPopover == nil, presentedViewController == nil,
                 coordinator.selectedTab == .home, coordinator.isAtRoot(.home)
             else { return }
-            let popover = TipUIPopoverViewController(retapTip, sourceItem: homeNavigationController.tabBarItem)
+            let popover = TipUIPopoverViewController(retapTip, sourceItem: navigationController(for: .home).tabBarItem)
             popover.view.accessibilityIdentifier = "tip.tabRetapRefresh"
             present(popover, animated: true)
             retapTipPopover = popover
@@ -218,23 +202,25 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             inboxView: AnyView,
             meView: AnyView,
             routeView: @escaping (Route, AppRouter) -> AnyView,
-            accountSwitcher accountSwitcherConfiguration: AccountSwitcherConfiguration? = nil
+            accountSwitcher accountSwitcherConfiguration: AccountSwitcherConfiguration? = nil,
+            additionalRootView: @escaping (MainTab) -> AnyView = { _ in AnyView(EmptyView()) }
         ) {
             self.routeView = routeView
-            updateRouteViewBuilders()
-            self.accountSwitcherConfiguration = accountSwitcherConfiguration ?? AccountSwitcherConfiguration()
-            accountSwitcher.update(configuration: self.accountSwitcherConfiguration, theme: theme)
+            self.additionalRootView = additionalRootView
+            let switcherConfiguration = accountSwitcherConfiguration ?? AccountSwitcherConfiguration()
+            let accountsChanged = self.accountSwitcherConfiguration.sessions != switcherConfiguration.sessions
+            self.accountSwitcherConfiguration = switcherConfiguration
+            accountSwitcher.update(configuration: switcherConfiguration, theme: theme)
 
             if currentContentVersion != contentVersion {
                 currentContentVersion = contentVersion
-                homeRootView = homeView
-                exploreRootView = exploreView
-                inboxRootView = inboxView
-                meRootView = meView
-                homeNavigationController.setRootView(homeView)
-                exploreNavigationController.setRootView(exploreView)
-                inboxNavigationController.setRootView(inboxView)
-                meNavigationController.setRootView(meView)
+                rootViews = [.home: homeView, .explore: exploreView, .inbox: inboxView, .me: meView]
+                for (tab, controller) in navigationControllers {
+                    controller.setRootView(rootViews[tab] ?? additionalRootView(tab))
+                }
+            } else if accountsChanged,
+                      let settings = navigationControllers[.settings]?.viewControllers.first as? MainShellHostingController {
+                settings.updateContent(additionalRootView(.settings))
             }
 
             if appliedTheme.colorScheme != theme.colorScheme
@@ -253,6 +239,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
                 applyInboxBadge()
             }
 
+            updateTabLayout()
             updateAvatar(currentUserAvatarURL)
             updateSelectedTab(coordinator.selectedTab)
         }
@@ -271,10 +258,10 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         }
 
         private func applyHingePresence(_ hasHinge: Bool) {
-            homeNavigationController.setShowsNavigationBarAtRoot(hasHinge)
             // Explore and Notifications put their controls in the system bar too.
-            exploreNavigationController.setShowsNavigationBarAtRoot(hasHinge)
-            inboxNavigationController.setShowsNavigationBarAtRoot(hasHinge)
+            for tab in [MainTab.home, .explore, .inbox] {
+                navigationControllers[tab]?.setShowsNavigationBarAtRoot(hasHinge)
+            }
             if coordinator.usesSystemHomeBar != hasHinge {
                 coordinator.usesSystemHomeBar = hasHinge
             }
@@ -294,34 +281,39 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             mainTabController.didMove(toParent: self)
         }
 
-        private func configureTabs() {
-            configureTabBarItem(homeNavigationController, for: .home)
-            configureTabBarItem(exploreNavigationController, for: .explore)
-            configureTabBarItem(inboxNavigationController, for: .inbox)
-            configureTabBarItem(meNavigationController, for: .me)
-
-            mainTabController.viewControllers = [
-                homeNavigationController,
-                exploreNavigationController,
-                inboxNavigationController,
-                meNavigationController,
-            ]
-            mainTabController.delegate = self
+        private func updateTabLayout() {
+            let tabs = coordinator.tabLayout.tabs
+            guard tabs != appliedTabs else { return }
+            appliedTabs = tabs
+            mainTabController.setViewControllers(tabs.map(navigationController(for:)), animated: false)
+            view.setNeedsLayout()
         }
 
         private func configureTabBarItem(_ controller: UIViewController, for tab: MainTab) {
-            // Icon-only: the four destinations are familiar enough that labels are noise.
-            // The names stay for VoiceOver and the large content viewer.
-            let item = UITabBarItem(
-                title: nil,
+            let item = UITabBarItem()
+            Self.setTabIcons(
+                on: item,
                 image: Self.tabGlyph(tab.icon, configuration: Self.glyphConfiguration),
-                selectedImage: Self.tabGlyph(tab.filledIcon, configuration: Self.selectedGlyphConfiguration)
+                selectedImage: Self.tabGlyph(tab.filledIcon, configuration: Self.selectedGlyphConfiguration),
+                label: tab.title
             )
-            item.accessibilityLabel = tab.title
             item.accessibilityIdentifier = "mainTab.\(tab.rawValue)"
             item.largeContentSizeImage = UIImage(systemName: tab.icon)
-            Self.centerImageWithoutTitle(item)
             controller.tabBarItem = item
+        }
+
+        private static func setTabIcons(
+            on item: UITabBarItem, image: UIImage?, selectedImage: UIImage?, label: String
+        ) {
+            item.image = image
+            item.selectedImage = selectedImage
+            // UIKit can derive an untitled tab's name from its installed image after insertion.
+            item.image?.accessibilityLabel = label
+            item.selectedImage?.accessibilityLabel = label
+            item.accessibilityLabel = label
+            if #unavailable(iOS 26.0) {
+                item.imageInsets = UIEdgeInsets(top: 6, left: 0, bottom: -6, right: 0)
+            }
         }
 
         private static let glyphConfiguration = UIImage.SymbolConfiguration(pointSize: 21, weight: .regular)
@@ -363,7 +355,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         /// iOS 26 centers untitled items itself, so its glyphs stay native.
         private static func tabGlyph(_ name: String, configuration: UIImage.SymbolConfiguration) -> UIImage? {
             guard let symbol = UIImage(systemName: name, withConfiguration: configuration) else { return nil }
-            guard #unavailable(iOS 26.0) else { return symbol }
+            guard #unavailable(iOS 26.0) else { return symbol.withRenderingMode(.alwaysTemplate) }
             let side = MeTabAvatarMetrics.canvas
             let format = UIGraphicsImageRendererFormat.preferred()
             format.opaque = false
@@ -374,13 +366,6 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
                 ))
             }
             return padded.withRenderingMode(.alwaysTemplate)
-        }
-
-        /// The classic bar keeps room for a title under the image; with no title, nudge the
-        /// (shared-size) images down onto the bar's center line.
-        private static func centerImageWithoutTitle(_ item: UITabBarItem) {
-            guard #unavailable(iOS 26.0) else { return }
-            item.imageInsets = UIEdgeInsets(top: 6, left: 0, bottom: -6, right: 0)
         }
 
         private func apply(theme: MoroTheme) {
@@ -410,10 +395,9 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
                 mainTabController.tabBar.scrollEdgeAppearance = appearance
             }
 
-            homeNavigationController.apply(theme: theme)
-            exploreNavigationController.apply(theme: theme)
-            inboxNavigationController.apply(theme: theme)
-            meNavigationController.apply(theme: theme)
+            for controller in navigationControllers.values {
+                controller.apply(theme: theme)
+            }
 
             applyInboxBadge()
 
@@ -424,30 +408,32 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
         private func applyInboxBadge() {
             let count = appliedUnreadInboxCount
-            let item: UITabBarItem = inboxNavigationController.tabBarItem
+            let item: UITabBarItem = navigationController(for: .inbox).tabBarItem
             // Unread shows as the bell's own badge layer — a small red dot cut into the
             // glyph — instead of the system's large count bubble. The count stays in the
             // inbox and in the VoiceOver label.
             item.badgeValue = nil
+            let image: UIImage?
+            let selectedImage: UIImage?
             if count > 0 {
-                item.image = Self.badgedGlyph(
+                image = Self.badgedGlyph(
                     "bell.badge", configuration: Self.glyphConfiguration,
                     glyph: UIColor(appliedTheme.colors.textSecondary), badge: .systemRed
                 )
-                item.selectedImage = Self.badgedGlyph(
+                selectedImage = Self.badgedGlyph(
                     "bell.badge.fill", configuration: Self.selectedGlyphConfiguration,
                     glyph: UIColor(appliedTheme.colors.textPrimary), badge: .systemRed
                 )
             } else {
-                item.image = Self.tabGlyph(MainTab.inbox.icon, configuration: Self.glyphConfiguration)
-                item.selectedImage = Self.tabGlyph(
+                image = Self.tabGlyph(MainTab.inbox.icon, configuration: Self.glyphConfiguration)
+                selectedImage = Self.tabGlyph(
                     MainTab.inbox.filledIcon, configuration: Self.selectedGlyphConfiguration
                 )
             }
-            Self.centerImageWithoutTitle(item)
-            item.accessibilityLabel = count > 0
-                ? MoroL10n.Navigation.inboxUnread(count)
-                : MainTab.inbox.title
+            Self.setTabIcons(
+                on: item, image: image, selectedImage: selectedImage,
+                label: count > 0 ? MoroL10n.Navigation.inboxUnread(count) : MainTab.inbox.title
+            )
         }
 
         private func updateAvatar(_ avatarURL: URL?, force: Bool = false) {
@@ -455,7 +441,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             appliedAvatarURL = avatarURL
             avatarTask?.cancel()
             loadedAvatarImage = nil
-            configureTabBarItem(meNavigationController, for: .me)
+            configureTabBarItem(navigationController(for: .me), for: .me)
 
             guard let avatarURL else { return }
             // Already decoded (e.g. prefetched by the account switcher): show it on the
@@ -476,15 +462,13 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
         private func applyAvatarImages() {
             guard let image = loadedAvatarImage else { return }
-            meNavigationController.tabBarItem.image = circularAvatarImage(
-                image,
-                selected: false
+            let item: UITabBarItem = navigationController(for: .me).tabBarItem
+            Self.setTabIcons(
+                on: item,
+                image: circularAvatarImage(image, selected: false),
+                selectedImage: circularAvatarImage(image, selected: true),
+                label: MainTab.me.title
             )
-            meNavigationController.tabBarItem.selectedImage = circularAvatarImage(
-                image,
-                selected: true
-            )
-            Self.centerImageWithoutTitle(meNavigationController.tabBarItem)
         }
 
         private func circularAvatarImage(_ image: UIImage, selected: Bool) -> UIImage {
@@ -545,9 +529,9 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         }
 
         private func updateSelectedTab(_ tab: MainTab) {
-            guard let index = tabIndex(for: tab) else { return }
-            if mainTabController.selectedIndex != index {
-                mainTabController.selectedIndex = index
+            let controller = navigationController(for: tab)
+            if mainTabController.selectedViewController !== controller {
+                mainTabController.selectedViewController = controller
             }
             applySelectedTabPresentation(tab)
         }
@@ -556,17 +540,9 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             _ tabBarController: UITabBarController,
             didSelect viewController: UIViewController
         ) {
-            guard let tab = tab(for: viewController) else { return }
+            guard let tab = navigationControllers.first(where: { $0.value === viewController })?.key else { return }
             coordinator.selectTab(tab)
             applySelectedTabPresentation(tab)
-        }
-
-        private func tab(for viewController: UIViewController) -> MainTab? {
-            if viewController === homeNavigationController { return .home }
-            if viewController === exploreNavigationController { return .explore }
-            if viewController === inboxNavigationController { return .inbox }
-            if viewController === meNavigationController { return .me }
-            return nil
         }
 
         private func makeNavigationController(
@@ -582,6 +558,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
                     self?.routeView(route, router) ?? AnyView(EmptyView())
                 },
                 theme: appliedTheme,
+                showsNavigationBarAtRoot: showsNavigationBarAtRoot(for: tab),
                 onRootStateChanged: { [weak self] isAtRoot in
                     guard let self else { return }
                     self.coordinator.setIsAtRoot(isAtRoot, for: tab)
@@ -590,7 +567,11 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
                     }
                 },
                 onSceneChanged: { [weak self] descriptor in
-                    guard let self, self.coordinator.selectedTab == tab else { return }
+                    guard let self else { return }
+                    if tab == .home {
+                        self.coordinator.setHomeShowsInbox(descriptor == Route.inbox.sceneDescriptor)
+                    }
+                    guard self.coordinator.selectedTab == tab else { return }
                     self.applyScenePresentation(descriptor)
                 }
             )
@@ -602,9 +583,8 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             } else if retapTipPopover != nil {
                 updateRetapTip(shouldDisplay: false)
             }
-            guard let navigationController = navigationController(for: tab) else { return }
             updateTabBarVisibility()
-            applyScenePresentation(navigationController.currentSceneDescriptor)
+            applyScenePresentation(navigationController(for: tab).currentSceneDescriptor)
         }
 
         private func updateTabBarVisibility() {
@@ -626,31 +606,27 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
                 : color
         }
 
-        private func navigationController(for tab: MainTab) -> MainShellNavigationController? {
+        private func showsNavigationBarAtRoot(for tab: MainTab) -> Bool {
             switch tab {
-            case .home:
-                return homeNavigationController
-            case .explore:
-                return exploreNavigationController
-            case .inbox:
-                return inboxNavigationController
-            case .me:
-                return meNavigationController
+            case .home, .explore, .inbox:
+                return coordinator.usesSystemHomeBar
+            case .me, .lists, .bookmarks, .favourites:
+                return true
+            case .settings:
+                return false
             }
         }
 
-        private func updateRouteViewBuilders() {
-            let builder: (Route, AppRouter) -> AnyView = { [weak self] route, router in
-                self?.routeView(route, router) ?? AnyView(EmptyView())
-            }
-            homeNavigationController.setRouteView(builder)
-            exploreNavigationController.setRouteView(builder)
-            inboxNavigationController.setRouteView(builder)
-            meNavigationController.setRouteView(builder)
-        }
-
-        private func tabIndex(for tab: MainTab) -> Int? {
-            MainTab.allCases.firstIndex(of: tab)
+        private func navigationController(for tab: MainTab) -> MainShellNavigationController {
+            if let controller = navigationControllers[tab] { return controller }
+            let controller = makeNavigationController(
+                tab: tab,
+                router: coordinator.router(for: tab),
+                rootView: rootViews[tab] ?? additionalRootView(tab)
+            )
+            configureTabBarItem(controller, for: tab)
+            navigationControllers[tab] = controller
+            return controller
         }
     }
 
@@ -660,7 +636,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
         let sceneDescriptor: MoroSceneDescriptor
 
-        private let contentRootView: AnyView
+        private var contentRootView: AnyView
         private var appliedTheme: MoroTheme
 
         init(
@@ -688,6 +664,11 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         override func viewDidLoad() {
             super.viewDidLoad()
             view.backgroundColor = UIColor(sceneDescriptor.canvas.backgroundColor(in: appliedTheme))
+        }
+
+        func updateContent(_ content: AnyView) {
+            contentRootView = content
+            rootView = Self.hostedRootView(content, sceneDescriptor: sceneDescriptor, theme: appliedTheme)
         }
 
         func apply(theme: MoroTheme) {
@@ -730,7 +711,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         nonisolated deinit {}
 
         private let router: AppRouter
-        private var routeView: (Route, AppRouter) -> AnyView
+        private let routeView: (Route, AppRouter) -> AnyView
         private let onRootStateChanged: (Bool) -> Void
         private let onSceneChanged: (MoroSceneDescriptor) -> Void
         private var showsNavigationBarAtRoot: Bool
@@ -743,6 +724,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             rootView: AnyView,
             routeView: @escaping (Route, AppRouter) -> AnyView,
             theme: MoroTheme,
+            showsNavigationBarAtRoot: Bool,
             onRootStateChanged: @escaping (Bool) -> Void,
             onSceneChanged: @escaping (MoroSceneDescriptor) -> Void
         ) {
@@ -751,7 +733,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             self.appliedTheme = theme
             self.onRootStateChanged = onRootStateChanged
             self.onSceneChanged = onSceneChanged
-            self.showsNavigationBarAtRoot = tab == .me
+            self.showsNavigationBarAtRoot = showsNavigationBarAtRoot
             self.rootSceneDescriptor = tab.rootSceneDescriptor
             super.init(
                 rootViewController: MainShellHostingController(
@@ -799,11 +781,12 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             )
         }
 
-        func setRouteView(_ routeView: @escaping (Route, AppRouter) -> AnyView) {
-            self.routeView = routeView
-        }
-
         func navigate(to route: Route) {
+            // A second notification can arrive while the first one's detail is still open.
+            if route == .inbox, let inbox = viewControllers.last(where: { descriptor(for: $0) == route.sceneDescriptor }) {
+                if topViewController !== inbox { popToViewController(inbox, animated: false) }
+                return
+            }
             let controller = MainShellHostingController(
                 rootView: routeView(route, router),
                 sceneDescriptor: route.sceneDescriptor,

@@ -8,7 +8,7 @@
 import SwiftUI
 import UIKit
 
-struct MoroColors {
+struct MoroColors: Equatable {
     // Color scheme for dynamic color switching
     let colorScheme: ColorScheme
     let accent: MoroAccentStyle
