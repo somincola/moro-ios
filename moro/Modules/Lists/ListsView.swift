@@ -552,7 +552,7 @@ private struct ListEditorForm: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .background(theme.colors.surfaceSubtle)
+        .background(theme.colors.surfaceBase)
         .disabled(isSaving)
         .overlay {
             if isSaving {

@@ -263,7 +263,7 @@ struct DisplaySettingsView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(theme.colors.textPrimary)
-                        .background(theme.colors.groupedSurface, in: Circle())
+                        .background(theme.colors.surfaceBase, in: Circle())
                         .accessibilityHidden(true)
                         .allowsHitTesting(false)
                 }
@@ -586,9 +586,9 @@ private struct AppearanceThumbnail: View {
         }
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        // The grouped canvas, not the plain surface: a light thumbnail stays visible on
-        // the white section it sits in.
-        .background(palette.groupedBackground)
+        // A subtle tinted canvas so the light thumbnail remains clearly framed on
+        // the pure white settings surface.
+        .background(palette.surfaceSubtle)
     }
 }
 

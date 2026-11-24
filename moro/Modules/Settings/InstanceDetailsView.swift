@@ -384,7 +384,7 @@ struct InstanceDetailsView: View {
 
     private var instanceCoverPlaceholder: some View {
         Rectangle()
-            .fill(theme.colors.groupedSurface)
+            .fill(theme.colors.surfaceSubtle)
             .overlay {
                 Image(systemName: "building.2")
                     .moroScaledFont(size: 24, weight: .regular)
@@ -500,7 +500,8 @@ struct InstanceDetailsView: View {
             .foregroundStyle(theme.colors.textPrimary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Capsule().fill(theme.colors.groupedSurface))
+            .background(Capsule().fill(theme.colors.surfaceSubtle))
+            .overlay { Capsule().strokeBorder(theme.colors.borderSubtle, lineWidth: 0.5) }
         }
     }
 

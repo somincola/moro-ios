@@ -57,7 +57,7 @@ private struct NotificationSettingsContentView: View {
             notificationIntakeSection
         }
         .moroSettingsSwitchStyle()
-        .moroSettingsListChrome(separators: .visible)
+        .moroSettingsListChrome()
         .textCase(nil)
         .navigationTitle(MoroL10n.NotificationSettings.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -257,7 +257,7 @@ private struct NotificationSettingsContentView: View {
                             pushSync.resumeSettings(apiClient: pushClient, sessionKey: accountKey)
                         } label: {
                             Text(MoroL10n.Notifications.retryAction)
-                                .frame(minHeight: 44)
+                                .frame(minHeight: 45)
                                 .contentShape(Rectangle())
                         }
                         .accessibilityIdentifier("notificationSettings.push.retry")

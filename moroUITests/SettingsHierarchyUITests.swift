@@ -61,7 +61,7 @@ final class SettingsHierarchyUITests: XCTestCase {
         let expected = ["1", "On"].contains(original ?? "") ? "off" : "on"
         mentions.tap()
         back(app)
-        app.navigationBars.buttons.firstMatch.tap()
+        closeSettingsSheet(app)
         let check = app.buttons["settings.harness.checkPush"]
         XCTAssertTrue(check.waitForExistence(timeout: 5))
         for _ in 0..<8 {
@@ -99,7 +99,7 @@ final class SettingsHierarchyUITests: XCTestCase {
         XCTAssertFalse(retry.exists)
         XCTAssertEqual(mentions.value as? String, changed)
         back(app)
-        app.navigationBars.buttons.firstMatch.tap()
+        closeSettingsSheet(app)
         app.buttons["settings.harness.checkPush"].tap()
         let expected = ["1", "On"].contains(changed ?? "") ? "on" : "off"
         let result = app.staticTexts["settings.harness.serverMentions"]
@@ -403,6 +403,12 @@ final class SettingsHierarchyUITests: XCTestCase {
     }
 
     private func back(_ app: XCUIApplication) { app.navigationBars.buttons.firstMatch.tap() }
+
+    private func closeSettingsSheet(_ app: XCUIApplication) {
+        let close = app.buttons["settings.sheet.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        close.tap()
+    }
 
     private func tap(_ identifier: String, in app: XCUIApplication, activate: Bool = true) {
         // Typed queries first: an `.any` query fetches attributes for every element,

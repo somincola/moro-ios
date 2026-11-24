@@ -19,7 +19,7 @@ struct ProfileEditorLoadingView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.colors.groupedBackground)
+        .background(theme.colors.surfaceBase)
     }
 }
 

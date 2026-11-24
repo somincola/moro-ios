@@ -64,7 +64,7 @@ struct AccountManagementView: View {
                             .moroScaledFont(size: 17, weight: .medium)
                             .foregroundStyle(theme.colors.textSecondary)
                             .frame(width: Metrics.avatarSize, height: Metrics.avatarSize)
-                            .background(Circle().fill(theme.colors.groupedBackground))
+                            .background(Circle().fill(theme.colors.surfaceSubtle))
                         Text(MoroL10n.AccountMgmt.addAccount)
                             .font(.body)
                             .foregroundStyle(theme.colors.textPrimary)
@@ -95,10 +95,7 @@ struct AccountManagementView: View {
                         detailRow(MoroL10n.Settings.thisServer, icon: "building.2", value: activeSession?.instanceHost)
                     }
                     .accessibilityIdentifier("settings.server")
-                    .listRowSeparator(.hidden, edges: .bottom)
                 }
-                .listRowSeparator(.visible, edges: .bottom)
-                .listRowSeparatorTint(theme.colors.borderSubtle)
             }
 
             Section {
@@ -190,7 +187,7 @@ struct AccountManagementView: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .moroScaledFont(size: MoroSettingsMetrics.iconPointSize, weight: .regular)
-                .foregroundStyle(color ?? theme.colors.textSecondary)
+                .foregroundStyle(color ?? theme.colors.textPrimary)
                 .frame(width: iconColumnWidth)
             Text(title)
                 .font(.body)

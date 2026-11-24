@@ -132,7 +132,7 @@ struct EditProfileView: View {
             }
             mediaControl(.avatar) {
                 avatarPreview
-                    .overlay { Circle().stroke(theme.colors.groupedBackground, lineWidth: 4) }
+                    .overlay { Circle().stroke(theme.colors.surfaceBase, lineWidth: 4) }
                     .overlay(alignment: .bottomTrailing) { avatarBadge.offset(x: 2, y: 0) }
                     .contentShape(Circle())
             }
@@ -264,10 +264,10 @@ struct EditProfileView: View {
     private var avatarBadge: some View {
         Image(systemName: "camera.fill")
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(theme.colors.groupedBackground)
+            .foregroundStyle(theme.colors.surfaceBase)
             .frame(width: 26, height: 26)
             .background(Circle().fill(theme.colors.textPrimary))
-            .overlay { Circle().stroke(theme.colors.groupedBackground, lineWidth: 2.5) }
+            .overlay { Circle().stroke(theme.colors.surfaceBase, lineWidth: 2.5) }
             .accessibilityHidden(true)
     }
 
@@ -502,12 +502,13 @@ struct EditProfileView: View {
     // MARK: - Other profile settings
 
     private func linkGroup<Rows: View>(_ title: String, @ViewBuilder rows: () -> Rows) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let shape = RoundedRectangle(cornerRadius: Metrics.inputCornerRadius, style: .continuous)
+        return VStack(alignment: .leading, spacing: 8) {
             MoroSettingsSectionHeader(title: title)
                 .padding(.horizontal, Metrics.inputPadding)
             VStack(spacing: 0) { rows() }
-                .background(theme.colors.groupedSurface,
-                    in: RoundedRectangle(cornerRadius: Metrics.inputCornerRadius, style: .continuous))
+                .background(theme.colors.surfaceSubtle, in: shape)
+                .overlay { shape.strokeBorder(theme.colors.borderSubtle, lineWidth: 0.5) }
         }
     }
 
@@ -595,7 +596,7 @@ private extension View {
     func inputBox(isFocused: Bool, isInvalid: Bool = false, theme: MoroTheme) -> some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         let border = isInvalid ? theme.colors.error : isFocused ? theme.colors.primary500 : theme.colors.borderSubtle
-        return background(theme.colors.groupedSurface, in: shape)
+        return background(theme.colors.surfaceSubtle, in: shape)
             .overlay { shape.strokeBorder(border, lineWidth: isFocused || isInvalid ? 1.5 : 1) }
             .animation(.easeOut(duration: 0.15), value: isFocused)
     }

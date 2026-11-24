@@ -38,7 +38,7 @@ struct NavigationCustomizationView: View {
                 .padding(.horizontal, MoroSettingsMetrics.pageHorizontalInset)
                 .padding(.vertical, 12)
                 .moroReadableColumn()
-                .background(theme.colors.groupedBackground)
+                .background(theme.colors.surfaceBase)
                 .overlay(alignment: .top) { MoroDivider() }
         }
         .moroSettingsPageChrome()
@@ -55,7 +55,7 @@ struct NavigationCustomizationView: View {
             coordinator.toggleTab(tab)
         } label: {
             VStack(spacing: 6) {
-                tile.fill(theme.colors.groupedSurface)
+                tile.fill(theme.colors.surfaceSubtle)
                     .aspectRatio(1, contentMode: .fit)
                     .overlay {
                         tile.strokeBorder(selected ? theme.colors.themeTint : theme.colors.borderSubtle,
@@ -155,7 +155,7 @@ private struct NavigationLayoutPreview: View {
                     .background {
                         if isDragging {
                             RoundedRectangle(cornerRadius: 10)
-                                .fill(theme.colors.groupedBackground)
+                                .fill(theme.colors.surfaceBase)
                         }
                     }
                     .offset(x: isDragging
@@ -167,7 +167,7 @@ private struct NavigationLayoutPreview: View {
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .padding(.vertical, 5)
-        .background(theme.colors.groupedSurface, in: RoundedRectangle(cornerRadius: 16))
+        .background(theme.colors.surfaceSubtle, in: RoundedRectangle(cornerRadius: 16))
         .overlay {
             RoundedRectangle(cornerRadius: 16).strokeBorder(theme.colors.borderSubtle, lineWidth: 0.5)
         }

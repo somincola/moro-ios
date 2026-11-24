@@ -113,7 +113,7 @@ struct EmojiManagementView: View {
                             .scaledToFit()
                     } placeholder: {
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(theme.colors.groupedBackground)
+                            .fill(theme.colors.surfaceSubtle)
                     }
                     .frame(width: 20, height: 20)
                 }
