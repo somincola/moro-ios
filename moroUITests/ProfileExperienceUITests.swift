@@ -156,6 +156,23 @@ final class ProfileExperienceUITests: XCTestCase {
             waitLabel(bell, contains: "Turn off")
             Thread.sleep(forTimeInterval: 1.2)  // let the replace + wiggle finish for the screenshot
             attach(app, "profile-bell-on-\(scheme)")
+
+            let reblog = app.buttons["profile.reblogToggle"]
+            XCTAssertTrue(reblog.waitForExistence(timeout: 3))
+            XCTAssertGreaterThan(reblog.frame.minX, bell.frame.maxX - 1)
+            XCTAssertEqual(reblog.label, "Hide boosts from timeline")
+            attach(app, "profile-reblog-shown-\(scheme)")
+            let notice = app.descendants(matching: .any).matching(identifier: "app.feedbackNotice").firstMatch
+            reblog.tap()
+            XCTAssertTrue(notice.exists || notice.waitForExistence(timeout: 3))
+            XCTAssertEqual(notice.label, "Boosts hidden from timeline")
+            attach(app, "profile-reblog-hidden-\(scheme)")
+            waitLabel(reblog, contains: "Show boosts")
+            reblog.tap()
+            XCTAssertTrue(notice.exists || notice.waitForExistence(timeout: 3))
+            XCTAssertEqual(notice.label, "Boosts shown in timeline")
+            attach(app, "profile-reblog-shown-toast-\(scheme)")
+            waitLabel(reblog, contains: "Hide boosts")
             app.terminate()
         }
     }

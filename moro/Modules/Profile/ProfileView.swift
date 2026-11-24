@@ -903,25 +903,32 @@ struct ProfileView: View {
     }
 
     private var actionButtons: some View {
-        HStack(spacing: theme.spacing.m) {
+        HStack(spacing: theme.spacing.s) {
             FollowButton(
                 relationship: viewModel.relationship,
                 isResolved: viewModel.isRelationshipResolved,
                 isLoading: viewModel.isUpdatingRelationship,
-                isInteractionDisabled: viewModel.isUpdatingNotification,
+                isInteractionDisabled: viewModel.isUpdatingNotification || viewModel.isUpdatingReblogs,
                 onFollow: toggleFollow,
                 onUnfollow: requestUnfollow,
                 onCancelRequest: toggleFollow,
                 onUnblock: toggleBlock
             )
 
-            // Notification button (only show if following)
+            // Notification & boost visibility toggles (only show if following)
             if viewModel.relationship?.following == true {
                 NotificationToggleButton(
                     isNotifying: viewModel.relationship?.notifying == true,
                     isLoading: viewModel.isUpdatingNotification,
-                    isInteractionDisabled: viewModel.isUpdatingRelationship,
+                    isInteractionDisabled: viewModel.isUpdatingRelationship || viewModel.isUpdatingReblogs,
                     onToggle: toggleNotification
+                )
+
+                ReblogToggleButton(
+                    isShowingReblogs: viewModel.relationship?.showingReblogs ?? true,
+                    isLoading: viewModel.isUpdatingReblogs,
+                    isInteractionDisabled: viewModel.isUpdatingRelationship || viewModel.isUpdatingNotification,
+                    onToggle: toggleReblogs
                 )
             }
         }
@@ -950,6 +957,21 @@ struct ProfileView: View {
 
     private func toggleNotification() {
         Task { await viewModel.toggleNotification() }
+    }
+
+    private func toggleReblogs() {
+        Task {
+            if let showingReblogs = await viewModel.toggleReblogs() {
+                AppFeedbackCenter.shared.showInfo(
+                    showingReblogs
+                        ? MoroL10n.Profile.reblogToggleShownToast
+                        : MoroL10n.Profile.reblogToggleHiddenToast,
+                    autoDismissAfter: 2.6
+                )
+            } else if viewModel.relationship?.following == true {
+                AppFeedbackCenter.shared.showError(MoroL10n.Profile.reblogToggleFailedToast)
+            }
+        }
     }
 
     // MARK: - Stats Section

@@ -3958,6 +3958,106 @@ struct moroTests {
         #expect(viewModel.relationship?.notifying == true)
     }
 
+    @Test func relationshipDecodesShowingReblogsAndDefaultsWhenMissing() throws {
+        let withFalse = Data("""
+        {
+          "id": "115926328683034407",
+          "following": true,
+          "showing_reblogs": false,
+          "notifying": false,
+          "followed_by": false,
+          "blocking": false,
+          "blocked_by": false,
+          "muting": false,
+          "muting_notifications": false,
+          "requested": false,
+          "domain_blocking": false,
+          "endorsed": false,
+          "note": ""
+        }
+        """.utf8)
+        let decodedFalse = try JSONDecoder().decode(Relationship.self, from: withFalse)
+        #expect(decodedFalse.following == true)
+        #expect(decodedFalse.showingReblogs == false)
+
+        let withoutField = Data("""
+        {
+          "id": "115926328683034407",
+          "following": true,
+          "notifying": true,
+          "followed_by": false,
+          "blocking": false,
+          "blocked_by": false,
+          "muting": false,
+          "muting_notifications": false,
+          "requested": false,
+          "domain_blocking": false,
+          "endorsed": false
+        }
+        """.utf8)
+        let decodedDefault = try JSONDecoder().decode(Relationship.self, from: withoutField)
+        #expect(decodedDefault.showingReblogs == true)
+        #expect(decodedDefault.notifying == true)
+    }
+
+    @Test @MainActor func profileReblogsToggleUsesIndependentLoadingStateAndPreservesNotify() async throws {
+        let api = MockMastodonAPI()
+        let viewModel = ProfileViewModel(
+            apiClient: api,
+            accountID: "target",
+            currentAccountID: "me"
+        )
+        viewModel.relationship = makeRelationship(
+            id: "target", following: true, showingReblogs: true, notifying: true
+        )
+
+        var observedFollowLoading = true
+        var observedNotificationLoading = true
+        var observedReblogsLoading = false
+        api.followAccountHandler = { _, reblogs, notify in
+            observedFollowLoading = viewModel.isUpdatingRelationship
+            observedNotificationLoading = viewModel.isUpdatingNotification
+            observedReblogsLoading = viewModel.isUpdatingReblogs
+            #expect(reblogs == false)
+            #expect(notify == nil)
+            return self.makeRelationship(
+                id: "target", following: true, showingReblogs: false, notifying: true
+            )
+        }
+
+        let hiddenResult = await viewModel.toggleReblogs()
+
+        #expect(hiddenResult == false)
+        #expect(!observedFollowLoading)
+        #expect(!observedNotificationLoading)
+        #expect(observedReblogsLoading)
+        #expect(!viewModel.isUpdatingReblogs)
+        #expect(viewModel.relationship?.showingReblogs == false)
+        #expect(viewModel.relationship?.notifying == true)
+
+        api.followAccountHandler = { _, reblogs, notify in
+            #expect(reblogs == true)
+            #expect(notify == nil)
+            return self.makeRelationship(
+                id: "target", following: true, showingReblogs: true, notifying: true
+            )
+        }
+        let shownResult = await viewModel.toggleReblogs()
+        #expect(shownResult == true)
+        #expect(viewModel.relationship?.showingReblogs == true)
+
+        // Not following: must ignore toggle without invoking the API.
+        viewModel.relationship = makeRelationship(id: "target", following: false, showingReblogs: false)
+        var calledWhenNotFollowing = false
+        api.followAccountHandler = { _, _, _ in
+            calledWhenNotFollowing = true
+            return self.makeRelationship(id: "target", following: true)
+        }
+        let ignored = await viewModel.toggleReblogs()
+        #expect(ignored == nil)
+        #expect(!calledWhenNotFollowing)
+    }
+
     @Test @MainActor func timelinePageOrderMatchesHomeLocalFederated() async throws {
         #expect(TimelineType.builtin == [.home, .local, .federated])
     }
@@ -8167,6 +8267,7 @@ extension moroTests {
     func makeRelationship(
         id: String,
         following: Bool = false,
+        showingReblogs: Bool = true,
         followedBy: Bool = false,
         blocking: Bool = false,
         blockedBy: Bool = false,
@@ -8181,6 +8282,7 @@ extension moroTests {
         Relationship(
             id: id,
             following: following,
+            showingReblogs: showingReblogs,
             followedBy: followedBy,
             blocking: blocking,
             blockedBy: blockedBy,

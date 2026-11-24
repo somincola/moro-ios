@@ -786,6 +786,11 @@ public enum MoroL10n {
         public static var followChecking: String { text("profile.follow.checking") }
         public static var cancelFollowRequest: String { text("profile.follow.cancelRequest") }
         public static var blocked: String { text("profile.follow.blocked") }
+        public static var reblogToggleHide: String { text("profile.reblogToggle.hide") }
+        public static var reblogToggleShow: String { text("profile.reblogToggle.show") }
+        public static var reblogToggleHiddenToast: String { text("profile.reblogToggle.hiddenToast") }
+        public static var reblogToggleShownToast: String { text("profile.reblogToggle.shownToast") }
+        public static var reblogToggleFailedToast: String { text("profile.reblogToggle.failedToast") }
 
         // Page content
         public static var navTitle: String { text("profile.navTitle") }

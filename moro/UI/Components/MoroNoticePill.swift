@@ -18,6 +18,7 @@ struct MoroNoticePill: View {
         HStack(spacing: theme.spacing.s) {
             Image(systemName: icon)
                 .moroScaledFont(size: 13, weight: .semibold)
+                .accessibilityHidden(true)
 
             Text(text)
                 .font(theme.typography.caption)

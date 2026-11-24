@@ -101,6 +101,7 @@ struct AppCoordinatorView: View {
                 .onTapGesture {
                     feedbackCenter.dismiss()
                 }
+                .accessibilityIdentifier("app.feedbackNotice")
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .zIndex(999)
             }
