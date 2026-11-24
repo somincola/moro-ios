@@ -93,6 +93,28 @@ struct PostEmojiAnimationTests {
         #expect(layer.animation(forKey: "postEmoji") == nil)
         #expect(layer.contents as AnyObject? === animation.frames.last)
     }
+
+    @Test func staticPNGMarksURLAsKnownStill() async throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 12, height: 12)).image { _ in }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).png")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try #require(image.pngData()).write(to: url)
+        let store = PostEmojiAnimationStore()
+        #expect(!store.isKnownStill(for: url))
+        #expect(await store.animation(for: url, pixelSize: 24) == nil)
+        #expect(store.isKnownStill(for: url))
+    }
+
+    @Test func playbackPolicySkipsViewportClipOnNormalHeightsAndDefersOnlyUncachedDecodeDuringScroll() {
+        #expect(!PostEmojiPlaybackPolicy.shouldClipToScrollView(contentHeight: 200, isScrolling: false))
+        #expect(!PostEmojiPlaybackPolicy.shouldClipToScrollView(contentHeight: 200, isScrolling: true))
+        #expect(PostEmojiPlaybackPolicy.shouldClipToScrollView(contentHeight: 1200, isScrolling: false))
+        #expect(!PostEmojiPlaybackPolicy.shouldClipToScrollView(contentHeight: 1200, isScrolling: true))
+
+        #expect(PostEmojiPlaybackPolicy.shouldDecodeUncached(hasUncached: true, isScrolling: false))
+        #expect(!PostEmojiPlaybackPolicy.shouldDecodeUncached(hasUncached: true, isScrolling: true))
+        #expect(!PostEmojiPlaybackPolicy.shouldDecodeUncached(hasUncached: false, isScrolling: false))
+    }
 }
 
 // XCTest runs this warm-cache case separately from Swift Testing's app-wide memory warnings.
