@@ -207,7 +207,7 @@ private struct NotificationFeedView: View {
             return .error(
                 ErrorStateSpec(
                     title: MoroL10n.Notifications.loadFailed,
-                    message: error.localizedDescription,
+                    message: MoroErrorCopy.message(for: error),
                     actionTitle: MoroL10n.Notifications.retryAction,
                     action: {
                         Task {
@@ -283,17 +283,14 @@ private struct NotificationFeedView: View {
 
                     LazyVStack(spacing: 0) {
                         if viewModel.refreshFailed {
-                            HStack {
-                                Label(MoroL10n.Notifications.loadFailed, systemImage: "wifi.exclamationmark")
-                                    .font(theme.typography.caption)
-                                    .foregroundStyle(theme.colors.textSecondary)
-                                Spacer()
-                                Button(MoroL10n.Notifications.retryAction) {
-                                    Task { await refreshFeed(userInitiated: true) }
-                                }
-                                .frame(minHeight: 44)
-                            }
+                            MoroInlineNoticeBanner(
+                                message: MoroL10n.Notifications.loadFailed,
+                                tone: .error,
+                                actionTitle: MoroL10n.Notifications.retryAction,
+                                action: { Task { await refreshFeed(userInitiated: true) } }
+                            )
                             .padding(.horizontal, theme.spacing.m)
+                            .padding(.vertical, theme.spacing.s)
                             .accessibilityIdentifier("notifications.refreshRetry")
                         }
 

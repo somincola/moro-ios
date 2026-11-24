@@ -138,18 +138,16 @@ struct InstanceDetailsView: View {
             if let details = viewModel.details {
                 content(details)
             } else if let errorMessage = viewModel.errorMessage {
-                ContentUnavailableView {
-                    Label(MoroL10n.Instance.loadFailed, systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(errorMessage)
-                } actions: {
-                    Button(MoroL10n.Instance.retry) {
-                        Task { await viewModel.reload() }
-                    }
-                }
+                ErrorStateView(
+                    spec: ErrorStateSpec(
+                        title: MoroL10n.Instance.loadFailed,
+                        message: errorMessage,
+                        actionTitle: MoroL10n.Instance.retry,
+                        action: { Task { await viewModel.reload() } }
+                    )
+                )
             } else {
-                ProgressView(MoroL10n.Instance.loading)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                MoroLoadingStateView(message: MoroL10n.Instance.loading)
             }
         }
         .moroSettingsPageChrome()

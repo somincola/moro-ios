@@ -58,17 +58,25 @@ struct EmojiManagementView: View {
                 Section {
                     switch emojiViewModel.loadState {
                     case .initial, .loading:
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
-                        }
+                        MoroLoadingStateView(mascotSize: 36)
+                            .frame(minHeight: 120)
                     case .fail:
-                        Text(MoroL10n.Emoji.loadFailed)
-                            .foregroundStyle(theme.colors.textSecondary)
+                        ErrorStateView(
+                            spec: ErrorStateSpec(
+                                title: MoroL10n.Emoji.loadFailed,
+                                message: MoroL10n.AppError.recoveryTryAgain
+                            )
+                        )
+                        .frame(minHeight: 160)
                     case .finish:
-                        Text(MoroL10n.Emoji.noCustomEmoji)
-                            .foregroundStyle(theme.colors.textSecondary)
+                        EmptyStateView(
+                            spec: EmptyStateSpec(
+                                icon: "face.smiling",
+                                title: MoroL10n.Emoji.noCustomEmoji,
+                                message: ""
+                            )
+                        )
+                        .frame(minHeight: 160)
                     }
                 } header: {
                     MoroSettingsSectionHeader(title: MoroL10n.Emoji.sort)

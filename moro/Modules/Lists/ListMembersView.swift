@@ -81,7 +81,7 @@ struct ListMembersView: View {
         case .idle where viewModel.members.isEmpty:
             return .empty(EmptyStateSpec(icon: "person.2", title: MoroL10n.ListMembers.emptyTitle,
                 message: MoroL10n.ListMembers.emptyMessage, actionTitle: MoroL10n.ListMembers.addMember,
-                action: { searchFocused = true }))
+                action: { searchFocused = true }, actionProminent: true))
         case .results(let accounts) where accounts.isEmpty:
             return .empty(EmptyStateSpec(icon: "person.crop.circle.badge.questionmark",
                 title: MoroL10n.ListMembers.searchNoResultTitle, message: MoroL10n.ListMembers.searchNoResultMessage))
@@ -98,8 +98,14 @@ struct ListMembersView: View {
         let accounts = if case .results(let accounts) = viewModel.searchState { accounts } else { viewModel.members }
         return List {
             if viewModel.loadingState == .failed {
-                Button(MoroL10n.ListMembers.toastLoadFailed) { Task { await viewModel.refresh() } }
-                    .font(theme.typography.caption)
+                MoroInlineNoticeBanner(
+                    message: MoroL10n.ListMembers.toastLoadFailed,
+                    tone: .error,
+                    actionTitle: MoroL10n.ListMembers.retry,
+                    action: { Task { await viewModel.refresh() } }
+                )
+                .listRowSeparator(.hidden)
+                .listRowBackground(theme.colors.surfaceBase)
             }
             ForEach(accounts) { account in
                 accountRow(account, searching: searching)

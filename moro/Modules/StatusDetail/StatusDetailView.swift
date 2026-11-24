@@ -382,26 +382,21 @@ struct StatusDetailView: View {
     private var threadLoadingState: some View {
         switch viewModel.loadingState {
         case .idle, .loading:
-            ProgressView()
-                .controlSize(.small)
-                .tint(theme.colors.textSecondary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, theme.spacing.l)
-        case .error:
-            HStack(spacing: theme.spacing.m) {
-                Text(MoroL10n.StatusDetail.threadLoadFailed)
-                    .font(theme.typography.caption)
-                    .foregroundStyle(theme.colors.textSecondary)
-
-                Spacer(minLength: theme.spacing.s)
-
-                Button(MoroL10n.StatusDetail.retry) {
-                    Task { await viewModel.refresh() }
-                }
-                .font(theme.typography.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(theme.colors.primary500)
+            HStack {
+                Spacer(minLength: 0)
+                MoroMascotView(expression: .thinking, size: 34)
+                Spacer(minLength: 0)
             }
+            .padding(.vertical, theme.spacing.l)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(MoroL10n.Search.loading))
+        case .error:
+            MoroInlineNoticeBanner(
+                message: MoroL10n.StatusDetail.threadLoadFailed,
+                tone: .error,
+                actionTitle: MoroL10n.StatusDetail.retry,
+                action: { Task { await viewModel.refresh() } }
+            )
             .padding(.horizontal, theme.spacing.contentHorizontalInset)
             .padding(.vertical, theme.spacing.m)
         case .loaded:

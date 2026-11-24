@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct MoroNoticePill: View {
-    let icon: String
+    var icon: String? = nil
     let text: String
 
     @Environment(\.moroTheme) private var theme
@@ -16,16 +16,18 @@ struct MoroNoticePill: View {
 
     var body: some View {
         HStack(spacing: theme.spacing.s) {
-            Image(systemName: icon)
-                .moroScaledFont(size: 13, weight: .semibold)
-                .accessibilityHidden(true)
+            if let icon, !icon.isEmpty {
+                Image(systemName: icon)
+                    .moroScaledFont(size: 13, weight: .semibold)
+                    .accessibilityHidden(true)
+            }
 
             Text(text)
                 .font(theme.typography.caption)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, icon == nil ? 16 : 14)
         .padding(.vertical, 10)
         .frame(minHeight: 44)
         .foregroundStyle(Color.white)
@@ -50,6 +52,7 @@ struct MoroNoticePill: View {
 
 #Preview {
     VStack(spacing: 16) {
+        MoroNoticePill(text: "Boosts hidden from your timeline")
         MoroNoticePill(icon: "checkmark", text: "Saved")
         MoroNoticePill(icon: "exclamationmark", text: "Could not complete the request")
     }

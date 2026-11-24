@@ -116,14 +116,14 @@ struct AppCoordinatorView: View {
         )
     }
 
-    private func iconName(for kind: AppFeedbackKind) -> String {
+    private func iconName(for kind: AppFeedbackKind) -> String? {
         switch kind {
         case .success:
             return "checkmark"
         case .error:
             return "exclamationmark"
         case .info:
-            return "info"
+            return nil
         }
     }
 }

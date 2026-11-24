@@ -59,7 +59,7 @@ struct ProfileExperienceHarnessView: View {
 
             if let message = feedbackCenter.currentMessage {
                 MoroNoticePill(
-                    icon: message.kind == .error ? "exclamationmark" : (message.kind == .success ? "checkmark" : "info"),
+                    icon: message.kind == .error ? "exclamationmark" : (message.kind == .success ? "checkmark" : nil),
                     text: message.text
                 )
                 .frame(maxWidth: 420)

@@ -137,27 +137,37 @@ final class SearchCoreViewController: UIViewController {
     }()
 
     private lazy var loadingStateView = SearchCenterStateView(
-        iconName: nil,
-        title: MoroL10n.Search.loading,
-        showsIndicator: true,
-        animationStyle: .searchingIndicator
+        mascotExpression: .thinking,
+        imageSize: CGSize(width: 48, height: 48),
+        title: MoroL10n.Search.loading
     )
 
     private lazy var emptyStateView = SearchCenterStateView(
-        iconName: "tray",
+        mascotExpression: .curious,
+        imageSize: CGSize(width: 58, height: 58),
         title: MoroL10n.Search.emptyNoMatch,
-        subtitle: MoroL10n.Search.emptyNoMatchHint,
-        showsIndicator: false,
-        animationStyle: .none
+        subtitle: MoroL10n.Search.emptyNoMatchHint
     )
 
     private lazy var discoveryEmptyStateView = SearchCenterStateView(
-        iconName: nil,
-        assetName: "ExploreEmptyMascot",
-        imageSize: CGSize(width: 116, height: 116),
-        title: MoroL10n.Search.emptyNoDiscover,
-        showsIndicator: false,
-        animationStyle: .none
+        mascotExpression: .calm,
+        imageSize: CGSize(width: 58, height: 58),
+        title: MoroL10n.Search.emptyNoDiscover
+    )
+
+    private lazy var errorStateView = SearchCenterStateView(
+        mascotExpression: .offline,
+        imageSize: CGSize(width: 58, height: 58),
+        title: MoroL10n.Search.errorSearchFailed,
+        actionTitle: MoroL10n.Timeline.retry,
+        onAction: { [weak self] in
+            guard let self else { return }
+            if self.trimmedQuery.isEmpty {
+                self.loadDiscoveryIfNeeded(forceRefresh: true)
+            } else {
+                self.startSearch(reset: true)
+            }
+        }
     )
 
     var sections: [SectionModel] = []
@@ -355,6 +365,7 @@ final class SearchCoreViewController: UIViewController {
         loadingStateView.apply(theme: theme)
         emptyStateView.apply(theme: theme)
         discoveryEmptyStateView.apply(theme: theme)
+        errorStateView.apply(theme: theme)
 
         for cell in tableView.visibleCells {
             switch cell {
@@ -1032,6 +1043,13 @@ final class SearchCoreViewController: UIViewController {
             tableView.separatorStyle = .none
         case .empty:
             setBackgroundStateView(query.isEmpty ? discoveryEmptyStateView : emptyStateView)
+            tableView.separatorStyle = .none
+        case .error(let message):
+            errorStateView.update(
+                title: query.isEmpty ? MoroL10n.Search.errorDiscoverFailed : MoroL10n.Search.errorSearchFailed,
+                subtitle: MoroErrorCopy.sanitized(message)
+            )
+            setBackgroundStateView(errorStateView)
             tableView.separatorStyle = .none
         default:
             setBackgroundStateView(nil)

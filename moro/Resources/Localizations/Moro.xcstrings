@@ -14816,55 +14816,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Es sind keine Ankündigungen vorhanden."
+            "value" : "Mitteilungen deiner Instanz erscheinen hier, sobald sie veröffentlicht werden."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "There are no announcements to display."
+            "value" : "Instance updates will appear here when published."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No hay anuncios que mostrar."
+            "value" : "Las novedades de tu instancia aparecerán aquí cuando se publiquen."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucune annonce à afficher."
+            "value" : "Les annonces de votre instance apparaîtront ici dès leur publication."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non ci sono annunci da visualizzare."
+            "value" : "Gli aggiornamenti della tua istanza appariranno qui una volta pubblicati."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "表示できるお知らせはありません。"
+            "value" : "サーバーからのお知らせが届くとここに表示されます。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Não há anúncios para apresentar."
+            "value" : "As atualizações da tua instância aparecem aqui quando forem publicadas."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当前没有可展示的公告内容。"
+            "value" : "实例发布新公告时，会安静地出现在这里。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "目前沒有可顯示的公告內容。"
+            "value" : "站點發布新公告時，會安靜地出現在這裡。"
           }
         }
       }
@@ -14875,55 +14875,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keine Ankündigungen"
+            "value" : "Noch keine Ankündigungen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No announcements"
+            "value" : "No announcements yet"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sin anuncios"
+            "value" : "Aún no hay anuncios"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucune annonce"
+            "value" : "Aucune annonce pour le moment"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun annuncio"
+            "value" : "Nessun annuncio per ora"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "お知らせなし"
+            "value" : "お知らせはまだありません"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sem anúncios"
+            "value" : "Ainda sem anúncios"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "暂无公告"
+            "value" : "暂时没有公告"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "暫無公告"
+            "value" : "暫時沒有公告"
           }
         }
       }
@@ -14940,7 +14940,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Failed to load announcements"
+            "value" : "Couldn't load announcements"
           }
         },
         "es" : {
@@ -14952,37 +14952,37 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Échec du chargement des annonces"
+            "value" : "Impossible de charger les annonces"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Caricamento annunci non riuscito"
+            "value" : "Impossibile caricare gli annunci"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "お知らせの読み込みに失敗しました"
+            "value" : "お知らせを読み込めませんでした"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Falha ao carregar os anúncios"
+            "value" : "Não foi possível carregar os anúncios"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "加载公告失败"
+            "value" : "公告暂时没能加载"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "載入公告失敗"
+            "value" : "公告暫時無法載入"
           }
         }
       }
@@ -18002,55 +18002,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Als Lesezeichen gespeicherte Beiträge erscheinen hier für den schnellen Zugriff."
+            "value" : "Speichere Beiträge, die du später noch einmal lesen möchtest."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bookmarked posts will appear here for easy access."
+            "value" : "Save posts you want to revisit anytime."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Las publicaciones guardadas aparecerán aquí para acceder fácilmente."
+            "value" : "Guarda las publicaciones que quieras releer en cualquier momento."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les messages mis en signet apparaîtront ici pour un accès rapide."
+            "value" : "Enregistrez les publications que vous souhaitez relire plus tard."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I post salvati nei preferiti appariranno qui per un accesso rapido."
+            "value" : "Salva i post che vuoi rileggere quando preferisci."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "タイムラインや詳細ページでブックマークボタンをタップすると、ここに一覧表示されます。"
+            "value" : "あとで読み返したい投稿をブックマークして残せます。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "As publicações guardadas aparecerão aqui para acesso rápido."
+            "value" : "Guarda as publicações que quiseres reler mais tarde."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在时间线或详情页点击书签按钮后，会在这里集中查看。"
+            "value" : "遇到想稍后再读的嘟文，点一下书签就能收好。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在時間軸或詳情頁點選書籤按鈕後，會在這裡集中查看。"
+            "value" : "遇到想稍後再讀的貼文，點一下書籤就能收好。"
           }
         }
       }
@@ -18061,55 +18061,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keine Lesezeichen"
+            "value" : "Noch keine Lesezeichen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No Bookmarks"
+            "value" : "No bookmarks yet"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sin marcadores"
+            "value" : "Aún no hay marcadores"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucun signet"
+            "value" : "Aucun signet pour le moment"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun preferito"
+            "value" : "Nessun segnalibro per ora"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ブックマークはありません"
+            "value" : "ブックマークはまだありません"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sem marcadores"
+            "value" : "Ainda sem marcadores"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "还没有书签"
+            "value" : "还没有收藏书签"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "還沒有書籤"
+            "value" : "尚未收藏書籤"
           }
         }
       }
@@ -18179,55 +18179,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Laden fehlgeschlagen"
+            "value" : "Lesezeichen konnten nicht geladen werden"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Failed to Load"
+            "value" : "Couldn't load bookmarks"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Error al cargar"
+            "value" : "No se pudieron cargar los marcadores"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Échec du chargement"
+            "value" : "Impossible de charger les signets"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Caricamento non riuscito"
+            "value" : "Impossibile caricare i segnalibri"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "読み込みに失敗しました"
+            "value" : "ブックマークを読み込めませんでした"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Falha ao carregar"
+            "value" : "Não foi possível carregar os marcadores"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "加载失败"
+            "value" : "书签暂时没能加载"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "載入失敗"
+            "value" : "書籤暫時無法載入"
           }
         }
       }
@@ -38652,13 +38652,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Beiträge, die du favorisiert hast, werden hier angezeigt."
+            "value" : "Beiträge, die du favorisierst, bleiben hier gesammelt."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Posts you favourite will appear here."
+            "value" : "Posts you favourite will stay right here."
           }
         },
         "es" : {
@@ -38670,37 +38670,37 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les messages que vous avez ajoutés aux favoris apparaîtront ici."
+            "value" : "Les publications que vous mettez en favori resteront ici."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I post che apprezzerai appariranno qui."
+            "value" : "I post che aggiungi ai preferiti resteranno qui."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "お気に入りにした投稿がここに表示されます。"
+            "value" : "お気に入りした投稿がここにまとまります。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "As publicações que gostar aparecerão aqui."
+            "value" : "As publicações que marcares como favoritas ficam aqui."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你点赞过的嘟文会在这里集中显示。"
+            "value" : "点过喜欢的嘟文都会收在这里，方便随时回看。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你按讚過的嘟文會在這裡集中顯示。"
+            "value" : "點過喜歡的貼文都會收在這裡，方便隨時回看。"
           }
         }
       }
@@ -38717,7 +38717,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No Favourites Yet"
+            "value" : "No favourites yet"
           }
         },
         "es" : {
@@ -38729,13 +38729,13 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucun favori"
+            "value" : "Aucun favori pour le moment"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun preferito"
+            "value" : "Nessun preferito per ora"
           }
         },
         "ja" : {
@@ -38747,19 +38747,19 @@
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ainda sem gostos"
+            "value" : "Ainda sem favoritos"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "还没有喜欢内容"
+            "value" : "还没有喜欢的嘟文"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "還沒有喜歡的內容"
+            "value" : "尚未有喜歡的貼文"
           }
         }
       }
@@ -48741,55 +48741,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nach dem Hinzufügen von Mitgliedern zeigt die Listen-Timeline deren Inhalte an."
+            "value" : "Füge gefolgte Konten hinzu, um ihre Beiträge hier zu sammeln."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "After adding members, the list timeline will show their content."
+            "value" : "Add accounts you follow to gather their posts here."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Después de añadir miembros, la línea de tiempo de la lista mostrará su contenido."
+            "value" : "Añade cuentas que sigues para reunir sus publicaciones aquí."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Après avoir ajouté des membres, le fil de la liste affichera leur contenu."
+            "value" : "Ajoutez des comptes suivis pour rassembler leurs publications ici."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dopo aver aggiunto dei membri, la timeline della lista mostrerà i loro contenuti."
+            "value" : "Aggiungi gli account che segui per raccogliere qui i loro post."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "メンバーを追加すると、リストのタイムラインにそのアカウントのコンテンツが表示されます。"
+            "value" : "フォロー中のアカウントを追加すると、投稿がここに集まります。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Após adicionar membros, a cronologia da lista mostrará o conteúdo dessas contas."
+            "value" : "Adiciona contas que segues para reunir aqui as suas publicações."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加成员后，该列表时间线会显示这些账号的内容。"
+            "value" : "添加几位关注的账号，这里就会汇集他们的动态。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新增成員後，該列表時間軸將顯示這些帳號的內容。"
+            "value" : "加入幾位追蹤的帳號，這裡就會匯集他們的動態。"
           }
         }
       }
@@ -48800,55 +48800,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diese Liste hat noch keine Mitglieder"
+            "value" : "Noch keine Mitglieder"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This list has no members yet"
+            "value" : "No members yet"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Esta lista aún no tiene miembros"
+            "value" : "Aún no hay miembros"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cette liste n'a pas encore de membres"
+            "value" : "Aucun membre pour le moment"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Questa lista non ha ancora membri"
+            "value" : "Nessun membro per ora"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このリストにはまだメンバーがいません"
+            "value" : "メンバーはまだいません"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Esta lista ainda não tem membros"
+            "value" : "Ainda sem membros"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当前列表还没有成员"
+            "value" : "列表里还没有成员"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "目前列表還沒有成員"
+            "value" : "清單裡還沒有成員"
           }
         }
       }
@@ -50157,55 +50157,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Erstelle Listen, um gefolgten Accounts zu gruppieren und eigene Timelines anzuzeigen."
+            "value" : "Gruppiere gefolgte Konten für ruhigere, fokussierte Timelines."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Create lists to group followed accounts and view dedicated timelines."
+            "value" : "Group accounts you follow into focused timelines."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Crea listas para agrupar cuentas seguidas y ver sus líneas de tiempo dedicadas."
+            "value" : "Agrupa las cuentas que sigues en cronologías más enfocadas."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Créez des listes pour regrouper les comptes suivis et accéder à des fils dédiés."
+            "value" : "Regroupez les comptes suivis dans des fils plus ciblés."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Crea liste per raggruppare gli account che segui e visualizzare timeline dedicate."
+            "value" : "Raggruppa gli account che segui in timeline più focalizzate."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "リストを作成してフォロー中のアカウントをグループ化し、専用のタイムラインを表示できます。"
+            "value" : "よく見るアカウントをまとめて、落ち着いたタイムラインを作れます。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Crie listas para agrupar contas que segue e ver cronologias dedicadas."
+            "value" : "Agrupa contas que segues em cronologias mais focadas."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "创建列表后可将关注账号分组，并查看对应列表时间线。"
+            "value" : "把常看的人分个组，浏览时间线会更专注。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "建立列表後可將追蹤帳號分組，並查看對應的列表時間軸。"
+            "value" : "把常看的人分個組，瀏覽時間軸會更專注。"
           }
         }
       }
@@ -50234,13 +50234,13 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucune liste pour l'instant"
+            "value" : "Aucune liste pour le moment"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessuna lista ancora"
+            "value" : "Nessuna lista per ora"
           }
         },
         "ja" : {
@@ -50252,19 +50252,19 @@
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ainda não tem listas"
+            "value" : "Ainda sem listas"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "还没有列表"
+            "value" : "还没有创建列表"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "還沒有列表"
+            "value" : "尚未建立清單"
           }
         }
       }
@@ -51101,55 +51101,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Laden fehlgeschlagen"
+            "value" : "Listen konnten nicht geladen werden"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Failed to load"
+            "value" : "Couldn't load lists"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Error al cargar"
+            "value" : "No se pudieron cargar las listas"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Échec du chargement"
+            "value" : "Impossible de charger les listes"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Caricamento non riuscito"
+            "value" : "Impossibile caricare le liste"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "読み込み失敗"
+            "value" : "リストを読み込めませんでした"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Falha ao carregar"
+            "value" : "Não foi possível carregar as listas"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "加载失败"
+            "value" : "列表暂时没能加载"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "載入失敗"
+            "value" : "清單暫時無法載入"
           }
         }
       }
@@ -51632,55 +51632,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diese Listen-Zeitleiste enthält noch keine Beiträge."
+            "value" : "Noch keine aktuellen Beiträge von Mitgliedern dieser Liste."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This list timeline has no posts to display yet."
+            "value" : "No recent posts from members of this list."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Esta línea de tiempo de lista aún no tiene publicaciones que mostrar."
+            "value" : "Aún no hay publicaciones recientes de los miembros de esta lista."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cette liste ne contient pas encore de messages à afficher."
+            "value" : "Aucune publication récente des membres de cette liste."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Questa lista non contiene ancora post da visualizzare."
+            "value" : "Nessun post recente dai membri di questa lista."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このリストのタイムラインにはまだ表示できる投稿がありません。"
+            "value" : "このリストのメンバーによる新しい投稿はまだありません。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Esta linha cronológica da lista ainda não tem publicações para mostrar."
+            "value" : "Ainda sem publicações recentes dos membros desta lista."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "该列表时间线还没有可显示的嘟文。"
+            "value" : "列表里的成员还没有发布新的嘟文。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "這個列表的時間軸還沒有可顯示的嘟文。"
+            "value" : "清單裡的成員尚未發布新的貼文。"
           }
         }
       }
@@ -51691,55 +51691,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Liste ist leer"
+            "value" : "Hier ist es noch ruhig"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "List is empty"
+            "value" : "Quiet here for now"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La lista está vacía"
+            "value" : "Todo tranquilo por aquí"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Liste vide"
+            "value" : "C'est calme par ici"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lista vuota"
+            "value" : "Qui è tutto tranquillo"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "リストはまだ空です"
+            "value" : "いまはとても静かです"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lista sem conteúdo"
+            "value" : "Tudo calmo por aqui"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "列表暂无内容"
+            "value" : "这里还很安静"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "列表暫無內容"
+            "value" : "這裡還很安靜"
           }
         }
       }
@@ -62372,55 +62372,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Laden fehlgeschlagen"
+            "value" : "Mitteilungen konnten nicht geladen werden"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Failed to load"
+            "value" : "Couldn't load notifications"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Error al cargar"
+            "value" : "No se pudieron cargar las notificaciones"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Échec du chargement"
+            "value" : "Impossible de charger les notifications"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Caricamento non riuscito"
+            "value" : "Impossibile caricare le notifiche"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "読み込みに失敗しました"
+            "value" : "通知を読み込めませんでした"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Falha ao carregar"
+            "value" : "Não foi possível carregar as notificações"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "加载失败"
+            "value" : "通知暂时没能加载"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "載入失敗"
+            "value" : "通知暫時無法載入"
           }
         }
       }
@@ -62437,7 +62437,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Follows, replies, and likes will appear here."
+            "value" : "Follows, replies, and favourites will show up here."
           }
         },
         "es" : {
@@ -62455,31 +62455,31 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Follower, risposte e mi piace appariranno qui."
+            "value" : "Nuovi follower, risposte e preferiti appariranno qui."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "フォロー、返信、お気に入りが届くとここに表示されます。"
+            "value" : "フォローや返信、お気に入りが届くとここに表示されます。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seguimentos, respostas e favoritos aparecerão aqui."
+            "value" : "Novos seguidores, respostas e favoritos aparecem aqui."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "收到关注、回复、点赞后会显示在这里。"
+            "value" : "收到关注、回复或喜欢时，会第一时间出现在这里。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "收到追蹤、回覆、按讚後會顯示在這裡。"
+            "value" : "收到追蹤、回覆或喜歡時，會第一時間出現在這裡。"
           }
         }
       }
@@ -62626,13 +62626,13 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucune notification pour l'instant"
+            "value" : "Aucune notification pour le moment"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessuna notifica"
+            "value" : "Nessuna notifica per ora"
           }
         },
         "ja" : {
@@ -62650,13 +62650,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "暂无通知"
+            "value" : "暂时没有通知"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "暫無通知"
+            "value" : "暫時沒有通知"
           }
         }
       }
@@ -73904,55 +73904,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Beiträge mit Bildern oder Videos werden hier angezeigt."
+            "value" : "Beiträge mit Fotos oder Videos werden hier gesammelt."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Posts with images or videos will appear here."
+            "value" : "Posts with photos or videos will be collected here."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aquí aparecerán las publicaciones con imágenes o vídeos."
+            "value" : "Las publicaciones con fotos o vídeos se reunirán aquí."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les messages contenant des images ou des vidéos s'afficheront ici."
+            "value" : "Les publications avec photos ou vidéos seront réunies ici."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I post con immagini o video appariranno qui."
+            "value" : "I post con foto o video verranno raccolti qui."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "画像や動画を含む投稿がここに表示されます。"
+            "value" : "画像や動画つきの投稿がここに集まります。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "As publicações com imagens ou vídeos serão apresentadas aqui."
+            "value" : "As publicações com fotos ou vídeos ficam reunidas aqui."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "带图片或视频的嘟文会显示在这里。"
+            "value" : "包含图片或视频的嘟文会收录在这里。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "含圖片或影片的嘟文會顯示在這裡。"
+            "value" : "包含圖片或影片的貼文會收錄在這裡。"
           }
         }
       }
@@ -73975,19 +73975,19 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sin contenido multimedia"
+            "value" : "Aún no hay contenido multimedia"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucun média pour l'instant"
+            "value" : "Aucun média pour le moment"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun contenuto multimediale"
+            "value" : "Nessun media per ora"
           }
         },
         "ja" : {
@@ -74011,7 +74011,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "還沒有媒體內容"
+            "value" : "尚未有媒體內容"
           }
         }
       }
@@ -74022,55 +74022,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Beiträge werden hier angezeigt, sobald der erste veröffentlicht wurde."
+            "value" : "Neue Beiträge erscheinen hier, sobald sie geteilt werden."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Posts will appear here after the first one is published."
+            "value" : "New posts will appear here once shared."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Las publicaciones aparecerán aquí tras publicar la primera."
+            "value" : "Las nuevas publicaciones aparecerán aquí cuando se compartan."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les messages s'afficheront ici après la publication du premier."
+            "value" : "Les nouvelles publications apparaîtront ici dès qu'elles seront partagées."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I post appariranno qui dopo la pubblicazione del primo."
+            "value" : "I nuovi post appariranno qui una volta pubblicati."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "最初の投稿を公開すると、ここに表示されます。"
+            "value" : "新しい投稿があると、ここに表示されます。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "As publicações serão apresentadas aqui após a primeira ser partilhada."
+            "value" : "As novas publicações aparecem aqui assim que forem partilhadas."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "发布第一条嘟文后，会显示在这里。"
+            "value" : "新的嘟文发布后，会出现在这里。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "發布第一則嘟文後，會顯示在這裡。"
+            "value" : "新的貼文發布後，會出現在這裡。"
           }
         }
       }
@@ -74093,19 +74093,19 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sin publicaciones aún"
+            "value" : "Aún no hay publicaciones"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucun message pour l'instant"
+            "value" : "Aucune publication pour le moment"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun post ancora"
+            "value" : "Nessun post per ora"
           }
         },
         "ja" : {
@@ -74123,13 +74123,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "还没有发布内容"
+            "value" : "还没有发布嘟文"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "還沒有發布內容"
+            "value" : "尚未發布貼文"
           }
         }
       }
@@ -74140,55 +74140,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Antworten werden hier automatisch angezeigt."
+            "value" : "Antworten in Unterhaltungen erscheinen hier."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Replies will show up here automatically."
+            "value" : "Replies in conversations will appear here."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Las respuestas aparecerán aquí automáticamente."
+            "value" : "Las respuestas en conversaciones aparecerán aquí."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les réponses s'afficheront ici automatiquement."
+            "value" : "Les réponses aux conversations apparaîtront ici."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le risposte appariranno qui automaticamente."
+            "value" : "Le risposte alle conversazioni appariranno qui."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "他の投稿に返信すると、ここに自動で表示されます。"
+            "value" : "会話への返信がここにまとまって表示されます。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "As respostas serão apresentadas aqui automaticamente."
+            "value" : "As respostas em conversas aparecem aqui."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "回复其他嘟文后，这里会自动更新。"
+            "value" : "参与对话后的回复会集中显示在这里。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "回覆其他嘟文後，這裡會自動更新。"
+            "value" : "參與對話後的回覆會集中顯示在這裡。"
           }
         }
       }
@@ -74211,19 +74211,19 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sin respuestas aún"
+            "value" : "Aún no hay respuestas"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucune réponse pour l'instant"
+            "value" : "Aucune réponse pour le moment"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessuna risposta ancora"
+            "value" : "Nessuna risposta per ora"
           }
         },
         "ja" : {
@@ -74241,13 +74241,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "还没有回复内容"
+            "value" : "还没有回复"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "還沒有回覆內容"
+            "value" : "尚未有回覆"
           }
         }
       }
@@ -86117,55 +86117,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keine Entdeckungen verfügbar"
+            "value" : "Gerade nichts zum Entdecken"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No discoverable content"
+            "value" : "Nothing to explore yet"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sin contenido para descubrir"
+            "value" : "Aún no hay nada para explorar"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucun contenu à explorer"
+            "value" : "Rien à explorer pour le moment"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun contenuto da scoprire"
+            "value" : "Ancora nulla da esplorare"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "表示できるコンテンツがありません"
+            "value" : "おすすめのコンテンツはまだありません"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sem conteúdo para descobrir"
+            "value" : "Ainda nada para explorar"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "暂无可发现内容"
+            "value" : "暂时没有推荐内容"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "暫無可探索的內容"
+            "value" : "暫時沒有推薦內容"
           }
         }
       }
@@ -86176,13 +86176,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keine Ergebnisse gefunden"
+            "value" : "Keine passenden Ergebnisse"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No matching results found"
+            "value" : "No matching results"
           }
         },
         "es" : {
@@ -86194,7 +86194,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucun résultat trouvé"
+            "value" : "Aucun résultat correspondant"
           }
         },
         "it" : {
@@ -86212,19 +86212,19 @@
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nenhum resultado encontrado"
+            "value" : "Sem resultados correspondentes"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未找到匹配内容"
+            "value" : "没找到相关内容"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "找不到相符的內容"
+            "value" : "找不到相關內容"
           }
         }
       }
@@ -86232,15 +86232,60 @@
     "search.empty.noMatchHint" : {
       "extractionState" : "manual",
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Versuche einen anderen Namen, Nutzernamen, Hashtag oder eine vollständige Serveradresse." } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Try another name, username, hashtag, or full server address." } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Prueba con otro nombre, usuario, hashtag o una dirección completa del servidor." } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Essayez un autre nom, nom d’utilisateur, hashtag ou l’adresse complète d’un serveur." } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Prova un altro nome, nome utente, hashtag o l’indirizzo completo di un server." } },
-        "ja" : { "stringUnit" : { "state" : "translated", "value" : "別の名前、ユーザー名、ハッシュタグ、またはサーバーの完全なアドレスをお試しください。" } },
-        "pt-PT" : { "stringUnit" : { "state" : "translated", "value" : "Tente outro nome, nome de utilizador, hashtag ou endereço completo do servidor." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请尝试其他名称、用户名、话题标签或完整的服务器地址。" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "請嘗試其他名稱、使用者名稱、主題標籤或完整的伺服器位址。" } }
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Probiere ein anderes Stichwort, einen Namen, Hashtag oder eine vollständige URL."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try another keyword, handle, hashtag, or full profile URL."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prueba con otra palabra clave, usuario, etiqueta o URL completa."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Essayez un autre mot-clé, identifiant, hashtag ou lien complet."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prova con un'altra parola chiave, nome utente, hashtag o URL completo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のキーワードやユーザー名、ハッシュタグ、URLでも試してみてください。"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tenta outra palavra-chave, nome de utilizador, hashtag ou URL completo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "换个关键词、用户名、话题标签，或输入完整主页地址试试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "換個關鍵字、使用者名稱、主題標籤，或輸入完整主頁網址試試。"
+          }
+        }
       }
     },
     "search.entryHint" : {
@@ -94183,55 +94228,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Noch keine föderierte öffentliche Inhalte abgerufen. Später erneut versuchen."
+            "value" : "Versuche es in einem Moment noch einmal zu aktualisieren."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No federated public content fetched yet. Try again later."
+            "value" : "Try refreshing again in a moment."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aún no se ha obtenido contenido público federado. Inténtalo más tarde."
+            "value" : "Prueba a actualizar de nuevo en un momento."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucun contenu public fédéré disponible pour l'instant. Réessayez plus tard."
+            "value" : "Essayez d'actualiser à nouveau dans un instant."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun contenuto pubblico federato ancora recuperato. Riprova più tardi."
+            "value" : "Prova ad aggiornare tra un momento."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "連合タイムラインの公開コンテンツはまだ取得されていません。後でもう一度お試しください。"
+            "value" : "少し待ってからもう一度更新してみてください。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ainda não foram obtidos conteúdos públicos federados. Tente mais tarde."
+            "value" : "Tenta atualizar novamente dentro de instantes."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "跨站公开内容暂未拉取到，稍后再试。"
+            "value" : "稍后再刷新试试看。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "跨站公開內容尚未擷取，請稍後再試。"
+            "value" : "稍後再重新整理試試看。"
           }
         }
       }
@@ -94242,55 +94287,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Föderierte Timeline ist leer"
+            "value" : "Noch nichts in der föderierten Timeline"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Federated timeline is empty"
+            "value" : "Nothing on the federated timeline yet"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La línea de tiempo federada está vacía"
+            "value" : "Aún no hay nada en la cronología federada"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le fil fédéré est vide"
+            "value" : "Rien sur le fil fédéré pour le moment"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La timeline federata è vuota"
+            "value" : "Ancora nulla nella timeline federata"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "連合タイムラインは空です"
+            "value" : "連合タイムラインはまだ空です"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A linha cronológica federada está vazia"
+            "value" : "Ainda nada na cronologia federada"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "跨站时间线为空"
+            "value" : "跨站暂时没有动态"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "跨站時間軸為空"
+            "value" : "跨站暫時沒有動態"
           }
         }
       }
@@ -94301,55 +94346,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Folge weiteren Accounts, damit hier die neuesten Beiträge erscheinen."
+            "value" : "Folge ein paar Konten, um hier ihre neuesten Beiträge zu sehen."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Follow more accounts and the latest posts will appear here."
+            "value" : "Follow a few accounts to see their latest posts here."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sigue más cuentas y las últimas publicaciones aparecerán aquí."
+            "value" : "Sigue algunas cuentas para ver sus últimas publicaciones aquí."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Suivez plus de comptes pour voir leurs derniers messages ici."
+            "value" : "Suivez quelques comptes pour voir leurs publications récentes ici."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Segui altri account e i post più recenti appariranno qui."
+            "value" : "Segui qualche account per vedere qui i loro ultimi post."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "もっとアカウントをフォローすると、最新の投稿がここに表示されます。"
+            "value" : "気になるアカウントをフォローすると、新しい投稿がここに届きます。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Siga mais contas e as publicações mais recentes aparecerão aqui."
+            "value" : "Segue algumas contas para veres aqui as publicações mais recentes."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "关注更多账号后，这里会显示最新嘟文。"
+            "value" : "关注感兴趣的人后，最新动态会出现在这里。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "追蹤更多帳號後，這裡會顯示最新嘟文。"
+            "value" : "追蹤感興趣的人後，最新動態會出現在這裡。"
           }
         }
       }
@@ -94360,55 +94405,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Folgen-Timeline ist leer"
+            "value" : "Deine Timeline ist noch ruhig"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Following timeline is empty"
+            "value" : "Your timeline is quiet"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La línea de tiempo de seguidos está vacía"
+            "value" : "Tu cronología está tranquila"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le fil d'abonnements est vide"
+            "value" : "Votre fil est encore calme"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La timeline dei seguiti è vuota"
+            "value" : "La tua timeline è tranquilla"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "フォロータイムラインは空です"
+            "value" : "タイムラインはまだ静かです"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A linha cronológica de seguidos está vazia"
+            "value" : "A tua cronologia está calma"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "关注时间线为空"
+            "value" : "时间线还很安静"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "追蹤時間軸為空"
+            "value" : "時間軸還很安靜"
           }
         }
       }
@@ -94419,55 +94464,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Auf dieser Instanz sind derzeit keine öffentlichen Inhalte vorhanden. Später erneut versuchen."
+            "value" : "Schau gleich noch einmal vorbei, um neue öffentliche Beiträge zu sehen."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No public content on this instance currently. Try again later."
+            "value" : "Check back in a moment to see new public posts."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No hay contenido público en esta instancia por ahora. Inténtalo más tarde."
+            "value" : "Vuelve en un momento para ver nuevas publicaciones públicas."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucun contenu public sur cette instance pour l'instant. Réessayez plus tard."
+            "value" : "Revenez dans un instant pour voir les nouvelles publications publiques."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun contenuto pubblico su questa istanza al momento. Riprova più tardi."
+            "value" : "Torna tra poco per vedere nuovi post pubblici."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このインスタンスには現在公開コンテンツがありません。後でもう一度お試しください。"
+            "value" : "少し時間をおいてから、またのぞいてみてください。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Não há conteúdo público nesta instância de momento. Tente mais tarde."
+            "value" : "Volta daqui a pouco para veres novas publicações públicas."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当前实例暂无公开内容，稍后再试。"
+            "value" : "稍后再来看看，新的公开动态会出现在这里。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "目前本站沒有公開內容，請稍後再試。"
+            "value" : "稍後再來看看，新的公開動態會出現在這裡。"
           }
         }
       }
@@ -94478,55 +94523,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lokale Timeline ist leer"
+            "value" : "Noch nichts in der lokalen Timeline"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Local timeline is empty"
+            "value" : "Nothing on the local timeline yet"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La línea de tiempo local está vacía"
+            "value" : "Aún no hay nada en la cronología local"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le fil local est vide"
+            "value" : "Rien sur le fil local pour le moment"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La timeline locale è vuota"
+            "value" : "Ancora nulla nella timeline locale"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ローカルタイムラインは空です"
+            "value" : "ローカルタイムラインはまだ空です"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A linha cronológica local está vazia"
+            "value" : "Ainda nada na cronologia local"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本站时间线为空"
+            "value" : "本站暂时没有动态"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本站時間軸為空"
+            "value" : "本站暫時沒有動態"
           }
         }
       }
@@ -94537,55 +94582,55 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Laden fehlgeschlagen"
+            "value" : "Konnte gerade nicht geladen werden"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Failed to load"
+            "value" : "Couldn't load right now"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Error al cargar"
+            "value" : "No se pudo cargar ahora"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Échec du chargement"
+            "value" : "Chargement impossible pour l'instant"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Caricamento non riuscito"
+            "value" : "Impossibile caricare ora"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "読み込みに失敗しました"
+            "value" : "今は読み込めませんでした"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Falha ao carregar"
+            "value" : "Não foi possível carregar agora"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "加载失败"
+            "value" : "暂时没能加载"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "載入失敗"
+            "value" : "暫時無法載入"
           }
         }
       }

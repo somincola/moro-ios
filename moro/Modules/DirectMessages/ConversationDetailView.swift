@@ -233,63 +233,25 @@ struct ConversationDetailView: View {
 
     @ViewBuilder
     private var emptyView: some View {
-        VStack(spacing: theme.spacing.l) {
-            Spacer()
-
-            Image(systemName: "bubble.left.and.bubble.right")
-                .moroScaledFont(size: 36)
-                .foregroundStyle(theme.colors.textSecondary)
-
-            Text(MoroL10n.Conversation.emptyTitle)
-                .font(theme.typography.subtitle)
-                .foregroundStyle(theme.colors.textPrimary)
-
-            Text(MoroL10n.Conversation.emptyMessage)
-                .font(theme.typography.body)
-                .foregroundStyle(theme.colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, theme.spacing.xl)
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        EmptyStateView(
+            spec: EmptyStateSpec(
+                icon: "bubble.left.and.bubble.right",
+                title: MoroL10n.Conversation.emptyTitle,
+                message: MoroL10n.Conversation.emptyMessage
+            )
+        )
     }
 
     @ViewBuilder
     private func errorView(_ error: Error) -> some View {
-        VStack(spacing: theme.spacing.l) {
-            Spacer()
-
-            Image(systemName: "exclamationmark.triangle")
-                .moroScaledFont(size: 36)
-                .foregroundStyle(theme.colors.error)
-
-            Text(MoroL10n.Conversation.loadFailed)
-                .font(theme.typography.subtitle)
-                .foregroundStyle(theme.colors.textPrimary)
-
-            Text(error.localizedDescription)
-                .font(theme.typography.body)
-                .foregroundStyle(theme.colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, theme.spacing.xl)
-
-            Button {
-                Task { await viewModel.refresh() }
-            } label: {
-                Text(MoroL10n.Conversation.retry)
-                    .font(theme.typography.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(theme.colors.primaryForeground)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Capsule().fill(theme.colors.primary500))
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ErrorStateView(
+            spec: ErrorStateSpec(
+                title: MoroL10n.Conversation.loadFailed,
+                message: MoroErrorCopy.message(for: error),
+                actionTitle: MoroL10n.Conversation.retry,
+                action: { Task { await viewModel.refresh() } }
+            )
+        )
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool) {
@@ -311,24 +273,14 @@ struct ConversationDetailView: View {
     private func inputBar(proxy: ScrollViewProxy) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if let errorMessage = viewModel.sendErrorMessage {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .moroScaledFont(size: 12, weight: .semibold)
-                    Text(errorMessage)
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    if viewModel.canRetryLastFailedSend {
-                        Button(MoroL10n.Conversation.retry) {
-                            sendDraftMessage(proxy: proxy, retryFailed: true)
-                        }
-                        .buttonStyle(.plain)
-                        .font(theme.typography.caption)
-                        .fontWeight(.semibold)
-                    }
-                }
-                .font(theme.typography.caption)
-                .foregroundStyle(theme.colors.error)
-                .padding(.horizontal, 12)
+                MoroInlineNoticeBanner(
+                    message: errorMessage,
+                    tone: .error,
+                    actionTitle: viewModel.canRetryLastFailedSend ? MoroL10n.Conversation.retry : nil,
+                    action: viewModel.canRetryLastFailedSend ? {
+                        sendDraftMessage(proxy: proxy, retryFailed: true)
+                    } : nil
+                )
             }
 
             HStack(alignment: .bottom, spacing: 10) {

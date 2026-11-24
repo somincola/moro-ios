@@ -23,25 +23,23 @@ struct NotificationRequestsView: View {
     var body: some View {
         Group {
             if isLoading, requests.isEmpty {
-                ProgressView()
+                MoroLoadingStateView()
             } else if let loadError, requests.isEmpty {
-                ContentUnavailableView {
-                    Label(
-                        MoroL10n.Notifications.loadFailed,
-                        systemImage: "wifi.exclamationmark"
+                ErrorStateView(
+                    spec: ErrorStateSpec(
+                        title: MoroL10n.Notifications.loadFailed,
+                        message: loadError,
+                        actionTitle: MoroL10n.Notifications.retryAction,
+                        action: { Task { await load(reset: true) } }
                     )
-                } description: {
-                    Text(loadError)
-                } actions: {
-                    Button(MoroL10n.Notifications.retryAction) {
-                        Task { await load(reset: true) }
-                    }
-                }
+                )
             } else if requests.isEmpty {
-                ContentUnavailableView(
-                    MoroL10n.Notifications.emptyTitle,
-                    systemImage: "tray",
-                    description: Text(MoroL10n.NotificationSettings.requestsEmptyMessage)
+                EmptyStateView(
+                    spec: EmptyStateSpec(
+                        icon: "tray",
+                        title: MoroL10n.Notifications.emptyTitle,
+                        message: MoroL10n.NotificationSettings.requestsEmptyMessage
+                    )
                 )
             } else {
                 requestsList

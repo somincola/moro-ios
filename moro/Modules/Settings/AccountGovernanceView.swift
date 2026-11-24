@@ -24,15 +24,12 @@ struct AccountGovernanceView: View {
         MoroSettingsList {
             if let transientErrorMessage = viewModel.transientErrorMessage {
                 Section {
-                    HStack(alignment: .top, spacing: theme.spacing.s) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(theme.colors.error)
-                            .padding(.top, 2)
-                        Text(transientErrorMessage)
-                            .font(theme.typography.caption)
-                            .foregroundStyle(theme.colors.textPrimary)
-                    }
-                    .padding(.vertical, theme.spacing.xs)
+                    MoroInlineNoticeBanner(
+                        message: transientErrorMessage,
+                        tone: .error,
+                        actionTitle: MoroL10n.GovernanceView.retry,
+                        action: { Task { await viewModel.refresh() } }
+                    )
                 }
             }
 
@@ -53,48 +50,32 @@ struct AccountGovernanceView: View {
     private var accountSection: some View {
         if viewModel.accounts.isEmpty && isLoadingState {
             Section {
-                HStack {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
-                }
-                .padding(.vertical, theme.spacing.m)
+                MoroLoadingStateView(mascotSize: 38)
+                    .frame(minHeight: 160)
             }
         } else if viewModel.accounts.isEmpty, case .error(let error) = viewModel.loadingState {
             Section {
-                VStack(alignment: .leading, spacing: theme.spacing.s) {
-                    Text(MoroL10n.GovernanceView.loadFailed)
-                        .font(theme.typography.body)
-                        .fontWeight(.semibold)
-                    Text(error.localizedDescription)
-                        .font(theme.typography.caption)
-                        .foregroundStyle(theme.colors.textSecondary)
-                    Button {
-                        Task { await viewModel.refresh() }
-                    } label: {
-                        Text(MoroL10n.GovernanceView.retry)
-                            .font(theme.typography.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(theme.colors.primaryForeground)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Capsule().fill(theme.colors.primary500))
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.vertical, theme.spacing.xs)
+                ErrorStateView(
+                    spec: ErrorStateSpec(
+                        title: MoroL10n.GovernanceView.loadFailed,
+                        message: MoroErrorCopy.message(for: error),
+                        actionTitle: MoroL10n.GovernanceView.retry,
+                        action: { Task { await viewModel.refresh() } }
+                    )
+                )
+                .frame(minHeight: 240)
             }
         } else if viewModel.accounts.isEmpty {
             Section {
-                VStack(alignment: .leading, spacing: theme.spacing.s) {
-                    Text(viewModel.kind.emptyTitle)
-                        .font(theme.typography.body)
-                        .fontWeight(.semibold)
-                    Text(viewModel.kind.emptyMessage)
-                        .font(theme.typography.caption)
-                        .foregroundStyle(theme.colors.textSecondary)
-                }
-                .padding(.vertical, theme.spacing.xs)
+                EmptyStateView(
+                    spec: EmptyStateSpec(
+                        icon: "person.slash",
+                        title: viewModel.kind.emptyTitle,
+                        message: viewModel.kind.emptyMessage,
+                        mascot: .calm
+                    )
+                )
+                .frame(minHeight: 240)
             }
         } else {
             Section {

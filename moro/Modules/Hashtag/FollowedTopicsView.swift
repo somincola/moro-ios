@@ -19,9 +19,15 @@ struct FollowedTopicsView: View {
         MoroSettingsList {
             Section {
                 if model.tags.isEmpty, model.hasLoaded, !model.isLoading, model.error == nil {
-                    Text(MoroL10n.Topics.empty)
-                        .foregroundStyle(theme.colors.textSecondary)
-                        .padding(.vertical, theme.spacing.m)
+                    EmptyStateView(
+                        spec: EmptyStateSpec(
+                            icon: "number",
+                            title: MoroL10n.Topics.empty,
+                            message: MoroL10n.Topics.homeHint,
+                            mascot: .calm
+                        )
+                    )
+                    .frame(minHeight: 220)
                 }
                 ForEach(model.tags) { tag in
                     HStack {
@@ -48,25 +54,58 @@ struct FollowedTopicsView: View {
                     }
                 }
                 if model.isLoading {
-                    HStack { Spacer(); ProgressView(); Spacer() }.frame(minHeight: 44)
+                    HStack {
+                        Spacer(minLength: 0)
+                        MoroMascotView(expression: .thinking, size: 32)
+                        Spacer(minLength: 0)
+                    }
+                    .frame(minHeight: 56)
                 } else if model.error != nil {
-                    VStack(alignment: .leading) {
-                        Text(MoroL10n.Topics.loadFailed).foregroundStyle(theme.colors.textSecondary)
-                        Button(MoroL10n.Compose.retry) { Task { await model.retry() } }
-                            .frame(minHeight: 44)
-                            .accessibilityIdentifier("topics.retry")
+                    if model.tags.isEmpty {
+                        ErrorStateView(
+                            spec: ErrorStateSpec(
+                                title: MoroL10n.Topics.loadFailed,
+                                message: MoroL10n.AppError.recoveryTryAgain,
+                                actionTitle: MoroL10n.Compose.retry,
+                                action: { Task { await model.retry() } },
+                                actionAccessibilityIdentifier: "topics.retry"
+                            )
+                        )
+                        .frame(minHeight: 220)
+                    } else {
+                        MoroInlineNoticeBanner(
+                            message: MoroL10n.Topics.loadFailed,
+                            tone: .error,
+                            actionTitle: MoroL10n.Compose.retry,
+                            action: { Task { await model.retry() } },
+                            actionAccessibilityIdentifier: "topics.retry"
+                        )
+                        .padding(.vertical, theme.spacing.xs)
                     }
                 } else if model.nextMaxID != nil {
-                    Button(MoroL10n.Topics.loadMore) { Task { await model.load() } }
-                        .frame(minHeight: 44)
-                        .accessibilityIdentifier("topics.loadMore")
+                    HStack {
+                        Spacer(minLength: 0)
+                        MoroStateActionButton(
+                            title: MoroL10n.Topics.loadMore,
+                            style: .subtle,
+                            accessibilityIdentifier: "topics.loadMore"
+                        ) {
+                            Task { await model.load() }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, theme.spacing.s)
                 }
             } footer: {
-                Text(MoroL10n.Topics.homeHint)
+                if !model.tags.isEmpty {
+                    Text(MoroL10n.Topics.homeHint)
+                }
             }
             if model.removalError != nil {
-                Text(MoroL10n.Topics.actionFailed)
-                    .foregroundStyle(theme.colors.textSecondary)
+                MoroInlineNoticeBanner(
+                    message: MoroL10n.Topics.actionFailed,
+                    tone: .error
+                )
             }
         }
         .moroSettingsListChrome()
