@@ -567,13 +567,15 @@ struct ProfileView: View {
     ) -> some View {
         VStack(spacing: 0) {
             tabBar(hidesAccessibility: hidesAccessibility)
-            if viewModel.showsFeaturedTags {
+            if viewModel.showsFeaturedTags && viewModel.selectedTab == .posts {
                 ProfileFeaturedTagBar(tags: viewModel.featuredTags, selection: viewModel.selectedFeaturedTag) { tag in
                     Task { await viewModel.selectFeaturedTag(tag) }
                 }
                 .accessibilityHidden(hidesAccessibility)
             }
-            MoroDivider()
+            Rectangle()
+                .fill(theme.colors.borderSubtle)
+                .frame(height: 0.5)
         }
         .moroReadableColumn()
         .background(theme.colors.surfaceBase)
@@ -1149,6 +1151,7 @@ struct ProfileView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, theme.spacing.contentHorizontalInset)
             .padding(.top, theme.spacing.s)
+            .padding(.bottom, theme.spacing.xs)
         }
     }
 
@@ -1156,6 +1159,10 @@ struct ProfileView: View {
     private func profileFieldRow(field: AccountField, account: Account) -> some View {
         let emojis = account.contentEmojis
         let nameElements = field.nameContentElements(
+            emojis: emojis,
+            contentBaseURL: account.contentBaseURL
+        )
+        let valueElements = field.valueContentElements(
             emojis: emojis,
             contentBaseURL: account.contentBaseURL
         )
@@ -1184,27 +1191,26 @@ struct ProfileView: View {
                     : nameElements.plainTextValue
             )
 
-            HStack(alignment: .firstTextBaseline, spacing: theme.spacing.xs) {
-                RichTextContentView(
-                    elements: field.valueContentElements(
-                        emojis: emojis,
-                        contentBaseURL: account.contentBaseURL
-                    ),
-                    emojiSize: 16,
-                    isSelectable: true,
-                    fontOverride: .system(.subheadline, weight: .medium),
-                    uiFontOverride: .moroScaled(ofSize: 15, weight: .medium, relativeTo: .subheadline),
-                    textColorOverride: theme.colors.textPrimary,
-                    linkColorOverride: theme.colors.contentLink,
-                    underlinesLinks: false,
-                    lineSpacing: 3,
-                    trailingSystemImage: field.isVerified ? "checkmark.seal.fill" : nil,
-                    trailingSystemImageColor: theme.colors.success,
-                    trailingSystemImageSize: 11
-                )
-                .multilineTextAlignment(.leading)
+            if !valueElements.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: theme.spacing.xs) {
+                    RichTextContentView(
+                        elements: valueElements,
+                        emojiSize: 16,
+                        isSelectable: true,
+                        fontOverride: .system(.subheadline, weight: .medium),
+                        uiFontOverride: .moroScaled(ofSize: 15, weight: .medium, relativeTo: .subheadline),
+                        textColorOverride: theme.colors.textPrimary,
+                        linkColorOverride: theme.colors.contentLink,
+                        underlinesLinks: false,
+                        lineSpacing: 3,
+                        trailingSystemImage: field.isVerified ? "checkmark.seal.fill" : nil,
+                        trailingSystemImageColor: theme.colors.success,
+                        trailingSystemImageSize: 11
+                    )
+                    .multilineTextAlignment(.leading)
 
-                Spacer(minLength: 0)
+                    Spacer(minLength: 0)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1232,12 +1238,12 @@ struct ProfileView: View {
                             )
                             .padding(.vertical, theme.spacing.sm)
 
-                        Rectangle()
+                        Capsule()
                             .fill(
                                 viewModel.selectedTab == tab
                                     ? theme.colors.primary500 : Color.clear
                             )
-                            .frame(height: 2)
+                            .frame(width: 36, height: 2.5)
                     }
                     .frame(maxWidth: .infinity)
                 }

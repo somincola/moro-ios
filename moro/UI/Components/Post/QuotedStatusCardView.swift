@@ -12,6 +12,7 @@ import SwiftUI
 struct QuotedStatusCardView: View {
     let quote: Status
     var style: PostContent.QuoteStyle = .flat
+    var isInteractive: Bool = true
     var onTap: ((Status) -> Void)? = nil
     var onImageTap: ((URL) -> Void)? = nil
 
@@ -145,7 +146,9 @@ struct QuotedStatusCardView: View {
         }
         .clipShape(cardShape)
         .contentShape(cardShape)
+        .allowsHitTesting(isInteractive)
         .onTapGesture {
+            guard isInteractive else { return }
             onTap?(quotedDisplayStatus)
         }
         .accessibilityElement(children: .contain)

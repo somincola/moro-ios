@@ -383,7 +383,7 @@ struct ComposeView: View {
                         .disabled(viewModel.mediaAttachments.count < 2)
                         .accessibilityIdentifier("compose.mediaOrder")
                     } label: {
-                        Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44)
+                        Image(systemName: "ellipsis")
                     }
                     .disabled(!viewModel.isEditingSourceReady || isPublishingOrClosing)
                     .accessibilityLabel(MoroL10n.ComposeReading.options)
