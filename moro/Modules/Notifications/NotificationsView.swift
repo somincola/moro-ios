@@ -418,7 +418,7 @@ private struct NotificationFeedView: View {
             }
             .onScrollPhaseChange { _, phase in
                 isUserScrolling = phase != .idle
-                // Avatars pause while the list moves and resume once it settles.
+                // Active avatars keep animating while scrolling; uncached decodes wait until idle.
                 playbackScope.isScrolling = phase != .idle
                 if phase == .interacting { userScrollGeneration &+= 1 }
             }
