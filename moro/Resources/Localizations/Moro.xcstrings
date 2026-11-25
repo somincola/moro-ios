@@ -344,7 +344,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "分享帖子链接"
+            "value" : "分享嘟文链接"
           }
         },
         "zh-Hant" : {
@@ -5595,7 +5595,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未能确认帖子是否发布成功，请稍后重试。"
+            "value" : "未能确认嘟文是否发布成功，请稍后重试。"
           }
         },
         "zh-Hant" : {
@@ -5907,7 +5907,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "发帖反馈会打开一份公开草稿，可编辑后再发布。涉及私人信息时，请使用邮件。"
+            "value" : "公开嘟文反馈会打开一份草稿，可编辑后再发布。涉及私人信息时，请使用邮件。"
           }
         },
         "zh-Hant" : {
@@ -6143,7 +6143,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "公开发帖反馈"
+            "value" : "公开嘟文反馈"
           }
         },
         "zh-Hant" : {
@@ -6202,7 +6202,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "登录账号、草稿及附件、设置、书签和阅读记录都会保留。不会删除服务器上的帖子或个人资料。"
+            "value" : "登录账号、草稿及附件、设置、书签和阅读记录都会保留。不会删除服务器上的嘟文或个人资料。"
           }
         },
         "zh-Hant" : {
@@ -7011,7 +7011,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "暂时无法更新，正在显示本机保留的列表帖子。"
+            "value" : "暂时无法更新，正在显示本机保留的列表嘟文。"
           }
         },
         "zh-Hant" : {
@@ -8427,7 +8427,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当前分类中没有符合此话题的帖子。"
+            "value" : "当前分类中没有符合此话题的嘟文。"
           }
         },
         "zh-Hant" : {
@@ -8781,7 +8781,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "贴文"
+            "value" : "嘟文"
           }
         },
         "zh-Hant" : {
@@ -9371,7 +9371,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择话题，方便他人在你的个人主页筛选帖子。"
+            "value" : "选择话题，方便他人在你的个人主页筛选嘟文。"
           }
         },
         "zh-Hant" : {
@@ -9666,7 +9666,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "回到当前帖子"
+            "value" : "回到当前嘟文"
           }
         },
         "zh-Hant" : {
@@ -10020,7 +10020,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在显示当前帖子作者的回复，上方保留原有上下文。"
+            "value" : "正在显示当前嘟文作者的回复，上方保留原有上下文。"
           }
         },
         "zh-Hant" : {
@@ -10197,7 +10197,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "帖子预览"
+            "value" : "嘟文预览"
           }
         },
         "zh-Hant" : {
@@ -10256,7 +10256,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "拖动右侧手柄调整帖子中的展示顺序。"
+            "value" : "拖动右侧手柄调整嘟文中的展示顺序。"
           }
         },
         "zh-Hant" : {
@@ -10964,7 +10964,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "关注话题的帖子也会出现在首页时间线中。"
+            "value" : "关注话题的嘟文也会出现在首页时间线中。"
           }
         },
         "zh-Hant" : {
@@ -20463,7 +20463,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新帖"
+            "value" : "新嘟文"
           }
         },
         "zh-Hant" : {
@@ -20758,7 +20758,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当前发帖场景下的手动草稿和自动恢复草稿会显示在这里。"
+            "value" : "当前编辑场景下的手动草稿和自动恢复草稿会显示在这里。"
           }
         },
         "zh-Hant" : {
@@ -21525,7 +21525,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未能加载原文，请重试后再编辑帖子。"
+            "value" : "未能加载原文，请重试后再编辑嘟文。"
           }
         },
         "zh-Hant" : {
@@ -21584,7 +21584,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在加载帖子原文…"
+            "value" : "正在加载嘟文原文…"
           }
         },
         "zh-Hant" : {
@@ -22587,7 +22587,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "编辑帖子"
+            "value" : "编辑嘟文"
           }
         },
         "zh-Hant" : {
@@ -22646,7 +22646,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "发帖"
+            "value" : "发嘟文"
           }
         },
         "zh-Hant" : {
@@ -22705,7 +22705,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "引用帖子"
+            "value" : "引用嘟文"
           }
         },
         "zh-Hant" : {
@@ -25301,7 +25301,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "一条帖子只能添加一个视频，不能与图片混合添加。"
+            "value" : "一条嘟文只能添加一个视频，不能与图片混合添加。"
           }
         },
         "zh-Hant" : {
@@ -27720,7 +27720,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "原帖内容"
+            "value" : "原嘟文内容"
           }
         },
         "zh-Hant" : {
@@ -29608,7 +29608,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "帖子字号"
+            "value" : "嘟文字号"
           }
         },
         "zh-Hant" : {
@@ -29667,7 +29667,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "调整帖子阅读文字，仍跟随系统文字大小。"
+            "value" : "调整嘟文阅读文字，仍跟随系统文字大小。"
           }
         },
         "zh-Hant" : {
@@ -35685,7 +35685,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "发帖弹窗底部分类条将按此顺序展示分组。"
+            "value" : "发布弹窗底部分类条将按此顺序展示分组。"
           }
         },
         "zh-Hant" : {
@@ -43591,7 +43591,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新帖提示仅检测「关注 + 本站」时间线。"
+            "value" : "新嘟文提示仅检测「关注 + 本站」时间线。"
           }
         },
         "zh-Hant" : {
@@ -44830,7 +44830,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新帖提示（应用内）"
+            "value" : "新嘟文提示（应用内）"
           }
         },
         "zh-Hant" : {
@@ -57268,7 +57268,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "发帖"
+            "value" : "发嘟文"
           }
         },
         "zh-Hant" : {
@@ -65307,7 +65307,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "关闭发帖通知"
+            "value" : "关闭嘟文通知"
           }
         },
         "zh-Hant" : {
@@ -65366,7 +65366,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "开启发帖通知"
+            "value" : "开启嘟文通知"
           }
         },
         "zh-Hant" : {
@@ -69201,7 +69201,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "删除后无法撤销，点赞和转发会丢失，原帖下的回复也可能失去原有上下文。"
+            "value" : "删除后无法撤销，喜欢和转发会丢失，原嘟文下的回复也可能失去原有上下文。"
           }
         },
         "zh-Hant" : {
@@ -74890,7 +74890,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "查看原帖"
+            "value" : "查看原嘟文"
           }
         },
         "zh-Hant" : {
@@ -75421,7 +75421,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "发帖"
+            "value" : "嘟文"
           }
         },
         "zh-Hant" : {
@@ -97066,7 +97066,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "分享内容已保留。请先完成当前帖子的编辑，再导入到新帖子。"
+            "value" : "分享内容已保留。请先完成当前嘟文的编辑，再导入到新嘟文。"
           }
         },
         "zh-Hant" : {
@@ -97184,7 +97184,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此服务器每篇帖子最多 %lld 个附件。可以移除部分附件后重试、丢弃这次分享，或先发布当前帖子——发布后分享会在新帖子中打开。"
+            "value" : "此服务器每条嘟文最多 %lld 个附件。可以移除部分附件后重试、丢弃这次分享，或先发布当前嘟文——发布后分享会在新嘟文中打开。"
           }
         },
         "zh-Hant" : {

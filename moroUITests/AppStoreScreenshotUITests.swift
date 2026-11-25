@@ -58,7 +58,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
                     ? ["分享", "复制链接", "复制文字", "浏览器打开"]
                     : ["Share", "Copy Link", "Copy text", "Open in Browser"]
                 let own = chinese
-                    ? ["编辑帖子", "置顶到个人主页", "删除并继续编辑", "删除"]
+                    ? ["编辑嘟文", "置顶到个人主页", "删除并继续编辑", "删除"]
                     : ["Edit Post", "Pin to profile", "Delete and continue editing", "Delete"]
                 let other = chinese
                     ? ["静音", "屏蔽", "屏蔽并举报", "举报"]
