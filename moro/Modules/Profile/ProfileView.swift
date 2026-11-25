@@ -17,6 +17,16 @@ private struct ProfileStatButtonStyle: ButtonStyle {
     }
 }
 
+private struct ProfileDisableTopScrollEdgeEffect: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.scrollEdgeEffectHidden(true, for: .top)
+        } else {
+            content
+        }
+    }
+}
+
 struct ProfileView: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.moroPlaybackScope) private var playbackScope
@@ -203,6 +213,7 @@ struct ProfileView: View {
             .onChange(of: pages, initial: true) { _, pages in retainedTabs = Set(pages) }
         }
         .ignoresSafeArea(.container, edges: .top)
+        .modifier(ProfileDisableTopScrollEdgeEffect())
         .background(sceneCanvasColor)
         .background {
             // The panel's controls sit on the plain side bar, not over the banner.
@@ -228,13 +239,10 @@ struct ProfileView: View {
         )
         .toolbar {
             if !panelOwnsBar {
-                if !navigationBarIsVertical {
+                if navChromeVisible && !navigationBarIsVertical {
                     ToolbarItem(placement: .principal) {
                         collapsedNavigationTitleView
-                            .opacity(navChromeVisible ? 1 : 0)
-                            .animation(.easeOut(duration: 0.15), value: navChromeVisible)
                             .allowsHitTesting(false)
-                            .accessibilityHidden(!navChromeVisible)
                             .accessibilityAddTraits(.isHeader)
                     }
                 }
@@ -341,6 +349,7 @@ struct ProfileView: View {
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.always, axes: .vertical)
         .scrollDisabled(!isActive)
+        .modifier(ProfileDisableTopScrollEdgeEffect())
         .ignoresSafeArea(.container, edges: .top)
         .modifier(PostEmojiScrollPlayback(isActive: isActive) { oldPhase, newPhase in
             if id == viewModel.selectedContentID, chromeState.didReleasePull(oldPhase: oldPhase, newPhase: newPhase) {
