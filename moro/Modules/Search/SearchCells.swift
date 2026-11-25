@@ -50,8 +50,10 @@ final class SearchLandingPlaceholderView: UIView {
         titleLabel.textColor = palette.textPrimary
         titleLabel.textAlignment = .center
         titleLabel.text = MoroL10n.Search.exploreTitle
-        titleLabel.numberOfLines = 1
+        titleLabel.numberOfLines = 2
         titleLabel.adjustsFontForContentSizeCategory = true
+        titleLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
 
         subtitleLabel.font = palette.font(forTextStyle: .subheadline)
         subtitleLabel.textColor = palette.textSecondary
@@ -59,6 +61,8 @@ final class SearchLandingPlaceholderView: UIView {
         subtitleLabel.text = MoroL10n.Search.exploreSubtitle
         subtitleLabel.numberOfLines = 2
         subtitleLabel.adjustsFontForContentSizeCategory = true
+        subtitleLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        subtitleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
 
         stackView.axis = .vertical
         stackView.alignment = .center
@@ -70,16 +74,52 @@ final class SearchLandingPlaceholderView: UIView {
 
         addSubview(stackView)
 
+        let leadingConstraint = stackView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 28)
+        leadingConstraint.priority = UILayoutPriority(999)
+        let trailingConstraint = stackView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -28)
+        trailingConstraint.priority = UILayoutPriority(999)
+        let preferredWidthConstraint = stackView.widthAnchor.constraint(equalTo: widthAnchor, constant: -56)
+        preferredWidthConstraint.priority = UILayoutPriority(998)
+        let maxWidthConstraint = stackView.widthAnchor.constraint(lessThanOrEqualToConstant: 340)
+        maxWidthConstraint.priority = UILayoutPriority(999)
+        let titleWidthConstraint = titleLabel.widthAnchor.constraint(equalTo: stackView.widthAnchor)
+        titleWidthConstraint.priority = UILayoutPriority(998)
+        let subtitleStackCapConstraint = subtitleLabel.widthAnchor.constraint(lessThanOrEqualTo: stackView.widthAnchor)
+        subtitleStackCapConstraint.priority = UILayoutPriority(999)
+        let subtitleMaxWidthConstraint = subtitleLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 280)
+        subtitleMaxWidthConstraint.priority = UILayoutPriority(999)
+        let subtitlePreferredWidthConstraint = subtitleLabel.widthAnchor.constraint(equalToConstant: 280)
+        subtitlePreferredWidthConstraint.priority = UILayoutPriority(749)
+
         NSLayoutConstraint.activate([
             mascotView.widthAnchor.constraint(equalToConstant: 62),
             mascotView.heightAnchor.constraint(equalToConstant: 62),
 
             stackView.centerXAnchor.constraint(equalTo: centerXAnchor),
             stackView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -18),
-            stackView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 28),
-            stackView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -28),
-            subtitleLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 280),
+            leadingConstraint,
+            trailingConstraint,
+            preferredWidthConstraint,
+            maxWidthConstraint,
+            titleWidthConstraint,
+            subtitleStackCapConstraint,
+            subtitleMaxWidthConstraint,
+            subtitlePreferredWidthConstraint,
         ])
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let availableTitleWidth = max(0, min(bounds.width - 56, 340))
+        if availableTitleWidth > 0, abs(titleLabel.preferredMaxLayoutWidth - availableTitleWidth) > 0.5 {
+            titleLabel.preferredMaxLayoutWidth = availableTitleWidth
+            titleLabel.invalidateIntrinsicContentSize()
+        }
+        let availableSubtitleWidth = max(0, min(availableTitleWidth, 280))
+        if availableSubtitleWidth > 0, abs(subtitleLabel.preferredMaxLayoutWidth - availableSubtitleWidth) > 0.5 {
+            subtitleLabel.preferredMaxLayoutWidth = availableSubtitleWidth
+            subtitleLabel.invalidateIntrinsicContentSize()
+        }
     }
 }
 
@@ -229,6 +269,8 @@ final class SearchCenterStateView: UIView {
         titleLabel.numberOfLines = 2
         titleLabel.isHidden = title == nil
         titleLabel.adjustsFontForContentSizeCategory = true
+        titleLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
 
         subtitleLabel.font = palette.font(forTextStyle: .subheadline)
         subtitleLabel.textColor = palette.textSecondary
@@ -237,6 +279,8 @@ final class SearchCenterStateView: UIView {
         subtitleLabel.numberOfLines = 3
         subtitleLabel.isHidden = subtitle == nil
         subtitleLabel.adjustsFontForContentSizeCategory = true
+        subtitleLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        subtitleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
 
         if let actionTitle, onAction != nil {
             var config = UIButton.Configuration.filled()
@@ -272,12 +316,34 @@ final class SearchCenterStateView: UIView {
         }
 
         addSubview(stackView)
+        let leadingConstraint = stackView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 28)
+        leadingConstraint.priority = UILayoutPriority(999)
+        let trailingConstraint = stackView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -28)
+        trailingConstraint.priority = UILayoutPriority(999)
+        let preferredWidthConstraint = stackView.widthAnchor.constraint(equalTo: widthAnchor, constant: -56)
+        preferredWidthConstraint.priority = UILayoutPriority(998)
+        let maxWidthConstraint = stackView.widthAnchor.constraint(lessThanOrEqualToConstant: 340)
+        maxWidthConstraint.priority = UILayoutPriority(999)
+        let titleWidthConstraint = titleLabel.widthAnchor.constraint(equalTo: stackView.widthAnchor)
+        titleWidthConstraint.priority = UILayoutPriority(998)
+        let subtitleStackCapConstraint = subtitleLabel.widthAnchor.constraint(lessThanOrEqualTo: stackView.widthAnchor)
+        subtitleStackCapConstraint.priority = UILayoutPriority(999)
+        let subtitleMaxWidthConstraint = subtitleLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 280)
+        subtitleMaxWidthConstraint.priority = UILayoutPriority(999)
+        let subtitlePreferredWidthConstraint = subtitleLabel.widthAnchor.constraint(equalToConstant: 280)
+        subtitlePreferredWidthConstraint.priority = UILayoutPriority(749)
+
         NSLayoutConstraint.activate([
             stackView.centerXAnchor.constraint(equalTo: centerXAnchor),
             stackView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            stackView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 28),
-            stackView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -28),
-            subtitleLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 280),
+            leadingConstraint,
+            trailingConstraint,
+            preferredWidthConstraint,
+            maxWidthConstraint,
+            titleWidthConstraint,
+            subtitleStackCapConstraint,
+            subtitleMaxWidthConstraint,
+            subtitlePreferredWidthConstraint,
         ])
         if let mascotView {
             NSLayoutConstraint.activate([
@@ -296,6 +362,20 @@ final class SearchCenterStateView: UIView {
 
         apply(theme: MoroTheme())
         updateAccessibility()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let availableTitleWidth = max(0, min(bounds.width - 56, 340))
+        if availableTitleWidth > 0, abs(titleLabel.preferredMaxLayoutWidth - availableTitleWidth) > 0.5 {
+            titleLabel.preferredMaxLayoutWidth = availableTitleWidth
+            titleLabel.invalidateIntrinsicContentSize()
+        }
+        let availableSubtitleWidth = max(0, min(availableTitleWidth, 280))
+        if availableSubtitleWidth > 0, abs(subtitleLabel.preferredMaxLayoutWidth - availableSubtitleWidth) > 0.5 {
+            subtitleLabel.preferredMaxLayoutWidth = availableSubtitleWidth
+            subtitleLabel.invalidateIntrinsicContentSize()
+        }
     }
 
     private func updateAccessibility() {

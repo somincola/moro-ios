@@ -1,5 +1,8 @@
 import Foundation
 import Testing
+#if os(iOS)
+import UIKit
+#endif
 @testable import moro
 
 @MainActor
@@ -100,4 +103,60 @@ struct SearchInteractionTests {
         library.reload()
         #expect(library.recent.first?.query == "recovered")
     }
+
+    #if os(iOS)
+    @Test func searchLoadingStateExpandsTitleBeyondMascotWidthAfterZeroFrameLayout() throws {
+        let stateView = SearchCenterStateView(
+            mascotExpression: .thinking,
+            imageSize: CGSize(width: 48, height: 48),
+            title: "正在搜索…"
+        )
+
+        // Reproduce UITableView.backgroundView initial assignment before tableView has bounds.
+        stateView.frame = .zero
+        stateView.setNeedsLayout()
+        stateView.layoutIfNeeded()
+
+        stateView.frame = CGRect(x: 0, y: 0, width: 393, height: 600)
+        stateView.setNeedsLayout()
+        stateView.layoutIfNeeded()
+
+        let labels = collectLabels(in: stateView)
+        let titleLabel = try #require(labels.first { $0.text == "正在搜索…" })
+        let singleLineSize = titleLabel.sizeThatFits(CGSize(width: 337, height: CGFloat.greatestFiniteMagnitude))
+
+        #expect(titleLabel.bounds.width >= 300)
+        #expect(titleLabel.bounds.height <= singleLineSize.height + 2)
+
+        // Also verify empty/error state with subtitle stays wide and centered without collapsing.
+        let emptyView = SearchCenterStateView(
+            mascotExpression: .curious,
+            imageSize: CGSize(width: 58, height: 58),
+            title: "没有找到相关内容",
+            subtitle: "试试更换关键词，或切换上方分类继续探索"
+        )
+        emptyView.frame = .zero
+        emptyView.layoutIfNeeded()
+        emptyView.frame = CGRect(x: 0, y: 0, width: 393, height: 600)
+        emptyView.setNeedsLayout()
+        emptyView.layoutIfNeeded()
+
+        let emptyLabels = collectLabels(in: emptyView)
+        let emptyTitle = try #require(emptyLabels.first { $0.text == "没有找到相关内容" })
+        let emptySubtitle = try #require(emptyLabels.first { $0.text == "试试更换关键词，或切换上方分类继续探索" })
+        #expect(emptyTitle.bounds.width >= 300)
+        #expect(emptySubtitle.bounds.width >= 260 && emptySubtitle.bounds.width <= 281)
+    }
+
+    private func collectLabels(in view: UIView) -> [UILabel] {
+        var result: [UILabel] = []
+        if let label = view as? UILabel {
+            result.append(label)
+        }
+        for subview in view.subviews {
+            result.append(contentsOf: collectLabels(in: subview))
+        }
+        return result
+    }
+    #endif
 }
