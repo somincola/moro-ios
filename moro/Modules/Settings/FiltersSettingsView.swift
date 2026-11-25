@@ -98,7 +98,7 @@ struct FiltersSettingsView: View {
             Section {
                 HStack {
                     Spacer()
-                    ProgressView()
+                    MoroMascotView(expression: .thinking, size: 32)
                     Spacer()
                 }
                 .padding(.vertical, theme.spacing.m)

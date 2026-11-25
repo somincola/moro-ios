@@ -26,9 +26,14 @@ struct EmojiManagementView: View {
                         orderedGroups = incoming
                     }
             } else {
-                ProgressView(MoroL10n.Emoji.loading)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .moroSettingsPageChrome()
+                VStack(spacing: theme.spacing.m) {
+                    MoroMascotView(expression: .thinking, size: 36)
+                    Text(MoroL10n.Emoji.loading)
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textSecondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .moroSettingsPageChrome()
             }
         }
         .navigationTitle(MoroL10n.Emoji.navTitle)

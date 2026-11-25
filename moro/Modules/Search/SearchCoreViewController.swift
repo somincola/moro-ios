@@ -795,13 +795,16 @@ final class SearchCoreViewController: UIViewController {
         else { return }
 
         let segmentWidth = scopeControl.bounds.width / CGFloat(scopeControl.numberOfSegments)
-        let indicatorWidth: CGFloat = 24
+        let indicatorWidth: CGFloat = 36
+        let indicatorHeight: CGFloat = 2.5
+        scopeIndicatorView.layer.cornerRadius = indicatorHeight / 2
+        scopeIndicatorView.layer.masksToBounds = true
         scopeIndicatorView.frame = CGRect(
             x: segmentWidth * CGFloat(scopeControl.selectedSegmentIndex)
                 + (segmentWidth - indicatorWidth) / 2,
-            y: scopeControl.bounds.height - 2,
+            y: scopeControl.bounds.height - indicatorHeight,
             width: indicatorWidth,
-            height: 2
+            height: indicatorHeight
         )
         scopeControl.bringSubviewToFront(scopeIndicatorView)
     }

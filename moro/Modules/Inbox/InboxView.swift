@@ -197,9 +197,9 @@ struct InboxView: View {
             .foregroundStyle(isSelected ? theme.colors.textPrimary : theme.colors.textSecondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .bottom) {
-                Rectangle()
+                Capsule()
                     .fill(isSelected ? theme.colors.textPrimary : .clear)
-                    .frame(width: 32, height: 2)
+                    .frame(width: 36, height: 2.5)
             }
             .contentShape(Rectangle())
         }

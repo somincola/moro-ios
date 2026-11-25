@@ -928,13 +928,8 @@ struct SearchAccountRowContentView: View {
                 .padding(.top, 3)
         }
         .padding(.horizontal, SearchLayoutMetrics.contentHorizontalInset)
-        .padding(.vertical, 11)
+        .padding(.vertical, 10)
         .background(theme.colors.surfaceBase)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(theme.colors.divider)
-                .frame(height: 0.5)
-        }
     }
 }
 
@@ -944,7 +939,7 @@ struct SearchAccountNotePreviewView: View {
     @Environment(\.moroTheme) private var theme
 
     var body: some View {
-        let elements = account.noteContentElements
+        let elements = account.noteContentElements.compactedForInlinePreview
         if elements.containsCustomEmoji {
             // Same SwiftUI text as the plain preview below, so both have the same font and
             // line height. Links are plain text here: a tap opens the profile row.

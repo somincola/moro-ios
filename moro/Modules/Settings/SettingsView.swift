@@ -92,7 +92,11 @@ struct SettingsView: View {
                 settingsRow(MoroL10n.Settings.postingInteractions, icon: "square.and.pencil")
             }
             .accessibilityIdentifier("settings.posting")
+        }
+        .listSectionSeparator(.visible, edges: .bottom)
+        .listSectionSeparatorTint(theme.colors.divider)
 
+        Section {
             NavigationLink {
                 NotificationSettingsView(apiClient: apiClient)
             } label: {
@@ -115,7 +119,11 @@ struct SettingsView: View {
                 }
                 .accessibilityIdentifier("settings.contentSafety")
             }
+        }
+        .listSectionSeparator(.visible, edges: .bottom)
+        .listSectionSeparatorTint(theme.colors.divider)
 
+        Section {
             NavigationLink {
                 StorageSettingsView()
             } label: {

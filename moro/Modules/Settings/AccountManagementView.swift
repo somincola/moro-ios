@@ -61,10 +61,13 @@ struct AccountManagementView: View {
                 } label: {
                     HStack(spacing: Metrics.avatarSpacing) {
                         Image(systemName: "plus")
-                            .moroScaledFont(size: 17, weight: .medium)
-                            .foregroundStyle(theme.colors.textSecondary)
+                            .moroScaledFont(size: 17, weight: .semibold)
+                            .foregroundStyle(theme.colors.textPrimary)
                             .frame(width: Metrics.avatarSize, height: Metrics.avatarSize)
-                            .background(Circle().fill(theme.colors.surfaceSubtle))
+                            .background(Circle().fill(theme.colors.surfaceElevated))
+                            .overlay {
+                                Circle().strokeBorder(theme.colors.borderSubtle, lineWidth: 1)
+                            }
                         Text(MoroL10n.AccountMgmt.addAccount)
                             .font(.body)
                             .foregroundStyle(theme.colors.textPrimary)
@@ -79,6 +82,8 @@ struct AccountManagementView: View {
                     Text(MoroL10n.AccountMgmt.swipeToRemoveHint)
                 }
             }
+            .listSectionSeparator(.visible, edges: .bottom)
+            .listSectionSeparatorTint(theme.colors.divider)
 
             if let apiClient {
                 Section {
@@ -96,6 +101,8 @@ struct AccountManagementView: View {
                     }
                     .accessibilityIdentifier("settings.server")
                 }
+                .listSectionSeparator(.visible, edges: .bottom)
+                .listSectionSeparatorTint(theme.colors.divider)
             }
 
             Section {
