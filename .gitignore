@@ -61,8 +61,28 @@ Secrets.xcconfig
 moro/Config/Secrets.swift
 .sentryclirc
 
-# Local recordings
-docs/app-review/**/*.mp4
+# App Store production files are kept locally. README images live in docs/assets/readme.
+/screenshots/app-store/
+/output/moro-appstore-concepts.html
+
+# Local video recordings, soundtracks and audio masters
+*.[mM][pP]4
+*.[mM]4[vV]
+*.[mM][oO][vV]
+*.[wW][eE][bB][mM]
+*.[mM][kK][vV]
+*.[aA][vV][iI]
+*.[mM][pP]3
+*.[mM]4[aA]
+*.[wW][aA][vV]
+*.[aA][aA][cC]
+*.[aA][iI][fF]
+*.[aA][iI][fF][fF]
+*.[fF][lL][aA][cC]
+*.[oO][gG][gG]
+*.[oO][pP][uU][sS]
+*.[cC][aA][fF]
+*.[pP][cC][mM]
 
 # Local legal correspondence
 /docs/*referential trademark confirmation*.pdf
