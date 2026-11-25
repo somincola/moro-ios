@@ -24,6 +24,7 @@ struct ProfileView: View {
     /// iPhone Duo: a post is open in the Me tab's panel and its controls take over the bar.
     @Environment(\.threadSplitPanelOwnsBar) private var panelOwnsBar
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.displayScale) private var displayScale
     @ScaledMetric(relativeTo: .subheadline) private var bioLineSpacing: CGFloat = 2
@@ -181,14 +182,16 @@ struct ProfileView: View {
 
                 profileNavigationChromeBackground(
                     topChromeHeight: topChromeHeight,
-                    progress: profileChromeProgress
+                    progress: profileChromeProgress,
+                    showsBottomDivider: chromeLayout.tabPlacement != .topPinned
                 )
                 .ignoresSafeArea(.container, edges: .horizontal)
                 .zIndex(1)
 
                 if let tabOverlayOffset = chromeLayout.tabOverlayOffset {
                     tabBarSection(
-                        hidesAccessibility: false
+                        hidesAccessibility: false,
+                        placement: chromeLayout.tabPlacement
                     )
                         .offset(y: tabOverlayOffset)
                         .zIndex(2)
@@ -213,9 +216,10 @@ struct ProfileView: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
-        // With the bar in the vertical side bar the system floats the title at the top leading
-        // corner; the page's own band already shows the name, so the system title stays empty.
-        .navigationTitle(navChromeVisible && !navigationBarIsVertical ? collapsedTitle : "")
+        // Keep system title empty and render the collapsed account name via `.principal`
+        // (or the vertical-bar band on iPhone Duo) so custom emojis, empty-name fallback,
+        // and long-name tightening/truncation behave consistently.
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(
@@ -224,16 +228,14 @@ struct ProfileView: View {
         )
         .toolbar {
             if !panelOwnsBar {
-                if isCurrentUser && showsProfileSettingsButton {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(action: presentSettings) {
-                            Image(systemName: "gearshape")
-                                .moroScaledFont(size: 17, weight: .semibold)
-                                .foregroundStyle(navigationForeground)
-                                .animation(.easeOut(duration: 0.15), value: navigationForeground)
-                        }
-                        .accessibilityLabel(Text(MoroL10n.Settings.title))
-                        .accessibilityIdentifier("profile.settings")
+                if !navigationBarIsVertical {
+                    ToolbarItem(placement: .principal) {
+                        collapsedNavigationTitleView
+                            .opacity(navChromeVisible ? 1 : 0)
+                            .animation(.easeOut(duration: 0.15), value: navChromeVisible)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(!navChromeVisible)
+                            .accessibilityAddTraits(.isHeader)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -468,6 +470,7 @@ struct ProfileView: View {
                 relationship: nil,
                 iconColor: navigationForeground,
                 onShare: shareUser,
+                onSettings: showsProfileSettingsButton ? presentSettings : nil,
                 onCopyLink: copyUserLink,
                 onOpenInBrowser: openUserInBrowser
             )
@@ -490,10 +493,50 @@ struct ProfileView: View {
         navigationBarBottom ?? (topSafeInset + navigationBarHeight)
     }
 
+    private var profileChromeHairlineColor: Color {
+        if colorScheme == .dark {
+            return Color.white.opacity(colorSchemeContrast == .increased ? 0.24 : 0.12)
+        }
+        return Color.black.opacity(colorSchemeContrast == .increased ? 0.22 : 0.09)
+    }
+
+    private var profileChromeEdgeShadowColor: Color {
+        Color.black.opacity(colorScheme == .dark ? 0.24 : 0.055)
+    }
+
+    private var resolvedProfileAccount: Account? {
+        viewModel.account ?? account
+    }
+
+    @ViewBuilder
+    private var collapsedNavigationTitleView: some View {
+        if let resolvedProfileAccount {
+            AccountDisplayNameView(
+                account: resolvedProfileAccount,
+                typography: .subtitle,
+                textColor: theme.colors.textPrimary,
+                lineLimit: 1,
+                fitsInlineWidth: true,
+                truncationMode: .tail,
+                minimumScaleFactor: 0.9,
+                allowsTightening: true
+            )
+        } else {
+            Text(MoroL10n.Profile.navTitle)
+                .font(.system(.headline, weight: .semibold))
+                .foregroundStyle(theme.colors.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .minimumScaleFactor(0.9)
+                .allowsTightening(true)
+        }
+    }
+
     @ViewBuilder
     private func profileNavigationChromeBackground(
         topChromeHeight: CGFloat,
-        progress: CGFloat
+        progress: CGFloat,
+        showsBottomDivider: Bool
     ) -> some View {
         VStack(spacing: 0) {
             theme.colors.surfaceBase
@@ -501,10 +544,7 @@ struct ProfileView: View {
                 .overlay(alignment: .bottom) {
                     // The collapsed name goes in the band (the system title is left empty).
                     if navigationBarIsVertical {
-                        Text(collapsedTitle)
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(theme.colors.textPrimary)
-                            .lineLimit(1)
+                        collapsedNavigationTitleView
                             .padding(.horizontal, theme.spacing.contentHorizontalInset)
                             .frame(height: navigationBarHeight)
                             .opacity(navChromeVisible ? 1 : 0)
@@ -512,18 +552,16 @@ struct ProfileView: View {
                     }
                 }
 
-            Rectangle()
-                .fill(theme.colors.borderSubtle)
-                .frame(height: 0.5)
+            if showsBottomDivider {
+                Rectangle()
+                    .fill(profileChromeHairlineColor)
+                    .frame(height: 0.5)
+            }
         }
         .frame(maxWidth: .infinity)
         .opacity(progress)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-    }
-
-    private var collapsedTitle: String {
-        viewModel.account?.displayName ?? account?.displayName ?? MoroL10n.Profile.navTitle
     }
 
     private static var activeKeyWindow: UIWindow? {
@@ -576,22 +614,59 @@ struct ProfileView: View {
 
     @ViewBuilder
     private func tabBarSection(
-        hidesAccessibility: Bool
+        hidesAccessibility: Bool,
+        placement: ProfileTabPlacement = .natural
     ) -> some View {
         VStack(spacing: 0) {
-            tabBar(hidesAccessibility: hidesAccessibility)
-            if viewModel.showsFeaturedTags && viewModel.selectedTab == .posts {
-                ProfileFeaturedTagBar(tags: viewModel.featuredTags, selection: viewModel.selectedFeaturedTag) { tag in
-                    Task { await viewModel.selectFeaturedTag(tag) }
+            VStack(spacing: 0) {
+                tabBar(hidesAccessibility: hidesAccessibility)
+                if viewModel.showsFeaturedTags && viewModel.selectedTab == .posts {
+                    ProfileFeaturedTagBar(tags: viewModel.featuredTags, selection: viewModel.selectedFeaturedTag) { tag in
+                        Task { await viewModel.selectFeaturedTag(tag) }
+                    }
+                    .accessibilityHidden(hidesAccessibility)
                 }
-                .accessibilityHidden(hidesAccessibility)
             }
+            .moroReadableColumn()
+
             Rectangle()
-                .fill(theme.colors.borderSubtle)
+                .fill(profileChromeHairlineColor)
                 .frame(height: 0.5)
         }
-        .moroReadableColumn()
+        .frame(maxWidth: .infinity)
         .background(theme.colors.surfaceBase)
+        .overlay(alignment: .top) {
+            if placement == .bottomDocked {
+                Rectangle()
+                    .fill(profileChromeHairlineColor)
+                    .frame(height: 0.5)
+                    .allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .top) {
+            if placement == .bottomDocked {
+                LinearGradient(
+                    colors: [.clear, profileChromeEdgeShadowColor],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 6)
+                .offset(y: -6)
+                .allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if placement == .topPinned {
+                LinearGradient(
+                    colors: [profileChromeEdgeShadowColor, .clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 6)
+                .offset(y: 6)
+                .allowsHitTesting(false)
+            }
+        }
     }
 
     @ViewBuilder
@@ -1025,8 +1100,8 @@ struct ProfileView: View {
             }
         }
         .padding(.horizontal, theme.spacing.contentHorizontalInset)
-        .padding(.top, theme.spacing.m)
-        .padding(.bottom, theme.spacing.s)
+        .padding(.top, theme.spacing.xs)
+        .padding(.bottom, 0)
     }
 
     @ViewBuilder

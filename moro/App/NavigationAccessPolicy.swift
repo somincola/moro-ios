@@ -51,7 +51,7 @@ struct NavigationAccessPolicy: Equatable, Sendable {
         true
     }
 
-    /// Own Profile top-bar Settings gear: shown only while Settings is not a bottom tab.
+    /// Own Profile More menu Settings entry: shown only while Settings is not a bottom tab.
     var showsProfileSettingsButton: Bool {
         !isPinned(.settings)
     }

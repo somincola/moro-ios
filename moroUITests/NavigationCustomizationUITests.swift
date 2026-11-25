@@ -75,10 +75,15 @@ final class NavigationCustomizationUITests: XCTestCase {
         tap(choice("settings", in: app))
         closeEditorAndSettings(app)
 
-        // Pinning Settings hides the duplicate gear on own Profile.
+        // Pinning Settings hides it from own Profile's More menu too.
         tap(tab("me", in: app))
         XCTAssertTrue(app.buttons["profile.moreButton"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["profile.settings"].exists)
+        tap(app.buttons["profile.moreButton"])
+        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["profile.settings"].exists)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["Share"].waitForNonExistence(timeout: 3))
 
         // Pinning Lists hides it from the Home drawer, while Settings stays in the footer and hidden Explore stays reachable.
         tap(tab("home", in: app))
@@ -120,9 +125,12 @@ final class NavigationCustomizationUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Bookmarks"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Navigation bookmark fixture"].waitForExistence(timeout: 5))
 
-        // Removing Settings restores both the Profile gear and the Home drawer Settings entry.
+        // Removing Settings restores the Profile More menu Settings entry.
         tap(tab("me", in: app))
+        tap(app.buttons["profile.moreButton"])
         XCTAssertTrue(app.buttons["profile.settings"].waitForExistence(timeout: 5))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["profile.settings"].waitForNonExistence(timeout: 3))
 
         // Hidden Explore opens as a native sheet:
         // 1) Home top-right search button auto-focuses the search field.
@@ -231,6 +239,7 @@ final class NavigationCustomizationUITests: XCTestCase {
     private func openEditorFromProfile(_ app: XCUIApplication, title: String = "Customize Navigation",
         checkAppearanceLayout: Bool = false) {
         tap(tab("me", in: app))
+        tap(app.buttons["profile.moreButton"])
         tap(app.buttons["profile.settings"])
         tap(app.buttons["settings.display"])
         openCustomization(in: app, checkAppearanceLayout: checkAppearanceLayout)

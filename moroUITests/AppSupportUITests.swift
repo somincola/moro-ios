@@ -70,6 +70,9 @@ final class AppSupportUITests: XCTestCase {
 
     private func openSettings(_ app: XCUIApplication) {
         XCTAssertFalse(app.buttons["profile.settingsAvatar"].exists)
+        let more = app.buttons["profile.moreButton"]
+        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        more.tap()
         let settings = app.buttons["profile.settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
         attach(app, "profile-settings-bar")

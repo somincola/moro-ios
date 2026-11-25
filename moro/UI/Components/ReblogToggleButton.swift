@@ -33,7 +33,7 @@ struct ReblogToggleButton: View {
     }
 
     private var iconTint: Color {
-        isShowingReblogs ? theme.colors.boostActive : theme.colors.textPrimary
+        isShowingReblogs ? theme.colors.textPrimary : theme.colors.textSecondary
     }
 
     private var slashStrokeWidth: CGFloat {
@@ -110,7 +110,7 @@ struct ReblogToggleButton: View {
             DiagonalSlashShape()
                 .trim(from: 0, to: slashProgress)
                 .stroke(
-                    theme.colors.textPrimary,
+                    iconTint,
                     style: StrokeStyle(lineWidth: slashStrokeWidth, lineCap: .round)
                 )
                 .opacity(slashOpacity)
