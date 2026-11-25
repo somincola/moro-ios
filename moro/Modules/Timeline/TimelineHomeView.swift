@@ -56,6 +56,8 @@ struct TimelineHomeView: View {
     let onTimelineSelectionChange: ((TimelineType) -> Void)?
     /// Optional observer for consumers that coordinate other chrome with the timeline header.
     let onChromeFraction: ((CGFloat) -> Void)?
+    /// Optional observer for scroll-driven compose button visibility changes.
+    let onComposeVisibilityChange: ((Bool) -> Void)?
     /// iPhone Duo: the header controls live in the system navigation bar (toolbar items) instead
     /// of the custom floating header, so the system can move them into the vertical side bar.
     let usesSystemNavigationBar: Bool
@@ -134,6 +136,7 @@ struct TimelineHomeView: View {
         navigationPolicy: NavigationAccessPolicy = NavigationAccessPolicy(tabLayout: NavigationTabLayout()),
         onTimelineSelectionChange: ((TimelineType) -> Void)? = nil,
         onChromeFraction: ((CGFloat) -> Void)? = nil,
+        onComposeVisibilityChange: ((Bool) -> Void)? = nil,
         usesSystemNavigationBar: Bool = false,
         isActive: Bool = true,
         bottomContentInset: CGFloat = 0,
@@ -147,6 +150,7 @@ struct TimelineHomeView: View {
         self.navigationPolicy = navigationPolicy
         self.onTimelineSelectionChange = onTimelineSelectionChange
         self.onChromeFraction = onChromeFraction
+        self.onComposeVisibilityChange = onComposeVisibilityChange
         self.usesSystemNavigationBar = usesSystemNavigationBar
         self.isActive = isActive
         self.bottomContentInset = bottomContentInset
@@ -244,7 +248,8 @@ struct TimelineHomeView: View {
                     height: headerHeight,
                     backgroundColor: sceneCanvasColor,
                     dividerColor: theme.colors.borderSubtle,
-                    subject: scrollBridge.chromeFractionSubject
+                    initialState: scrollBridge.currentChromeState,
+                    subject: scrollBridge.chromeStateSubject
                 ) {
                     floatingHeader
                 }
@@ -311,6 +316,9 @@ struct TimelineHomeView: View {
         .onReceive(scrollBridge.layoutEvents) { timeline in
             guard timeline == selectedTimeline else { return }
             processLiveUpdates(for: timeline, viewModel: viewModel)
+        }
+        .onReceive(scrollBridge.composeVisibilitySubject) { isVisible in
+            onComposeVisibilityChange?(isVisible)
         }
         .onReceive(detectionManager.pages) { event in
             guard event.scopeID == cacheClientID else { return }

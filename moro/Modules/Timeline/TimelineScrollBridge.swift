@@ -183,6 +183,8 @@ final class TimelineScrollBridge: ObservableObject {
         if !value {
             pendingLayouts = pendingLayouts.filter { $0.value.includesRefreshCollapse }
             waitingForTop.removeAll()
+            cancelComposeRevealTask()
+            applyComposeUpdate(composeScrollPolicy.reset())
         } else { scheduleLayoutEvent(for: presentedTimeline) }
     }
 
@@ -241,6 +243,23 @@ final class TimelineScrollBridge: ObservableObject {
         }
         if phase == .interacting, active, isPresented(timeline) {
             userScrollEvents.send(timeline)
+        }
+        if active, isPresented(timeline) {
+            let assistiveLocked = Self.isAssistiveChromeLocked
+            if phase == .idle {
+                let offset = offsets[timeline] ?? 0
+                let headerHeight = headerHeights[timeline, default: 48]
+                if let settled = headerScrollPolicy.settle(
+                    offset: offset,
+                    headerHeight: headerHeight,
+                    assistiveLocked: assistiveLocked
+                ) {
+                    chromeStateSubject.send(settled)
+                }
+            }
+            applyComposeUpdate(
+                composeScrollPolicy.phaseChanged(phase, assistiveLocked: assistiveLocked)
+            )
         }
         if phase == .idle { scheduleLayoutEvent(for: timeline) }
     }
@@ -547,25 +566,81 @@ final class TimelineScrollBridge: ObservableObject {
     // MARK: - Interactive chrome collapse
 
     /// Broadcasts the chrome-collapse fraction (0 = header/tab bar fully shown, 1 = fully
-    /// hidden) on every scroll tick. It's a Combine Subject, *not* @Published, on purpose:
-    /// subscribers (.onReceive in the header, the shell for the tab bar) update locally
-    /// without re-rendering TimelineHomeView's body — so the pager is never rebuilt mid-scroll
-    /// and the collapse stays buttery.
-    let chromeFractionSubject = PassthroughSubject<CGFloat, Never>()
+    /// Broadcasts the header collapse state (`0` = fully visible, `1` = fully hidden) on every
+    /// scroll tick and idle snap. It's a Combine Subject, *not* @Published, on purpose:
+    /// subscribers (.onReceive in the header and new-posts notice) update locally without
+    /// re-rendering TimelineHomeView's body — so the pager is never rebuilt mid-scroll.
+    let chromeStateSubject = PassthroughSubject<TimelineChromeState, Never>()
+    /// Broadcasts scroll-driven visibility changes for the home floating compose button.
+    let composeVisibilitySubject = PassthroughSubject<Bool, Never>()
     private var pullRefreshSubjects: [TimelineType: CurrentValueSubject<TimelinePullRefreshVisualState, Never>] = [:]
 
-    private var lastChromeOffset: CGFloat = 0
-    private var chromeFraction: CGFloat = 0
-    private var chromeFractions: [TimelineType: CGFloat] = [:]
-    private var chromeNeedsSync = false
-    private let chromeEpsilon: CGFloat = 0.0005
+    private var headerScrollPolicy = TimelineHeaderScrollPolicy()
+    private var composeScrollPolicy = ComposeButtonScrollPolicy()
+    private var composeRevealTask: Task<Void, Never>?
+    var composeIdleRevealDelayNanoseconds: UInt64 = ComposeButtonScrollPolicy.defaultIdleRevealDelayNanoseconds
     private var pullRefreshStates: [TimelineType: TimelinePullRefreshState] = [:]
 
+    var currentChromeState: TimelineChromeState { headerScrollPolicy.state }
+    var isComposeButtonVisible: Bool { composeScrollPolicy.isVisible }
+
+    private static var isAssistiveChromeLocked: Bool {
+        UIAccessibility.isVoiceOverRunning || UIAccessibility.isSwitchControlRunning
+    }
+
+    private func isUserDrivingScroll(for timeline: TimelineType) -> Bool {
+        if let view = nativeScrollViews[timeline]?.value,
+            view.isTracking || view.isDragging || view.isDecelerating
+        {
+            return true
+        }
+        let phase = phases[timeline, default: .idle]
+        return phase == .tracking || phase == .interacting || phase == .decelerating
+    }
+
+    private func cancelComposeRevealTask() {
+        composeRevealTask?.cancel()
+        composeRevealTask = nil
+    }
+
+    private func applyComposeUpdate(_ update: ComposeButtonScrollPolicy.Update) {
+        switch update.idleTimer {
+        case .none:
+            break
+        case .cancelReveal:
+            cancelComposeRevealTask()
+        case .scheduleReveal:
+            cancelComposeRevealTask()
+            let delay = composeIdleRevealDelayNanoseconds
+            composeRevealTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: delay)
+                guard !Task.isCancelled, let self, self.active else { return }
+                let phase = self.phases[self.presentedTimeline, default: .idle]
+                guard phase == .idle, !self.isUserDragging(self.presentedTimeline) else { return }
+                let reveal = self.composeScrollPolicy.idleRevealFired()
+                self.composeRevealTask = nil
+                if reveal.visibilityChanged {
+                    self.composeVisibilitySubject.send(reveal.isVisible)
+                }
+            }
+        }
+        if update.visibilityChanged {
+            composeVisibilitySubject.send(update.isVisible)
+        }
+    }
+
+    private func minChromeOffset(for timeline: TimelineType) -> CGFloat? {
+        guard let view = nativeScrollViews[timeline]?.value else { return nil }
+        let maxScrollDown = max(
+            0,
+            view.contentSize.height + view.adjustedContentInset.bottom - view.bounds.height
+        )
+        return -maxScrollDown
+    }
+
     /// Fold a fresh scroll offset (minY-style: 0 at top, more negative scrolling down) into the
-    /// chrome fraction interactively — scrolling down nudges it toward hidden, up toward shown —
-    /// and broadcast the result over `chromeFractionSubject`. Only the visible timeline drives the
-    /// chrome. Nothing here is @Published, so a scroll never re-renders the body / rebuilds the
-    /// pager — header and tab bar both react off the subject. Returns the fraction.
+    /// header collapse fraction and compose button visibility — scrolling down collapses the header
+    /// and tucks away the compose button; scrolling up brings both back immediately.
     @discardableResult
     func updateChrome(
         offset: CGFloat,
@@ -573,52 +648,65 @@ final class TimelineScrollBridge: ObservableObject {
         timeline: TimelineType,
         isSelected: Bool
     ) -> CGFloat {
-        guard isSelected else { return chromeFraction }
+        guard isSelected else { return headerScrollPolicy.state.headerFraction }
+        let minOffset = minChromeOffset(for: timeline)
         if suppressChrome.remove(timeline) != nil {
-            lastChromeOffset = offset
-            return chromeFraction
+            headerScrollPolicy.syncBaseline()
+            composeScrollPolicy.syncBaseline()
+            _ = headerScrollPolicy.update(
+                offset: offset,
+                headerHeight: headerHeight,
+                minOffset: minOffset,
+                isUserDriving: false,
+                assistiveLocked: Self.isAssistiveChromeLocked
+            )
+            _ = composeScrollPolicy.update(
+                offset: offset,
+                minOffset: minOffset,
+                isUserDriving: false,
+                assistiveLocked: Self.isAssistiveChromeLocked
+            )
+            return headerScrollPolicy.state.headerFraction
         }
 
-        // First tick after a timeline switch: adopt the new page's offset as the baseline so a
-        // large position difference doesn't get accumulated into a sudden collapse.
-        if chromeNeedsSync {
-            chromeNeedsSync = false
-            lastChromeOffset = offset
-            return chromeFraction
+        let driving = isUserDrivingScroll(for: timeline)
+        let assistiveLocked = Self.isAssistiveChromeLocked
+
+        if let nextChrome = headerScrollPolicy.update(
+            offset: offset,
+            headerHeight: headerHeight,
+            minOffset: minOffset,
+            isUserDriving: driving,
+            assistiveLocked: assistiveLocked
+        ) {
+            chromeStateSubject.send(nextChrome)
         }
 
-        let delta = offset - lastChromeOffset
-        lastChromeOffset = offset
-        guard abs(delta) > 0.25 else { return chromeFraction }
+        let composeUpdate = composeScrollPolicy.update(
+            offset: offset,
+            minOffset: minOffset,
+            isUserDriving: driving,
+            assistiveLocked: assistiveLocked
+        )
+        applyComposeUpdate(composeUpdate)
 
-        let previousFraction = chromeFraction
-        var fraction = chromeFraction - delta / max(headerHeight, 1)
-        if offset >= 0 { fraction = 0 }  // at/above the top → always fully shown
-        fraction = min(max(fraction, 0), 1)
-        chromeFraction = fraction
-        chromeFractions[timeline] = fraction
-        if abs(fraction - previousFraction) > chromeEpsilon {
-            chromeFractionSubject.send(fraction)
-        }
-        return fraction
+        return headerScrollPolicy.state.headerFraction
     }
 
     /// Snap the chrome back to fully shown (scroll-to-top or a timeline switch) and resync the
     /// scroll baseline on the next tick.
-    func resetChrome() {
-        let shouldBroadcast = abs(chromeFraction) > chromeEpsilon
-        chromeFraction = 0
-        chromeFractions[presentedTimeline] = 0
-        chromeNeedsSync = true
-        if shouldBroadcast {
-            chromeFractionSubject.send(0)
+    func resetChrome(animated: Bool = true) {
+        if let resetState = headerScrollPolicy.reset(animated: animated) {
+            chromeStateSubject.send(resetState)
         }
+        applyComposeUpdate(composeScrollPolicy.reset())
     }
 
     /// Keep the current visual chrome state while adopting the newly selected page's
     /// offset as the next scroll baseline. This avoids a header flash on every switch.
     func prepareForTimelineSwitch() {
-        chromeNeedsSync = true
+        headerScrollPolicy.syncBaseline()
+        applyComposeUpdate(composeScrollPolicy.reset())
     }
 
     func isAtTop(_ timeline: TimelineType) -> Bool { atTop[timeline] ?? false }
@@ -652,22 +740,22 @@ final class TimelineScrollBridge: ObservableObject {
 
     @discardableResult
     func setPresentedTimeline(_ timeline: TimelineType) -> CGFloat {
+        let switched = presentedTimeline != timeline
         selectPresentedTimeline(timeline)
-        let restoredFraction = chromeFractions[timeline] ?? 0
-        let shouldBroadcast = abs(restoredFraction - chromeFraction) > chromeEpsilon
-        chromeFraction = restoredFraction
-        chromeNeedsSync = true
-        if shouldBroadcast {
-            chromeFractionSubject.send(restoredFraction)
+        if switched {
+            // Timelines are switched from the visible header menu, so keep the header expanded
+            // and the compose button ready when landing on the newly chosen timeline.
+            resetChrome(animated: false)
         }
-        return restoredFraction
+        return headerScrollPolicy.state.headerFraction
     }
 
     private func selectPresentedTimeline(_ timeline: TimelineType) {
         if presentedTimeline != timeline {
             pendingLayouts = pendingLayouts.filter { $0.value.includesRefreshCollapse }
             waitingForTop.removeAll()
-            chromeNeedsSync = true
+            headerScrollPolicy.syncBaseline()
+            composeScrollPolicy.syncBaseline()
         }
         presentedTimeline = timeline
         updatePlaybackScopes()

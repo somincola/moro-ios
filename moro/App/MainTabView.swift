@@ -547,6 +547,7 @@ private struct HomeTabRootView: View {
     @ObservedObject private var inboxUnreadStore = InboxUnreadStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.moroTheme) private var theme
+    @State private var composeVisibilitySubject = PassthroughSubject<Bool, Never>()
 
     let apiClient: MastodonAPI
     let cacheClientID: String
@@ -569,15 +570,14 @@ private struct HomeTabRootView: View {
         // The whole root's corner: with two columns that is the thread column, clear of the
         // fold between them (the system's guidance for book-style half open).
         .overlay(alignment: .bottomTrailing) {
-            composeButton
-                .padding(.trailing, theme.spacing.l)
-                .padding(.bottom, composeButtonTabBarSpacing)
-                // Steps aside for the account switcher or drawer.
-                .scaleEffect(coordinator.isAccountSwitcherPresented || coordinator.isDrawerPresented ? 0.6 : 1)
-                .opacity(coordinator.isAccountSwitcherPresented || coordinator.isDrawerPresented ? 0 : 1)
-                .allowsHitTesting(!coordinator.isAccountSwitcherPresented && !coordinator.isDrawerPresented)
-                .animation(.snappy(duration: 0.22), value: coordinator.isAccountSwitcherPresented)
-                .animation(.snappy(duration: 0.22), value: coordinator.isDrawerPresented)
+            HomeComposeButtonOverlay(
+                size: composeButtonSize,
+                isObscured: coordinator.isAccountSwitcherPresented || coordinator.isDrawerPresented,
+                visibilitySubject: composeVisibilitySubject,
+                onCompose: { coordinator.openCompose() }
+            )
+            .padding(.trailing, coordinator.tabBarTrailingInset)
+            .padding(.bottom, composeButtonTabBarSpacing)
         }
     }
 
@@ -604,6 +604,9 @@ private struct HomeTabRootView: View {
                 coordinator.timelineSelection = timeline
             },
             onChromeFraction: nil,
+            onComposeVisibilityChange: { isVisible in
+                composeVisibilitySubject.send(isVisible)
+            },
             usesSystemNavigationBar: coordinator.usesSystemHomeBar,
             isActive: coordinator.selectedTab == .home && coordinator.isAtRoot(.home)
                 && coordinator.presentedSheet == nil && coordinator.composeContext == nil
@@ -616,26 +619,93 @@ private struct HomeTabRootView: View {
     private var composeButtonClearance: CGFloat {
         composeButtonSize + theme.spacing.xl
     }
+}
 
-    private var composeButton: some View {
-        Button {
-            coordinator.openCompose()
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(theme.colors.primaryForeground)
-                .frame(width: composeButtonSize, height: composeButtonSize)
-                .background(theme.colors.primary500, in: Circle())
-                .contentShape(Circle())
+/// Isolated floating compose button rendered with iOS 26 Liquid Glass (with automatic
+/// solid high-contrast fallback) and scroll-responsive hide/reveal behavior.
+private struct HomeComposeButtonOverlay: View {
+    let size: CGFloat
+    let isObscured: Bool
+    let visibilitySubject: PassthroughSubject<Bool, Never>
+    let onCompose: () -> Void
+
+    @Environment(\.moroTheme) private var theme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
+    @State private var isScrollVisible = true
+
+    private var isVisible: Bool {
+        !isObscured && isScrollVisible
+    }
+
+    private var scale: CGFloat {
+        if isObscured { return 0.6 }
+        if !isScrollVisible { return reduceMotion ? 1 : 0.76 }
+        return 1
+    }
+
+    private var verticalOffset: CGFloat {
+        (!isObscured && !isScrollVisible && !reduceMotion) ? 12 : 0
+    }
+
+    var body: some View {
+        Button(action: onCompose) {
+            buttonSurface
         }
         .buttonStyle(.plain)
-        .shadow(
-            color: Color.black.opacity(theme.colorScheme == .dark ? 0.30 : 0.18),
-            radius: 9,
-            y: 4
-        )
         .accessibilityLabel(MoroL10n.Navigation.compose)
         .accessibilityIdentifier("home.composeButton")
+        .scaleEffect(scale)
+        .offset(y: verticalOffset)
+        .opacity(isVisible ? 1 : 0)
+        .allowsHitTesting(isVisible)
+        .accessibilityHidden(!isVisible)
+        .animation(
+            reduceMotion ? nil : .snappy(duration: 0.22),
+            value: isObscured
+        )
+        .animation(
+            reduceMotion
+                ? nil
+                : (isScrollVisible
+                    ? .spring(response: 0.34, dampingFraction: 0.78)
+                    : .snappy(duration: 0.22)),
+            value: isScrollVisible
+        )
+        .onReceive(visibilitySubject) { nextVisible in
+            guard isScrollVisible != nextVisible else { return }
+            isScrollVisible = nextVisible
+        }
+        .onChange(of: isObscured) { _, obscured in
+            if !obscured, !isScrollVisible {
+                isScrollVisible = true
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var buttonSurface: some View {
+        let glyph = Image(systemName: "plus")
+            .font(.system(size: 21, weight: .semibold))
+            .frame(width: size, height: size)
+
+        if #available(iOS 26, *), !reduceTransparency, contrast != .increased {
+            glyph
+                .foregroundStyle(theme.colors.textPrimary)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(Circle())
+        } else {
+            glyph
+                .foregroundStyle(theme.colors.primaryForeground)
+                .background(theme.colors.primary500, in: Circle())
+                .contentShape(Circle())
+                .shadow(
+                    color: Color.black.opacity(theme.colorScheme == .dark ? 0.30 : 0.18),
+                    radius: 9,
+                    y: 4
+                )
+        }
     }
 }
 

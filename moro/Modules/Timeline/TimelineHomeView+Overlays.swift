@@ -10,13 +10,11 @@ extension TimelineHomeView {
             count: currentDetectionCount,
             hasMore: viewModel.newPostsHaveMore,
             isEnabled: settings.timelineInAppNewPostBannerEnabled,
+            headerHeight: headerHeight,
             bridge: scrollBridge
         ) {
             loadDetectedPosts(scrollToTop: true, providesFeedback: true)
         }
-        // Flush with the header's bottom edge: the compact badge hangs from it, the full
-        // notice keeps its own gap below.
-        .padding(.top, headerHeight)
     }
 
     /// Re-tapping Home at the top is a pull without the finger: it opens the same petal slot
@@ -99,6 +97,7 @@ private struct TimelineNewPostsNotice: View {
     let count: Int
     let hasMore: Bool
     let isEnabled: Bool
+    let headerHeight: CGFloat
     let bridge: TimelineScrollBridge
     let onTap: () -> Void
 
@@ -109,12 +108,14 @@ private struct TimelineNewPostsNotice: View {
     /// A pull to refresh is in progress: it brings the new posts in itself, so the notice
     /// steps aside instead of flashing a count that the refresh is about to clear.
     @State private var isPullRefreshing = false
+    @State private var headerFraction: CGFloat
 
     init(
         timeline: TimelineType,
         count: Int,
         hasMore: Bool,
         isEnabled: Bool,
+        headerHeight: CGFloat,
         bridge: TimelineScrollBridge,
         onTap: @escaping () -> Void
     ) {
@@ -122,13 +123,18 @@ private struct TimelineNewPostsNotice: View {
         self.count = count
         self.hasMore = hasMore
         self.isEnabled = isEnabled
+        self.headerHeight = headerHeight
         self.bridge = bridge
         self.onTap = onTap
         _isAtTop = State(initialValue: bridge.isAtTop(timeline))
+        _headerFraction = State(initialValue: bridge.currentChromeState.headerFraction)
     }
 
     private var hasPendingPosts: Bool { count > 0 || hasMore }
     private var isCompact: Bool { compactTimelines.contains(timeline) }
+    private var visibleHeaderOffset: CGFloat {
+        headerHeight * (1 - min(max(headerFraction, 0), 1))
+    }
 
     var body: some View {
         VStack {
@@ -157,6 +163,18 @@ private struct TimelineNewPostsNotice: View {
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isCompact)
             }
             Spacer()
+        }
+        .padding(.top, visibleHeaderOffset)
+        .onReceive(bridge.chromeStateSubject) { nextState in
+            let nextFraction = min(max(nextState.headerFraction, 0), 1)
+            guard abs(nextFraction - headerFraction) > 0.0005 else { return }
+            if nextState.isAnimated && !reduceMotion {
+                withAnimation(.snappy(duration: 0.24)) {
+                    headerFraction = nextFraction
+                }
+            } else {
+                headerFraction = nextFraction
+            }
         }
         .onReceive(bridge.atTopEvents) { source in
             guard source == timeline else { return }

@@ -133,6 +133,12 @@ final class RootTabCoordinator: ObservableObject {
     @Published private(set) var tabActivation: TabActivation?
     @Published var timelineSelection: TimelineType = .home
     @Published var tabBarHeight: CGFloat = 78
+    /// Trailing inset matching the floating iOS 26 tab bar capsule (or 16pt on older flat bars)
+    /// so the home floating compose button aligns flush with the tab bar's trailing edge.
+    @Published var tabBarTrailingInset: CGFloat = {
+        if #available(iOS 26, *) { return 21 }
+        return 16
+    }()
     /// The device has a hinge (iPhone Duo): the home timeline moves its header controls into the
     /// system navigation bar, so they follow the bars into the vertical side bar and share the
     /// status row on the inner display. Other iPhones keep the custom hide-on-scroll header.
