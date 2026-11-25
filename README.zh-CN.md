@@ -36,8 +36,8 @@ Moro 是一款面向 iPhone 的原生 Mastodon 客户端，以**轻盈、简单�
 关注喜欢的社区，在多个账号之间切换，回到上次阅读的位置。也可以调整主题色、帖子字号和应用图标，让 Moro 更合自己的习惯。
 
 <p align="center">
-  <a href="https://apps.apple.com/app/id6776115614"><img src="screenshots/app-store/en-US/promotional/04-moro.png" width="270" alt="Moro 官方商店宣传图：清晰地阅读对话与回复"></a>
-  <a href="https://apps.apple.com/app/id6776115614"><img src="screenshots/app-store/en-US/promotional/10-moro.png" width="270" alt="Moro 官方商店宣传图：调整外观、帖子字号与应用图标"></a>
+  <a href="https://apps.apple.com/app/id6776115614"><img src="docs/assets/readme/04-moro.png" width="270" alt="Moro 官方商店宣传图：清晰地阅读对话与回复"></a>
+  <a href="https://apps.apple.com/app/id6776115614"><img src="docs/assets/readme/10-moro.png" width="270" alt="Moro 官方商店宣传图：调整外观、帖子字号与应用图标"></a>
 </p>
 
 <p align="center">

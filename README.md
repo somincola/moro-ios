@@ -36,8 +36,8 @@ Moro is a native Mastodon client for iPhone, built around three ideas: **light, 
 Follow your communities, switch between accounts, and pick up where you left off. Make the experience your own with a theme color, readable text, and an app icon that feels right.
 
 <p align="center">
-  <a href="https://apps.apple.com/app/id6776115614"><img src="screenshots/app-store/en-US/promotional/04-moro.png" width="270" alt="Official Moro App Store preview: follow a threaded conversation"></a>
-  <a href="https://apps.apple.com/app/id6776115614"><img src="screenshots/app-store/en-US/promotional/10-moro.png" width="270" alt="Official Moro App Store preview: personalize appearance, text size, and app icon"></a>
+  <a href="https://apps.apple.com/app/id6776115614"><img src="docs/assets/readme/04-moro.png" width="270" alt="Official Moro App Store preview: follow a threaded conversation"></a>
+  <a href="https://apps.apple.com/app/id6776115614"><img src="docs/assets/readme/10-moro.png" width="270" alt="Official Moro App Store preview: personalize appearance, text size, and app icon"></a>
 </p>
 
 <p align="center">
