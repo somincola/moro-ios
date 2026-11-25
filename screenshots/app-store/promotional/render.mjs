@@ -17,6 +17,7 @@ async function render(locale, mode, width, height, file) {
 
     const child = spawn(chrome, [
         "--headless=new",
+        "--no-sandbox",
         "--hide-scrollbars",
         "--disable-gpu",
         "--disable-background-networking",

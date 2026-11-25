@@ -53,8 +53,8 @@
         /* Panorama 07–08: an evening sea for the seaside poll. */
         .duo {
             background:
-                radial-gradient(circle at 2050px 1240px, rgba(255, 210, 170, .75) 0, rgba(255, 190, 150, 0) 760px),
-                linear-gradient(180deg, #13324a 0%, #1f5a72 38%, #4d93a3 62%, #a9cfcf 80%, #efe0c4 100%);
+                radial-gradient(circle at 2160px 1920px, rgba(255, 210, 170, .72) 0, rgba(255, 190, 150, 0) 760px),
+                linear-gradient(180deg, #13324a 0%, #1d5169 44%, #3c7e90 66%, #a9cfcf 84%, #efe0c4 100%);
         }
 
         .duo .wave { left: 0; width: 2640px; }
@@ -87,80 +87,89 @@
             box-shadow: 0 18px 42px rgba(16, 26, 40, .22);
         }
 
-        .brand b { font-size: 54px; line-height: 1; }
+        .brand b { font-size: 54px; line-height: 1; letter-spacing: -.02em; }
         .brand.light { color: white; }
-        .hero .brand, .duo .brand, .single .brand { left: 96px; top: 112px; }
+        .hero .brand, .duo .brand { left: 96px; top: 112px; }
+        .single .brand { left: 50%; top: 104px; transform: translateX(-50%); gap: 22px; }
+        .single .brand img { width: 92px; height: 92px; border-radius: 22px; }
+        .single .brand b { font-size: 48px; }
 
         .copy { position: absolute; z-index: 7; }
 
         .copy .eyebrow {
-            margin-bottom: 26px;
+            margin-bottom: 24px;
             font-size: 30px;
             line-height: 1;
             font-weight: 700;
-            letter-spacing: .06em;
+            letter-spacing: .08em;
             text-transform: uppercase;
             color: var(--accent, currentColor);
         }
 
-        .copy.light .eyebrow { color: rgba(255, 255, 255, .72); }
-        .hero-feature .eyebrow { color: #a0573a; }
+        .copy.light .eyebrow { color: rgba(255, 255, 255, .74); }
+        .hero-feature .eyebrow { color: #9c5032; }
 
         .copy h1 {
             margin: 0;
-            font-size: 104px;
+            font-size: 102px;
             line-height: 1.06;
             font-weight: 760;
+            letter-spacing: -.02em;
         }
 
         .copy p {
-            margin: 34px 0 0;
-            font-size: 41px;
-            line-height: 1.32;
+            margin: 32px 0 0;
+            font-size: 40px;
+            line-height: 1.34;
             font-weight: 500;
-            opacity: .72;
+            opacity: .74;
         }
 
-        :is(:lang(zh), :lang(ja)) .copy h1 { line-height: 1.16; letter-spacing: .02em; }
-        :is(:lang(zh), :lang(ja)) .copy p { line-height: 1.5; letter-spacing: .02em; }
+        :is(:lang(zh), :lang(ja)) .copy h1 { line-height: 1.16; letter-spacing: .01em; }
+        :is(:lang(zh), :lang(ja)) .copy p { line-height: 1.5; letter-spacing: .015em; }
         :is(:lang(zh), :lang(ja)) .copy .eyebrow { letter-spacing: .14em; }
         .copy[dir="rtl"]:not(.single-copy) { text-align: right; }
 
         .copy.light { color: white; }
-        .copy.light p { opacity: .82; }
+        .copy.light p { opacity: .84; }
 
-        .hero-copy { left: 96px; top: 430px; width: 1020px; }
+        .hero-copy { left: 96px; top: 430px; width: 1000px; }
         .hero-copy h1 { font-size: 118px; }
 
-        .hero-feature { left: 2980px; top: 1240px; width: 860px; color: var(--night); }
-        .hero-feature h1 { font-size: 80px; }
-        .hero-feature p { font-size: 36px; }
+        .hero-feature { left: 2940px; top: 1160px; width: 900px; color: var(--night); }
+        .hero-feature h1 { font-size: 82px; }
+        .hero-feature p { font-size: 37px; }
 
-        .single-copy { top: 270px; left: 82px; right: 82px; text-align: center; }
+        .single-copy { top: 266px; left: 82px; right: 82px; text-align: center; }
         .single-copy p { max-width: 1040px; margin-inline: auto; }
 
-        .duo-copy { left: 96px; top: 380px; width: 660px; }
-        .duo-copy h1 { font-size: 98px; }
-        .duo-copy p { font-size: 36px; }
+        .duo-copy { left: 96px; top: 410px; width: 610px; }
+        .duo-copy h1 { font-size: 92px; }
+        .duo-copy p { font-size: 35px; }
 
-        .duo-feature { left: 1940px; top: 380px; width: 600px; }
+        .duo-feature { left: 1960px; top: 920px; width: 580px; }
         .duo-feature h1 { font-size: 64px; }
-        .duo-feature p { font-size: 32px; }
+        .duo-feature p { font-size: 33px; }
 
         .phone-wrap { position: absolute; z-index: 4; transform-origin: center; }
-        .single-phone { left: 230px; top: 790px; transform: scale(1.1); transform-origin: top center; }
-        .hero-phone { left: 1420px; top: 300px; transform: rotate(14deg) scale(1.46); }
-        .duo-phone { left: 1060px; top: 420px; transform: rotate(-12deg) scale(1.26); }
+        .single-phone { left: 230px; top: 796px; transform: scale(1.1); transform-origin: top center; }
+        .hero-phone { left: 1470px; top: 530px; transform: rotate(12deg) scale(1.33); }
+        .duo-phone { left: 1030px; top: 590px; transform: rotate(-10deg) scale(1.18); }
 
         /* 792 × 1721 keeps the 1320 × 2868 capture at its native aspect ratio. */
         .phone {
             position: relative;
             width: 860px;
             padding: 24px;
-            border: 10px solid #111317;
+            border: 10px solid #16181d;
             border-radius: 142px;
-            background: #111317;
-            box-shadow: 0 60px 110px rgba(16, 26, 40, .28), 0 18px 40px rgba(16, 26, 40, .16), inset 0 8px 0 rgba(255, 255, 255, .16);
+            background: linear-gradient(155deg, #252830 0%, #111317 38%, #0d0f13 100%);
+            box-shadow:
+                0 0 0 2.5px rgba(255, 255, 255, .24),
+                0 68px 128px rgba(14, 22, 36, .34),
+                0 22px 44px rgba(14, 22, 36, .18),
+                inset 0 2px 1px rgba(255, 255, 255, .24),
+                inset 0 -2px 2px rgba(0, 0, 0, .45);
         }
 
         .screen {
