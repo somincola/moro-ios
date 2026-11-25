@@ -1,0 +1,262 @@
+{
+  "zh-Hans": {
+    "rtl": false,
+    "brand": "Moro for Mastodon",
+    "beats": [
+      {
+        "kicker": "首页",
+        "lines": ["纯粹黑白", "回归阅读"],
+        "subtitle": "轻盈克制的原生时间轴"
+      },
+      {
+        "kicker": "串文",
+        "lines": ["清晰串文", "专注对话"],
+        "subtitle": "上下文自然连贯，阅读更从容"
+      },
+      {
+        "kicker": "通知",
+        "lines": ["克制提醒", "一目了然"],
+        "subtitle": "回复、转发与喜欢井然有序"
+      },
+      {
+        "kicker": "深色",
+        "lines": ["深色阅读", "静谧护眼"],
+        "subtitle": "日夜双模式，随心切换"
+      }
+    ]
+  },
+  "zh-Hant": {
+    "rtl": false,
+    "brand": "Moro for Mastodon",
+    "beats": [
+      {
+        "kicker": "首頁",
+        "lines": ["純粹黑白", "回歸閱讀"],
+        "subtitle": "輕盈克制的原生時間軸"
+      },
+      {
+        "kicker": "串文",
+        "lines": ["清晰串文", "專注對話"],
+        "subtitle": "脈絡自然連貫，閱讀更從容"
+      },
+      {
+        "kicker": "通知",
+        "lines": ["克制提醒", "一目了然"],
+        "subtitle": "回覆、轉發與喜歡井然有序"
+      },
+      {
+        "kicker": "深色",
+        "lines": ["深色閱讀", "靜謐護眼"],
+        "subtitle": "日夜雙模式，隨心切換"
+      }
+    ]
+  },
+  "en-US": {
+    "rtl": false,
+    "brand": "Moro for Mastodon",
+    "beats": [
+      {
+        "kicker": "Timeline",
+        "lines": ["Pure ink.", "Open web."],
+        "subtitle": "A calm native home for Mastodon"
+      },
+      {
+        "kicker": "Threads",
+        "lines": ["Clear threads.", "Real focus."],
+        "subtitle": "Follow conversations without the noise"
+      },
+      {
+        "kicker": "Notifications",
+        "lines": ["Quiet alerts.", "At a glance."],
+        "subtitle": "Replies, boosts, and likes in order"
+      },
+      {
+        "kicker": "Dark Mode",
+        "lines": ["Dark mode.", "Calm at night."],
+        "subtitle": "Thoughtful contrast, day or night"
+      }
+    ]
+  },
+  "ja": {
+    "rtl": false,
+    "brand": "Moro for Mastodon",
+    "beats": [
+      {
+        "kicker": "ホーム",
+        "lines": ["白と黒で、", "静かに読む。"],
+        "subtitle": "軽やかなネイティブタイムライン"
+      },
+      {
+        "kicker": "スレッド",
+        "lines": ["会話の流れを、", "まっすぐに。"],
+        "subtitle": "返信も文脈もすっきり見やすく"
+      },
+      {
+        "kicker": "通知",
+        "lines": ["大切な通知を、", "ひと目で。"],
+        "subtitle": "返信もお気に入りも美しく整理"
+      },
+      {
+        "kicker": "ダーク",
+        "lines": ["夜も心地よい", "ダークモード。"],
+        "subtitle": "昼も夜も目にやさしいコントラスト"
+      }
+    ]
+  },
+  "de-DE": {
+    "rtl": false,
+    "brand": "Moro for Mastodon",
+    "beats": [
+      {
+        "kicker": "Timeline",
+        "lines": ["Klar in Form.", "Ruhig im Feed."],
+        "subtitle": "Dein nativer Client für Mastodon"
+      },
+      {
+        "kicker": "Threads",
+        "lines": ["Klare Threads.", "Voller Fokus."],
+        "subtitle": "Gespräche ohne Ablenkung verfolgen"
+      },
+      {
+        "kicker": "Mitteilungen",
+        "lines": ["Leise Hinweise.", "Alles im Blick."],
+        "subtitle": "Antworten, Boosts und Favoriten sortiert"
+      },
+      {
+        "kicker": "Dunkelmodus",
+        "lines": ["Dunkelmodus.", "Entspannt lesen."],
+        "subtitle": "Stimmiger Kontrast bei Tag und Nacht"
+      }
+    ]
+  },
+  "fr-FR": {
+    "rtl": false,
+    "brand": "Moro for Mastodon",
+    "beats": [
+      {
+        "kicker": "Accueil",
+        "lines": ["Noir et blanc.", "Fil apaisé."],
+        "subtitle": "Un client Mastodon natif et épuré"
+      },
+      {
+        "kicker": "Fils",
+        "lines": ["Fils limpides.", "Vraie lecture."],
+        "subtitle": "Suivez chaque échange sans distraction"
+      },
+      {
+        "kicker": "Notifications",
+        "lines": ["Alertes calmes.", "En un coup d’œil."],
+        "subtitle": "Réponses, partages et favoris bien rangés"
+      },
+      {
+        "kicker": "Mode sombre",
+        "lines": ["Mode sombre.", "Doux la nuit."],
+        "subtitle": "Un contraste soigné de jour comme de nuit"
+      }
+    ]
+  },
+  "es-ES": {
+    "rtl": false,
+    "brand": "Moro for Mastodon",
+    "beats": [
+      {
+        "kicker": "Inicio",
+        "lines": ["Blanco y negro.", "Lectura pura."],
+        "subtitle": "Un cliente nativo y sereno de Mastodon"
+      },
+      {
+        "kicker": "Hilos",
+        "lines": ["Hilos claros.", "Más enfoque."],
+        "subtitle": "Sigue cada conversación sin ruido"
+      },
+      {
+        "kicker": "Notificaciones",
+        "lines": ["Avisos sutiles.", "De un vistazo."],
+        "subtitle": "Respuestas, impulsos y favoritos en orden"
+      },
+      {
+        "kicker": "Modo oscuro",
+        "lines": ["Modo oscuro.", "Calma nocturna."],
+        "subtitle": "Contraste cuidado de día y de noche"
+      }
+    ]
+  },
+  "it": {
+    "rtl": false,
+    "brand": "Moro for Mastodon",
+    "beats": [
+      {
+        "kicker": "Home",
+        "lines": ["Bianco e nero.", "Lettura pura."],
+        "subtitle": "Un client Mastodon nativo ed essenziale"
+      },
+      {
+        "kicker": "Discussioni",
+        "lines": ["Thread chiari.", "Pieno focus."],
+        "subtitle": "Segui ogni risposta senza distrazioni"
+      },
+      {
+        "kicker": "Notifiche",
+        "lines": ["Avvisi discreti.", "A colpo d’occhio."],
+        "subtitle": "Risposte, boost e preferiti in ordine"
+      },
+      {
+        "kicker": "Modalità scura",
+        "lines": ["Modalità scura.", "Calma di notte."],
+        "subtitle": "Contrasto equilibrato giorno e notte"
+      }
+    ]
+  },
+  "pt-PT": {
+    "rtl": false,
+    "brand": "Moro for Mastodon",
+    "beats": [
+      {
+        "kicker": "Início",
+        "lines": ["Preto e branco.", "Leitura pura."],
+        "subtitle": "Um cliente Mastodon nativo e sereno"
+      },
+      {
+        "kicker": "Conversas",
+        "lines": ["Fios claros.", "Foco total."],
+        "subtitle": "Acompanha cada resposta sem ruído"
+      },
+      {
+        "kicker": "Notificações",
+        "lines": ["Alertas calmos.", "Num instante."],
+        "subtitle": "Respostas, partilhas e gostos organizados"
+      },
+      {
+        "kicker": "Modo escuro",
+        "lines": ["Modo escuro.", "Calma à noite."],
+        "subtitle": "Contraste cuidado de dia e de noite"
+      }
+    ]
+  },
+  "ar-SA": {
+    "rtl": true,
+    "brand": "Moro for Mastodon",
+    "beats": [
+      {
+        "kicker": "الرئيسية",
+        "lines": ["أبيض وأسود.", "قراءة هادئة."],
+        "subtitle": "تجربة ماستودون أصلية وبسيطة"
+      },
+      {
+        "kicker": "السلاسل",
+        "lines": ["سلاسل واضحة.", "تركيز أعمق."],
+        "subtitle": "تابع الحوارات بسلاسة دون تشتيت"
+      },
+      {
+        "kicker": "الإشعارات",
+        "lines": ["تنبيهات هادئة.", "بلمحة واحدة."],
+        "subtitle": "الردود والإعجابات مرتبة بوضوح"
+      },
+      {
+        "kicker": "الوضع الداكن",
+        "lines": ["وضع داكن.", "راحة ليلًا."],
+        "subtitle": "تباين متوازن نهارًا وليلًا"
+      }
+    ]
+  }
+}

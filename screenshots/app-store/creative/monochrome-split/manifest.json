@@ -1,0 +1,116 @@
+{
+  "concept": "Monochrome Split 39/61 (黑白双生)",
+  "bpm": 80,
+  "header": {
+    "master": "header/moro-header-3840x1646.mp4",
+    "preview": "header/header-preview.mp4",
+    "poster": "header/header-poster.jpg",
+    "keyframes": "header/header-keyframes.jpg",
+    "width": 3840,
+    "height": 1646,
+    "fps": 30,
+    "duration_s": 15.0
+  },
+  "search": {
+    "zh-Hans": {
+      "master": "search/zh-Hans/moro-search-zh-Hans-3840x2560.mp4",
+      "preview": "search/zh-Hans/preview.mp4",
+      "poster": "search/zh-Hans/poster.jpg",
+      "contact_sheet": "search/zh-Hans/four-pages.jpg",
+      "width": 3840,
+      "height": 2560,
+      "fps": 30,
+      "duration_s": 12.0
+    },
+    "zh-Hant": {
+      "master": "search/zh-Hant/moro-search-zh-Hant-3840x2560.mp4",
+      "preview": "search/zh-Hant/preview.mp4",
+      "poster": "search/zh-Hant/poster.jpg",
+      "contact_sheet": "search/zh-Hant/four-pages.jpg",
+      "width": 3840,
+      "height": 2560,
+      "fps": 30,
+      "duration_s": 12.0
+    },
+    "en-US": {
+      "master": "search/en-US/moro-search-en-US-3840x2560.mp4",
+      "preview": "search/en-US/preview.mp4",
+      "poster": "search/en-US/poster.jpg",
+      "contact_sheet": "search/en-US/four-pages.jpg",
+      "width": 3840,
+      "height": 2560,
+      "fps": 30,
+      "duration_s": 12.0
+    },
+    "ja": {
+      "master": "search/ja/moro-search-ja-3840x2560.mp4",
+      "preview": "search/ja/preview.mp4",
+      "poster": "search/ja/poster.jpg",
+      "contact_sheet": "search/ja/four-pages.jpg",
+      "width": 3840,
+      "height": 2560,
+      "fps": 30,
+      "duration_s": 12.0
+    },
+    "de-DE": {
+      "master": "search/de-DE/moro-search-de-DE-3840x2560.mp4",
+      "preview": "search/de-DE/preview.mp4",
+      "poster": "search/de-DE/poster.jpg",
+      "contact_sheet": "search/de-DE/four-pages.jpg",
+      "width": 3840,
+      "height": 2560,
+      "fps": 30,
+      "duration_s": 12.0
+    },
+    "fr-FR": {
+      "master": "search/fr-FR/moro-search-fr-FR-3840x2560.mp4",
+      "preview": "search/fr-FR/preview.mp4",
+      "poster": "search/fr-FR/poster.jpg",
+      "contact_sheet": "search/fr-FR/four-pages.jpg",
+      "width": 3840,
+      "height": 2560,
+      "fps": 30,
+      "duration_s": 12.0
+    },
+    "es-ES": {
+      "master": "search/es-ES/moro-search-es-ES-3840x2560.mp4",
+      "preview": "search/es-ES/preview.mp4",
+      "poster": "search/es-ES/poster.jpg",
+      "contact_sheet": "search/es-ES/four-pages.jpg",
+      "width": 3840,
+      "height": 2560,
+      "fps": 30,
+      "duration_s": 12.0
+    },
+    "it": {
+      "master": "search/it/moro-search-it-3840x2560.mp4",
+      "preview": "search/it/preview.mp4",
+      "poster": "search/it/poster.jpg",
+      "contact_sheet": "search/it/four-pages.jpg",
+      "width": 3840,
+      "height": 2560,
+      "fps": 30,
+      "duration_s": 12.0
+    },
+    "pt-PT": {
+      "master": "search/pt-PT/moro-search-pt-PT-3840x2560.mp4",
+      "preview": "search/pt-PT/preview.mp4",
+      "poster": "search/pt-PT/poster.jpg",
+      "contact_sheet": "search/pt-PT/four-pages.jpg",
+      "width": 3840,
+      "height": 2560,
+      "fps": 30,
+      "duration_s": 12.0
+    },
+    "ar-SA": {
+      "master": "search/ar-SA/moro-search-ar-SA-3840x2560.mp4",
+      "preview": "search/ar-SA/preview.mp4",
+      "poster": "search/ar-SA/poster.jpg",
+      "contact_sheet": "search/ar-SA/four-pages.jpg",
+      "width": 3840,
+      "height": 2560,
+      "fps": 30,
+      "duration_s": 12.0
+    }
+  }
+}
