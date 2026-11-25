@@ -101,6 +101,29 @@ enum ProfileStickyTabLogic {
             return topChromeHeight
         }
     }
+
+    /// Resolves the scroll offset a target profile tab should adopt upon becoming active.
+    /// - When switching from a pinned or bottom-docked tab bar, preserves deep content scroll
+    ///   positions (`>= pinThreshold`) and aligns un-scrolled tabs up to `pinThreshold` so the
+    ///   header never slams back down unexpectedly.
+    /// - When switching while the header is naturally visible (`< pinThreshold`), aligns the
+    ///   target tab to the current header offset so the visible profile header stays steady.
+    static func activatedTabOffset(
+        savedOffset: CGFloat,
+        currentScrollOffset: CGFloat,
+        currentPlacement: ProfileTabPlacement,
+        pinThreshold: CGFloat
+    ) -> CGFloat {
+        let clampedCurrent = max(0, currentScrollOffset)
+        let clampedSaved = max(0, savedOffset)
+        guard pinThreshold > 0 else { return clampedSaved }
+
+        if currentPlacement == .bottomDocked || clampedCurrent >= pinThreshold - pinTolerance {
+            return max(clampedSaved, pinThreshold)
+        }
+
+        return min(clampedCurrent, pinThreshold)
+    }
 }
 
 struct ProfileChromeLayout: Equatable {
@@ -121,16 +144,32 @@ struct ProfileTabScrollPosition: ViewModifier {
     }
 
     @State private var position = ScrollPosition(edge: .top)
-    @State private var firstOffset: CGFloat?
+    @State private var pendingScrollTarget: CGFloat?
+    @State private var pendingScrollAttempts = 0
     @State private var offset: CGFloat
+    @State private var reachableOffset: CGFloat = 0
     let isActive: Bool
+    let currentScrollOffset: CGFloat
+    let currentPlacement: ProfileTabPlacement
+    let pinThreshold: CGFloat
     let scrollToTopRequest: Int
     let reportOffset: (CGFloat) -> Void
 
-    init(initialOffset: CGFloat, isActive: Bool, scrollToTopRequest: Int, reportOffset: @escaping (CGFloat) -> Void) {
-        _firstOffset = State(initialValue: initialOffset > 0 ? initialOffset : nil)
+    init(
+        initialOffset: CGFloat,
+        isActive: Bool,
+        currentScrollOffset: CGFloat,
+        currentPlacement: ProfileTabPlacement,
+        pinThreshold: CGFloat,
+        scrollToTopRequest: Int,
+        reportOffset: @escaping (CGFloat) -> Void
+    ) {
+        _pendingScrollTarget = State(initialValue: initialOffset > 0 ? initialOffset : nil)
         _offset = State(initialValue: initialOffset)
         self.isActive = isActive
+        self.currentScrollOffset = currentScrollOffset
+        self.currentPlacement = currentPlacement
+        self.pinThreshold = pinThreshold
         self.scrollToTopRequest = scrollToTopRequest
         self.reportOffset = reportOffset
     }
@@ -142,23 +181,62 @@ struct ProfileTabScrollPosition: ViewModifier {
                             reachableOffset: geometry.contentSize.height + geometry.contentInsets.top
                                 + geometry.contentInsets.bottom - geometry.containerSize.height)
             } action: { _, geometry in
-                // iOS 18 can lay out a new scroll view at zero before the header and grid have a size.
-                if let firstOffset {
-                    guard geometry.reachableOffset >= firstOffset - 1 else { return }
-                    self.firstOffset = nil
-                    if abs(geometry.offset - firstOffset) > 1 {
-                        position.scrollTo(y: firstOffset)
+                reachableOffset = geometry.reachableOffset
+                guard isActive else { return }
+                // iOS 18 can lay out a new or reactivated scroll view before scrollTo settles.
+                if let target = pendingScrollTarget {
+                    guard geometry.reachableOffset >= target - 1 else { return }
+                    if abs(geometry.offset - target) <= 1 {
+                        pendingScrollTarget = nil
+                        pendingScrollAttempts = 0
+                    } else if pendingScrollAttempts < 3 {
+                        pendingScrollAttempts += 1
+                        position.scrollTo(y: target)
                         return
+                    } else {
+                        pendingScrollTarget = nil
+                        pendingScrollAttempts = 0
                     }
                 }
                 offset = geometry.offset
-                if isActive { reportOffset(geometry.offset) }
+                reportOffset(geometry.offset)
             }
-            .onChange(of: isActive, initial: true) { _, active in
-                if active { reportOffset(max(0, offset)) }
+            .onChange(of: isActive, initial: true) { wasActive, active in
+                guard active else {
+                    pendingScrollTarget = nil
+                    pendingScrollAttempts = 0
+                    return
+                }
+                if wasActive {
+                    reportOffset(max(0, offset))
+                    return
+                }
+                let target = ProfileStickyTabLogic.activatedTabOffset(
+                    savedOffset: offset,
+                    currentScrollOffset: currentScrollOffset,
+                    currentPlacement: currentPlacement,
+                    pinThreshold: pinThreshold
+                )
+                if abs(offset - target) > 1 {
+                    pendingScrollTarget = target
+                    pendingScrollAttempts = 0
+                    offset = target
+                    reportOffset(target)
+                    if reachableOffset >= target - 1 {
+                        position.scrollTo(y: target)
+                    }
+                } else {
+                    pendingScrollTarget = nil
+                    pendingScrollAttempts = 0
+                    reportOffset(max(0, offset))
+                }
             }
             .onChange(of: scrollToTopRequest) { _, _ in
-                if isActive { withAnimation(.snappy) { position.scrollTo(edge: .top) } }
+                if isActive {
+                    pendingScrollTarget = nil
+                    pendingScrollAttempts = 0
+                    withAnimation(.snappy) { position.scrollTo(edge: .top) }
+                }
             }
     }
 }

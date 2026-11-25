@@ -151,8 +151,14 @@ struct ProfileView: View {
             }
             let pin = ProfileStickyTabLogic.pinThreshold(headerHeight: chromeState.headerHeight,
                                                          topChromeHeight: topChromeHeight)
-            let firstOffset = chromeLayout.tabPlacement == .bottomDocked && !retainedTabs.isEmpty
-                ? pin : min(max(0, chromeState.scrollOffset), pin)
+            let firstOffset: CGFloat = retainedTabs.isEmpty
+                ? 0
+                : ProfileStickyTabLogic.activatedTabOffset(
+                    savedOffset: 0,
+                    currentScrollOffset: chromeState.scrollOffset,
+                    currentPlacement: chromeLayout.tabPlacement,
+                    pinThreshold: pin
+                )
 
             ZStack(alignment: .top) {
                 sceneCanvasColor
@@ -170,7 +176,7 @@ struct ProfileView: View {
 
                 ForEach(pages, id: \.self) { page in
                     profileScrollPage(page, isActive: page == contentID, topSafeInset: topSafeInset,
-                                      chromeLayout: chromeLayout, initialOffset: firstOffset)
+                                      chromeLayout: chromeLayout, pinThreshold: pin, initialOffset: firstOffset)
                 }
 
                 profileNavigationChromeBackground(
@@ -288,7 +294,8 @@ struct ProfileView: View {
     }
 
     private func profileScrollPage(_ id: ProfileViewModel.TabContentID, isActive: Bool, topSafeInset: CGFloat,
-                                   chromeLayout: ProfileChromeLayout, initialOffset: CGFloat) -> some View {
+                                   chromeLayout: ProfileChromeLayout, pinThreshold: CGFloat,
+                                   initialOffset: CGFloat) -> some View {
         ScrollView {
             VStack(spacing: 0) {
                 if isActive {
@@ -319,8 +326,14 @@ struct ProfileView: View {
                     .background(theme.colors.surfaceBase)
             }
         }
-        .modifier(ProfileTabScrollPosition(initialOffset: initialOffset, isActive: isActive,
-                                           scrollToTopRequest: scrollToTopRequest) { offset in
+        .modifier(ProfileTabScrollPosition(
+            initialOffset: initialOffset,
+            isActive: isActive,
+            currentScrollOffset: chromeState.scrollOffset,
+            currentPlacement: chromeLayout.tabPlacement,
+            pinThreshold: pinThreshold,
+            scrollToTopRequest: scrollToTopRequest
+        ) { offset in
             if id == viewModel.selectedContentID { updateScrollState(offset) }
         })
         .scrollIndicators(.hidden)

@@ -3437,6 +3437,62 @@ struct moroTests {
         )
     }
 
+    @Test @MainActor func profileActivatedTabOffsetAlignsHeaderBoundaryAndPreservesPinnedProgress() async throws {
+        // Returning to an un-scrolled Posts tab from a pinned Media/Replies tab keeps tabs pinned.
+        #expect(
+            ProfileStickyTabLogic.activatedTabOffset(
+                savedOffset: 0,
+                currentScrollOffset: 400,
+                currentPlacement: .topPinned,
+                pinThreshold: 400
+            ) == 400
+        )
+        // Returning to a deeply scrolled tab while pinned restores its exact reading offset.
+        #expect(
+            ProfileStickyTabLogic.activatedTabOffset(
+                savedOffset: 1250,
+                currentScrollOffset: 400,
+                currentPlacement: .topPinned,
+                pinThreshold: 400
+            ) == 1250
+        )
+        // Switching tabs while bottom-docked jumps an un-scrolled tab to pinned content.
+        #expect(
+            ProfileStickyTabLogic.activatedTabOffset(
+                savedOffset: 0,
+                currentScrollOffset: 0,
+                currentPlacement: .bottomDocked,
+                pinThreshold: 600
+            ) == 600
+        )
+        // Switching tabs while bottom-docked keeps an already deeply scrolled tab's position.
+        #expect(
+            ProfileStickyTabLogic.activatedTabOffset(
+                savedOffset: 1400,
+                currentScrollOffset: 0,
+                currentPlacement: .bottomDocked,
+                pinThreshold: 600
+            ) == 1400
+        )
+        // Plan A: while viewing the unpinned natural header, switching tabs keeps the header steady.
+        #expect(
+            ProfileStickyTabLogic.activatedTabOffset(
+                savedOffset: 1250,
+                currentScrollOffset: 120,
+                currentPlacement: .natural,
+                pinThreshold: 400
+            ) == 120
+        )
+        #expect(
+            ProfileStickyTabLogic.activatedTabOffset(
+                savedOffset: 0,
+                currentScrollOffset: -40,
+                currentPlacement: .natural,
+                pinThreshold: 400
+            ) == 0
+        )
+    }
+
     @Test @MainActor func cachedProfileTabsTrackTheirContentAndIgnorePaginationFromAnInactivePage() async {
         let api = MockMastodonAPI()
         let replies = (0..<20).map { makeStatus(id: String($0), inReplyToID: "parent") }

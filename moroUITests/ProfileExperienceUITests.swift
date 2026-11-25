@@ -840,6 +840,42 @@ final class ProfileExperienceUITests: XCTestCase {
         assertRestored(reply, at: replyY)
     }
 
+    func testReturningToPostsFromPinnedTabKeepsTabBarPinnedInsteadOfDroppingHeader() {
+        let app = launch(extra: ["UITEST_PROFILE_LONG_TABS": "1", "UITEST_PROFILE_GALLERY": "1"], animations: true)
+        defer { app.terminate() }
+        let posts = app.buttons["profile.tab.posts"].firstMatch
+        let replies = app.buttons["profile.tab.replies"].firstMatch
+        let media = app.buttons["profile.tab.media"].firstMatch
+        XCTAssertTrue(media.waitForExistence(timeout: 5))
+
+        // Start at top of Posts (un-scrolled), then switch to Media and ensure the tab bar is pinned.
+        media.tap()
+        XCTAssertTrue(app.buttons["profile.media.tile.320"].waitForExistence(timeout: 5))
+        for _ in 0..<4 where media.frame.minY > app.frame.height * 0.28 {
+            app.swipeUp()
+        }
+        let pinnedTabY = media.frame.minY
+        XCTAssertLessThan(pinnedTabY, app.frame.height * 0.28)
+
+        // Switching Media -> Replies stays pinned.
+        replies.tap()
+        XCTAssertTrue(app.staticTexts["Scroll reply 700"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(replies.frame.minY, pinnedTabY, accuracy: 6)
+
+        // Returning to Posts (which was never scrolled) must stay pinned instead of dropping the header back down.
+        posts.tap()
+        let firstPost = app.staticTexts["Scroll post 500"].firstMatch
+        XCTAssertTrue(firstPost.waitForExistence(timeout: 5))
+        let stayedPinned = NSPredicate { _, _ in
+            abs(posts.frame.minY - pinnedTabY) < 6 && firstPost.isHittable
+        }
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: stayedPinned, object: nil)], timeout: 5),
+            .completed,
+            "Expected Posts tab bar to remain pinned at y=\(pinnedTabY), got \(posts.frame.minY)"
+        )
+    }
+
     func testMediaGalleryShowsGridSkeletonAndRetriesThumbnailInPlace() {
         let app = launch(extra: ["UITEST_PROFILE_GALLERY": "1", "UITEST_PROFILE_GALLERY_LOADING": "1"])
         defer { app.terminate() }
