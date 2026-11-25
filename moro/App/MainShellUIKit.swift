@@ -64,9 +64,17 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
 #if os(iOS)
     @MainActor
-    final class MainShellViewController: UIViewController, UITabBarControllerDelegate {
+    final class MainShellViewController: UIViewController, UITabBarControllerDelegate, UIGestureRecognizerDelegate {
         private let coordinator: RootTabCoordinator
         private let mainTabController = UITabBarController()
+        private lazy var drawerEdgePanRecognizer: UIScreenEdgePanGestureRecognizer = {
+            let recognizer = UIScreenEdgePanGestureRecognizer(
+                target: self,
+                action: #selector(handleDrawerEdgePan(_:))
+            )
+            recognizer.delegate = self
+            return recognizer
+        }()
 
         private var currentContentVersion: String
         private var rootViews: [MainTab: AnyView]
@@ -138,6 +146,43 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             updateSelectedTab(coordinator.selectedTab)
             accountSwitcher.install()
             accountSwitcher.update(configuration: accountSwitcherConfiguration, theme: appliedTheme)
+            installDrawerEdgeGesture()
+        }
+
+        private func installDrawerEdgeGesture() {
+            drawerEdgePanRecognizer.edges = view.effectiveUserInterfaceLayoutDirection == .rightToLeft ? .right : .left
+            view.addGestureRecognizer(drawerEdgePanRecognizer)
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard gestureRecognizer === drawerEdgePanRecognizer else { return true }
+            return coordinator.canOpenDrawerByEdgeSwipe
+        }
+
+        @objc private func handleDrawerEdgePan(_ recognizer: UIScreenEdgePanGestureRecognizer) {
+            let isRTL = view.effectiveUserInterfaceLayoutDirection == .rightToLeft
+            let leadingInset = isRTL ? view.safeAreaInsets.right : view.safeAreaInsets.left
+            let drawerWidth = MoroNavigationDrawer.preferredWidth(
+                containerWidth: view.bounds.width,
+                leadingSafeInset: leadingInset
+            )
+            let rawTranslation = recognizer.translation(in: view).x
+            let rawVelocity = recognizer.velocity(in: view).x
+            let directedTranslation = isRTL ? -rawTranslation : rawTranslation
+            let directedVelocity = isRTL ? -rawVelocity : rawVelocity
+
+            switch recognizer.state {
+            case .began, .changed:
+                coordinator.updateDrawerEdgeGesture(progress: max(0, directedTranslation) / drawerWidth)
+            case .ended:
+                let shouldOpen = directedVelocity > 380
+                    || (directedVelocity > -180 && directedTranslation > drawerWidth * 0.32)
+                coordinator.finishDrawerEdgeGesture(shouldOpen: shouldOpen)
+            case .cancelled, .failed:
+                coordinator.finishDrawerEdgeGesture(shouldOpen: false)
+            default:
+                break
+            }
         }
 
         override func viewDidAppear(_ animated: Bool) {

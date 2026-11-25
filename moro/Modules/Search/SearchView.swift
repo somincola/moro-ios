@@ -34,10 +34,13 @@ struct SearchView: View {
     var onEntryStateChanged: ((Bool) -> Void)? = nil
     /// iPhone Duo's Explore root: search and scopes go in the system bar.
     var usesSystemBar = false
+    /// When opened from Home's quick Search button, focus the search field automatically.
+    var autoFocusOnAppear = false
 
     var body: some View {
         SearchContentView(apiClient: apiClient, initialQuery: initialQuery, initialScope: initialScope,
-                          onEntryStateChanged: onEntryStateChanged, usesSystemBar: usesSystemBar)
+                          onEntryStateChanged: onEntryStateChanged, usesSystemBar: usesSystemBar,
+                          autoFocusOnAppear: autoFocusOnAppear)
             .id(accountKey)
     }
 }
@@ -64,15 +67,18 @@ struct SearchContentView: View {
     @Environment(\.threadSplitPanelOwnsBar) var panelOwnsBar
     @State var toolbarIsVertical = false
     let usesSystemBar: Bool
+    let autoFocusOnAppear: Bool
     let apiClient: MastodonAPI
     let initialQuery: String?
     let initialScope: SearchViewModel.Scope
     let onEntryStateChanged: ((Bool) -> Void)?
 
     init(apiClient: MastodonAPI, initialQuery: String?, initialScope: SearchViewModel.Scope,
-         onEntryStateChanged: ((Bool) -> Void)? = nil, usesSystemBar: Bool = false) {
+         onEntryStateChanged: ((Bool) -> Void)? = nil, usesSystemBar: Bool = false,
+         autoFocusOnAppear: Bool = false) {
         self.apiClient = apiClient
         self.usesSystemBar = usesSystemBar
+        self.autoFocusOnAppear = autoFocusOnAppear
         self.initialQuery = initialQuery
         self.initialScope = initialScope
         self.onEntryStateChanged = onEntryStateChanged
@@ -110,6 +116,7 @@ struct SearchContentView: View {
             onOpenHashtag: { router.navigate(to: .hashtag($0)) },
             onEntryStateChanged: onEntryStateChanged,
             usesSystemBar: usesSystemBar,
+            autoFocusOnAppear: autoFocusOnAppear,
             chromeBridge: chromeBridge
         )
         .toolbar {
@@ -160,6 +167,7 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
     let onOpenHashtag: (String) -> Void
     let onEntryStateChanged: ((Bool) -> Void)?
     let usesSystemBar: Bool
+    let autoFocusOnAppear: Bool
     let chromeBridge: SearchChromeBridge
 
     func makeUIViewController(context: Context) -> SearchCoreViewController {
@@ -168,6 +176,7 @@ private struct SearchCoreControllerHost: UIViewControllerRepresentable {
             accountKey: accountKey, initialScope: initialScope
         )
         controller.usesSystemBar = usesSystemBar
+        controller.autoFocusOnAppear = autoFocusOnAppear
         controller.chromeBridge = chromeBridge
         chromeBridge.controller = controller
         updateCallbacks(controller)

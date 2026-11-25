@@ -51,6 +51,8 @@ struct TimelineHomeView: View {
     /// also scopes which pinned timelines this account shows.
     let cacheClientID: String
     let onAvatarTap: (() -> Void)?
+    let onOpenSearch: (() -> Void)?
+    let navigationPolicy: NavigationAccessPolicy
     let onTimelineSelectionChange: ((TimelineType) -> Void)?
     /// Optional observer for consumers that coordinate other chrome with the timeline header.
     let onChromeFraction: ((CGFloat) -> Void)?
@@ -128,6 +130,8 @@ struct TimelineHomeView: View {
         cacheClientID: String = "active-session",
         selectedTimeline: Binding<TimelineType> = .constant(.home),
         onAvatarTap: (() -> Void)? = nil,
+        onOpenSearch: (() -> Void)? = nil,
+        navigationPolicy: NavigationAccessPolicy = NavigationAccessPolicy(tabLayout: NavigationTabLayout()),
         onTimelineSelectionChange: ((TimelineType) -> Void)? = nil,
         onChromeFraction: ((CGFloat) -> Void)? = nil,
         usesSystemNavigationBar: Bool = false,
@@ -139,6 +143,8 @@ struct TimelineHomeView: View {
         self.cacheClientID = cacheClientID
         _selectedTimeline = selectedTimeline
         self.onAvatarTap = onAvatarTap
+        self.onOpenSearch = onOpenSearch
+        self.navigationPolicy = navigationPolicy
         self.onTimelineSelectionChange = onTimelineSelectionChange
         self.onChromeFraction = onChromeFraction
         self.usesSystemNavigationBar = usesSystemNavigationBar

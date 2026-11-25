@@ -33,6 +33,7 @@ struct ProfileView: View {
     @Environment(\.activeAccountKey) private var activeAccountKey
     @StateObject private var profilePreferences = ProfilePresentationPreferences.shared
     @Environment(\.settingsPresentationAction) private var presentSettings
+    @Environment(\.settingsContext) private var settingsContext
     @EnvironmentObject private var appState: AppState
 
     @StateObject private var viewModel: ProfileViewModel
@@ -40,7 +41,7 @@ struct ProfileView: View {
     let account: Account?
     let accountID: String?
     let onLogout: () -> Void
-    private let onExplore: (() -> Void)?
+    private let showsSettingsButtonOverride: Bool?
     private let apiClient: MastodonAPI
     @StateObject private var postMenuActionCenter: PostMenuActionCenter
 
@@ -98,17 +99,27 @@ struct ProfileView: View {
         return currentAccountID == profileAccountID
     }
 
+    private var showsProfileSettingsButton: Bool {
+        if let showsSettingsButtonOverride {
+            return showsSettingsButtonOverride
+        }
+        if let coordinator = settingsContext.tabCoordinator {
+            return NavigationAccessPolicy(tabLayout: coordinator.tabLayout).showsProfileSettingsButton
+        }
+        return true
+    }
+
     init(
         account: Account?,
         accountID: String? = nil,
         onLogout: @escaping () -> Void,
         apiClient: MastodonAPI,
-        onExplore: (() -> Void)? = nil
+        showsSettingsButton: Bool? = nil
     ) {
         self.account = account
         self.accountID = accountID
         self.onLogout = onLogout
-        self.onExplore = onExplore
+        self.showsSettingsButtonOverride = showsSettingsButton
 
         let resolvedAccountID = accountID ?? account?.id ?? ""
         // Required: a fallback client built here had no token, so every request on the
@@ -207,6 +218,18 @@ struct ProfileView: View {
         )
         .toolbar {
             if !panelOwnsBar {
+                if isCurrentUser && showsProfileSettingsButton {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(action: presentSettings) {
+                            Image(systemName: "gearshape")
+                                .moroScaledFont(size: 17, weight: .semibold)
+                                .foregroundStyle(navigationForeground)
+                                .animation(.easeOut(duration: 0.15), value: navigationForeground)
+                        }
+                        .accessibilityLabel(Text(MoroL10n.Settings.title))
+                        .accessibilityIdentifier("profile.settings")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     profileNavigationAction
                 }
@@ -432,10 +455,6 @@ struct ProfileView: View {
                 relationship: nil,
                 iconColor: navigationForeground,
                 onShare: shareUser,
-                onSettings: presentSettings,
-                onBookmarks: { router.navigate(to: .bookmarks) },
-                onFavourites: { router.navigate(to: .favourites) },
-                onExplore: onExplore,
                 onCopyLink: copyUserLink,
                 onOpenInBrowser: openUserInBrowser
             )

@@ -20,7 +20,7 @@ struct InboxRouteView: View {
                 NotificationsView(apiClient: apiClient, sessionID: settings.activeSessionID)
             }
         }
-        .navigationTitle(MoroL10n.Navigation.inbox)
+        .navigationTitle(settings.tabCoordinator == nil ? MoroL10n.Navigation.inbox : "")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -51,13 +51,14 @@ struct InboxView: View {
         )
         .background(sceneCanvasColor)
         .safeAreaInset(edge: .top, spacing: 0) {
-            // iPhone Duo: the filters and settings go in the system bar instead, like Home.
-            if !coordinator.usesSystemHomeBar {
+            // iPhone Duo or pushed Inbox (when hidden from TabBar): filters and preferences live
+            // in the system navigation bar so there is never a double top header.
+            if !coordinator.usesSystemHomeBar && !isPushed {
                 inboxChrome
             }
         }
         .toolbar {
-            if coordinator.usesSystemHomeBar && !panelOwnsBar {
+            if (coordinator.usesSystemHomeBar || isPushed) && !panelOwnsBar {
                 systemBarItems
             }
         }
@@ -93,7 +94,7 @@ struct InboxView: View {
             Button {
                 router.navigate(to: .notificationSettings)
             } label: {
-                Label(MoroL10n.NotificationSettings.title, systemImage: "gearshape")
+                Label(MoroL10n.NotificationSettings.title, systemImage: "slider.horizontal.3")
             }
             .accessibilityIdentifier("inbox.notificationSettings")
         }
@@ -134,7 +135,7 @@ struct InboxView: View {
             Button {
                 router.navigate(to: .notificationSettings)
             } label: {
-                Image(systemName: "gearshape")
+                Image(systemName: "slider.horizontal.3")
                     .moroScaledFont(size: 18, weight: .semibold)
                     .foregroundStyle(theme.colors.textPrimary)
                     .frame(width: 56, height: chromeHeight)

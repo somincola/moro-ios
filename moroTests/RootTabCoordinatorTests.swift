@@ -103,15 +103,16 @@ final class RootTabCoordinatorTests: XCTestCase {
         XCTAssertEqual(router.path.count, 1)
     }
 
-    func testWidgetSearchUsesHomeStackWhenExploreIsHidden() {
+    func testWidgetSearchPresentsSheetWithoutDisturbingStacksWhenExploreIsHidden() {
         let coordinator = RootTabCoordinator(selectedTab: .me)
         coordinator.homeRouter.navigate(to: .bookmarks)
         coordinator.toggleTab(.explore)
 
         coordinator.openExplore()
 
-        XCTAssertEqual(coordinator.selectedTab, .home)
-        XCTAssertEqual(coordinator.homeRouter.path.count, 2)
+        XCTAssertEqual(coordinator.selectedTab, .me)
+        XCTAssertEqual(coordinator.homeRouter.path.count, 1)
+        XCTAssertEqual(coordinator.presentedSheet, .search(autoFocus: false))
         XCTAssertTrue(coordinator.exploreRouter.path.isEmpty)
     }
 

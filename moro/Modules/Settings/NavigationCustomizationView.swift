@@ -21,6 +21,10 @@ struct NavigationCustomizationView: View {
                     ))
                     .font(theme.typography.caption)
                     .foregroundStyle(theme.colors.textSecondary)
+                    Text(MoroL10n.NavigationCustomization.drawerHint)
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textTertiary)
+                        .accessibilityIdentifier("navigationCustomization.drawerHint")
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 14, alignment: .top),
                                          count: 3), spacing: 16) {

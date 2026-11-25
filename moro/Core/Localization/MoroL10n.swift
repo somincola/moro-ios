@@ -177,6 +177,7 @@ public enum MoroL10n {
         public static var profileCenter: String { text("nav.drawer.profileCenter") }
         public static var instanceDetails: String { text("nav.drawer.instanceDetails") }
         public static var settings: String { text("nav.drawer.settings") }
+        public static var openMenu: String { text("nav.drawer.openMenu") }
         public static var openProfileCenter: String { text("nav.accessibility.openProfileCenter") }
 
         public static func notificationsUnread(_ count: Int) -> String {
@@ -1269,6 +1270,7 @@ public enum MoroL10n {
         public static func selectionHint(minimum: Int, maximum: Int) -> String {
             format("navCustomization.selectionHint", Int64(minimum), Int64(maximum))
         }
+        public static var drawerHint: String { text("navCustomization.drawerHint") }
         public static var preview: String { text("navCustomization.preview") }
         public static var restore: String { text("navCustomization.restore") }
         public static var dragHint: String { text("navCustomization.dragHint") }

@@ -136,6 +136,12 @@ struct MainTabView: View {
             ?? accountSessions.first?.account.avatarURL
     }
 
+    private var currentDrawerAccount: Account? {
+        appState.currentAccount
+            ?? accountSessions.first(where: { $0.id == activeSessionID })?.account
+            ?? accountSessions.first?.account
+    }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             MainShellContainerRepresentable(
@@ -153,6 +159,21 @@ struct MainTabView: View {
                 additionalRootView: additionalRootView(for:)
             )
 
+            MoroNavigationDrawerHost(
+                coordinator: coordinator,
+                currentAccount: currentDrawerAccount,
+                accountSessions: accountSessions,
+                activeSessionID: activeSessionID,
+                onSwitchAccount: { sessionID in
+                    coordinator.popAllToRoot()
+                    onSwitchAccount(sessionID)
+                },
+                onAddAccount: {
+                    coordinator.popAllToRoot()
+                    coordinator.showAddAccountLogin = true
+                }
+            )
+            .zIndex(50)
         }
         // UIKit owns the system bars and their safe-area backgrounds. Give the shell the
         // full window so pushed scenes can carry their canvas through the bottom inset, and
@@ -188,6 +209,18 @@ struct MainTabView: View {
                                 .accessibilityIdentifier("navigationCustomization.done")
                         }
                     }
+                }
+                .moroSheetSurface(detents: [.large], cornerRadius: 20)
+            case .search(let autoFocus):
+                SearchSheetView(
+                    apiClient: apiClient,
+                    autoFocusSearch: autoFocus,
+                    routeView: routeView(for:router:)
+                )
+                .environment(\.activeAccountKey, activeSessionID ?? "no-active-session")
+                .environment(\.settingsContext, settingsContext)
+                .environment(\.settingsPresentationAction) {
+                    coordinator.dismissPresentedSheet { coordinator.presentSettings() }
                 }
                 .moroSheetSurface(detents: [.large], cornerRadius: 20)
             }
@@ -511,6 +544,7 @@ struct MainTabView: View {
 
 private struct HomeTabRootView: View {
     @ObservedObject var coordinator: RootTabCoordinator
+    @ObservedObject private var inboxUnreadStore = InboxUnreadStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.moroTheme) private var theme
 
@@ -519,6 +553,14 @@ private struct HomeTabRootView: View {
 
     private let composeButtonSize: CGFloat = 52
     private let composeButtonTabBarSpacing: CGFloat = 10
+
+    private var navigationPolicy: NavigationAccessPolicy {
+        NavigationAccessPolicy(
+            tabLayout: coordinator.tabLayout,
+            unreadInboxCount: inboxUnreadStore.totalUnreadCount,
+            unreadAnnouncementsCount: appState.unreadAnnouncementsCount
+        )
+    }
 
     var body: some View {
         ThreadSplitView(coordinator: coordinator, tab: .home, router: coordinator.homeRouter, apiClient: apiClient) {
@@ -530,11 +572,12 @@ private struct HomeTabRootView: View {
             composeButton
                 .padding(.trailing, theme.spacing.l)
                 .padding(.bottom, composeButtonTabBarSpacing)
-                // Steps aside for the account switcher, which floats in the same corner.
-                .scaleEffect(coordinator.isAccountSwitcherPresented ? 0.6 : 1)
-                .opacity(coordinator.isAccountSwitcherPresented ? 0 : 1)
-                .allowsHitTesting(!coordinator.isAccountSwitcherPresented)
+                // Steps aside for the account switcher or drawer.
+                .scaleEffect(coordinator.isAccountSwitcherPresented || coordinator.isDrawerPresented ? 0.6 : 1)
+                .opacity(coordinator.isAccountSwitcherPresented || coordinator.isDrawerPresented ? 0 : 1)
+                .allowsHitTesting(!coordinator.isAccountSwitcherPresented && !coordinator.isDrawerPresented)
                 .animation(.snappy(duration: 0.22), value: coordinator.isAccountSwitcherPresented)
+                .animation(.snappy(duration: 0.22), value: coordinator.isDrawerPresented)
         }
     }
 
@@ -550,8 +593,12 @@ private struct HomeTabRootView: View {
                 }
             ),
             onAvatarTap: {
-                coordinator.presentSettings()
+                coordinator.openDrawer()
             },
+            onOpenSearch: {
+                coordinator.openExplore(autoFocus: true)
+            },
+            navigationPolicy: navigationPolicy,
             onTimelineSelectionChange: { timeline in
                 guard coordinator.timelineSelection != timeline else { return }
                 coordinator.timelineSelection = timeline
@@ -560,7 +607,7 @@ private struct HomeTabRootView: View {
             usesSystemNavigationBar: coordinator.usesSystemHomeBar,
             isActive: coordinator.selectedTab == .home && coordinator.isAtRoot(.home)
                 && coordinator.presentedSheet == nil && coordinator.composeContext == nil
-                && !coordinator.showAddAccountLogin,
+                && !coordinator.showAddAccountLogin && !coordinator.isDrawerPresented,
             bottomContentInset: coordinator.tabBarHeight + composeButtonClearance
         )
         .environment(\.tabReselection, coordinator.tabReselection)
@@ -610,7 +657,7 @@ private struct MeTabRootView: View {
     let coordinator: RootTabCoordinator
     @State private var tabReselection: TabReselection?
     @State private var tabActivation: TabActivation?
-    @State private var isExploreHidden: Bool
+    @State private var showsSettingsButton: Bool
     @EnvironmentObject private var appState: AppState
 
     let apiClient: MastodonAPI
@@ -630,7 +677,9 @@ private struct MeTabRootView: View {
         // Start from the current event so an earlier re-tap is not mistaken for a new one.
         _tabReselection = State(initialValue: coordinator.tabReselection)
         _tabActivation = State(initialValue: coordinator.tabActivation)
-        _isExploreHidden = State(initialValue: !coordinator.tabLayout.tabs.contains(.explore))
+        _showsSettingsButton = State(
+            initialValue: NavigationAccessPolicy(tabLayout: coordinator.tabLayout).showsProfileSettingsButton
+        )
     }
 
     private var currentAccount: Account? {
@@ -647,7 +696,7 @@ private struct MeTabRootView: View {
                     accountID: account.id,
                     onLogout: {},
                     apiClient: apiClient,
-                    onExplore: isExploreHidden ? { coordinator.meRouter.navigate(to: .search(query: nil)) } : nil
+                    showsSettingsButton: showsSettingsButton
                 )
                 // The page's view models are created once per identity. While switching,
                 // `currentAccount` can resolve to a fallback first; without this the real
@@ -667,8 +716,12 @@ private struct MeTabRootView: View {
         .environment(\.tabActivation, tabActivation)
         .onReceive(coordinator.$tabReselection.removeDuplicates()) { tabReselection = $0 }
         .onReceive(coordinator.$tabActivation.removeDuplicates()) { tabActivation = $0 }
-        .onReceive(coordinator.$tabLayout.map { !$0.tabs.contains(.explore) }.removeDuplicates()) {
-            isExploreHidden = $0
+        .onReceive(
+            coordinator.$tabLayout
+                .map { NavigationAccessPolicy(tabLayout: $0).showsProfileSettingsButton }
+                .removeDuplicates()
+        ) {
+            showsSettingsButton = $0
         }
     }
 }

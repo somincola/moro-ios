@@ -250,6 +250,7 @@ struct ProfileConnectionsView: View {
                     router.navigate(to: .userProfile(account))
                 }
                 .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
                 .listRowBackground(theme.colors.surfaceBase)
                 .onAppear {
                     Task {
@@ -271,7 +272,6 @@ struct ProfileConnectionsView: View {
         }
         .listStyle(.plain)
         .moroReadableListMargins()
-        .listRowSeparatorTint(theme.colors.divider)
         .contentMargins(.top, 0, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(theme.colors.surfaceBase)

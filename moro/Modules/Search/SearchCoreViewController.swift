@@ -126,6 +126,8 @@ final class SearchCoreViewController: UIViewController {
         }
     }
     private(set) var isSearchExpanded = false
+    var autoFocusOnAppear = false
+    private var didPerformAutoFocus = false
     weak var chromeBridge: SearchChromeBridge?
     let entryHost = UIHostingController(rootView: AnyView(EmptyView()))
 
@@ -258,6 +260,13 @@ final class SearchCoreViewController: UIViewController {
         // A list page must stay a list until the user explicitly focuses the field.
         if interaction.page != .entry { searchBar.searchTextField.resignFirstResponder() }
         allowsSearchFocus = true
+        if autoFocusOnAppear && !didPerformAutoFocus {
+            didPerformAutoFocus = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.allowsSearchFocus else { return }
+                self.focusSearchInput()
+            }
+        }
         scopeSelectionFeedback.prepare()
         library.reload()
         updateSearchChrome()
