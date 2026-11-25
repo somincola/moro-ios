@@ -53,6 +53,16 @@ final class moroUITests: XCTestCase {
         waitForElementToBeHittable(quotedTap)
         quotedTap.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         waitForResultLabel(result, equals: "tap:quoted-status")
+
+        app.scrollViews.firstMatch.swipeUp()
+        let inlineQuoteHint = app.descendants(matching: .any)["notifications.quoteHint.liked-media-quote-notification"].firstMatch
+        XCTAssertTrue(inlineQuoteHint.waitForExistence(timeout: 5))
+        let fullQuoteCard = app.descendants(matching: .any)["notifications.quoteCard.quote-notification"].firstMatch
+        XCTAssertTrue(fullQuoteCard.waitForExistence(timeout: 5))
+        let quoteNotificationsShot = XCTAttachment(screenshot: app.screenshot())
+        quoteNotificationsShot.name = "notification-quote-plan-a"
+        quoteNotificationsShot.lifetime = .keepAlways
+        add(quoteNotificationsShot)
     }
 
     /// Avatar and name open the person; the action text and the time open the post,
