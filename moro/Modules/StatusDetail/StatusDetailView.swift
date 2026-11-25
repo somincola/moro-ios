@@ -195,6 +195,7 @@ struct StatusDetailView: View {
     /// What the raised actions show; they are handed over again whenever it changes.
     private struct PanelBarToken: Equatable {
         let status: Status
+        let hasReadingControls: Bool
         let authorOnly: Bool
         let hasCollapsed: Bool
         let isMutingUser: Bool?
@@ -206,10 +207,22 @@ struct StatusDetailView: View {
         let menu = postActions(for: viewModel.focusedStatus).menu
         return PanelBarToken(
             status: viewModel.focusedStatus,
+            hasReadingControls: hasThreadReadingControls,
             authorOnly: readingState.authorOnly,
             hasCollapsed: !readingState.collapsedIDs.isEmpty,
             isMutingUser: menu?.isMutingUser,
             isBlockingUser: menu?.isBlockingUser)
+    }
+
+    private var hasThreadReadingControls: Bool {
+        if readingState.authorOnly || !readingState.collapsedIDs.isEmpty {
+            return true
+        }
+        if let items = viewModel.threadModel?.threadItems, items.count > 1 {
+            return true
+        }
+        return viewModel.focusedStatus.repliesCount > 0
+            || viewModel.focusedStatus.inReplyToID != nil
     }
 
     private func publishPanelBarActions() {
@@ -217,7 +230,7 @@ struct StatusDetailView: View {
         panelBar.publish(
             ThreadSplitPanelBar.Actions(
                 editHistory: viewModel.focusedStatus.editedAt != nil ? AnyView(editHistoryButton) : nil,
-                readingOptions: AnyView(readingOptionsMenu),
+                readingOptions: hasThreadReadingControls ? AnyView(readingOptionsMenu) : nil,
                 more: AnyView(detailHeaderMoreButton)),
             owner: panelBarOwner)
     }
@@ -228,18 +241,20 @@ struct StatusDetailView: View {
         if viewModel.focusedStatus.editedAt != nil {
             editHistoryButton
         }
-        readingOptionsMenu
+        if hasThreadReadingControls {
+            readingOptionsMenu
+        }
         detailHeaderMoreButton
     }
 
     private var editHistoryButton: some View {
-            Button {
-                showingEditHistorySheet = true
-                Task { await viewModel.loadStatusHistory() }
-            } label: {
-                Image(systemName: "clock.arrow.circlepath")
-            }
-            .accessibilityLabel(Text(MoroL10n.StatusDetail.editHistory))
+        Button {
+            showingEditHistorySheet = true
+            Task { await viewModel.loadStatusHistory() }
+        } label: {
+            Image(systemName: "clock.arrow.circlepath")
+        }
+        .accessibilityLabel(Text(MoroL10n.StatusDetail.editHistory))
     }
 
     private var readingOptionsMenu: some View {
@@ -258,7 +273,7 @@ struct StatusDetailView: View {
             }
         } label: {
             Image(systemName: "text.book.closed")
-                .frame(minWidth: 44, minHeight: 44)
+                .font(.system(size: 16, weight: .regular))
         }
         .accessibilityLabel(MoroL10n.ThreadReading.options)
         .accessibilityIdentifier("thread.readingOptions")
@@ -312,16 +327,22 @@ struct StatusDetailView: View {
         let rows = ThreadReadingProjection(items: descendants, authorID: viewModel.focusedStatus.account.id, state: readingState).rows
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(ancestors) { item in
+                ForEach(Array(ancestors.enumerated()), id: \.element.id) { index, item in
                     threadPostCard(item: item)
+                        .background(alignment: .topLeading) {
+                            ancestorThreadLine(drawsAbove: index > 0, drawsBelow: true)
+                        }
                         .background(highlightedStatusID == item.id ? theme.colors.surfaceSubtle : Color.clear)
                         .id(item.status.id)
-
-                    MoroDivider()
                 }
 
                 focusedPostCard(status: viewModel.focusedStatus)
-                .id(viewModel.focusedStatus.id)
+                    .background(alignment: .topLeading) {
+                        if !ancestors.isEmpty {
+                            ancestorThreadLine(drawsAbove: true, drawsBelow: false)
+                        }
+                    }
+                    .id(viewModel.focusedStatus.id)
 
                 if rows.isEmpty {
                     MoroDivider()
@@ -370,6 +391,37 @@ struct StatusDetailView: View {
                 MoroRefreshFeedback.deliver(.failed, failureMessage: MoroL10n.StatusDetail.threadLoadFailed)
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            StatusDetailQuickReplyBar(
+                targetUsername: viewModel.focusedStatus.account.username,
+                currentAccount: appState.currentAccount,
+                onReply: { postActions(for: viewModel.focusedStatus).onReply?() }
+            )
+        }
+    }
+
+    /// Subtle vertical thread stem connecting ancestor posts into the focused post.
+    private func ancestorThreadLine(drawsAbove: Bool, drawsBelow: Bool) -> some View {
+        GeometryReader { proxy in
+            let x = theme.spacing.contentHorizontalInset + 22
+            let avatarTop = theme.spacing.timelineVertical
+            let avatarBottom = avatarTop + 44
+            let strokeColor = theme.colors.textTertiary.opacity(0.32)
+
+            Path { path in
+                if drawsAbove {
+                    path.move(to: CGPoint(x: x, y: 0))
+                    path.addLine(to: CGPoint(x: x, y: max(0, avatarTop - 3)))
+                }
+                if drawsBelow {
+                    path.move(to: CGPoint(x: x, y: avatarBottom + 4))
+                    path.addLine(to: CGPoint(x: x, y: proxy.size.height))
+                }
+            }
+            .stroke(strokeColor, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private func jumpToPost(_ id: String) {
@@ -426,8 +478,6 @@ struct StatusDetailView: View {
             onDeleteAndRedraft: actions.onDeleteAndRedraft,
             onDelete: actions.onDelete
         )
-        .frame(width: 36, height: 44)
-        .contentShape(Rectangle())
     }
 
     private func postActions(for status: Status) -> PostActions {
@@ -542,6 +592,75 @@ struct ThreadPostRow: View {
     }
     .environmentObject(state)
     .moroTheme(MoroTheme())
+}
+
+/// Floating Liquid Glass quick-reply trigger pinned to the bottom of StatusDetailView.
+private struct StatusDetailQuickReplyBar: View {
+    let targetUsername: String
+    let currentAccount: Account?
+    let onReply: () -> Void
+
+    @Environment(\.moroTheme) private var theme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    private var promptText: String {
+        "\(MoroL10n.StatusAction.reply) @\(targetUsername)"
+    }
+
+    var body: some View {
+        Button(action: onReply) {
+            pillSurface
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, theme.spacing.contentHorizontalInset)
+        .padding(.top, theme.spacing.s)
+        .padding(.bottom, theme.spacing.s)
+        .moroReadableColumn()
+        .accessibilityLabel(promptText)
+        .accessibilityIdentifier("statusDetail.quickReplyBar")
+    }
+
+    @ViewBuilder
+    private var pillSurface: some View {
+        let content = HStack(spacing: theme.spacing.s) {
+            if let currentAccount {
+                MoroAvatar(
+                    imageURL: currentAccount.avatarAnimatedURL,
+                    staticImageURL: currentAccount.avatarURL,
+                    initials: currentAccount.displayNameInitials,
+                    seed: currentAccount.placeholderSeed,
+                    size: 26
+                )
+            }
+            Text(promptText)
+                .font(theme.typography.body)
+                .foregroundStyle(theme.colors.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+            Image(systemName: "arrowshape.turn.up.left")
+                .moroScaledFont(size: 14, weight: .medium)
+                .foregroundStyle(theme.colors.textTertiary)
+                .accessibilityHidden(true)
+        }
+        .padding(.leading, currentAccount != nil ? 10 : 16)
+        .padding(.trailing, 16)
+        .frame(minHeight: 44)
+        .contentShape(Capsule())
+
+        if #available(iOS 26, *), !reduceTransparency, contrast != .increased {
+            content
+                .glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+            content
+                .background(theme.colors.surfaceElevated, in: Capsule())
+                .overlay {
+                    Capsule()
+                        .strokeBorder(theme.colors.borderSubtle, lineWidth: 1)
+                }
+        }
+    }
 }
 
 /// Pushed pages title the navigation bar; an embedded column leaves the bar to its host.

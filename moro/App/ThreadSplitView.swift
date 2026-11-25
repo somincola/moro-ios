@@ -92,7 +92,7 @@ final class ThreadSplitSelection: ObservableObject {
 final class ThreadSplitPanelBar: ObservableObject {
     struct Actions {
         var editHistory: AnyView?
-        var readingOptions: AnyView
+        var readingOptions: AnyView?
         var more: AnyView
     }
 
@@ -347,7 +347,7 @@ struct ThreadSplitView<ListColumn: View>: View {
         ToolbarItemGroup(placement: .topBarTrailing) {
             if let actions = panelBar.actions {
                 if let editHistory = actions.editHistory { editHistory }
-                actions.readingOptions
+                if let readingOptions = actions.readingOptions { readingOptions }
                 actions.more
             }
         }
