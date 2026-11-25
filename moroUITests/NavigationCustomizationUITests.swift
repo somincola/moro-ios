@@ -80,14 +80,14 @@ final class NavigationCustomizationUITests: XCTestCase {
         XCTAssertTrue(app.buttons["profile.moreButton"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["profile.settings"].exists)
 
-        // Pinning Lists & Settings hides them from the Home drawer while hidden Explore stays reachable.
+        // Pinning Lists hides it from the Home drawer, while Settings stays in the footer and hidden Explore stays reachable.
         tap(tab("home", in: app))
         XCTAssertTrue(app.buttons["home.searchButton"].waitForExistence(timeout: 5))
         tap(app.buttons["home.drawerButton"])
         let drawerExplore = app.buttons["drawer.tab.explore"]
         XCTAssertTrue(drawerExplore.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["drawer.tab.lists"].exists)
-        XCTAssertFalse(app.buttons["drawer.settings"].exists)
+        XCTAssertTrue(app.buttons["drawer.settings"].exists)
         XCTAssertFalse(app.buttons["drawer.scheduled"].exists)
         let pinnedDrawerShot = XCTAttachment(screenshot: app.screenshot())
         pinnedDrawerShot.name = "drawer-settings-and-lists-pinned"

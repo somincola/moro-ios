@@ -21,11 +21,11 @@ struct NavigationAccessPolicyTests {
         #expect(policy.showsDrawerAvatarBadge == false)
     }
 
-    @Test func pinningSettingsRemovesBothDrawerAndProfileSettingsEntries() {
+    @Test func pinningSettingsKeepsDrawerSettingsAndRemovesProfileGear() {
         let layout = NavigationTabLayout(tabs: [.home, .explore, .inbox, .me, .settings])
         let policy = NavigationAccessPolicy(tabLayout: layout)
 
-        #expect(policy.showsDrawerSettingsFooter == false)
+        #expect(policy.showsDrawerSettingsFooter == true)
         #expect(policy.showsProfileSettingsButton == false)
         #expect(!policy.drawerOverflowTabs.contains(.settings))
     }
@@ -36,7 +36,7 @@ struct NavigationAccessPolicyTests {
 
         #expect(policy.drawerOverflowTabs == [.me, .explore, .inbox])
         #expect(policy.showsTimelineSwitcherListsShortcut == false)
-        #expect(policy.showsDrawerSettingsFooter == false)
+        #expect(policy.showsDrawerSettingsFooter == true)
         #expect(policy.showsProfileSettingsButton == false)
         #expect(policy.homeTrailingAction == .search)
         #expect(policy.showsDrawerAvatarBadge == true)

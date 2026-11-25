@@ -46,9 +46,9 @@ struct NavigationAccessPolicy: Equatable, Sendable {
         Self.drawerOverflowOrder.filter { !isPinned($0) }
     }
 
-    /// Drawer footer Settings entry: shown only while Settings is not a bottom tab.
+    /// Drawer footer Settings entry: always visible in the drawer regardless of bottom TabBar layout.
     var showsDrawerSettingsFooter: Bool {
-        !isPinned(.settings)
+        true
     }
 
     /// Own Profile top-bar Settings gear: shown only while Settings is not a bottom tab.

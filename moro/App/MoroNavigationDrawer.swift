@@ -260,17 +260,6 @@ struct MoroNavigationDrawer: View {
                 HStack(spacing: 0) {
                     drawerPanel(width: drawerWidth, safeAreaInsets: resolvedSafeInsets)
                         .frame(width: drawerWidth, height: proxy.size.height)
-                        .overlay(alignment: .trailing) {
-                            Rectangle()
-                                .fill(theme.colors.borderSubtle)
-                                .frame(width: 0.5)
-                        }
-                        .shadow(
-                            color: Color.black.opacity(colorScheme == .dark ? 0.36 : 0.12),
-                            radius: 16,
-                            x: isRTL ? -4 : 4,
-                            y: 0
-                        )
                         .accessibilityAddTraits(.isModal)
 
                     Color.clear
@@ -401,13 +390,8 @@ struct MoroNavigationDrawer: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 2) {
-                    if !policy.drawerOverflowTabs.isEmpty {
-                        ForEach(policy.drawerOverflowTabs, id: \.self) { tab in
-                            overflowTabRow(tab)
-                        }
-
-                        Spacer()
-                            .frame(height: 14)
+                    ForEach(policy.drawerOverflowTabs, id: \.self) { tab in
+                        overflowTabRow(tab)
                     }
 
                     secondarySection
