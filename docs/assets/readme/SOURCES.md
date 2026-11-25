@@ -4,10 +4,10 @@ The README reuses two promotional screenshots from Moro's published App Store li
 
 | Repository file | App Store screenshot ID | Source MD5 |
 | --- | --- | --- |
-| [`04-moro.png`](../../../screenshots/app-store/en-US/promotional/04-moro.png) | `5d9e2e6f-3ac8-42f1-9b1f-47faa296dffc` | `b083441f34f4cf2cb6d1089e6e192c07` |
-| [`10-moro.png`](../../../screenshots/app-store/en-US/promotional/10-moro.png) | `6b0e2f92-85b1-41be-86a3-f7ec5a11326f` | `4a5d057b1dce16ab15b3ffa72f5e765c` |
+| [`04-moro.png`](04-moro.png) | `5d9e2e6f-3ac8-42f1-9b1f-47faa296dffc` | `b083441f34f4cf2cb6d1089e6e192c07` |
+| [`10-moro.png`](10-moro.png) | `6b0e2f92-85b1-41be-86a3-f7ec5a11326f` | `4a5d057b1dce16ab15b3ffa72f5e765c` |
 
-The previews use fictional demo accounts. Photography credits are preserved in the [showcase asset credits](../../../screenshots/app-store/showcase-assets/CREDITS.md).
+The previews use fictional demo accounts. Photography credits are preserved in the [showcase asset credits](showcase-credits.md).
 
 [`app-store-badge.svg`](app-store-badge.svg) is the unmodified [official Apple download badge](https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg), linking to [Moro on the App Store](https://apps.apple.com/app/id6776115614). Apple's branding remains the property of Apple.
 
