@@ -171,7 +171,7 @@ struct ProfileMoreButton: View {
                     MoroMenuItemLabel(
                         title: relationship?.muting == true
                             ? MoroL10n.Profile.unmute
-                            : MoroL10n.Profile.mute(account?.username ?? ""),
+                            : MoroL10n.PostMenu.actionMute,
                         systemImage: relationship?.muting == true ? "bell" : "bell.slash"
                     )
                 }
@@ -182,7 +182,7 @@ struct ProfileMoreButton: View {
                     MoroMenuItemLabel(
                         title: relationship?.blocking == true
                             ? MoroL10n.Profile.unblock
-                            : MoroL10n.Profile.block(account?.username ?? ""),
+                            : MoroL10n.PostMenu.actionBlock,
                         systemImage: relationship?.blocking == true
                             ? "hand.raised.slash"
                             : "hand.raised",

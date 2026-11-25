@@ -70288,7 +70288,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "隐藏"
+            "value" : "静音"
           }
         },
         "zh-Hant" : {
@@ -70406,7 +70406,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "恢复"
+            "value" : "取消静音"
           }
         },
         "zh-Hant" : {
@@ -70878,7 +70878,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "隐藏 @%@？"
+            "value" : "静音 @%@？"
           }
         },
         "zh-Hant" : {
@@ -70937,7 +70937,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "更新隐藏状态失败。"
+            "value" : "更新静音状态失败。"
           }
         },
         "zh-Hant" : {
@@ -71409,7 +71409,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "恢复 @%@？"
+            "value" : "取消静音 @%@？"
           }
         },
         "zh-Hant" : {
@@ -71527,7 +71527,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已隐藏该用户"
+            "value" : "已静音该用户"
           }
         },
         "zh-Hant" : {
@@ -71645,7 +71645,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已恢复该用户"
+            "value" : "已取消静音该用户"
           }
         },
         "zh-Hant" : {
