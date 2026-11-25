@@ -615,6 +615,7 @@ struct CustomEmoji: Identifiable, Codable, Hashable {
 struct Relationship: Identifiable, Codable {
     let id: String
     let following: Bool
+    let showingReblogs: Bool
     let followedBy: Bool
     let blocking: Bool
     let blockedBy: Bool
@@ -626,9 +627,57 @@ struct Relationship: Identifiable, Codable {
     let notifying: Bool  // Whether notifications are enabled for this user
     let note: String?
 
+    init(
+        id: String,
+        following: Bool,
+        showingReblogs: Bool = true,
+        followedBy: Bool,
+        blocking: Bool,
+        blockedBy: Bool,
+        muting: Bool,
+        mutingNotifications: Bool,
+        requested: Bool,
+        domainBlocking: Bool,
+        endorsed: Bool,
+        notifying: Bool,
+        note: String?
+    ) {
+        self.id = id
+        self.following = following
+        self.showingReblogs = showingReblogs
+        self.followedBy = followedBy
+        self.blocking = blocking
+        self.blockedBy = blockedBy
+        self.muting = muting
+        self.mutingNotifications = mutingNotifications
+        self.requested = requested
+        self.domainBlocking = domainBlocking
+        self.endorsed = endorsed
+        self.notifying = notifying
+        self.note = note
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        following = try container.decode(Bool.self, forKey: .following)
+        showingReblogs = try container.decodeIfPresent(Bool.self, forKey: .showingReblogs) ?? true
+        followedBy = try container.decode(Bool.self, forKey: .followedBy)
+        blocking = try container.decode(Bool.self, forKey: .blocking)
+        blockedBy = try container.decode(Bool.self, forKey: .blockedBy)
+        muting = try container.decode(Bool.self, forKey: .muting)
+        mutingNotifications = try container.decode(Bool.self, forKey: .mutingNotifications)
+        requested = try container.decode(Bool.self, forKey: .requested)
+        domainBlocking = try container.decode(Bool.self, forKey: .domainBlocking)
+        endorsed = try container.decode(Bool.self, forKey: .endorsed)
+        notifying = try container.decode(Bool.self, forKey: .notifying)
+        note = try container.decodeIfPresent(String.self, forKey: .note)
+    }
+
     enum CodingKeys: String, CodingKey {
         case id
         case following
+        case showingReblogs = "showing_reblogs"
         case followedBy = "followed_by"
         case blocking
         case blockedBy = "blocked_by"

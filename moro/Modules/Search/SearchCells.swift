@@ -13,8 +13,7 @@ final class SearchLandingPlaceholderView: UIView {
     // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
     nonisolated deinit {}
 
-    private let iconBubble = UIView()
-    private let iconView = UIImageView()
+    private let mascotView = MoroMascotUIView(expression: .curious)
     private let titleLabel = UILabel()
     private let subtitleLabel = UILabel()
     private let stackView = UIStackView()
@@ -32,68 +31,95 @@ final class SearchLandingPlaceholderView: UIView {
     func apply(theme: MoroTheme) {
         let palette = theme.uiKitPalette
         backgroundColor = .clear
-        iconBubble.backgroundColor = .clear
-        titleLabel.font = palette.font(forTextStyle: .title3, weight: .semibold)
+        mascotView.apply(theme: theme)
+        titleLabel.font = palette.font(forTextStyle: .headline, weight: .semibold)
         titleLabel.textColor = palette.textPrimary
-        subtitleLabel.font = palette.font(forTextStyle: .callout)
+        subtitleLabel.font = palette.font(forTextStyle: .subheadline)
         subtitleLabel.textColor = palette.textSecondary
     }
 
     private func setupViews() {
         let palette = MoroTheme().uiKitPalette
         backgroundColor = .clear
-        iconBubble.translatesAutoresizingMaskIntoConstraints = false
-        iconView.translatesAutoresizingMaskIntoConstraints = false
+        mascotView.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
         stackView.translatesAutoresizingMaskIntoConstraints = false
 
-        iconBubble.backgroundColor = .clear
-
-        iconView.image = UIImage(named: "ExploreEmptyMascot")?.withRenderingMode(.alwaysOriginal)
-        iconView.contentMode = .scaleAspectFit
-
-        titleLabel.font = palette.font(forTextStyle: .title3, weight: .semibold)
+        titleLabel.font = palette.font(forTextStyle: .headline, weight: .semibold)
         titleLabel.textColor = palette.textPrimary
         titleLabel.textAlignment = .center
         titleLabel.text = MoroL10n.Search.exploreTitle
-        titleLabel.numberOfLines = 1
+        titleLabel.numberOfLines = 2
         titleLabel.adjustsFontForContentSizeCategory = true
+        titleLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
 
-        subtitleLabel.font = palette.font(forTextStyle: .callout)
+        subtitleLabel.font = palette.font(forTextStyle: .subheadline)
         subtitleLabel.textColor = palette.textSecondary
         subtitleLabel.textAlignment = .center
         subtitleLabel.text = MoroL10n.Search.exploreSubtitle
         subtitleLabel.numberOfLines = 2
         subtitleLabel.adjustsFontForContentSizeCategory = true
+        subtitleLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        subtitleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
 
         stackView.axis = .vertical
         stackView.alignment = .center
-        stackView.spacing = 10
-        stackView.addArrangedSubview(iconBubble)
+        stackView.spacing = 12
+        stackView.addArrangedSubview(mascotView)
         stackView.addArrangedSubview(titleLabel)
         stackView.addArrangedSubview(subtitleLabel)
+        stackView.setCustomSpacing(6, after: titleLabel)
 
         addSubview(stackView)
-        iconBubble.addSubview(iconView)
+
+        let leadingConstraint = stackView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 28)
+        leadingConstraint.priority = UILayoutPriority(999)
+        let trailingConstraint = stackView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -28)
+        trailingConstraint.priority = UILayoutPriority(999)
+        let preferredWidthConstraint = stackView.widthAnchor.constraint(equalTo: widthAnchor, constant: -56)
+        preferredWidthConstraint.priority = UILayoutPriority(998)
+        let maxWidthConstraint = stackView.widthAnchor.constraint(lessThanOrEqualToConstant: 340)
+        maxWidthConstraint.priority = UILayoutPriority(999)
+        let titleWidthConstraint = titleLabel.widthAnchor.constraint(equalTo: stackView.widthAnchor)
+        titleWidthConstraint.priority = UILayoutPriority(998)
+        let subtitleStackCapConstraint = subtitleLabel.widthAnchor.constraint(lessThanOrEqualTo: stackView.widthAnchor)
+        subtitleStackCapConstraint.priority = UILayoutPriority(999)
+        let subtitleMaxWidthConstraint = subtitleLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 280)
+        subtitleMaxWidthConstraint.priority = UILayoutPriority(999)
+        let subtitlePreferredWidthConstraint = subtitleLabel.widthAnchor.constraint(equalToConstant: 280)
+        subtitlePreferredWidthConstraint.priority = UILayoutPriority(749)
 
         NSLayoutConstraint.activate([
-            iconBubble.widthAnchor.constraint(equalToConstant: 128),
-            iconBubble.heightAnchor.constraint(equalToConstant: 128),
-
-            iconView.centerXAnchor.constraint(equalTo: iconBubble.centerXAnchor),
-            iconView.centerYAnchor.constraint(equalTo: iconBubble.centerYAnchor),
-            iconView.widthAnchor.constraint(equalTo: iconBubble.widthAnchor),
-            iconView.heightAnchor.constraint(equalTo: iconBubble.heightAnchor),
+            mascotView.widthAnchor.constraint(equalToConstant: 62),
+            mascotView.heightAnchor.constraint(equalToConstant: 62),
 
             stackView.centerXAnchor.constraint(equalTo: centerXAnchor),
             stackView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -18),
-            stackView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 24),
-            stackView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -24),
-
-            subtitleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: stackView.leadingAnchor),
-            subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: stackView.trailingAnchor),
+            leadingConstraint,
+            trailingConstraint,
+            preferredWidthConstraint,
+            maxWidthConstraint,
+            titleWidthConstraint,
+            subtitleStackCapConstraint,
+            subtitleMaxWidthConstraint,
+            subtitlePreferredWidthConstraint,
         ])
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let availableTitleWidth = max(0, min(bounds.width - 56, 340))
+        if availableTitleWidth > 0, abs(titleLabel.preferredMaxLayoutWidth - availableTitleWidth) > 0.5 {
+            titleLabel.preferredMaxLayoutWidth = availableTitleWidth
+            titleLabel.invalidateIntrinsicContentSize()
+        }
+        let availableSubtitleWidth = max(0, min(availableTitleWidth, 280))
+        if availableSubtitleWidth > 0, abs(subtitleLabel.preferredMaxLayoutWidth - availableSubtitleWidth) > 0.5 {
+            subtitleLabel.preferredMaxLayoutWidth = availableSubtitleWidth
+            subtitleLabel.invalidateIntrinsicContentSize()
+        }
     }
 }
 
@@ -108,13 +134,16 @@ final class SearchCenterStateView: UIView {
     }
 
     private let iconView = UIImageView()
+    private var mascotView: MoroMascotUIView?
     private let indicator = UIActivityIndicatorView(style: .medium)
     private let titleLabel = UILabel()
     private let subtitleLabel = UILabel()
+    private let actionButton = UIButton(type: .system)
     private let stackView = UIStackView()
     private let animationStyle: AnimationStyle
     private let showsIndicator: Bool
     private let usesAssetImage: Bool
+    private var onAction: (() -> Void)?
     private var isAnimationActive = false
 
     private let typingOpacityAnimationKey = "search.state.typing.opacity"
@@ -123,17 +152,24 @@ final class SearchCenterStateView: UIView {
     private let searchingOpacityAnimationKey = "search.state.loading.opacity"
 
     init(
-        iconName: String?,
+        iconName: String? = nil,
         assetName: String? = nil,
-        imageSize: CGSize = CGSize(width: 30, height: 30),
+        mascotExpression: MoroMascotExpression? = nil,
+        imageSize: CGSize = CGSize(width: 58, height: 58),
         title: String?,
         subtitle: String? = nil,
-        showsIndicator: Bool,
-        animationStyle: AnimationStyle
+        showsIndicator: Bool = false,
+        animationStyle: AnimationStyle = .none,
+        actionTitle: String? = nil,
+        onAction: (() -> Void)? = nil
     ) {
         self.animationStyle = animationStyle
         self.showsIndicator = showsIndicator
-        usesAssetImage = assetName != nil
+        self.usesAssetImage = assetName != nil
+        self.onAction = onAction
+        if let mascotExpression {
+            self.mascotView = MoroMascotUIView(expression: mascotExpression)
+        }
         super.init(frame: .zero)
         setupViews(
             iconName: iconName,
@@ -141,7 +177,8 @@ final class SearchCenterStateView: UIView {
             imageSize: imageSize,
             title: title,
             subtitle: subtitle,
-            showsIndicator: showsIndicator
+            showsIndicator: showsIndicator,
+            actionTitle: actionTitle
         )
     }
 
@@ -156,8 +193,17 @@ final class SearchCenterStateView: UIView {
             imageSize: CGSize(width: 30, height: 30),
             title: nil,
             subtitle: nil,
-            showsIndicator: false
+            showsIndicator: false,
+            actionTitle: nil
         )
+    }
+
+    func update(title: String?, subtitle: String?) {
+        titleLabel.text = title
+        titleLabel.isHidden = title == nil || title?.isEmpty == true
+        subtitleLabel.text = subtitle
+        subtitleLabel.isHidden = subtitle == nil || subtitle?.isEmpty == true
+        updateAccessibility()
     }
 
     func apply(theme: MoroTheme) {
@@ -165,11 +211,26 @@ final class SearchCenterStateView: UIView {
         if !usesAssetImage {
             iconView.tintColor = palette.textSecondary
         }
+        mascotView?.apply(theme: theme)
         indicator.color = palette.textSecondary
-        titleLabel.font = palette.font(forTextStyle: .callout, weight: .semibold)
+        titleLabel.font = palette.font(forTextStyle: .headline, weight: .semibold)
         titleLabel.textColor = palette.textPrimary
-        subtitleLabel.font = palette.font(forTextStyle: .footnote)
+        subtitleLabel.font = palette.font(forTextStyle: .subheadline)
         subtitleLabel.textColor = palette.textSecondary
+
+        if !actionButton.isHidden {
+            var config = actionButton.configuration ?? UIButton.Configuration.filled()
+            config.baseBackgroundColor = UIColor(theme.colors.primary500)
+            config.baseForegroundColor = UIColor(theme.colors.primaryForeground)
+            config.cornerStyle = .capsule
+            config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20)
+            config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+                var outgoing = incoming
+                outgoing.font = palette.font(forTextStyle: .subheadline, weight: .semibold)
+                return outgoing
+            }
+            actionButton.configuration = config
+        }
     }
 
     private func setupViews(
@@ -178,14 +239,17 @@ final class SearchCenterStateView: UIView {
         imageSize: CGSize,
         title: String?,
         subtitle: String?,
-        showsIndicator: Bool
+        showsIndicator: Bool,
+        actionTitle: String?
     ) {
         let palette = MoroTheme().uiKitPalette
         backgroundColor = .clear
         iconView.translatesAutoresizingMaskIntoConstraints = false
+        mascotView?.translatesAutoresizingMaskIntoConstraints = false
         indicator.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        actionButton.translatesAutoresizingMaskIntoConstraints = false
         stackView.translatesAutoresizingMaskIntoConstraints = false
 
         if let assetName {
@@ -198,65 +262,144 @@ final class SearchCenterStateView: UIView {
             iconView.contentMode = .scaleAspectFit
         }
 
-        titleLabel.font = palette.font(forTextStyle: .callout, weight: .semibold)
+        titleLabel.font = palette.font(forTextStyle: .headline, weight: .semibold)
         titleLabel.textColor = palette.textPrimary
         titleLabel.textAlignment = .center
         titleLabel.text = title
         titleLabel.numberOfLines = 2
         titleLabel.isHidden = title == nil
         titleLabel.adjustsFontForContentSizeCategory = true
+        titleLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
 
-        subtitleLabel.font = palette.font(forTextStyle: .footnote)
+        subtitleLabel.font = palette.font(forTextStyle: .subheadline)
         subtitleLabel.textColor = palette.textSecondary
         subtitleLabel.textAlignment = .center
         subtitleLabel.text = subtitle
         subtitleLabel.numberOfLines = 3
         subtitleLabel.isHidden = subtitle == nil
         subtitleLabel.adjustsFontForContentSizeCategory = true
+        subtitleLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        subtitleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+
+        if let actionTitle, onAction != nil {
+            var config = UIButton.Configuration.filled()
+            config.title = actionTitle
+            config.cornerStyle = .capsule
+            config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20)
+            actionButton.configuration = config
+            actionButton.addAction(UIAction { [weak self] _ in self?.onAction?() }, for: .touchUpInside)
+            actionButton.isHidden = false
+            actionButton.accessibilityIdentifier = "search.retry"
+        } else {
+            actionButton.isHidden = true
+        }
 
         stackView.axis = .vertical
         stackView.alignment = .center
-        stackView.spacing = 10
+        stackView.spacing = 12
 
         if showsIndicator {
             stackView.addArrangedSubview(indicator)
         }
-        if assetName != nil || iconName != nil {
+        if let mascotView {
+            stackView.addArrangedSubview(mascotView)
+        } else if assetName != nil || iconName != nil {
             stackView.addArrangedSubview(iconView)
         }
-        if title != nil {
-            stackView.addArrangedSubview(titleLabel)
+        stackView.addArrangedSubview(titleLabel)
+        stackView.addArrangedSubview(subtitleLabel)
+        stackView.setCustomSpacing(6, after: titleLabel)
+        if !actionButton.isHidden {
+            stackView.addArrangedSubview(actionButton)
+            stackView.setCustomSpacing(16, after: subtitleLabel)
         }
-        if subtitle != nil {
-            stackView.addArrangedSubview(subtitleLabel)
-            stackView.setCustomSpacing(5, after: titleLabel)
-        }
-
-        iconView.isAccessibilityElement = false
-        titleLabel.isAccessibilityElement = false
-        subtitleLabel.isAccessibilityElement = false
-        let accessibilityText = [title, subtitle].compactMap { $0 }.joined(separator: ". ")
-        isAccessibilityElement = !accessibilityText.isEmpty
-        accessibilityLabel = accessibilityText
 
         addSubview(stackView)
+        let leadingConstraint = stackView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 28)
+        leadingConstraint.priority = UILayoutPriority(999)
+        let trailingConstraint = stackView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -28)
+        trailingConstraint.priority = UILayoutPriority(999)
+        let preferredWidthConstraint = stackView.widthAnchor.constraint(equalTo: widthAnchor, constant: -56)
+        preferredWidthConstraint.priority = UILayoutPriority(998)
+        let maxWidthConstraint = stackView.widthAnchor.constraint(lessThanOrEqualToConstant: 340)
+        maxWidthConstraint.priority = UILayoutPriority(999)
+        let titleWidthConstraint = titleLabel.widthAnchor.constraint(equalTo: stackView.widthAnchor)
+        titleWidthConstraint.priority = UILayoutPriority(998)
+        let subtitleStackCapConstraint = subtitleLabel.widthAnchor.constraint(lessThanOrEqualTo: stackView.widthAnchor)
+        subtitleStackCapConstraint.priority = UILayoutPriority(999)
+        let subtitleMaxWidthConstraint = subtitleLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 280)
+        subtitleMaxWidthConstraint.priority = UILayoutPriority(999)
+        let subtitlePreferredWidthConstraint = subtitleLabel.widthAnchor.constraint(equalToConstant: 280)
+        subtitlePreferredWidthConstraint.priority = UILayoutPriority(749)
+
         NSLayoutConstraint.activate([
             stackView.centerXAnchor.constraint(equalTo: centerXAnchor),
             stackView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            stackView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 20),
-            stackView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -20),
+            leadingConstraint,
+            trailingConstraint,
+            preferredWidthConstraint,
+            maxWidthConstraint,
+            titleWidthConstraint,
+            subtitleStackCapConstraint,
+            subtitleMaxWidthConstraint,
+            subtitlePreferredWidthConstraint,
         ])
-        if assetName != nil {
+        if let mascotView {
+            NSLayoutConstraint.activate([
+                mascotView.widthAnchor.constraint(equalToConstant: imageSize.width),
+                mascotView.heightAnchor.constraint(equalToConstant: imageSize.height),
+            ])
+        } else if assetName != nil {
             NSLayoutConstraint.activate([
                 iconView.widthAnchor.constraint(equalToConstant: imageSize.width),
                 iconView.heightAnchor.constraint(equalToConstant: imageSize.height),
             ])
+        }
+        if !actionButton.isHidden {
+            actionButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        }
+
+        apply(theme: MoroTheme())
+        updateAccessibility()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let availableTitleWidth = max(0, min(bounds.width - 56, 340))
+        if availableTitleWidth > 0, abs(titleLabel.preferredMaxLayoutWidth - availableTitleWidth) > 0.5 {
+            titleLabel.preferredMaxLayoutWidth = availableTitleWidth
+            titleLabel.invalidateIntrinsicContentSize()
+        }
+        let availableSubtitleWidth = max(0, min(availableTitleWidth, 280))
+        if availableSubtitleWidth > 0, abs(subtitleLabel.preferredMaxLayoutWidth - availableSubtitleWidth) > 0.5 {
+            subtitleLabel.preferredMaxLayoutWidth = availableSubtitleWidth
+            subtitleLabel.invalidateIntrinsicContentSize()
+        }
+    }
+
+    private func updateAccessibility() {
+        iconView.isAccessibilityElement = false
+        if actionButton.isHidden {
+            titleLabel.isAccessibilityElement = false
+            subtitleLabel.isAccessibilityElement = false
+            let accessibilityText = [titleLabel.text, subtitleLabel.text]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+                .joined(separator: ". ")
+            isAccessibilityElement = !accessibilityText.isEmpty
+            accessibilityLabel = accessibilityText
+        } else {
+            isAccessibilityElement = false
+            titleLabel.isAccessibilityElement = true
+            subtitleLabel.isAccessibilityElement = true
         }
     }
 
     func setAnimationActive(_ active: Bool) {
         guard active != isAnimationActive else { return }
         isAnimationActive = active
+        mascotView?.setAnimationActive(active)
 
         if !active {
             stopIndicatorIfNeeded()
@@ -342,7 +485,7 @@ final class SearchLoadingMoreCell: UITableViewCell {
 
     static let reuseIdentifier = "LoadingMoreCell"
 
-    private let indicator = UIActivityIndicatorView(style: .medium)
+    private let mascotView = MoroMascotUIView(expression: .thinking)
     private let retryButton = UIButton(type: .system)
     private var onRetry: (() -> Void)?
 
@@ -356,33 +499,43 @@ final class SearchLoadingMoreCell: UITableViewCell {
         setupViews()
     }
 
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        mascotView.setAnimationActive(false)
+    }
+
     func apply(theme: MoroTheme) {
         let palette = theme.uiKitPalette
         backgroundColor = .clear
         contentView.backgroundColor = palette.surfaceBase
-        indicator.color = palette.textSecondary
+        mascotView.apply(theme: theme)
 
         guard var configuration = retryButton.configuration else { return }
-        configuration.baseForegroundColor = palette.textSecondary
+        configuration.baseForegroundColor = palette.textPrimary
+        configuration.baseBackgroundColor = UIColor(theme.colors.surfaceSubtle)
+        configuration.background.strokeColor = UIColor(theme.colors.borderSubtle)
+        configuration.background.strokeWidth = 0.9
         configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
             var outgoing = incoming
-            outgoing.font = palette.font(forTextStyle: .footnote)
+            outgoing.font = palette.font(forTextStyle: .footnote, weight: .semibold)
             return outgoing
         }
         retryButton.configuration = configuration
     }
 
-    /// Spinner shown while the next page is loading.
+    /// Minimalist breathing mascot shown while the next page is loading.
     func configureLoading() {
         onRetry = nil
         retryButton.isHidden = true
-        indicator.startAnimating()
+        mascotView.isHidden = false
+        mascotView.setAnimationActive(true)
     }
 
-    /// Tappable "tap to retry" affordance shown after a load-more failure.
+    /// Tappable capsule retry affordance shown after a load-more failure.
     func configureRetry(onRetry: @escaping () -> Void) {
         self.onRetry = onRetry
-        indicator.stopAnimating()
+        mascotView.setAnimationActive(false)
+        mascotView.isHidden = true
         retryButton.isHidden = false
     }
 
@@ -392,19 +545,21 @@ final class SearchLoadingMoreCell: UITableViewCell {
         contentView.backgroundColor = .clear
         selectionStyle = .none
 
-        indicator.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(indicator)
+        mascotView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(mascotView)
 
         retryButton.translatesAutoresizingMaskIntoConstraints = false
         retryButton.isHidden = true
-        var config = UIButton.Configuration.plain()
+        var config = UIButton.Configuration.filled()
         config.title = MoroL10n.Common.loadMoreRetry
         config.image = UIImage(systemName: "arrow.clockwise")
         config.imagePadding = 6
-        config.baseForegroundColor = palette.textSecondary
+        config.cornerStyle = .capsule
+        config.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
+        config.baseForegroundColor = palette.textPrimary
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
             var outgoing = incoming
-            outgoing.font = palette.font(forTextStyle: .footnote)
+            outgoing.font = palette.font(forTextStyle: .footnote, weight: .semibold)
             return outgoing
         }
         retryButton.configuration = config
@@ -415,11 +570,14 @@ final class SearchLoadingMoreCell: UITableViewCell {
         contentView.addSubview(retryButton)
 
         NSLayoutConstraint.activate([
-            indicator.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            indicator.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            mascotView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            mascotView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            mascotView.widthAnchor.constraint(equalToConstant: 32),
+            mascotView.heightAnchor.constraint(equalToConstant: 32),
             retryButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             retryButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            retryButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 60),
         ])
     }
 }
@@ -850,13 +1008,8 @@ struct SearchAccountRowContentView: View {
                 .padding(.top, 3)
         }
         .padding(.horizontal, SearchLayoutMetrics.contentHorizontalInset)
-        .padding(.vertical, 11)
+        .padding(.vertical, 10)
         .background(theme.colors.surfaceBase)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(theme.colors.divider)
-                .frame(height: 0.5)
-        }
     }
 }
 
@@ -866,7 +1019,7 @@ struct SearchAccountNotePreviewView: View {
     @Environment(\.moroTheme) private var theme
 
     var body: some View {
-        let elements = account.noteContentElements
+        let elements = account.noteContentElements.compactedForInlinePreview
         if elements.containsCustomEmoji {
             // Same SwiftUI text as the plain preview below, so both have the same font and
             // line height. Links are plain text here: a tap opens the profile row.

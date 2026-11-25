@@ -63,7 +63,7 @@ struct AnnouncementsView: View {
             return .error(
                 ErrorStateSpec(
                     title: MoroL10n.Announcements.loadFailed,
-                    message: error.localizedDescription,
+                    message: MoroErrorCopy.message(for: error),
                     actionTitle: MoroL10n.Announcements.retry,
                     action: { Task { await refreshAnnouncements() } }
                 ))
@@ -87,22 +87,11 @@ struct AnnouncementsView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 if let transientErrorMessage = viewModel.transientErrorMessage {
-                    HStack(alignment: .top, spacing: theme.spacing.s) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(theme.colors.error)
-                            .padding(.top, 2)
-                        Text(transientErrorMessage)
-                            .font(theme.typography.caption)
-                            .foregroundStyle(theme.colors.textPrimary)
-                            .multilineTextAlignment(.leading)
-                        Spacer()
-                    }
-                    .padding(theme.spacing.s)
-                    .background(theme.colors.surfaceBase)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(theme.colors.borderSubtle, lineWidth: 1)
+                    MoroInlineNoticeBanner(
+                        message: transientErrorMessage,
+                        tone: .error,
+                        actionTitle: MoroL10n.Announcements.retry,
+                        action: { Task { await refreshAnnouncements() } }
                     )
                     .padding(.horizontal, theme.spacing.m)
                     .padding(.vertical, theme.spacing.s)

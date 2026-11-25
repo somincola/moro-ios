@@ -64,9 +64,17 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
 
 #if os(iOS)
     @MainActor
-    final class MainShellViewController: UIViewController, UITabBarControllerDelegate {
+    final class MainShellViewController: UIViewController, UITabBarControllerDelegate, UIGestureRecognizerDelegate {
         private let coordinator: RootTabCoordinator
         private let mainTabController = UITabBarController()
+        private lazy var drawerEdgePanRecognizer: UIScreenEdgePanGestureRecognizer = {
+            let recognizer = UIScreenEdgePanGestureRecognizer(
+                target: self,
+                action: #selector(handleDrawerEdgePan(_:))
+            )
+            recognizer.delegate = self
+            return recognizer
+        }()
 
         private var currentContentVersion: String
         private var rootViews: [MainTab: AnyView]
@@ -138,6 +146,43 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             updateSelectedTab(coordinator.selectedTab)
             accountSwitcher.install()
             accountSwitcher.update(configuration: accountSwitcherConfiguration, theme: appliedTheme)
+            installDrawerEdgeGesture()
+        }
+
+        private func installDrawerEdgeGesture() {
+            drawerEdgePanRecognizer.edges = view.effectiveUserInterfaceLayoutDirection == .rightToLeft ? .right : .left
+            view.addGestureRecognizer(drawerEdgePanRecognizer)
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard gestureRecognizer === drawerEdgePanRecognizer else { return true }
+            return coordinator.canOpenDrawerByEdgeSwipe
+        }
+
+        @objc private func handleDrawerEdgePan(_ recognizer: UIScreenEdgePanGestureRecognizer) {
+            let isRTL = view.effectiveUserInterfaceLayoutDirection == .rightToLeft
+            let leadingInset = isRTL ? view.safeAreaInsets.right : view.safeAreaInsets.left
+            let drawerWidth = MoroNavigationDrawer.preferredWidth(
+                containerWidth: view.bounds.width,
+                leadingSafeInset: leadingInset
+            )
+            let rawTranslation = recognizer.translation(in: view).x
+            let rawVelocity = recognizer.velocity(in: view).x
+            let directedTranslation = isRTL ? -rawTranslation : rawTranslation
+            let directedVelocity = isRTL ? -rawVelocity : rawVelocity
+
+            switch recognizer.state {
+            case .began, .changed:
+                coordinator.updateDrawerEdgeGesture(progress: max(0, directedTranslation) / drawerWidth)
+            case .ended:
+                let shouldOpen = directedVelocity > 380
+                    || (directedVelocity > -180 && directedTranslation > drawerWidth * 0.32)
+                coordinator.finishDrawerEdgeGesture(shouldOpen: shouldOpen)
+            case .cancelled, .failed:
+                coordinator.finishDrawerEdgeGesture(shouldOpen: false)
+            default:
+                break
+            }
         }
 
         override func viewDidAppear(_ animated: Bool) {
@@ -518,14 +563,47 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
             // On iPhone Duo the bar runs down the side, so nothing covers the bottom of the
             // content and only the compose button's clearance remains.
             let height = frame.height > frame.width ? 0 : frame.height
+            let trailingInset = Self.resolvedTabBarTrailingInset(in: mainTabController.tabBar)
 
             let heightChanged = abs(coordinator.tabBarHeight - height) > 0.5
-            guard heightChanged else { return }
+            let insetChanged = abs(coordinator.tabBarTrailingInset - trailingInset) > 0.5
+            guard heightChanged || insetChanged else { return }
 
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                self.coordinator.tabBarHeight = height
+                if abs(self.coordinator.tabBarHeight - height) > 0.5 {
+                    self.coordinator.tabBarHeight = height
+                }
+                if abs(self.coordinator.tabBarTrailingInset - trailingInset) > 0.5 {
+                    self.coordinator.tabBarTrailingInset = trailingInset
+                }
             }
+        }
+
+        private static func resolvedTabBarTrailingInset(in tabBar: UITabBar) -> CGFloat {
+            guard #available(iOS 26, *) else { return 16 }
+            let barWidth = tabBar.bounds.width
+            guard barWidth > 0, tabBar.bounds.height <= barWidth else { return 21 }
+            // Match the floating Liquid Glass capsule's outer trailing margin while ignoring
+            // full-width wrapper views and narrow centered capsules (e.g. 2-tab layouts).
+            var matchedInset: CGFloat?
+            for subview in tabBar.subviews {
+                let rect = tabBar.convert(subview.bounds, from: subview)
+                guard rect.width >= barWidth * 0.72,
+                    rect.width < barWidth - 8,
+                    rect.height >= 44
+                else { continue }
+                let trailingInset = max(0, barWidth - rect.maxX)
+                if let current = matchedInset {
+                    matchedInset = min(current, trailingInset)
+                } else {
+                    matchedInset = trailingInset
+                }
+            }
+            if let inset = matchedInset {
+                return min(max(inset, 16), 28)
+            }
+            return 21
         }
 
         private func updateSelectedTab(_ tab: MainTab) {

@@ -25,15 +25,12 @@ struct FiltersSettingsView: View {
         MoroSettingsList {
             if let transientErrorMessage = viewModel.transientErrorMessage {
                 Section {
-                    HStack(alignment: .top, spacing: theme.spacing.s) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(theme.colors.error)
-                            .padding(.top, 2)
-                        Text(transientErrorMessage)
-                            .font(theme.typography.caption)
-                            .foregroundStyle(theme.colors.textPrimary)
-                    }
-                    .padding(.vertical, theme.spacing.xs)
+                    MoroInlineNoticeBanner(
+                        message: transientErrorMessage,
+                        tone: .error,
+                        actionTitle: MoroL10n.Filters.retry,
+                        action: { Task { await viewModel.refresh() } }
+                    )
                 }
             }
 
@@ -101,7 +98,7 @@ struct FiltersSettingsView: View {
             Section {
                 HStack {
                     Spacer()
-                    ProgressView()
+                    MoroMascotView(expression: .thinking, size: 32)
                     Spacer()
                 }
                 .padding(.vertical, theme.spacing.m)
@@ -447,16 +444,16 @@ private struct FilterEditorSheet: View {
                 Section(moroHeader: MoroL10n.Filters.formTitleSection) {
                     TextField(MoroL10n.Filters.formTitlePlaceholder, text: $draft.title)
                 }
-                .listRowBackground(theme.colors.groupedSurface)
+                .listRowBackground(theme.colors.surfaceBase)
 
                 if draft.isEditing {
                     keywordEditingSection
-                        .listRowBackground(theme.colors.groupedSurface)
+                        .listRowBackground(theme.colors.surfaceBase)
                 } else {
                     Section(moroHeader: MoroL10n.Filters.formKeywordsSection) {
                         TextField(MoroL10n.Filters.formKeywordPlaceholder, text: $draft.keyword)
                     }
-                    .listRowBackground(theme.colors.groupedSurface)
+                    .listRowBackground(theme.colors.surfaceBase)
                 }
 
                 Section(moroHeader: MoroL10n.Filters.formActionSection) {
@@ -466,7 +463,7 @@ private struct FilterEditorSheet: View {
                     }
                     .pickerStyle(.segmented)
                 }
-                .listRowBackground(theme.colors.groupedSurface)
+                .listRowBackground(theme.colors.surfaceBase)
 
                 Section(moroHeader: MoroL10n.Filters.formScopeSection) {
                     ForEach(FilterEditorDraft.supportedContexts, id: \.self) { context in
@@ -485,7 +482,7 @@ private struct FilterEditorSheet: View {
                         )
                     }
                 }
-                .listRowBackground(theme.colors.groupedSurface)
+                .listRowBackground(theme.colors.surfaceBase)
             }
             .moroSettingsSwitchStyle()
             .moroSettingsListChrome()

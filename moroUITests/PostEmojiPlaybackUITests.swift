@@ -179,7 +179,7 @@ final class PostEmojiPlaybackUITests: XCTestCase {
                              returningToApp: true)
     }
 
-    func testProfileEmojiResumeAfterDraggingAndReturningFromHome() throws {
+    func testProfileEmojiContinuesPlayingDuringDragAndResumesAfterReturningFromHome() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_PROFILE_EXPERIENCE", "UITEST_POST_EMOJI"]
         app.launchEnvironment = ["UITEST_PROFILE_LONG_TABS": "1", "UITEST_USE_FULL_APP": "1"]
@@ -198,9 +198,16 @@ final class PostEmojiPlaybackUITests: XCTestCase {
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.66))
         let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.48))
         start.press(forDuration: 0.08, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 1.6)
-        // This previously visible row would stay blue for two minutes if its original
-        // sequence kept running throughout the drag.
-        try waitForProfileFrame(.red, in: row, app: app, size: size)
+        // Continuous playback during scroll keeps the running sequence on its 120s blue frame
+        // instead of tearing down to the green poster or restarting from frame 0 (red).
+        try waitForProfileFrame(.blue, in: row, app: app, size: size)
+        let afterDragPixels = try Pixels(app, size: size)
+        let afterDragColors = afterDragPixels.glyphs(in: row.frame.insetBy(dx: -2, dy: -2))
+            .map { afterDragPixels.color(in: $0) }
+        XCTAssertTrue(afterDragColors.contains(.blue), "Expected uninterrupted blue frame after drag, saw \(afterDragColors)")
+        XCTAssertFalse(afterDragColors.contains(.green), "Expected no fallback to static green poster, saw \(afterDragColors)")
+        XCTAssertFalse(afterDragColors.contains(.red), "Expected no restart to frame 0 red, saw \(afterDragColors)")
+
         XCUIDevice.shared.press(.home)
         XCTAssertTrue(app.wait(for: .runningBackground, timeout: 6) || app.state == .runningBackgroundSuspended)
         app.activate()

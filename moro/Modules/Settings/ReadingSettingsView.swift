@@ -99,7 +99,7 @@ struct ReadingSettingsView: View {
             }
         }
         .moroSettingsSwitchStyle()
-        .moroSettingsListChrome(separators: .visible)
+        .moroSettingsListChrome()
         .textCase(nil)
         .navigationTitle(MoroL10n.Settings.readingMedia)
         .navigationBarTitleDisplayMode(.inline)

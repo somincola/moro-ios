@@ -1,6 +1,30 @@
 import SDWebImage
 import SwiftUI
 
+nonisolated enum AvatarScrollPlaybackPolicy {
+    /// Already-playing or warm-cached avatars keep animating smoothly while scrolling
+    /// (zero extra decode work); cold uncached avatars wait for scrolling to settle so
+    /// fast flings do not churn decoders.
+    static func canPlayImmediately(
+        canRetain: Bool,
+        isScrolling: Bool,
+        isAlreadyPlaying: Bool,
+        isPrepared: Bool
+    ) -> Bool {
+        guard canRetain else { return false }
+        return isAlreadyPlaying || isPrepared
+    }
+
+    static func shouldWaitForSettle(
+        canRetain: Bool,
+        isScrolling: Bool,
+        isAlreadyPlaying: Bool,
+        isPrepared: Bool
+    ) -> Bool {
+        canRetain && !isAlreadyPlaying && !isPrepared && !isScrolling
+    }
+}
+
 struct TimelineAnimatedAvatar: View {
     let url: URL
     let size: CGFloat
@@ -25,12 +49,23 @@ struct TimelineAnimatedAvatar: View {
         policyAllowsAnimation && MediaPlaybackPolicy.canPlay(isVisible: isVisible, isActive: scope.isActive,
                 isSceneActive: scenePhase == .active, isCovered: presentation.coversInlinePlayback)
     }
-    private var canSettle: Bool { canRetain && !scope.isScrolling }
+    private var avatarKey: TimelineAvatarAnimationPool.Key {
+        .init(url: url, pixelSize: AvatarAnimationLimits.pixelSize(for: size, scale: displayScale))
+    }
 
     var body: some View {
+        let key = avatarKey
+        let isPrepared = TimelineAvatarAnimationPool.shared.hasPrepared(key)
+        let playsNow = AvatarScrollPlaybackPolicy.canPlayImmediately(
+            canRetain: canRetain,
+            isScrolling: scope.isScrolling,
+            isAlreadyPlaying: isSettled,
+            isPrepared: isPrepared
+        )
+
         AvatarAnimationSurface(url: url,
-            pixelSize: AvatarAnimationLimits.pixelSize(for: size, scale: displayScale),
-            retainsAnimation: canRetain, playsAnimation: canSettle && isSettled)
+            pixelSize: key.pixelSize,
+            retainsAnimation: canRetain, playsAnimation: playsNow)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
             .background {
@@ -41,12 +76,35 @@ struct TimelineAnimatedAvatar: View {
             .onScrollVisibilityChange(threshold: MediaPlaybackPolicy.visibleFraction) {
                 if uiKitVisibility == nil { isVisible = $0 }
             }
-            .task(id: SettleKey(url: url, account: accountKey, allowed: canSettle,
-                recovery: TimelineAvatarAnimationPool.shared.recovery.revision)) {
+            .onChange(of: canRetain) { _, retained in
+                if !retained { isSettled = false }
+            }
+            .onChange(of: url) { _, _ in
                 isSettled = false
-                guard canSettle else { return }
+            }
+            .onChange(of: TimelineAvatarAnimationPool.shared.recovery.revision) { _, _ in
+                isSettled = false
+            }
+            .task(id: SettleKey(url: url, account: accountKey, canRetain: canRetain,
+                isScrolling: scope.isScrolling,
+                recovery: TimelineAvatarAnimationPool.shared.recovery.revision)) {
+                guard canRetain else {
+                    isSettled = false
+                    return
+                }
+                if isSettled { return }
+                if TimelineAvatarAnimationPool.shared.hasPrepared(avatarKey) {
+                    isSettled = true
+                    return
+                }
+                guard AvatarScrollPlaybackPolicy.shouldWaitForSettle(
+                    canRetain: canRetain,
+                    isScrolling: scope.isScrolling,
+                    isAlreadyPlaying: isSettled,
+                    isPrepared: false
+                ) else { return }
                 try? await Task.sleep(for: MediaPlaybackPolicy.settleDelay)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, canRetain, !scope.isScrolling else { return }
                 isSettled = true
             }
             .onChange(of: policyAllowsAnimation) { _, enabled in
@@ -59,13 +117,17 @@ struct TimelineAnimatedAvatar: View {
             .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
                 isLowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
             }
-            .onDisappear { isVisible = false }
+            .onDisappear {
+                isVisible = false
+                isSettled = false
+            }
     }
 
     private struct SettleKey: Hashable {
         let url: URL
         let account: String?
-        let allowed: Bool
+        let canRetain: Bool
+        let isScrolling: Bool
         let recovery: UInt
     }
 }

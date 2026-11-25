@@ -138,10 +138,57 @@ struct NotificationRowTapHarnessView: View {
             account: actors[2],
             status: nil
         )
+        let multilineStatus = makeStatus(
+            id: "multiline-status",
+            content: "<p>第一段内容</p><p><br></p><p>第二段内容，检验通知预览折叠多余换行后的紧凑阅读体验。</p>",
+            account: actors[0]
+        )
+        let multilineLike = NotificationItem(
+            id: "multiline-like-notification",
+            type: "favourite",
+            createdAt: Date().addingTimeInterval(-360),
+            account: actors[0],
+            status: multilineStatus
+        )
+        let quoteNotificationStatus = makeStatus(
+            id: "quote-notif-status",
+            content: "<p>补充一下我的看法，这个设计思路确实更清爽。</p>",
+            account: actors[1],
+            quote: Status.Quote(state: .accepted, quotedStatus: actionStatus)
+        )
+        let quoteNotification = NotificationItem(
+            id: "quote-notification",
+            type: "quote",
+            createdAt: Date().addingTimeInterval(-420),
+            account: actors[1],
+            status: quoteNotificationStatus
+        )
+        let likedMediaAndQuoteStatus = makeStatus(
+            id: "liked-media-quote-status",
+            content: "<p>测试优化引用帖子样式👍</p>",
+            account: actors[0],
+            attachments: [
+                Status.Attachment(
+                    id: "media-liked-1",
+                    type: "image",
+                    url: URL(string: "https://picsum.photos/201")!
+                )
+            ],
+            quote: Status.Quote(state: .accepted, quotedStatus: actionStatus)
+        )
+        let likedMediaAndQuote = NotificationItem(
+            id: "liked-media-quote-notification",
+            type: "favourite",
+            createdAt: Date().addingTimeInterval(-480),
+            account: actors[0],
+            status: likedMediaAndQuoteStatus
+        )
 
         return NotificationDisplayItem.consolidate(actionNotifications)
             + [NotificationDisplayItem(from: reply), NotificationDisplayItem(from: quotedUpdate),
-               NotificationDisplayItem(from: singleLike), NotificationDisplayItem(from: follow)]
+               NotificationDisplayItem(from: singleLike), NotificationDisplayItem(from: follow),
+               NotificationDisplayItem(from: multilineLike), NotificationDisplayItem(from: likedMediaAndQuote),
+               NotificationDisplayItem(from: quoteNotification)]
     }
 
     private static func makeAccount(id: String, name: String) -> Account {

@@ -65,9 +65,9 @@ nonisolated final class PostEmojiAnimation: Sendable {
 actor PostEmojiAnimationStore {
     static let shared = PostEmojiAnimationStore()
     nonisolated static let decodedByteBudget = 12 * 1024 * 1024
-    // NSCache permits concurrent reads. The editor can attach a warm animation in its layout pass.
+    // NSCache permits concurrent reads. The editor and visible post rows can query warm entries synchronously.
     private nonisolated(unsafe) let animations = NSCache<NSString, PostEmojiAnimation>()
-    private let stills = NSCache<NSURL, NSNumber>()
+    private nonisolated(unsafe) let stills = NSCache<NSURL, NSNumber>()
 
     init() {
         animations.totalCostLimit = Self.decodedByteBudget
@@ -76,6 +76,10 @@ actor PostEmojiAnimationStore {
 
     nonisolated func cachedAnimation(for url: URL, pixelSize: Int) -> PostEmojiAnimation? {
         animations.object(forKey: "\(pixelSize)|\(url.absoluteString)" as NSString)
+    }
+
+    nonisolated func isKnownStill(for url: URL) -> Bool {
+        stills.object(forKey: url as NSURL) != nil
     }
 
     func animation(for url: URL, pixelSize: Int) async -> PostEmojiAnimation? {

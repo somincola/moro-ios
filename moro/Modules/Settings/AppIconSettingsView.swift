@@ -88,7 +88,7 @@ struct AppIconSettingsView: View {
                             .foregroundStyle(theme.colors.primary500)
                             .background(
                                 Circle()
-                                    .fill(theme.colors.groupedSurface)
+                                    .fill(theme.colors.surfaceBase)
                             )
                             .offset(x: 5, y: -5)
                     }

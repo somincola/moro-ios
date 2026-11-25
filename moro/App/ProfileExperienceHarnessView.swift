@@ -5,6 +5,7 @@ import SwiftUI
 struct ProfileExperienceHarnessView: View {
     @StateObject private var coordinator = RootTabCoordinator(selectedTab: .me)
     @StateObject private var appState: AppState
+    @ObservedObject private var feedbackCenter = AppFeedbackCenter.shared
     @State private var showsSettings = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let client = ProfileFixtureProtocol.makeClient()
@@ -33,27 +34,42 @@ struct ProfileExperienceHarnessView: View {
     }
 
     var body: some View {
-        // Use the app's real UIKit navigation container. A standalone SwiftUI
-        // NavigationStack can hide navigationDestination compatibility failures.
-        MainShellContainerRepresentable(
-            coordinator: coordinator,
-            theme: theme,
-            unreadInboxCount: 0,
-            currentUserAvatarURL: nil,
-            contentVersion: Self.accountKey,
-            homeView: AnyView(EmptyView()),
-            exploreView: AnyView(EmptyView()),
-            inboxView: AnyView(EmptyView()),
-            meView: routedView(
-                AnyView(ProfileView(account: ProfileFixtureProtocol.account(), onLogout: {}, apiClient: client)),
-                router: coordinator.meRouter),
-            routeView: { route, router in
-                routedView(
-                    AppRouteViewFactory(apiClient: client, appState: appState, cacheManager: .shared)
-                        .view(for: route), router: router)
+        ZStack(alignment: .top) {
+            // Use the app's real UIKit navigation container. A standalone SwiftUI
+            // NavigationStack can hide navigationDestination compatibility failures.
+            MainShellContainerRepresentable(
+                coordinator: coordinator,
+                theme: theme,
+                unreadInboxCount: 0,
+                currentUserAvatarURL: nil,
+                contentVersion: Self.accountKey,
+                homeView: AnyView(EmptyView()),
+                exploreView: AnyView(EmptyView()),
+                inboxView: AnyView(EmptyView()),
+                meView: routedView(
+                    AnyView(ProfileView(account: ProfileFixtureProtocol.account(), onLogout: {}, apiClient: client)),
+                    router: coordinator.meRouter),
+                routeView: { route, router in
+                    routedView(
+                        AppRouteViewFactory(apiClient: client, appState: appState, cacheManager: .shared)
+                            .view(for: route), router: router)
+                }
+            )
+            .ignoresSafeArea(.container, edges: [.top, .bottom])
+
+            if let message = feedbackCenter.currentMessage {
+                MoroNoticePill(
+                    icon: message.kind == .error ? "exclamationmark" : (message.kind == .success ? "checkmark" : nil),
+                    text: message.text
+                )
+                .frame(maxWidth: 420)
+                .padding(.horizontal, MoroLayoutMetrics.contentHorizontalInset)
+                .padding(.top, 8)
+                .onTapGesture { feedbackCenter.dismiss() }
+                .accessibilityIdentifier("app.feedbackNotice")
+                .zIndex(999)
             }
-        )
-        .ignoresSafeArea(.container, edges: [.top, .bottom])
+        }
         .environmentObject(appState)
         .environment(\.activeAccountKey, Self.accountKey)
         .environment(\.moroMediaPrefs, MoroMediaPreferences(
@@ -133,9 +149,10 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     /// Visitor-mode relationship. Unset keeps the historical empty `/relationships` reply.
     private static let relationshipMode = ProcessInfo.processInfo.environment["UITEST_PROFILE_RELATIONSHIP"]
     private static var relationship: [String: Any] = [
-        "id": "fixture-profile", "following": relationshipMode == "following", "followed_by": false,
-        "blocking": false, "blocked_by": false, "muting": false, "muting_notifications": false,
-        "requested": false, "domain_blocking": false, "endorsed": false, "notifying": false,
+        "id": "fixture-profile", "following": relationshipMode == "following", "showing_reblogs": true,
+        "followed_by": false, "blocking": false, "blocked_by": false, "muting": false,
+        "muting_notifications": false, "requested": false, "domain_blocking": false, "endorsed": false,
+        "notifying": false,
     ]
     private static var pushSubscription: [String: Any] = [
         "id": 1, "endpoint": "https://relay-fixture.invalid/push", "policy": "all",
@@ -351,11 +368,13 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
         if relationshipMode != nil, method == "POST", path.hasSuffix("/follow") {
             let options = (try? JSONSerialization.jsonObject(with: body(request))) as? [String: Any] ?? [:]
             relationship["following"] = true
+            if let reblogs = options["reblogs"] as? Bool { relationship["showing_reblogs"] = reblogs }
             if let notify = options["notify"] as? Bool { relationship["notifying"] = notify }
             return (200, relationship)
         }
         if relationshipMode != nil, method == "POST", path.hasSuffix("/unfollow") {
             relationship["following"] = false
+            relationship["showing_reblogs"] = false
             relationship["notifying"] = false
             return (200, relationship)
         }

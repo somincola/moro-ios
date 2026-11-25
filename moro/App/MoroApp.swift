@@ -93,6 +93,8 @@ struct MoroApp: App {
                     composeCounterHarness
                         .moroTheme(MoroTheme(accent: .monochrome))
                         .preferredColorScheme(colorScheme)
+                } else if shouldUseQuoteShowcaseHarness {
+                    quoteShowcaseHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseNotificationTapHarness {
                     notificationTapHarness
                         .moroTheme(
@@ -499,6 +501,21 @@ struct MoroApp: App {
     @ViewBuilder private var composeCounterHarness: some View {
         #if DEBUG
         ComposeCounterHarnessView()
+        #endif
+    }
+
+    private var shouldUseQuoteShowcaseHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_QUOTE_SHOWCASE")
+            || launchEnvironment["UITEST_QUOTE_SHOWCASE"] == "1"
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var quoteShowcaseHarness: some View {
+        #if DEBUG
+        QuoteShowcaseHarnessView()
         #endif
     }
 

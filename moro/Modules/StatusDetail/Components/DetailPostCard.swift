@@ -87,7 +87,8 @@ struct DetailPostCard: View {
                 onPin: actions.onPin,
                 onDeleteAndRedraft: actions.onDeleteAndRedraft,
                 onDelete: actions.onDelete,
-                showCounts: true
+                showCounts: true,
+                showsMoreButton: false
             )
         }
         .padding(.horizontal, theme.spacing.contentHorizontalInset)

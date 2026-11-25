@@ -24,8 +24,8 @@ set -euo pipefail
 POSE=${1:?pose: inner-portrait | inner-landscape | outer-portrait | outer-landscape}
 LOCALES=${2:-"zh-Hans en-US"}
 SIM=${DUO_SIM:-6C305F2A-89BB-4117-8992-0D7B3947A197}
-INNER=${DUO_INNER_DISPLAY:-817DDF04-73E7-41EF-8196-5D89C08BA3C3}
-OUTER=${DUO_OUTER_DISPLAY:-D851A9BC-FBB2-48B1-9C54-9B7EC7CBA3DA}
+INNER=${DUO_INNER_DISPLAY:-primary-1}
+OUTER=${DUO_OUTER_DISPLAY:-primary}
 BUNDLE=com.somincola.moro
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 
@@ -68,16 +68,16 @@ for LOCALE in $LOCALES; do
 
     if [ "$POSE" = inner-landscape ]; then
         # The wide display's two columns, each with a thread open.
-        capture 01-home-thread 10 STORE_SHOWCASE=1 STORE_THREAD=0 UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
-        capture 02-home-thread-dark 10 STORE_SHOWCASE=1 STORE_THREAD=0 UITEST_COLOR_SCHEME=dark -- "${STORE[@]}"
-        capture 03-inbox-thread 10 STORE_SHOWCASE=1 STORE_TAB=inbox STORE_THREAD=1 UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
+        capture 01-home-thread 10 STORE_SHOWCASE=1 STORE_THEME_COLOR=blue STORE_THREAD=0 UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
+        capture 02-home-thread-dark 10 STORE_SHOWCASE=1 STORE_THEME_COLOR=blue STORE_THREAD=0 UITEST_COLOR_SCHEME=dark -- "${STORE[@]}"
+        capture 03-inbox-thread 10 STORE_SHOWCASE=1 STORE_THEME_COLOR=blue STORE_TAB=inbox STORE_THREAD=1 UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
     else
-        capture 01-home 8 STORE_SHOWCASE=1 UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
-        capture 02-home-dark 8 STORE_SHOWCASE=1 UITEST_COLOR_SCHEME=dark -- "${STORE[@]}"
-        capture 03-thread 10 STORE_SHOWCASE=1 STORE_THREAD=0 UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
-        capture 04-inbox 8 STORE_SHOWCASE=1 STORE_TAB=inbox UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
+        capture 01-home 8 STORE_SHOWCASE=1 STORE_THEME_COLOR=blue UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
+        capture 02-home-dark 8 STORE_SHOWCASE=1 STORE_THEME_COLOR=blue UITEST_COLOR_SCHEME=dark -- "${STORE[@]}"
+        capture 03-thread 10 STORE_SHOWCASE=1 STORE_THEME_COLOR=blue STORE_THREAD=0 UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
+        capture 04-inbox 8 STORE_SHOWCASE=1 STORE_THEME_COLOR=blue STORE_TAB=inbox UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
     fi
-    capture 05-profile 8 STORE_SHOWCASE=1 STORE_TAB=me UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
+    capture 05-profile 8 STORE_SHOWCASE=1 STORE_THEME_COLOR=blue STORE_TAB=me UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
     capture 06-display 7 STORE_SHOWCASE=1 STORE_SCENE=display STORE_THEME_COLOR=purple UITEST_COLOR_SCHEME=light -- "${STORE[@]}"
     # The gathered globe with the title and button, not the opening net.
     capture 07-onboarding 9 UITEST_ONBOARDING_VARIANT=globe UITEST_ONBOARDING_GATHER=1 UITEST_COLOR_SCHEME=dark -- UITEST_ONBOARDING_PREVIEW

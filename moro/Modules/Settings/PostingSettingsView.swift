@@ -65,7 +65,7 @@ struct PostingSettingsView: View {
             }
         }
         .moroSettingsSwitchStyle()
-        .moroSettingsListChrome(separators: .visible)
+        .moroSettingsListChrome()
         .textCase(nil)
         .navigationTitle(MoroL10n.Settings.postingInteractions)
         .navigationBarTitleDisplayMode(.inline)

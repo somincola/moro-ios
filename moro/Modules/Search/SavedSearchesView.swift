@@ -90,10 +90,10 @@ private struct SavedSearchNameSheet: View {
                     .focused($isFocused)
                     .submitLabel(.done)
                     .onSubmit(save)
-                    .listRowBackground(theme.colors.groupedSurface)
+                    .listRowBackground(theme.colors.surfaceBase)
                 Text("\(item.query) · \(item.scope.title)")
                     .foregroundStyle(.secondary)
-                    .listRowBackground(theme.colors.groupedSurface)
+                    .listRowBackground(theme.colors.surfaceBase)
             }
             .moroSettingsListChrome()
             .navigationTitle(MoroL10n.Search.renameSearch)

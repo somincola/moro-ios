@@ -26,9 +26,14 @@ struct EmojiManagementView: View {
                         orderedGroups = incoming
                     }
             } else {
-                ProgressView(MoroL10n.Emoji.loading)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .moroSettingsPageChrome()
+                VStack(spacing: theme.spacing.m) {
+                    MoroMascotView(expression: .thinking, size: 36)
+                    Text(MoroL10n.Emoji.loading)
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textSecondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .moroSettingsPageChrome()
             }
         }
         .navigationTitle(MoroL10n.Emoji.navTitle)
@@ -58,17 +63,25 @@ struct EmojiManagementView: View {
                 Section {
                     switch emojiViewModel.loadState {
                     case .initial, .loading:
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
-                        }
+                        MoroLoadingStateView(mascotSize: 36)
+                            .frame(minHeight: 120)
                     case .fail:
-                        Text(MoroL10n.Emoji.loadFailed)
-                            .foregroundStyle(theme.colors.textSecondary)
+                        ErrorStateView(
+                            spec: ErrorStateSpec(
+                                title: MoroL10n.Emoji.loadFailed,
+                                message: MoroL10n.AppError.recoveryTryAgain
+                            )
+                        )
+                        .frame(minHeight: 160)
                     case .finish:
-                        Text(MoroL10n.Emoji.noCustomEmoji)
-                            .foregroundStyle(theme.colors.textSecondary)
+                        EmptyStateView(
+                            spec: EmptyStateSpec(
+                                icon: "face.smiling",
+                                title: MoroL10n.Emoji.noCustomEmoji,
+                                message: ""
+                            )
+                        )
+                        .frame(minHeight: 160)
                     }
                 } header: {
                     MoroSettingsSectionHeader(title: MoroL10n.Emoji.sort)
@@ -113,7 +126,7 @@ struct EmojiManagementView: View {
                             .scaledToFit()
                     } placeholder: {
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(theme.colors.groupedBackground)
+                            .fill(theme.colors.surfaceSubtle)
                     }
                     .frame(width: 20, height: 20)
                 }

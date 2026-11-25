@@ -88,7 +88,9 @@ final class ThreadReadingUITests: XCTestCase {
         } else {
             XCTAssertTrue(app.buttons.matching(identifier: "取消转发").firstMatch.waitForExistence(timeout: 8))
             XCTAssertFalse(boost.exists)
-            app.buttons.matching(identifier: "post.more.focus").element(boundBy: 1).tap()
+            let focusedMoreButtons = app.buttons.matching(identifier: "post.more.focus")
+            XCTAssertEqual(focusedMoreButtons.count, 1)
+            focusedMoreButtons.firstMatch.tap()
             let menuQuote = app.buttons["post.quote.focus"]
             XCTAssertTrue(menuQuote.waitForExistence(timeout: 5))
             XCTAssertEqual(menuQuote.label, "引用")

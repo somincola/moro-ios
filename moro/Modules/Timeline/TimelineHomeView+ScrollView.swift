@@ -290,21 +290,11 @@ extension TimelineHomeView {
             }
             timelineStatusRows(for: viewModel, timelineType: timelineType)
         case .empty(let spec):
-            timelineStateCard(
-                icon: spec.icon,
-                title: spec.title,
-                message: spec.message,
-                actionTitle: spec.actionTitle,
-                action: spec.action
-            )
+            EmptyStateView(spec: spec)
+                .frame(minHeight: 340)
         case .error(let spec):
-            timelineStateCard(
-                icon: "exclamationmark.triangle",
-                title: spec.title,
-                message: spec.message,
-                actionTitle: spec.action == nil ? nil : spec.actionTitle,
-                action: spec.action
-            )
+            ErrorStateView(spec: spec)
+                .frame(minHeight: 340)
         }
     }
 
@@ -467,30 +457,6 @@ extension TimelineHomeView {
         }
     }
 
-    func timelineStateCard(
-        icon: String,
-        title: String,
-        message: String,
-        actionTitle: String?,
-        action: (() -> Void)?
-    ) -> some View {
-        VStack(alignment: .leading, spacing: theme.spacing.m) {
-            MoroSectionTextBlock(
-                title: title,
-                message: message,
-                icon: icon,
-                tint: theme.colors.textTertiary
-            )
-
-            if let actionTitle, let action {
-                MoroButton(title: actionTitle, kind: .secondary, action: action)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, theme.spacing.timelinePadding)
-        .padding(.vertical, 42)
-    }
-
     @ViewBuilder
     func timelineContextCard(for timelineType: TimelineType, viewModel: TimelineViewModel)
         -> some View
@@ -573,7 +539,7 @@ extension TimelineHomeView {
             return .error(
                 ErrorStateSpec(
                     title: MoroL10n.Timeline.loadFailed,
-                    message: error.localizedDescription,
+                    message: MoroErrorCopy.message(for: error),
                     actionTitle: MoroL10n.Timeline.retry,
                     action: {
                         Task { await viewModel.loadInitial() }

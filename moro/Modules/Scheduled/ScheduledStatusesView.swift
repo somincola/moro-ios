@@ -39,12 +39,11 @@ struct ScheduledStatusesView: View {
             return .error(
                 ErrorStateSpec(
                     title: MoroL10n.Scheduled.loadFailed,
-                    message: error.localizedDescription,
+                    message: MoroErrorCopy.message(for: error),
                     actionTitle: MoroL10n.Scheduled.retry,
                     action: {
                         Task { await viewModel.loadInitial() }
-                    },
-                    alignment: .leading
+                    }
                 )
             )
         }
@@ -57,8 +56,7 @@ struct ScheduledStatusesView: View {
                     actionTitle: MoroL10n.Scheduled.refresh,
                     action: {
                         Task { await viewModel.refresh() }
-                    },
-                    alignment: .leading
+                    }
                 )
             )
         }
@@ -77,11 +75,11 @@ struct ScheduledStatusesView: View {
                     .padding(.bottom, theme.spacing.s)
 
                 if let transientErrorMessage = viewModel.transientErrorMessage {
-                    MoroSectionTextBlock(
-                        title: MoroL10n.Scheduled.actionFailed,
+                    MoroInlineNoticeBanner(
                         message: transientErrorMessage,
-                        icon: "exclamationmark.triangle.fill",
-                        tint: theme.colors.error
+                        tone: .error,
+                        actionTitle: MoroL10n.Scheduled.retry,
+                        action: { Task { await viewModel.refresh() } }
                     )
                     .padding(.horizontal, theme.spacing.m)
                     .padding(.bottom, theme.spacing.s)

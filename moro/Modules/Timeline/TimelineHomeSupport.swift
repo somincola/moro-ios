@@ -9,36 +9,106 @@
 import Combine
 import SwiftUI
 
-/// A stream-scene header that keeps its position and color family while scrolling. The scroll
-/// fraction only strengthens the lower boundary, communicating elevation without making the
-/// primary feed controls disappear.
+/// A stream-scene header that glides cleanly above the top safe area while scrolling down
+/// and follows the finger back in when scrolling up.
 ///
-/// It subscribes through `.onReceive` and stores the fraction locally, so scrolling re-renders
-/// only this small chrome view and never rebuilds the retained pager.
+/// It subscribes through `.onReceive` and stores its chrome state locally, so scrolling
+/// re-renders only this small chrome view and never rebuilds the retained pager.
 struct ScrollElevatingHeader<Content: View>: View {
     let height: CGFloat
     let backgroundColor: Color
     let dividerColor: Color
-    let subject: PassthroughSubject<CGFloat, Never>
+    let initialState: TimelineChromeState
+    let subject: PassthroughSubject<TimelineChromeState, Never>
     @ViewBuilder var content: () -> Content
 
-    @State private var fraction: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var state: TimelineChromeState
+
+    init(
+        height: CGFloat,
+        backgroundColor: Color,
+        dividerColor: Color,
+        initialState: TimelineChromeState = .expanded,
+        subject: PassthroughSubject<TimelineChromeState, Never>,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.height = height
+        self.backgroundColor = backgroundColor
+        self.dividerColor = dividerColor
+        self.initialState = initialState
+        self.subject = subject
+        self.content = content
+        _state = State(initialValue: initialState)
+    }
+
+    private var clampedFraction: CGFloat {
+        min(max(state.headerFraction, 0), 1)
+    }
+
+    private var contentOpacity: Double {
+        if reduceMotion {
+            return Double(1 - clampedFraction)
+        }
+        return max(0, 1 - Double(clampedFraction) * 1.45)
+    }
+
+    private var dividerOpacity: Double {
+        let baseOpacity = state.isScrolledFromTop ? 0.85 : 0.2
+        return baseOpacity * max(0, 1 - Double(clampedFraction) * 1.15)
+    }
+
+    private var isInteractive: Bool {
+        clampedFraction < 0.92
+    }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            content()
+        ZStack(alignment: .top) {
+            ZStack(alignment: .bottom) {
+                content()
+                    .opacity(contentOpacity)
 
-            Rectangle()
-                .fill(dividerColor)
-                .frame(height: 0.5)
-                .frame(maxWidth: .infinity)
-                .opacity(Double(0.2 + 0.8 * fraction))
+                Rectangle()
+                    .fill(dividerColor)
+                    .frame(height: 0.5)
+                    .frame(maxWidth: .infinity)
+                    .opacity(dividerOpacity)
+            }
+            .frame(maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .top)
+            .background(backgroundColor)
+            .opacity(reduceMotion ? Double(1 - clampedFraction) : 1)
+            .offset(y: reduceMotion ? 0 : -height * clampedFraction)
+            .frame(maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .top)
+            .clipped()
+            .allowsHitTesting(isInteractive)
+            .accessibilityHidden(!isInteractive)
+
+            // Keep the status bar solid and soften the top viewport edge while the header is hidden.
+            VStack(spacing: 0) {
+                Color.clear
+                    .frame(height: 1)
+                    .background(backgroundColor, ignoresSafeAreaEdges: .top)
+
+                LinearGradient(
+                    colors: [backgroundColor, backgroundColor.opacity(0)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 12)
+                .opacity(Double(clampedFraction))
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
-        .frame(maxWidth: .infinity, minHeight: height, alignment: .top)
-        .background(backgroundColor)
-        .onReceive(subject) { newFraction in
-            guard abs(newFraction - fraction) > 0.0005 else { return }
-            fraction = min(max(newFraction, 0), 1)
+        .onReceive(subject) { nextState in
+            guard nextState != state else { return }
+            if nextState.isAnimated && !reduceMotion {
+                withAnimation(.snappy(duration: 0.24)) {
+                    state = nextState
+                }
+            } else {
+                state = nextState
+            }
         }
     }
 }

@@ -221,6 +221,46 @@ struct TimelineAvatarAnimationTests {
         #expect(!home.isActive && !local.isActive)
     }
 
+    @Test func activeAndWarmAvatarsKeepPlayingDuringScrollWhileColdDecodesWaitForIdle() async throws {
+        // Active avatar keeps playing while scrolling.
+        #expect(AvatarScrollPlaybackPolicy.canPlayImmediately(
+            canRetain: true, isScrolling: true, isAlreadyPlaying: true, isPrepared: false
+        ))
+        // Warm-cached avatar starts playing immediately even while scrolling.
+        #expect(AvatarScrollPlaybackPolicy.canPlayImmediately(
+            canRetain: true, isScrolling: true, isAlreadyPlaying: false, isPrepared: true
+        ))
+        // Cold uncached avatar waits until scrolling settles.
+        #expect(!AvatarScrollPlaybackPolicy.canPlayImmediately(
+            canRetain: true, isScrolling: true, isAlreadyPlaying: false, isPrepared: false
+        ))
+        #expect(!AvatarScrollPlaybackPolicy.shouldWaitForSettle(
+            canRetain: true, isScrolling: true, isAlreadyPlaying: false, isPrepared: false
+        ))
+        #expect(AvatarScrollPlaybackPolicy.shouldWaitForSettle(
+            canRetain: true, isScrolling: false, isAlreadyPlaying: false, isPrepared: false
+        ))
+        // Offscreen / hidden / disabled avatar never plays.
+        #expect(!AvatarScrollPlaybackPolicy.canPlayImmediately(
+            canRetain: false, isScrolling: false, isAlreadyPlaying: true, isPrepared: true
+        ))
+
+        // Pool reports prepared status for active and warm entries.
+        let data = ProfileMediaFixture.gifData()
+        let pool = TimelineAvatarAnimationPool(observesLifecycle: false, loader: { _ in data })
+        let resource = key("prepared-check")
+        #expect(!pool.hasPrepared(resource))
+        let consumer = UUID()
+        var ready = false
+        pool.acquire(resource, consumerID: consumer, ready: { _ in ready = true }, invalidate: {})
+        try await wait { ready }
+        #expect(pool.hasPrepared(resource))
+        pool.release(resource, consumerID: consumer)
+        #expect(pool.hasPrepared(resource))
+        pool.removeAll()
+        #expect(!pool.hasPrepared(resource))
+    }
+
     private func key(_ name: String) -> TimelineAvatarAnimationPool.Key {
         .init(url: URL(string: "https://avatar-fixture.invalid/\(name).gif")!, pixelSize: 96)
     }

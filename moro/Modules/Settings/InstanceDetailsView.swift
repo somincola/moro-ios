@@ -138,18 +138,16 @@ struct InstanceDetailsView: View {
             if let details = viewModel.details {
                 content(details)
             } else if let errorMessage = viewModel.errorMessage {
-                ContentUnavailableView {
-                    Label(MoroL10n.Instance.loadFailed, systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(errorMessage)
-                } actions: {
-                    Button(MoroL10n.Instance.retry) {
-                        Task { await viewModel.reload() }
-                    }
-                }
+                ErrorStateView(
+                    spec: ErrorStateSpec(
+                        title: MoroL10n.Instance.loadFailed,
+                        message: errorMessage,
+                        actionTitle: MoroL10n.Instance.retry,
+                        action: { Task { await viewModel.reload() } }
+                    )
+                )
             } else {
-                ProgressView(MoroL10n.Instance.loading)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                MoroLoadingStateView(message: MoroL10n.Instance.loading)
             }
         }
         .moroSettingsPageChrome()
@@ -384,7 +382,7 @@ struct InstanceDetailsView: View {
 
     private var instanceCoverPlaceholder: some View {
         Rectangle()
-            .fill(theme.colors.groupedSurface)
+            .fill(theme.colors.surfaceSubtle)
             .overlay {
                 Image(systemName: "building.2")
                     .moroScaledFont(size: 24, weight: .regular)
@@ -500,7 +498,8 @@ struct InstanceDetailsView: View {
             .foregroundStyle(theme.colors.textPrimary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Capsule().fill(theme.colors.groupedSurface))
+            .background(Capsule().fill(theme.colors.surfaceSubtle))
+            .overlay { Capsule().strokeBorder(theme.colors.borderSubtle, lineWidth: 0.5) }
         }
     }
 

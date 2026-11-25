@@ -118,6 +118,10 @@ final class TimelineAvatarAnimationPool {
     var encodedBytes: Int { entries.values.reduce(0) { $0 + ($1.prepared?.dataBytes ?? 0) } }
     var reservedFrameBytes: Int { (activeCount + warmCount) * AvatarAnimationLimits.frameReservation }
 
+    func hasPrepared(_ key: Key) -> Bool {
+        entries[key]?.prepared != nil
+    }
+
     @discardableResult
     func acquire(_ key: Key, consumerID: UUID,
                  ready: @escaping (SDAnimatedImage) -> Void, invalidate: @escaping () -> Void) -> Bool {

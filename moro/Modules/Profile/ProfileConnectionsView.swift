@@ -235,15 +235,13 @@ struct ProfileConnectionsView: View {
     private var accountList: some View {
         List {
             if let transientErrorMessage = viewModel.transientErrorMessage {
-                HStack(alignment: .top, spacing: theme.spacing.s) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(theme.colors.error)
-                    Text(transientErrorMessage)
-                        .font(theme.typography.caption)
-                        .foregroundStyle(theme.colors.textPrimary)
-                    Spacer(minLength: 0)
-                }
-                .padding(.vertical, theme.spacing.xs)
+                MoroInlineNoticeBanner(
+                    message: transientErrorMessage,
+                    tone: .error,
+                    actionTitle: MoroL10n.MentionUser.retry,
+                    action: { Task { await viewModel.refresh() } }
+                )
+                .listRowSeparator(.hidden)
                 .listRowBackground(theme.colors.surfaceBase)
             }
 
@@ -252,6 +250,7 @@ struct ProfileConnectionsView: View {
                     router.navigate(to: .userProfile(account))
                 }
                 .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
                 .listRowBackground(theme.colors.surfaceBase)
                 .onAppear {
                     Task {
@@ -273,7 +272,6 @@ struct ProfileConnectionsView: View {
         }
         .listStyle(.plain)
         .moroReadableListMargins()
-        .listRowSeparatorTint(theme.colors.divider)
         .contentMargins(.top, 0, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(theme.colors.surfaceBase)

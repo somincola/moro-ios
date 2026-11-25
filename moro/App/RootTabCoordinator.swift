@@ -93,11 +93,21 @@ enum MainTab: String, Hashable, CaseIterable {
     }
 }
 
-enum RootSheetDestination: String, Identifiable {
+enum RootSheetDestination: Equatable, Identifiable {
     case settings
     case navigationCustomization
+    case search(autoFocus: Bool)
 
-    var id: String { rawValue }
+    var id: String {
+        switch self {
+        case .settings:
+            return "settings"
+        case .navigationCustomization:
+            return "navigationCustomization"
+        case .search(let autoFocus):
+            return "search.\(autoFocus)"
+        }
+    }
 }
 
 @MainActor
@@ -114,11 +124,21 @@ final class RootTabCoordinator: ObservableObject {
     @Published var showAddAccountLogin = false
     /// The Me tab's account switcher is up; floating controls make room for it.
     @Published var isAccountSwitcherPresented = false
+    /// Moro's leading navigation drawer overlay state.
+    @Published var isDrawerPresented = false
+    /// Live `0...1` progress while the user drags from the leading screen edge.
+    @Published var drawerInteractiveProgress: CGFloat? = nil
     @Published private(set) var tabReselection: TabReselection?
     /// The latest time a root tab came on screen: switched to, or the app came back to it.
     @Published private(set) var tabActivation: TabActivation?
     @Published var timelineSelection: TimelineType = .home
     @Published var tabBarHeight: CGFloat = 78
+    /// Trailing inset matching the floating iOS 26 tab bar capsule (or 16pt on older flat bars)
+    /// so the home floating compose button aligns flush with the tab bar's trailing edge.
+    @Published var tabBarTrailingInset: CGFloat = {
+        if #available(iOS 26, *) { return 21 }
+        return 16
+    }()
     /// The device has a hinge (iPhone Duo): the home timeline moves its header controls into the
     /// system navigation bar, so they follow the bars into the vertical side bar and share the
     /// status row on the inner display. Other iPhones keep the custom hide-on-scroll header.
@@ -158,12 +178,88 @@ final class RootTabCoordinator: ObservableObject {
         draft: ComposeDraft? = nil,
         sharedImport: SharedComposeAttachmentImportPayload? = nil
     ) {
+        isDrawerPresented = false
+        drawerInteractiveProgress = nil
         presentedSheet = nil
         composeContext = ComposeContextWrapper(
             context: .newPost,
             draft: draft,
             sharedImport: sharedImport
         )
+    }
+
+    var canOpenDrawerByEdgeSwipe: Bool {
+        selectedTab == .home
+            && isAtRoot(.home)
+            && !isDrawerPresented
+            && presentedSheet == nil
+            && composeContext == nil
+            && !showAddAccountLogin
+            && !isAccountSwitcherPresented
+            && !usesSystemHomeBar
+    }
+
+    func openDrawer() {
+        guard composeContext == nil, !showAddAccountLogin, presentedSheet == nil else { return }
+        drawerInteractiveProgress = nil
+        isDrawerPresented = true
+    }
+
+    func closeDrawer() {
+        drawerInteractiveProgress = nil
+        isDrawerPresented = false
+    }
+
+    func updateDrawerEdgeGesture(progress: CGFloat) {
+        drawerInteractiveProgress = min(max(progress, 0), 1)
+    }
+
+    func finishDrawerEdgeGesture(shouldOpen: Bool) {
+        drawerInteractiveProgress = nil
+        isDrawerPresented = shouldOpen
+    }
+
+    func openTabOrRoute(_ tab: MainTab, account: Account?) {
+        closeDrawer()
+        switch tab {
+        case .home:
+            selectTab(.home)
+        case .explore:
+            openExplore()
+        case .inbox:
+            openInbox(.all)
+        case .me:
+            openProfile(account)
+        case .lists:
+            if tabLayout.tabs.contains(.lists) {
+                selectTab(.lists)
+            } else {
+                navigate(to: .lists, on: .home)
+            }
+        case .bookmarks:
+            if tabLayout.tabs.contains(.bookmarks) {
+                selectTab(.bookmarks)
+            } else {
+                navigate(to: .bookmarks, on: .home)
+            }
+        case .favourites:
+            if tabLayout.tabs.contains(.favourites) {
+                selectTab(.favourites)
+            } else {
+                navigate(to: .favourites, on: .home)
+            }
+        case .settings:
+            if tabLayout.tabs.contains(.settings) {
+                selectTab(.settings)
+            } else {
+                presentSettings()
+            }
+        }
+    }
+
+    func openRouteFromDrawer(_ route: Route) {
+        closeDrawer()
+        navigate(to: route, on: .home)
     }
 
     @discardableResult
@@ -180,11 +276,18 @@ final class RootTabCoordinator: ObservableObject {
 
     func presentSettings() {
         guard composeContext == nil, !showAddAccountLogin else { return }
-        presentedSheet = .settings
+        closeDrawer()
+        if tabLayout.tabs.contains(.settings) {
+            selectTab(.settings)
+        } else {
+            presentedSheet = .settings
+        }
     }
 
     func presentNavigationCustomization() {
-        guard presentedSheet == nil, composeContext == nil, !showAddAccountLogin else { return }
+        guard composeContext == nil, !showAddAccountLogin else { return }
+        closeDrawer()
+        guard presentedSheet == nil else { return }
         presentedSheet = .navigationCustomization
     }
 
@@ -230,6 +333,7 @@ final class RootTabCoordinator: ObservableObject {
     }
 
     func selectTab(_ tab: MainTab) {
+        closeDrawer()
         guard tabLayout.tabs.contains(tab) else { return }
         guard tab == selectedTab else {
             selectedTab = tab
@@ -244,15 +348,18 @@ final class RootTabCoordinator: ObservableObject {
         triggerScrollToTopEvent(for: tab)
     }
 
-    func openExplore() {
+    func openExplore(autoFocus: Bool = false) {
+        closeDrawer()
         if tabLayout.tabs.contains(.explore) {
             selectTab(.explore)
         } else {
-            navigate(to: .search(query: nil), on: .home)
+            guard composeContext == nil, !showAddAccountLogin else { return }
+            presentedSheet = .search(autoFocus: autoFocus)
         }
     }
 
     func openProfile(_ account: Account?) {
+        closeDrawer()
         if tabLayout.tabs.contains(.me) {
             selectTab(.me)
         } else if let account {
@@ -269,6 +376,7 @@ final class RootTabCoordinator: ObservableObject {
     }
 
     func openInbox(_ filter: NotificationFilter) {
+        closeDrawer()
         inboxFilter = filter
         let target: MainTab = tabLayout.tabs.contains(.inbox) ? .inbox : .home
         if selectedTab != target { selectedTab = target }

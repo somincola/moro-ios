@@ -76,6 +76,7 @@ struct PostHeader: View {
                             typography: .caption,
                             textColor: theme.colors.textSecondary,
                             lineLimit: 1,
+                            fitsInlineWidth: true,
                             truncationMode: .tail,
                             minimumScaleFactor: 0.86,
                             allowsTightening: true
@@ -159,6 +160,7 @@ struct PostHeader: View {
                             typography: .caption,
                             textColor: theme.colors.textSecondary,
                             lineLimit: 1,
+                            fitsInlineWidth: true,
                             truncationMode: .tail,
                             minimumScaleFactor: 0.86,
                             allowsTightening: true
@@ -189,6 +191,7 @@ struct PostHeader: View {
                                 typography: .caption,
                                 textColor: theme.colors.textSecondary,
                                 lineLimit: 1,
+                                fitsInlineWidth: true,
                                 truncationMode: .tail,
                                 minimumScaleFactor: 0.86,
                                 allowsTightening: true
@@ -223,6 +226,7 @@ struct PostHeader: View {
                                 typography: .caption,
                                 textColor: theme.colors.textSecondary,
                                 lineLimit: 1,
+                                fitsInlineWidth: true,
                                 truncationMode: .tail,
                                 minimumScaleFactor: 0.86,
                                 allowsTightening: true

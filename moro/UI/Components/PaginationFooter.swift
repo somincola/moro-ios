@@ -2,8 +2,8 @@
 //  PaginationFooter.swift
 //  moro
 //
-//  Shared bottom footer for paginated lists: shows a spinner while loading the
-//  next page, or a tappable "tap to retry" affordance when load-more failed.
+//  Shared bottom footer for paginated lists: shows a lightweight breathing mascot
+//  while loading the next page, or a subtle capsule retry button on failure.
 //
 
 import SwiftUI
@@ -18,24 +18,27 @@ struct PaginationFooter: View {
     var body: some View {
         Group {
             if didFail {
-                Button(action: onRetry) {
-                    HStack(spacing: theme.spacing.xs) {
-                        Image(systemName: "arrow.clockwise")
-                            .moroScaledFont(size: 13, weight: .semibold)
-                        Text(MoroL10n.Common.loadMoreRetry)
-                            .font(theme.typography.caption)
-                    }
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, theme.spacing.m)
-                    .contentShape(Rectangle())
+                HStack {
+                    Spacer(minLength: 0)
+                    MoroStateActionButton(
+                        title: MoroL10n.Common.loadMoreRetry,
+                        style: .subtle,
+                        systemImage: "arrow.clockwise",
+                        action: onRetry
+                    )
+                    Spacer(minLength: 0)
                 }
-                .buttonStyle(.plain)
+                .padding(.vertical, theme.spacing.m)
                 .accessibilityLabel(Text(MoroL10n.Common.loadMoreRetry))
             } else if isLoadingMore {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, theme.spacing.m)
+                HStack {
+                    Spacer(minLength: 0)
+                    MoroMascotView(expression: .thinking, size: 32)
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, theme.spacing.m)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(MoroL10n.Search.loading))
             }
         }
     }

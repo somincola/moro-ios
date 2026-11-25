@@ -69,10 +69,11 @@ struct AddToListSheet: View {
     private var content: some View {
         switch loadState {
         case .loading:
-            centeredMessage { ProgressView() }
+            centeredMessage { MoroMascotView(expression: .thinking, size: 36) }
         case .failed:
             centeredMessage {
-                VStack(spacing: theme.spacing.s) {
+                VStack(spacing: theme.spacing.m) {
+                    MoroMascotView(expression: .offline, size: 42)
                     Text(MoroL10n.AddToList.loadFailed)
                         .font(theme.typography.body)
                         .foregroundStyle(theme.colors.textSecondary)
@@ -86,9 +87,7 @@ struct AddToListSheet: View {
         case .empty:
             centeredMessage {
                 VStack(spacing: theme.spacing.m) {
-                    Image(systemName: "list.bullet.rectangle")
-                        .moroScaledFont(size: 30, weight: .regular)
-                        .foregroundStyle(theme.colors.textTertiary)
+                    MoroMascotView(expression: .calm, size: 42)
                     Text(MoroL10n.AddToList.empty)
                         .font(theme.typography.body)
                         .foregroundStyle(theme.colors.textSecondary)
