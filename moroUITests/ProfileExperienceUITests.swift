@@ -268,10 +268,9 @@ final class ProfileExperienceUITests: XCTestCase {
         let posts = app.buttons["profile.tab.posts"].firstMatch
         XCTAssertTrue(posts.waitForExistence(timeout: 5), file: file, line: line)
         let navigationBar = app.navigationBars.firstMatch
-        // Accessibility exposes the title bounds, below 12 pt section padding
-        // and 10 pt button padding. Compare the actual section edge to UIKit.
-        let sectionTop = posts.frame.minY - 22
-        XCTAssertEqual(sectionTop, navigationBar.frame.maxY, accuracy: 1,
+        // The shared section tab exposes the entire touch target, including its padding.
+        XCTAssertGreaterThanOrEqual(posts.frame.height, 44, file: file, line: line)
+        XCTAssertEqual(posts.frame.minY, navigationBar.frame.maxY, accuracy: 1,
             "Pinned tabs must meet the native navigation bar without overlap or a gap.", file: file, line: line)
         XCTAssertTrue(app.buttons["profile.moreButton"].isReachable(in: app), file: file, line: line)
     }
