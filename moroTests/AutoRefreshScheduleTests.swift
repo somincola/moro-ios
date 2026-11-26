@@ -112,22 +112,25 @@ struct AutoRefreshScheduleTests {
     }
 
     @Test func notificationsPauseOfflineAndCatchUpOnceBackOnline() async {
+        @MainActor final class Connectivity {
+            var isOffline = false
+        }
+        let connectivity = Connectivity()
         let api = MockMastodonAPI()
         var requests = 0
         api.fetchNotificationsHandler = { _, _, _, _ in
             requests += 1
             return [item(requests)]
         }
-        var offline = false
-        let model = NotificationsViewModel(apiClient: api, automaticRefreshTTL: 300, isOffline: { offline })
+        let model = NotificationsViewModel(apiClient: api, automaticRefreshTTL: 300, isOffline: { connectivity.isOffline })
         await model.activate()
         #expect(requests == 1)
 
-        offline = true
+        connectivity.isOffline = true
         await model.activate(forceRefresh: true)
         #expect(requests == 1, "Even a badge doesn't ask while offline")
 
-        offline = false
+        connectivity.isOffline = false
         await model.activate()
         #expect(requests == 2, "The skipped check runs once the connection is back")
         await model.activate()

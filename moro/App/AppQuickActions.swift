@@ -173,7 +173,7 @@ final class AppQuickActionCenter: ObservableObject {
     func syncShortcutItems(
         account: Account?,
         unreadCount: Int,
-        application: UIApplication = .shared
+        application: UIApplication? = nil
     ) {
         let normalizedUnread = max(0, unreadCount)
         let signature = ShortcutSignature(
@@ -184,7 +184,7 @@ final class AppQuickActionCenter: ObservableObject {
         )
         guard signature != lastSyncedSignature else { return }
         lastSyncedSignature = signature
-        application.shortcutItems = AppQuickActionCatalog.shortcutItems(
+        (application ?? .shared).shortcutItems = AppQuickActionCatalog.shortcutItems(
             account: account,
             unreadCount: normalizedUnread
         )
