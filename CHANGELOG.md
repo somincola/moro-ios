@@ -10,6 +10,24 @@ Source history in this repository begins with the 1.0.2 commercial baseline. Ver
 
 [Latest release / 最新版本](https://github.com/somincola/moro-ios/releases/latest) · [All releases / 全部 Releases](https://github.com/somincola/moro-ios/releases) · [App Store](https://apps.apple.com/app/id6776115614)
 
+## 1.5.1
+
+App Store build / 构建号：**53**。
+
+[Release](https://github.com/somincola/moro-ios/releases/tag/v1.5.1) · [Source / 源码](https://github.com/somincola/moro-ios/tree/v1.5.1)
+
+### 中文
+
+在帖子详情点「查看互动」，就能看看谁喜欢或转发了这条帖子。个人资料昵称、简介、附加信息和置顶嘟文也能显示自定义动态表情。
+
+主屏幕小组件换了新设计，长按 Moro 图标即可搜索或发帖。新增雨林大象图标，自定义导航里的账号切换菜单也会跟随头像位置弹出。
+
+### English
+
+Open a post’s interactions to see who favorited or boosted it. Custom emoji now come to life in profile names, bios, profile fields, and pinned posts.
+
+Home Screen widgets have a new look. Touch and hold the Moro icon to search or write a post, or choose the new rainforest elephant app icon. The account switcher now opens next to your avatar wherever you place it in the tab bar.
+
 ## 1.3.2
 
 App Store build / 构建号：**48**。
