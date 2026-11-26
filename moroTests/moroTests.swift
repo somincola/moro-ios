@@ -8550,6 +8550,11 @@ final class MockMastodonAPI: MastodonAPI {
 
     func fetchTag(name: String) async throws -> SearchTag { throw MockError.unimplemented }
     func setTagFollowed(name: String, followed: Bool) async throws -> SearchTag { throw MockError.unimplemented }
+    var statusEngagementHandler: ((String, StatusEngagementKind, String?) async throws -> StatusEngagementPage)?
+    func fetchStatusEngagement(id: String, kind: StatusEngagementKind, maxID: String?) async throws -> StatusEngagementPage {
+        guard let statusEngagementHandler else { throw MockError.unimplemented }
+        return try await statusEngagementHandler(id, kind, maxID)
+    }
     func fetchFollowedTags(maxID: String?, limit: Int) async throws -> FollowedTagsPage { throw MockError.unimplemented }
 
     enum MockError: Error {

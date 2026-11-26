@@ -1320,38 +1320,14 @@ struct ProfileView: View {
     private func tabBar(
         hidesAccessibility: Bool
     ) -> some View {
-        HStack(spacing: 0) {
-            ForEach(viewModel.availableTabs, id: \.rawValue) { tab in
-                Button(action: {
-                    selectProfileTab(tab)
-                }) {
-                    VStack(spacing: 0) {
-                        Text(tab.localizedTitle)
-                            .font(theme.typography.body)
-                            .fontWeight(viewModel.selectedTab == tab ? .semibold : .regular)
-                            .foregroundStyle(
-                                viewModel.selectedTab == tab
-                                    ? theme.colors.textPrimary : theme.colors.textSecondary
-                            )
-                            .padding(.vertical, theme.spacing.sm)
-
-                        Capsule()
-                            .fill(
-                                viewModel.selectedTab == tab
-                                    ? theme.colors.primary500 : Color.clear
-                            )
-                            .frame(width: 36, height: 2.5)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.plain)
-                .accessibilityHidden(hidesAccessibility)
-                .accessibilityIdentifier("profile.tab.\(tab.rawValue.lowercased())")
-            }
-        }
-        .padding(.horizontal, theme.spacing.contentHorizontalInset)
-        .padding(.top, theme.spacing.m)
-        .background(theme.colors.surfaceBase)
+        MoroSectionTabBar(
+            tabs: viewModel.availableTabs,
+            selection: viewModel.selectedTab,
+            title: { $0.localizedTitle },
+            accessibilityIdentifier: { "profile.tab.\($0.rawValue.lowercased())" },
+            onSelect: selectProfileTab
+        )
+        .accessibilityHidden(hidesAccessibility)
     }
 
     private func selectProfileTab(_ tab: ProfileViewModel.Tab) {

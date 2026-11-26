@@ -15,6 +15,7 @@ struct DetailPostCard: View {
     let status: Status
     var translationAPIClient: MastodonAPI? = nil
     var actions: PostActions = .empty
+    var onViewEngagement: (() -> Void)?
 
     @Environment(\.moroTheme) private var theme
     @Environment(\.openURL) private var openURL
@@ -59,11 +60,24 @@ struct DetailPostCard: View {
                 quoteStyle: .card
             )
 
-            PostFooter(
-                status: status,
-                showFullTimestamp: true,
-                showEngagementStats: false
-            )
+            HStack(spacing: theme.spacing.s) {
+                PostFooter(status: status, showFullTimestamp: true)
+                if let onViewEngagement, status.displayStatus.favouritesCount > 0 || status.displayStatus.reblogsCount > 0 {
+                    Spacer(minLength: 0)
+                    Button(action: onViewEngagement) {
+                        HStack(spacing: 4) {
+                            Text(MoroL10n.StatusDetail.viewEngagement)
+                            Image(systemName: "chevron.forward").imageScale(.small)
+                        }
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textSecondary)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("statusDetail.viewEngagement")
+                }
+            }
 
             PostToolbar(
                 status: status,

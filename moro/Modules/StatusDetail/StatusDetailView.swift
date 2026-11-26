@@ -16,6 +16,7 @@ struct StatusDetailView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var actionSurface = PostActionSurfaceCenter()
     @State private var showingEditHistorySheet = false
+    @State private var showingEngagement = false
     @State private var visibleStatusID: String?
     @State private var readingState = ThreadReadingState()
     @State private var highlightedStatusID: String?
@@ -83,6 +84,10 @@ struct StatusDetailView: View {
         }
         .task {
             await viewModel.loadThread()
+        }
+        .sheet(isPresented: $showingEngagement) {
+            StatusEngagementSheet(status: viewModel.focusedStatus.displayStatus, apiClient: apiClient)
+                .id(viewModel.focusedStatus.displayStatus.id)
         }
         .sheet(isPresented: $showingEditHistorySheet) {
             StatusEditHistorySheetView(
@@ -494,7 +499,8 @@ struct StatusDetailView: View {
         DetailPostCard(
             status: status,
             translationAPIClient: apiClient,
-            actions: postActions(for: status)
+            actions: postActions(for: status),
+            onViewEngagement: { showingEngagement = true }
         )
     }
 

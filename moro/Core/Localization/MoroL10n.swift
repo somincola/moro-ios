@@ -1850,6 +1850,12 @@ public enum MoroL10n {
     }
 
     public enum StatusDetail {
+        public static var viewEngagement: String { text("statusDetail.viewEngagement") }
+        public static var engagementTitle: String { text("statusDetail.engagementTitle") }
+        public static var engagementEmpty: String { text("statusDetail.engagementEmpty") }
+        public static var engagementSourceNote: String { text("statusDetail.engagementSourceNote") }
+        public static func likesCount(_ count: String) -> String { format("statusDetail.likesCount", count) }
+        public static func boostsCount(_ count: String) -> String { format("statusDetail.boostsCount", count) }
         public static var headerTitle: String { text("statusDetail.headerTitle") }
         public static var openFullScreen: String { text("statusDetail.openFullScreen") }
         public static var splitDivider: String { text("statusDetail.splitDivider") }

@@ -281,12 +281,13 @@ struct ProfileConnectionsView: View {
     }
 }
 
-private struct ProfileConnectionAccountRow: View {
+struct ProfileConnectionAccountRow: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.locale) private var locale
 
     let account: Account
+    var showsConnectionCounts = true
     let onOpen: () -> Void
 
     private var handle: String { account.acct.isEmpty ? account.username : account.acct }
@@ -306,7 +307,7 @@ private struct ProfileConnectionAccountRow: View {
                 )
 
                 VStack(alignment: .leading, spacing: 3) {
-                    let layout = dynamicTypeSize.isAccessibilitySize
+                    let layout = !showsConnectionCounts || dynamicTypeSize.isAccessibilitySize
                         ? AnyLayout(VStackLayout(alignment: .leading, spacing: 3))
                         : AnyLayout(HStackLayout(spacing: theme.spacing.xs))
                     layout {
@@ -325,16 +326,18 @@ private struct ProfileConnectionAccountRow: View {
                             .truncationMode(.middle)
                     }
 
-                    ViewThatFits(in: .horizontal) {
-                        Text("\(followers) · \(following)")
-                            .fixedSize(horizontal: true, vertical: false)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(followers)
-                            Text(following)
+                    if showsConnectionCounts {
+                        ViewThatFits(in: .horizontal) {
+                            Text("\(followers) · \(following)")
+                                .fixedSize(horizontal: true, vertical: false)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(followers)
+                                Text(following)
+                            }
                         }
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textSecondary)
                     }
-                    .font(theme.typography.caption)
-                    .foregroundStyle(theme.colors.textSecondary)
                 }
 
                 Spacer(minLength: theme.spacing.s)
@@ -350,7 +353,7 @@ private struct ProfileConnectionAccountRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: "\(account.displayNameContent.plainText), @\(handle)"))
-        .accessibilityValue(Text(verbatim: "\(MoroL10n.Navigation.followersCount(account.followersCount)), \(following)"))
+        .accessibilityValue(showsConnectionCounts ? "\(MoroL10n.Navigation.followersCount(account.followersCount)), \(following)" : "")
         .accessibilityHint(MoroL10n.Profile.openProfile(handle))
         .accessibilityIdentifier("profile.connection.\(account.id)")
     }
