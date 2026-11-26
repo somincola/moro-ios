@@ -41,6 +41,9 @@ struct RichTextContentView: View {
     var trailingSystemImageSize: CGFloat = 11
 
     @Environment(\.moroTheme) private var theme
+    @Environment(\.animatesPostEmoji) private var animatesEmoji
+    @Environment(\.moroMediaPrefs) private var mediaPrefs
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
     @Environment(\.appRouter) private var router
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -256,7 +259,7 @@ struct RichTextContentView: View {
             // Everything else — post bodies included — stays plain SwiftUI `Text`, with
             // custom emoji drawn inline.
             if paragraphSpacing != nil {
-                MixedTextEmojiView(
+                let text = MixedTextEmojiView(
                     elements: elements,
                     emojiSize: emojiSize,
                     textColor: UIColor(resolvedTextColor),
@@ -274,6 +277,11 @@ struct RichTextContentView: View {
                     trailingSystemImageSize: trailingSystemImageSize,
                     onOpenURL: handleURL
                 )
+                if hasEmojis && animatesEmoji && mediaPrefs.playAnimations && scenePhase == .active {
+                    AnimatedBioText(text: text)
+                } else {
+                    text
+                }
             } else if hasEmojis {
                 InlineEmojiText(
                     runs: InlineTextRunBuilder.runs(for: elements, style: inlineTextStyle),
@@ -404,6 +412,28 @@ struct RichTextContentView: View {
 
 // MARK: - Static Inline Emoji Support
 
+/// Keep native paragraph spacing, links and selection while the shared player draws
+/// animated frames over the TextKit attachments.
+private struct AnimatedBioText: View {
+    let text: MixedTextEmojiView
+    @State private var slots: [InlineEmojiSlot] = []
+
+    var body: some View {
+        PostEmojiPlaybackText(emojiSize: text.emojiSize, textKitSlots: slots) { playing in
+            var native = text
+            native.playingEmoji = playing
+            native.onEmojiLayout = { slots = $0 }
+            return native
+        }
+    }
+}
+
+private final class BioEmojiAttachment: NSTextAttachment {
+    var marker: InlineEmojiMarker?
+    var poster: UIImage?
+    nonisolated deinit {}
+}
+
 /// Custom UITextView that properly calculates intrinsic content size
 private class AutoHeightTextView: UITextView {
     // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
@@ -448,8 +478,39 @@ private class AutoHeightTextView: UITextView {
         return CGSize(width: UIView.noIntrinsicMetric, height: max(size.height, 0))
     }
 
+    var onEmojiLayout: (([InlineEmojiSlot]) -> Void)?
+    var playingEmoji: Set<InlineEmojiMarker> = [] {
+        didSet { if oldValue != playingEmoji { setNeedsLayout() } }
+    }
+    private var lastSlots: [InlineEmojiSlot] = []
+
     override func layoutSubviews() {
         super.layoutSubviews()
+        guard onEmojiLayout != nil, bounds.width > 0 else { return }
+        var slots: [InlineEmojiSlot] = []
+        textStorage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: textStorage.length)) { value, range, _ in
+            guard let attachment = value as? BioEmojiAttachment, let marker = attachment.marker else { return }
+            let glyph = layoutManager.glyphIndexForCharacter(at: range.location)
+            let line = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let baseline = layoutManager.location(forGlyphAt: glyph)
+            let size = attachment.bounds.size
+            let frame = CGRect(x: textContainerInset.left + line.minX + baseline.x,
+                               y: textContainerInset.top + line.minY + baseline.y - size.height - attachment.bounds.minY,
+                               width: size.width, height: size.height)
+            slots.append(InlineEmojiSlot(marker: marker, frame: frame))
+            let image = playingEmoji.contains(marker) ? InlineEmojiRendering.placeholder(size: size.width) : attachment.poster
+            if attachment.image !== image {
+                attachment.image = image
+                layoutManager.invalidateDisplay(forCharacterRange: range)
+            }
+        }
+        if lastSlots != slots {
+            lastSlots = slots
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.lastSlots == slots else { return }
+                self.onEmojiLayout?(slots)
+            }
+        }
         // Intrinsic height depends only on width, and `bounds.didSet` already
         // invalidates the intrinsic size when the width changes. Invalidating here on
         // every layout pass re-triggered a measure → layout cycle that kept the main
@@ -497,6 +558,9 @@ struct MixedTextEmojiView: UIViewRepresentable {
     var trailingSystemImageColor: UIColor = .label
     var trailingSystemImageSize: CGFloat = 11
     var onOpenURL: ((URL) -> Void)? = nil
+
+    var playingEmoji: Set<InlineEmojiMarker> = []
+    var onEmojiLayout: (([InlineEmojiSlot]) -> Void)?
 
     private var allowsInteraction: Bool {
         // UITextView requires selection to be enabled for native link interaction.
@@ -582,6 +646,10 @@ struct MixedTextEmojiView: UIViewRepresentable {
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
+        if let bio = textView as? AutoHeightTextView {
+            bio.onEmojiLayout = onEmojiLayout
+            bio.playingEmoji = playingEmoji
+        }
         context.coordinator.onOpenURL = onOpenURL
         textView.isSelectable = allowsInteraction
         textView.isUserInteractionEnabled = allowsInteraction
@@ -971,7 +1039,7 @@ struct MixedTextEmojiView: UIViewRepresentable {
                     .link, value: url, range: NSRange(location: 0, length: tagAttr.length))
                 result.append(tagAttr)
 
-            case .emoji(let shortcode, _, let staticURL):
+            case .emoji(let shortcode, let original, let staticURL):
                 // Keep one space between the emoji and the text in front of it.
                 if elements.emojiNeedsSpace(before: index) {
                     result.append(
@@ -982,9 +1050,8 @@ struct MixedTextEmojiView: UIViewRepresentable {
                     )
                 }
 
-                // Custom emoji render as static inline images (plain NSTextAttachment) — no
-                // per-emoji SDAnimatedImageView / CADisplayLink, which (unbounded by cell reuse
-                // in a SwiftUI list) saturated the main thread. Keyed on the static URL.
+                // TextKit holds the poster. The shared player masks it only while a
+                // matching animation layer is ready at the same position.
                 // A loaded emoji and a still-loading one take the same space; only an emoji
                 // that failed to load falls back to its readable shortcode.
                 let displayImage: UIImage?
@@ -996,10 +1063,18 @@ struct MixedTextEmojiView: UIViewRepresentable {
                     displayImage = nil
                 }
                 if let displayImage {
-                    let plain = Self.makeEmojiAttachment(
-                        displayImage: displayImage,
-                        emojiSize: emojiSize
-                    )
+                    let plain: NSTextAttachment
+                    if onEmojiLayout != nil {
+                        let animated = BioEmojiAttachment()
+                        animated.marker = InlineEmojiMarker(index: index, url: original)
+                        animated.poster = displayImage
+                        animated.bounds = CGRect(x: 0, y: -InlineEmojiRendering.descent(for: emojiSize),
+                                                 width: emojiSize, height: emojiSize)
+                        animated.image = displayImage
+                        plain = animated
+                    } else {
+                        plain = Self.makeEmojiAttachment(displayImage: displayImage, emojiSize: emojiSize)
+                    }
                     let attachmentString = NSMutableAttributedString(attachment: plain)
                     attachmentString.addAttributes(
                         [.paragraphStyle: paragraphStyle],

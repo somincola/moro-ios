@@ -385,7 +385,7 @@ nonisolated struct Account: Identifiable, Codable, Hashable {
 
     /// Returns a copy with an updated followers count, preserving every other field —
     /// notably `emojis`, which a hand-rebuilt Account silently drops to [].
-    func updating(followersCount: Int? = nil) -> Account {
+    func updating(followersCount: Int? = nil, emojis: [Emoji]? = nil) -> Account {
         Account(
             id: id,
             username: username,
@@ -403,7 +403,7 @@ nonisolated struct Account: Identifiable, Codable, Hashable {
             locked: locked,
             bot: bot,
             fields: fields,
-            emojis: emojis,
+            emojis: emojis ?? self.emojis,
             url: url,
             moved: movedAccount,
             suspended: suspended,

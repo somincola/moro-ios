@@ -179,6 +179,34 @@ final class PostEmojiPlaybackUITests: XCTestCase {
                              returningToApp: true)
     }
 
+    func testProfileNameBioFieldsAndPinnedAuthorPlayCustomEmoji() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_PROFILE_EXPERIENCE", "UITEST_PROFILE_IDENTITY_EMOJI"]
+        app.launchEnvironment = ["UITEST_USE_FULL_APP": "1"]
+        app.launch(isolatedFor: self)
+        defer { app.terminate() }
+        let name = app.staticTexts["profile.displayName"]
+        XCTAssertTrue(name.waitForExistence(timeout: 10))
+        let size = app.frame.size
+        let bio = app.descendants(matching: .any)["profile.bio"].firstMatch
+        let fieldName = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Field'")).firstMatch
+        let fieldValue = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Value'")).firstMatch
+        for element in [name, bio, fieldName, fieldValue] {
+            XCTAssertTrue(element.waitForExistence(timeout: 5))
+            try waitForProfileFrame(.blue, in: element, app: app, size: size)
+            try waitForProfileFrame(.red, in: element, app: app, size: size)
+        }
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "profile-custom-emoji"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let pinned = app.descendants(matching: .any)["profile.pinnedPosts"].firstMatch
+        app.swipeUp(velocity: .slow)
+        XCTAssertTrue(pinned.waitForExistence(timeout: 5))
+        try waitForProfileFrame(.blue, in: pinned, app: app, size: size)
+        try waitForProfileFrame(.red, in: pinned, app: app, size: size)
+    }
+
     func testProfileEmojiContinuesPlayingDuringDragAndResumesAfterReturningFromHome() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_PROFILE_EXPERIENCE", "UITEST_POST_EMOJI"]

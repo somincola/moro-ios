@@ -75,12 +75,23 @@ struct AccountDisplayNameView: View {
     var uiFontOverride: UIFont? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.animatesPostEmoji) private var animatesEmoji
+    @Environment(\.profileAccountEmoji) private var profileEmoji
 
     var body: some View {
-        let content = account.displayNameContent
+        let content = profileEmoji.applying(to: account).displayNameContent
 
         Group {
-            if content.containsCustomEmoji {
+            if content.containsCustomEmoji && animatesEmoji {
+                InlineEmojiText(runs: content.inlineRuns, emojiSize: resolvedUIFont.pointSize * emojiScale)
+                    .font(resolvedSwiftUIFont)
+                    .foregroundStyle(textColor)
+                    .lineLimit(lineLimit)
+                    .truncationMode(truncationMode)
+                    .minimumScaleFactor(minimumScaleFactor)
+                    .allowsTightening(allowsTightening)
+                    .accessibilityLabel(content.plainText)
+            } else if content.containsCustomEmoji {
                 AccountDisplayNameLabelRepresentable(
                     content: content,
                     font: resolvedUIFont,
@@ -152,6 +163,15 @@ nonisolated struct AccountDisplayNameContent: Equatable {
         segments.contains {
             if case .emoji = $0 { return true }
             return false
+        }
+    }
+
+    var inlineRuns: [InlineTextRun] {
+        segments.map { segment in
+            switch segment {
+            case .text(let value): .text(AttributedString(value))
+            case .emoji(let emoji): .emoji(shortcode: emoji.shortcode, url: emoji.url, staticURL: emoji.staticURL)
+            }
         }
     }
 
@@ -315,6 +335,7 @@ nonisolated enum AccountDisplayNameParser {
         hasher.combine(emojis.count)
         for emoji in emojis {
             hasher.combine(emoji.shortcode)
+            hasher.combine(emoji.url)
             hasher.combine(emoji.staticURL.absoluteString)
         }
         return NSString(string: String(hasher.finalize()))

@@ -250,7 +250,7 @@ nonisolated struct ContentParser {
         pattern: #"(?<![\p{L}\p{N}_/])#([\p{L}\p{N}_][\p{L}\p{N}_.-]*)"#,
         options: []
     )
-    private static let emojiShortcodeRegex = try? NSRegularExpression(pattern: ":([a-zA-Z0-9_]+):")
+    private static let emojiShortcodeRegex = try? NSRegularExpression(pattern: ":([a-zA-Z0-9_-]+):")
     private static let mentionAttachedPunctuation = CharacterSet(
         charactersIn: ".,!?;:，。！？；：、…—–-/\\)]}）］｝〉》」』】〗'\"’”"
     )

@@ -5,6 +5,7 @@
 //  User profile view with posts, replies, and media tabs.
 //
 
+import Combine
 import SwiftUI
 
 // MARK: - Profile View
@@ -56,6 +57,8 @@ struct ProfileView: View {
     private let apiClient: MastodonAPI
     @StateObject private var postMenuActionCenter: PostMenuActionCenter
 
+    @State private var emojiSource: ProfileEmojiSource?
+    @State private var catalogEmoji: [Account.Emoji] = []
     @State private var chromeState = ProfileChromeState()
     /// The Me tab's own profile refreshes quietly on coming back to it once older than five
     /// minutes (pushed profiles never get tab activations).
@@ -148,7 +151,10 @@ struct ProfileView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
+        let source = ProfileEmojiSource(account: resolvedProfileAccount, server: apiClient.instanceURL)
+        let emoji = ProfileAccountEmoji(accountID: source?.id,
+            emojis: (source?.embedded ?? []) + (source == emojiSource ? catalogEmoji : []))
+        return GeometryReader { geometry in
             let topSafeInset = resolvedTopSafeInset(geometry.safeAreaInsets.top)
             let topChromeHeight = navigationChromeHeight(topSafeInset: topSafeInset)
             let chromeLayout = chromeState.layout(
@@ -186,7 +192,7 @@ struct ProfileView: View {
                 .ignoresSafeArea(.container, edges: .horizontal)
 
                 ForEach(pages, id: \.self) { page in
-                    profileScrollPage(page, isActive: page == contentID, topSafeInset: topSafeInset,
+                    profileScrollPage(page, profileEmoji: emoji, isActive: page == contentID, topSafeInset: topSafeInset,
                                       chromeLayout: chromeLayout, pinThreshold: pin, initialOffset: firstOffset)
                 }
 
@@ -251,6 +257,22 @@ struct ProfileView: View {
                 }
             }
         }
+        .environment(\.profileAccountEmoji, emoji)
+        .task(id: source) {
+            guard let source else { return }
+            let codes = source.missingCodes
+            guard !codes.isEmpty,
+                  let catalog = EmojiService.shared.dequeueCustomEmojiViewModel(for: source.domain, apiClient: apiClient)
+            else { return }
+            for await dictionary in catalog.$emojiDict.values {
+                guard !Task.isCancelled else { return }
+                guard let dictionary else { continue }
+                catalogEmoji = codes.sorted().compactMap { code in
+                    dictionary[code]?.first.map { Account.Emoji(shortcode: code, url: $0.url, staticURL: $0.staticURL) }
+                }
+                emojiSource = source
+            }
+        }
         .task {
             // Update currentAccountID in viewModel
             viewModel.currentAccountID = appState.currentAccount?.id
@@ -303,13 +325,13 @@ struct ProfileView: View {
         )
     }
 
-    private func profileScrollPage(_ id: ProfileViewModel.TabContentID, isActive: Bool, topSafeInset: CGFloat,
+    private func profileScrollPage(_ id: ProfileViewModel.TabContentID, profileEmoji: ProfileAccountEmoji, isActive: Bool, topSafeInset: CGFloat,
                                    chromeLayout: ProfileChromeLayout, pinThreshold: CGFloat,
                                    initialOffset: CGFloat) -> some View {
         ScrollView {
             VStack(spacing: 0) {
                 if isActive {
-                    profileHeaderRow(topSafeInset: topSafeInset)
+                    profileHeaderRow(topSafeInset: topSafeInset, profileEmoji: profileEmoji)
                         .background {
                             GeometryReader { proxy in
                                 Color.clear.preference(key: ProfileHeaderHeightKey.self, value: proxy.size.height)
@@ -351,6 +373,7 @@ struct ProfileView: View {
         .scrollDisabled(!isActive)
         .modifier(ProfileDisableTopScrollEdgeEffect())
         .ignoresSafeArea(.container, edges: .top)
+        .environment(\.animatesPostEmoji, true)
         .modifier(PostEmojiScrollPlayback(isActive: isActive) { oldPhase, newPhase in
             if id == viewModel.selectedContentID, chromeState.didReleasePull(oldPhase: oldPhase, newPhase: newPhase) {
                 startPullRefreshIfNeeded()
@@ -378,6 +401,7 @@ struct ProfileView: View {
         return [
             current.id,
             current.displayName,
+            String(current.emojis.hashValue),
             current.note,
             current.avatar,
             current.avatarStatic,
@@ -766,7 +790,7 @@ struct ProfileView: View {
     // MARK: - Profile Header
 
     @ViewBuilder
-    private func profileHeaderRow(topSafeInset: CGFloat) -> some View {
+    private func profileHeaderRow(topSafeInset: CGFloat, profileEmoji: ProfileAccountEmoji) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Color.clear
                 .frame(height: profileBannerBaseHeight + topSafeInset)
@@ -783,9 +807,9 @@ struct ProfileView: View {
                 .background(theme.colors.surfaceBase)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    profileBioSection(account: acc)
-
-                    profileInfoSection(account: acc)
+                    let resolved = profileEmoji.applying(to: acc)
+                    profileBioSection(account: resolved)
+                    profileInfoSection(account: resolved)
                 }
                 .moroReadableColumn()
                 .background(theme.colors.surfaceBase)
@@ -947,6 +971,7 @@ struct ProfileView: View {
                     minimumScaleFactor: 0.88,
                     allowsTightening: true
                 )
+                .accessibilityIdentifier("profile.displayName")
             }
 
             if let acc {
