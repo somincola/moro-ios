@@ -135,6 +135,7 @@ final class AppSettings: ObservableObject {
         case appleGummy
         case zebraPrint
         case notAwake
+        case forestCalf
 
         var title: String {
             switch self {
@@ -147,6 +148,7 @@ final class AppSettings: ObservableObject {
             case .appleGummy: return MoroL10n.AppSettings.appIconAppleGummy
             case .zebraPrint: return MoroL10n.AppSettings.appIconZebraPrint
             case .notAwake: return MoroL10n.AppSettings.appIconNotAwake
+            case .forestCalf: return MoroL10n.AppSettings.appIconForestCalf
             }
         }
 
@@ -161,6 +163,7 @@ final class AppSettings: ObservableObject {
             case .appleGummy: return "AppIconAppleGummy"
             case .zebraPrint: return "AppIconZebraPrint"
             case .notAwake: return "AppIconNotAwake"
+            case .forestCalf: return "AppIconForestCalf"
             }
         }
 
@@ -175,6 +178,7 @@ final class AppSettings: ObservableObject {
             case .appleGummy: return "AppIconPreviewAppleGummy"
             case .zebraPrint: return "AppIconPreviewZebraPrint"
             case .notAwake: return "AppIconPreviewNotAwake"
+            case .forestCalf: return "AppIconPreviewForestCalf"
             }
         }
 

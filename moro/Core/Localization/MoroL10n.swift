@@ -339,6 +339,7 @@ public enum MoroL10n {
         public static var appIconAppleGummy: String { text("appsettings.icon.appleGummy") }
         public static var appIconZebraPrint: String { text("appsettings.icon.zebraPrint") }
         public static var appIconNotAwake: String { text("appsettings.icon.notAwake") }
+        public static var appIconForestCalf: String { text("appsettings.icon.forestCalf") }
         public static var videoAutoplayNever: String { text("appsettings.videoAutoplay.never") }
         public static var videoAutoplayWiFi: String { text("appsettings.videoAutoplay.wifi") }
         public static var videoAutoplayAlways: String { text("appsettings.videoAutoplay.always") }
