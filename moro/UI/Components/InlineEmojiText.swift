@@ -108,6 +108,7 @@ enum InlineTextRunBuilder {
 struct InlineEmojiText: View {
     let runs: [InlineTextRun]
     let emojiSize: CGFloat
+    var emojiDescent: CGFloat? = nil
     var trailingSystemImage: String? = nil
     var trailingSystemImageColor: Color = .primary
     var trailingSystemImageSize: CGFloat = 11
@@ -182,7 +183,7 @@ struct InlineEmojiText: View {
         let swiftUIImage = image.cgImage.map { Image($0, scale: image.scale, label: label) }
             ?? Image(uiImage: image)
         // Same baseline shift as the TextKit attachment, so both renderers agree.
-        return Text(swiftUIImage).baselineOffset(-InlineEmojiRendering.descent(for: emojiSize))
+        return Text(swiftUIImage).baselineOffset(-(emojiDescent ?? InlineEmojiRendering.descent(for: emojiSize)))
     }
 
     /// Joins the pieces as a balanced tree. A long left-leaning chain of nested `Text`

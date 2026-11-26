@@ -67,6 +67,7 @@ struct AccountDisplayNameView: View {
     var lineLimit: Int? = 1
     /// Inline bylines leave the remaining width to the handle beside the name.
     var fitsInlineWidth = false
+    var isPostByline = false
     var truncationMode: Text.TruncationMode = .tail
     var minimumScaleFactor: CGFloat = 1
     var allowsTightening: Bool = false
@@ -83,12 +84,17 @@ struct AccountDisplayNameView: View {
 
         Group {
             if content.containsCustomEmoji && animatesEmoji {
-                InlineEmojiText(runs: content.inlineRuns, emojiSize: resolvedUIFont.pointSize * emojiScale)
+                let font = resolvedUIFont
+                let size = font.pointSize * emojiScale
+                InlineEmojiText(runs: content.inlineRuns, emojiSize: size,
+                                emojiDescent: isPostByline ? (size - font.capHeight) / 2 : nil)
                     .font(resolvedSwiftUIFont)
                     .foregroundStyle(textColor)
                     .lineLimit(lineLimit)
                     .truncationMode(truncationMode)
-                    .minimumScaleFactor(minimumScaleFactor)
+                    // Shrinking a profile byline scales its text but clips the trailing image.
+                    // Let the single-line truncation handle names wider than the column.
+                    .minimumScaleFactor(isPostByline ? 1 : minimumScaleFactor)
                     .allowsTightening(allowsTightening)
                     .accessibilityLabel(content.plainText)
             } else if content.containsCustomEmoji {

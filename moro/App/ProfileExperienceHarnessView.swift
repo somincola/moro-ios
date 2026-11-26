@@ -17,7 +17,9 @@ struct ProfileExperienceHarnessView: View {
 
     private static func makeState() -> AppState {
         if ProfileFixtureProtocol.testsProfileEmoji {
-            ProfileFixtureProtocol.usePostEmoji(PostEmojiPlaybackFixture.post.emojis![0])
+            let badge = ProcessInfo.processInfo.environment["UITEST_PROFILE_BADGE_URL"].flatMap(URL.init(string:))
+                .map { Status.Emoji(shortcode: "gif", url: $0, staticURL: $0) }
+            ProfileFixtureProtocol.usePostEmoji(badge ?? PostEmojiPlaybackFixture.profileBadge)
         } else if ProcessInfo.processInfo.arguments.contains("UITEST_POST_EMOJI") {
             ProfileFixtureProtocol.usePostEmoji(PostEmojiPlaybackFixture.scrollGIF)
         }
@@ -75,6 +77,7 @@ struct ProfileExperienceHarnessView: View {
         .environmentObject(appState)
         .environment(\.activeAccountKey, Self.accountKey)
         .environment(\.moroMediaPrefs, MoroMediaPreferences(
+            playAnimations: ProcessInfo.processInfo.environment["UITEST_PROFILE_STATIC_EMOJI"] != "1",
             autoplayGIFs: ProcessInfo.processInfo.environment["UITEST_PROFILE_AUTOPLAY_OFF"] != "1"))
         .moroTheme(theme)
         .task {
@@ -209,7 +212,7 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             payload["followers_count"] = 70
         }
         if testsProfileEmoji, let postEmoji {
-            payload["display_name"] = "Moro :gif:"
+            payload["display_name"] = "acacius :gif:"
             payload["note"] = "<p>Bio :gif: <a href=\"https://profile-fixture.invalid/tags/garden\" class=\"hashtag\">#garden</a></p>"
             payload["fields"] = [["name": "Field :local:", "value": "Value :local:"]]
             payload["emojis"] = [postEmoji]
