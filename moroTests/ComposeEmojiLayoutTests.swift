@@ -2,6 +2,7 @@ import SDWebImage
 import SwiftUI
 import Testing
 import UIKit
+import XCTest
 @testable import moro
 
 @MainActor
@@ -236,15 +237,20 @@ struct ComposeEmojiLayoutTests {
             if let view = view as? SDAnimatedImageView { return view }
             return view.subviews.lazy.compactMap { player(in: $0) }.first
         }
-        let deadline = ContinuousClock.now + .seconds(30)
-        var frames = Set<UInt>()
-        while ContinuousClock.now < deadline {
-            if let view = player(in: window), view.isAnimating { frames.insert(view.currentFrameIndex) }
-            if frames.count > 1, InlineEmojiRendering.cachedImage(for: still) != nil { break }
+        let startupDeadline = ContinuousClock.now + .seconds(60)
+        while ContinuousClock.now < startupDeadline {
+            if player(in: window)?.isAnimating == true, InlineEmojiRendering.cachedImage(for: still) != nil { break }
             try await Task.sleep(for: .milliseconds(20))
         }
-        #expect(frames.count == 2)
-        #expect(InlineEmojiRendering.cachedImage(for: still) != nil)
+        let view = try #require(player(in: window))
+        try #require(view.isAnimating && InlineEmojiRendering.cachedImage(for: still) != nil)
+        // Observe actual frame changes. A busy main actor can sample the same frame
+        // repeatedly even while this two-frame GIF is playing.
+        let initialFrame = view.currentFrameIndex
+        let nextFrame = XCTKVOExpectation(keyPath: "currentFrameIndex", object: view,
+                                         expectedValue: NSNumber(value: initialFrame == 0 ? 1 : 0))
+        let result = await XCTWaiter.fulfillment(of: [nextFrame], timeout: 30)
+        #expect(result == .completed)
     }
 
     @Test func coldEmojiReservesOneSlotAndShowsItsCodeIfTheStillFails() async throws {

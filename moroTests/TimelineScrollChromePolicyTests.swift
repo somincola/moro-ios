@@ -10,6 +10,7 @@ import Combine
 import CoreGraphics
 import SwiftUI
 import Testing
+import XCTest
 @testable import moro
 
 @MainActor
@@ -191,17 +192,18 @@ struct TimelineScrollChromePolicyTests {
         #expect(bridge.currentChromeState.headerFraction == 0)
         #expect(chromeStates.last?.isAnimated == true)
 
-        // Scroll down again and wait for the delayed idle reveal condition with generous CI headroom.
+        // Scroll down again and observe the next reveal, after the transition to idle.
         bridge.updatePhase(.interacting, for: .home)
         _ = bridge.updateChrome(offset: -140, headerHeight: 48, timeline: .home, isSelected: true)
         #expect(bridge.isComposeButtonVisible == false)
 
         bridge.offsets[.home] = -140
+        let idleReveal = XCTestExpectation(description: "Compose becomes visible after scrolling stops")
+        bridge.composeVisibilitySubject.filter { $0 }.first().sink { _ in idleReveal.fulfill() }
+            .store(in: &cancellables)
         bridge.updatePhase(.idle, for: .home)
-        let deadline = Date().addingTimeInterval(6.0)
-        while !bridge.isComposeButtonVisible && Date() < deadline {
-            try await Task.sleep(nanoseconds: 25_000_000)
-        }
+        let result = await XCTWaiter.fulfillment(of: [idleReveal], timeout: 60)
+        #expect(result == .completed)
         #expect(bridge.isComposeButtonVisible == true)
     }
 }
