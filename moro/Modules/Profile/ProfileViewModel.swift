@@ -109,6 +109,7 @@ final class ProfileViewModel: ObservableObject {
     @Published var isLoadingRelationship = false
     @Published var isUpdatingRelationship = false
     @Published var isUpdatingNotification = false
+    @Published var isUpdatingReblogs = false
     
     // Statuses for each tab
     @Published var posts: [Status] = []
@@ -689,7 +690,7 @@ final class ProfileViewModel: ObservableObject {
     }
     
     func toggleFollow() async {
-        guard !isUpdatingRelationship, !isUpdatingNotification else { return }
+        guard !isUpdatingRelationship, !isUpdatingNotification, !isUpdatingReblogs else { return }
         let targetAccountID = resolvedAccountID
         guard !targetAccountID.isEmpty else { return }
         let wasFollowing = relationship?.following == true
@@ -726,7 +727,8 @@ final class ProfileViewModel: ObservableObject {
         guard let relationship = relationship,
               relationship.following,
               !isUpdatingRelationship,
-              !isUpdatingNotification else { return }
+              !isUpdatingNotification,
+              !isUpdatingReblogs else { return }
         let targetAccountID = resolvedAccountID
         guard !targetAccountID.isEmpty else { return }
         
@@ -744,9 +746,36 @@ final class ProfileViewModel: ObservableObject {
             AppLogger.error("Failed to toggle notification: \(error)")
         }
     }
+
+    @discardableResult
+    func toggleReblogs() async -> Bool? {
+        guard let relationship = relationship,
+              relationship.following,
+              !isUpdatingRelationship,
+              !isUpdatingNotification,
+              !isUpdatingReblogs else { return nil }
+        let targetAccountID = resolvedAccountID
+        guard !targetAccountID.isEmpty else { return nil }
+
+        isUpdatingReblogs = true
+        defer { isUpdatingReblogs = false }
+
+        do {
+            let updated = try await apiClient.followAccount(
+                id: targetAccountID,
+                reblogs: !relationship.showingReblogs,
+                notify: nil // Keep existing notification setting
+            )
+            self.relationship = updated
+            return updated.showingReblogs
+        } catch {
+            AppLogger.error("Failed to toggle reblogs visibility: \(error)")
+            return nil
+        }
+    }
     
     func toggleMute() async {
-        guard !isUpdatingRelationship, !isUpdatingNotification else { return }
+        guard !isUpdatingRelationship, !isUpdatingNotification, !isUpdatingReblogs else { return }
         let targetAccountID = resolvedAccountID
         guard !targetAccountID.isEmpty else { return }
         
@@ -765,7 +794,7 @@ final class ProfileViewModel: ObservableObject {
     }
     
     func toggleBlock() async {
-        guard !isUpdatingRelationship, !isUpdatingNotification else { return }
+        guard !isUpdatingRelationship, !isUpdatingNotification, !isUpdatingReblogs else { return }
         let targetAccountID = resolvedAccountID
         guard !targetAccountID.isEmpty else { return }
         

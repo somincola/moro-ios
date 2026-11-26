@@ -87,21 +87,21 @@ struct HashtagView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             if topicFollow.error != nil {
-                HStack {
-                    Text(MoroL10n.Topics.actionFailed)
-                        .font(theme.typography.caption)
-                    Spacer()
-                    Button(MoroL10n.Compose.retry) {
+                MoroInlineNoticeBanner(
+                    message: MoroL10n.Topics.actionFailed,
+                    tone: .error,
+                    actionTitle: MoroL10n.Compose.retry,
+                    action: {
                         Task {
                             if topicFollow.following == nil { await topicFollow.load() }
                             else { await topicFollow.toggle() }
                         }
-                    }
-                    .frame(minWidth: 44, minHeight: 44)
-                    .disabled(topicFollow.isBusy)
-                    .accessibilityIdentifier("topic.retry")
-                }
+                    },
+                    isActionDisabled: topicFollow.isBusy,
+                    actionAccessibilityIdentifier: "topic.retry"
+                )
                 .padding(.horizontal, theme.spacing.m)
+                .padding(.vertical, theme.spacing.s)
                 .background(theme.colors.surfaceBase)
             }
         }
@@ -239,7 +239,7 @@ struct HashtagView: View {
                 return .error(
                     ErrorStateSpec(
                         title: MoroL10n.Hashtag.loadFailed,
-                        message: error.localizedDescription,
+                        message: MoroErrorCopy.message(for: error),
                         actionTitle: MoroL10n.Hashtag.retry,
                         action: {
                             Task { await viewModel.loadInitial() }

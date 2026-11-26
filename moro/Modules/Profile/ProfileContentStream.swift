@@ -129,15 +129,30 @@ struct ProfileContentStream: View, Equatable {
             let canContinue = viewModel.selectedTab == tab && viewModel.displayedStatuses(for: tab).isEmpty
                 && viewModel.shouldAutomaticallyContinueEmptyPage(for: tab)
             if canContinue || viewModel.isLoadingMore(tab) {
-                ProgressView()
-                    .frame(maxWidth: .infinity, minHeight: 64)
-                    .task(id: viewModel.maxID(for: tab)) {
-                        if canContinue { await viewModel.loadMore(ifCurrent: contentID) }
-                    }
+                HStack {
+                    Spacer(minLength: 0)
+                    MoroMascotView(expression: .thinking, size: 32)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, minHeight: 64)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(MoroL10n.Search.loading))
+                .task(id: viewModel.maxID(for: tab)) {
+                    if canContinue { await viewModel.loadMore(ifCurrent: contentID) }
+                }
             } else {
-                Button(MoroL10n.Topics.loadMore) { requestMore(for: contentID) }
-                    .frame(maxWidth: .infinity, minHeight: 64)
-                    .accessibilityIdentifier("profile.loadMoreEmptyPage")
+                HStack {
+                    Spacer(minLength: 0)
+                    MoroStateActionButton(
+                        title: MoroL10n.Topics.loadMore,
+                        style: .subtle,
+                        accessibilityIdentifier: "profile.loadMoreEmptyPage"
+                    ) {
+                        requestMore(for: contentID)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, theme.spacing.m)
             }
         } else if viewModel.isLoadingMore(tab) || viewModel.didFailLoadMore(tab) {
             PaginationFooter(

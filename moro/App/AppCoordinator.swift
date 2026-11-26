@@ -74,6 +74,7 @@ final class AppCoordinator: ObservableObject {
         if let session = try? await authService.restoreSession() {
             applyRestoredSession(session)
         } else {
+            AppQuickActionCenter.shared.syncShortcutItems(account: nil, unreadCount: 0)
             let hasOnboarded = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
             destination = hasOnboarded ? .login : .onboarding
         }
@@ -213,6 +214,7 @@ final class AppCoordinator: ObservableObject {
                 AppFeedbackCenter.shared.showInfo(MoroL10n.AppCoord.switchedToNext)
             } else {
                 appState.reset()
+                AppQuickActionCenter.shared.syncShortcutItems(account: nil, unreadCount: 0)
                 destination = .login
                 StartupPerformanceTracker.shared.reset()
                 AppFeedbackCenter.shared.showInfo(MoroL10n.AppCoord.loggedOut)
@@ -229,6 +231,7 @@ final class AppCoordinator: ObservableObject {
             guard let activeSessionID else {
                 authService.clearAllStoredSessions()
                 appState.reset()
+                AppQuickActionCenter.shared.syncShortcutItems(account: nil, unreadCount: 0)
                 CacheManager.shared.clearAll()
                 destination = .login
                 StartupPerformanceTracker.shared.reset()
@@ -244,6 +247,7 @@ final class AppCoordinator: ObservableObject {
                 AppFeedbackCenter.shared.showInfo(MoroL10n.AppCoord.currentLoggedOut)
             } else {
                 appState.reset()
+                AppQuickActionCenter.shared.syncShortcutItems(account: nil, unreadCount: 0)
                 destination = .login
                 StartupPerformanceTracker.shared.reset()
                 AppFeedbackCenter.shared.showInfo(MoroL10n.AppCoord.loggedOut)
@@ -366,6 +370,7 @@ final class AppCoordinator: ObservableObject {
         }
 
         appState.reset()
+        AppQuickActionCenter.shared.syncShortcutItems(account: nil, unreadCount: 0)
         CacheManager.shared.clearAll()
         let hasOnboarded = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
         destination = hasOnboarded ? .login : .onboarding

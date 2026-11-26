@@ -75,6 +75,35 @@ final class NavigationCustomizationUITests: XCTestCase {
         tap(choice("settings", in: app))
         closeEditorAndSettings(app)
 
+        // Pinning Settings hides it from own Profile's More menu too.
+        tap(tab("me", in: app))
+        XCTAssertTrue(app.buttons["profile.moreButton"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["profile.settings"].exists)
+        tap(app.buttons["profile.moreButton"])
+        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["profile.settings"].exists)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["Share"].waitForNonExistence(timeout: 3))
+
+        // Pinning Lists hides it from the Home drawer, while Settings stays in the footer and hidden Explore stays reachable.
+        tap(tab("home", in: app))
+        XCTAssertTrue(app.buttons["home.searchButton"].waitForExistence(timeout: 5))
+        tap(app.buttons["home.drawerButton"])
+        let drawerExplore = app.buttons["drawer.tab.explore"]
+        XCTAssertTrue(drawerExplore.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["drawer.tab.lists"].exists)
+        XCTAssertTrue(app.buttons["drawer.settings"].exists)
+        XCTAssertFalse(app.buttons["drawer.scheduled"].exists)
+        let pinnedDrawerShot = XCTAttachment(screenshot: app.screenshot())
+        pinnedDrawerShot.name = "drawer-settings-and-lists-pinned"
+        pinnedDrawerShot.lifetime = .keepAlways
+        add(pinnedDrawerShot)
+        // Swiping left directly across a menu item must close the drawer WITHOUT opening that item.
+        drawerExplore.swipeLeft()
+        XCTAssertTrue(drawerExplore.waitForNonExistence(timeout: 3))
+        XCTAssertFalse(app.searchFields["search.input"].exists)
+        XCTAssertTrue(app.buttons["home.drawerButton"].waitForExistence(timeout: 3))
+
         tap(tab("lists", in: app))
         XCTAssertTrue(app.navigationBars["Lists"].waitForExistence(timeout: 5))
         tap(app.buttons["lists.row.nav-list"])
@@ -96,10 +125,38 @@ final class NavigationCustomizationUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Bookmarks"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Navigation bookmark fixture"].waitForExistence(timeout: 5))
 
+        // Removing Settings restores the Profile More menu Settings entry.
         tap(tab("me", in: app))
         tap(app.buttons["profile.moreButton"])
-        tap(app.buttons["profile.menu.explore"])
+        XCTAssertTrue(app.buttons["profile.settings"].waitForExistence(timeout: 5))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["profile.settings"].waitForNonExistence(timeout: 3))
+
+        // Hidden Explore opens as a native sheet:
+        // 1) Home top-right search button auto-focuses the search field.
+        tap(tab("home", in: app))
+        tap(app.buttons["home.searchButton"])
         XCTAssertTrue(app.searchFields["search.input"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["search.cancel"].waitForExistence(timeout: 5))
+        let searchAutoFocusShot = XCTAttachment(screenshot: app.screenshot())
+        searchAutoFocusShot.name = "search-sheet-autofocus"
+        searchAutoFocusShot.lifetime = .keepAlways
+        add(searchAutoFocusShot)
+        tap(app.buttons["search.sheet.close"])
+        XCTAssertTrue(app.buttons["home.drawerButton"].waitForExistence(timeout: 5))
+
+        // 2) Drawer Explore row opens the discovery sheet without forcing keyboard entry.
+        tap(app.buttons["home.drawerButton"])
+        XCTAssertTrue(app.buttons["drawer.settings"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["drawer.tab.bookmarks"].exists)
+        tap(app.buttons["drawer.tab.explore"])
+        XCTAssertTrue(app.searchFields["search.input"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["search.cancel"].exists)
+        let searchDiscoveryShot = XCTAttachment(screenshot: app.screenshot())
+        searchDiscoveryShot.name = "search-sheet-discovery"
+        searchDiscoveryShot.lifetime = .keepAlways
+        add(searchDiscoveryShot)
+        tap(app.buttons["search.sheet.close"])
     }
 
     func testThreeColumnChoicesAllowHidingInboxAndMeAndKeepPushesReachable() {
@@ -150,7 +207,15 @@ final class NavigationCustomizationUITests: XCTestCase {
         XCTAssertTrue(app.buttons["inbox.filter.mentions"].isSelected)
         tap(back)
         assertTabOrder(["home", "explore"], in: app)
-        tap(app.buttons["设置"])
+        tap(app.buttons["home.drawerButton"])
+        XCTAssertTrue(app.buttons["drawer.tab.me"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["drawer.tab.inbox"].exists)
+        XCTAssertFalse(app.buttons["drawer.tab.explore"].exists)
+        let minimalDrawerShot = XCTAttachment(screenshot: app.screenshot())
+        minimalDrawerShot.name = "drawer-minimal-2tab-zh"
+        minimalDrawerShot.lifetime = .keepAlways
+        add(minimalDrawerShot)
+        tap(app.buttons["drawer.settings"])
         tap(app.buttons["settings.display"])
         openCustomization(in: app)
         tap(app.buttons["navigationCustomization.restore"])

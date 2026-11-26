@@ -108,6 +108,115 @@ nonisolated extension Array where Element == ContentElement {
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    /// Collapses all line breaks and redundant whitespace into single spaces for compact
+    /// single-flow previews (such as notification snippets), while preserving custom emojis.
+    var compactedForInlinePreview: [ContentElement] {
+        var result: [ContentElement] = []
+        var pendingSpace = false
+
+        func appendNormalized(_ raw: String, makeElement: (String) -> ContentElement) {
+            let collapsed = raw.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            let hasLeadingSpace = collapsed.first == " "
+            let hasTrailingSpace = collapsed.last == " "
+            let trimmed = collapsed.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if trimmed.isEmpty {
+                if !result.isEmpty {
+                    pendingSpace = true
+                }
+                return
+            }
+
+            if (pendingSpace || hasLeadingSpace), !result.isEmpty {
+                result.append(.text(" "))
+            }
+            result.append(makeElement(trimmed))
+            pendingSpace = hasTrailingSpace
+        }
+
+        for element in self {
+            switch element {
+            case .lineBreak:
+                if !result.isEmpty {
+                    pendingSpace = true
+                }
+            case .text(let text):
+                appendNormalized(text) { .text($0) }
+            case .link(let text, let url):
+                appendNormalized(text) { .link(text: $0, url: url) }
+            case .mention(let username, let url):
+                appendNormalized(username) { .mention(username: $0, url: url) }
+            case .hashtag(let tag, let url):
+                appendNormalized(tag) { .hashtag(tag: $0, url: url) }
+            case .inlineCode(let code):
+                appendNormalized(code) { .inlineCode($0) }
+            case .codeBlock(let code):
+                appendNormalized(code) { .inlineCode($0) }
+            case .emoji(let shortcode, let url, let staticURL):
+                if pendingSpace, !result.isEmpty {
+                    result.append(.text(" "))
+                }
+                pendingSpace = false
+                result.append(.emoji(shortcode: shortcode, url: url, staticURL: staticURL))
+            }
+        }
+
+        return result
+    }
+
+    /// Trims outer blank lines and collapses consecutive paragraph gaps to a single line break
+    /// so compact quoted post cards keep intentional line structure without empty chasms.
+    var compactedForQuoteCard: [ContentElement] {
+        var result: [ContentElement] = []
+        var pendingLineBreak = false
+
+        for element in self {
+            switch element {
+            case .lineBreak:
+                if !result.isEmpty {
+                    pendingLineBreak = true
+                }
+            case .text(let raw):
+                let trimmed = raw.trimmingCharacters(in: .newlines)
+                if trimmed.trimmingCharacters(in: .whitespaces).isEmpty {
+                    if !result.isEmpty, !pendingLineBreak, !trimmed.isEmpty {
+                        result.append(.text(" "))
+                    }
+                    continue
+                }
+                if pendingLineBreak {
+                    result.append(.lineBreak)
+                    pendingLineBreak = false
+                }
+                var normalized = trimmed
+                if result.isEmpty {
+                    while normalized.first?.isWhitespace == true {
+                        normalized.removeFirst()
+                    }
+                }
+                result.append(.text(normalized))
+            case .codeBlock(let code):
+                let singleLine = code
+                    .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !singleLine.isEmpty else { continue }
+                if pendingLineBreak {
+                    result.append(.lineBreak)
+                    pendingLineBreak = false
+                }
+                result.append(.inlineCode(singleLine))
+            default:
+                if pendingLineBreak {
+                    result.append(.lineBreak)
+                    pendingLineBreak = false
+                }
+                result.append(element)
+            }
+        }
+
+        return result
+    }
 }
 
 /// Parser for Mastodon HTML content
@@ -141,7 +250,7 @@ nonisolated struct ContentParser {
         pattern: #"(?<![\p{L}\p{N}_/])#([\p{L}\p{N}_][\p{L}\p{N}_.-]*)"#,
         options: []
     )
-    private static let emojiShortcodeRegex = try? NSRegularExpression(pattern: ":([a-zA-Z0-9_]+):")
+    private static let emojiShortcodeRegex = try? NSRegularExpression(pattern: ":([a-zA-Z0-9_-]+):")
     private static let mentionAttachedPunctuation = CharacterSet(
         charactersIn: ".,!?;:，。！？；：、…—–-/\\)]}）］｝〉》」』】〗'\"’”"
     )

@@ -67,6 +67,7 @@ enum MastodonEndpoint {
     case status(id: String)
     case statusContext(id: String)
     case statusHistory(id: String)
+    case statusEngagement(id: String, kind: StatusEngagementKind, maxID: String?)
     case statusSource(id: String)
     case statusTranslate(id: String, targetLanguage: String?)
     case translationLanguages
@@ -279,6 +280,8 @@ enum MastodonEndpoint {
             return "/api/v1/statuses/\(id)"
         case .statusContext(let id):
             return "/api/v1/statuses/\(id)/context"
+        case .statusEngagement(let id, let kind, _):
+            return "/api/v1/statuses/\(id)/\(kind.rawValue)"
         case .statusHistory(let id):
             return "/api/v1/statuses/\(id)/history"
         case .statusSource(let id):
@@ -411,6 +414,8 @@ enum MastodonEndpoint {
                 URLQueryItem(name: "limit", value: "\(limit)"),
                 offset.map { URLQueryItem(name: "offset", value: "\($0)") },
             ].compactMap { $0 }
+        case .statusEngagement(_, _, let maxID):
+            return maxID.map { [URLQueryItem(name: "max_id", value: $0)] }
         case .followedTags(let maxID, let limit):
             return [
                 maxID.map { URLQueryItem(name: "max_id", value: $0) },

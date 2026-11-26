@@ -57,7 +57,7 @@ private struct NotificationSettingsContentView: View {
             notificationIntakeSection
         }
         .moroSettingsSwitchStyle()
-        .moroSettingsListChrome(separators: .visible)
+        .moroSettingsListChrome()
         .textCase(nil)
         .navigationTitle(MoroL10n.NotificationSettings.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -99,14 +99,15 @@ private struct NotificationSettingsContentView: View {
                 .foregroundStyle(theme.colors.textSecondary)
 
             case .failed(let message):
-                VStack(alignment: .leading, spacing: 10) {
-                    Label(message, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(theme.colors.textSecondary)
-                    Button(MoroL10n.Notifications.retryAction) {
+                MoroInlineNoticeBanner(
+                    message: message,
+                    tone: .error,
+                    actionTitle: MoroL10n.Notifications.retryAction,
+                    action: {
                         guard let apiClient else { return }
                         Task { await policyController.refresh(using: apiClient) }
                     }
-                }
+                )
 
             case .loaded:
                 if let serverPolicy = policyController.policy {
@@ -171,15 +172,15 @@ private struct NotificationSettingsContentView: View {
                     }
 
                     if let refreshError = policyController.refreshError {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Label(refreshError, systemImage: "exclamationmark.triangle")
-                                .font(theme.typography.caption)
-                                .foregroundStyle(theme.colors.textSecondary)
-                            Button(MoroL10n.Notifications.retryAction) {
+                        MoroInlineNoticeBanner(
+                            message: refreshError,
+                            tone: .error,
+                            actionTitle: MoroL10n.Notifications.retryAction,
+                            action: {
                                 guard let apiClient else { return }
                                 Task { await policyController.refresh(using: apiClient) }
                             }
-                        }
+                        )
                     }
 
                     if policyController.isSaving {
@@ -257,7 +258,7 @@ private struct NotificationSettingsContentView: View {
                             pushSync.resumeSettings(apiClient: pushClient, sessionKey: accountKey)
                         } label: {
                             Text(MoroL10n.Notifications.retryAction)
-                                .frame(minHeight: 44)
+                                .frame(minHeight: 45)
                                 .contentShape(Rectangle())
                         }
                         .accessibilityIdentifier("notificationSettings.push.retry")

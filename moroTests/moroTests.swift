@@ -3437,6 +3437,62 @@ struct moroTests {
         )
     }
 
+    @Test @MainActor func profileActivatedTabOffsetAlignsHeaderBoundaryAndPreservesPinnedProgress() async throws {
+        // Returning to an un-scrolled Posts tab from a pinned Media/Replies tab keeps tabs pinned.
+        #expect(
+            ProfileStickyTabLogic.activatedTabOffset(
+                savedOffset: 0,
+                currentScrollOffset: 400,
+                currentPlacement: .topPinned,
+                pinThreshold: 400
+            ) == 400
+        )
+        // Returning to a deeply scrolled tab while pinned restores its exact reading offset.
+        #expect(
+            ProfileStickyTabLogic.activatedTabOffset(
+                savedOffset: 1250,
+                currentScrollOffset: 400,
+                currentPlacement: .topPinned,
+                pinThreshold: 400
+            ) == 1250
+        )
+        // Switching tabs while bottom-docked jumps an un-scrolled tab to pinned content.
+        #expect(
+            ProfileStickyTabLogic.activatedTabOffset(
+                savedOffset: 0,
+                currentScrollOffset: 0,
+                currentPlacement: .bottomDocked,
+                pinThreshold: 600
+            ) == 600
+        )
+        // Switching tabs while bottom-docked keeps an already deeply scrolled tab's position.
+        #expect(
+            ProfileStickyTabLogic.activatedTabOffset(
+                savedOffset: 1400,
+                currentScrollOffset: 0,
+                currentPlacement: .bottomDocked,
+                pinThreshold: 600
+            ) == 1400
+        )
+        // Plan A: while viewing the unpinned natural header, switching tabs keeps the header steady.
+        #expect(
+            ProfileStickyTabLogic.activatedTabOffset(
+                savedOffset: 1250,
+                currentScrollOffset: 120,
+                currentPlacement: .natural,
+                pinThreshold: 400
+            ) == 120
+        )
+        #expect(
+            ProfileStickyTabLogic.activatedTabOffset(
+                savedOffset: 0,
+                currentScrollOffset: -40,
+                currentPlacement: .natural,
+                pinThreshold: 400
+            ) == 0
+        )
+    }
+
     @Test @MainActor func cachedProfileTabsTrackTheirContentAndIgnorePaginationFromAnInactivePage() async {
         let api = MockMastodonAPI()
         let replies = (0..<20).map { makeStatus(id: String($0), inReplyToID: "parent") }
@@ -3956,6 +4012,106 @@ struct moroTests {
         #expect(!viewModel.isUpdatingRelationship)
         #expect(!viewModel.isUpdatingNotification)
         #expect(viewModel.relationship?.notifying == true)
+    }
+
+    @Test func relationshipDecodesShowingReblogsAndDefaultsWhenMissing() throws {
+        let withFalse = Data("""
+        {
+          "id": "115926328683034407",
+          "following": true,
+          "showing_reblogs": false,
+          "notifying": false,
+          "followed_by": false,
+          "blocking": false,
+          "blocked_by": false,
+          "muting": false,
+          "muting_notifications": false,
+          "requested": false,
+          "domain_blocking": false,
+          "endorsed": false,
+          "note": ""
+        }
+        """.utf8)
+        let decodedFalse = try JSONDecoder().decode(Relationship.self, from: withFalse)
+        #expect(decodedFalse.following == true)
+        #expect(decodedFalse.showingReblogs == false)
+
+        let withoutField = Data("""
+        {
+          "id": "115926328683034407",
+          "following": true,
+          "notifying": true,
+          "followed_by": false,
+          "blocking": false,
+          "blocked_by": false,
+          "muting": false,
+          "muting_notifications": false,
+          "requested": false,
+          "domain_blocking": false,
+          "endorsed": false
+        }
+        """.utf8)
+        let decodedDefault = try JSONDecoder().decode(Relationship.self, from: withoutField)
+        #expect(decodedDefault.showingReblogs == true)
+        #expect(decodedDefault.notifying == true)
+    }
+
+    @Test @MainActor func profileReblogsToggleUsesIndependentLoadingStateAndPreservesNotify() async throws {
+        let api = MockMastodonAPI()
+        let viewModel = ProfileViewModel(
+            apiClient: api,
+            accountID: "target",
+            currentAccountID: "me"
+        )
+        viewModel.relationship = makeRelationship(
+            id: "target", following: true, showingReblogs: true, notifying: true
+        )
+
+        var observedFollowLoading = true
+        var observedNotificationLoading = true
+        var observedReblogsLoading = false
+        api.followAccountHandler = { _, reblogs, notify in
+            observedFollowLoading = viewModel.isUpdatingRelationship
+            observedNotificationLoading = viewModel.isUpdatingNotification
+            observedReblogsLoading = viewModel.isUpdatingReblogs
+            #expect(reblogs == false)
+            #expect(notify == nil)
+            return self.makeRelationship(
+                id: "target", following: true, showingReblogs: false, notifying: true
+            )
+        }
+
+        let hiddenResult = await viewModel.toggleReblogs()
+
+        #expect(hiddenResult == false)
+        #expect(!observedFollowLoading)
+        #expect(!observedNotificationLoading)
+        #expect(observedReblogsLoading)
+        #expect(!viewModel.isUpdatingReblogs)
+        #expect(viewModel.relationship?.showingReblogs == false)
+        #expect(viewModel.relationship?.notifying == true)
+
+        api.followAccountHandler = { _, reblogs, notify in
+            #expect(reblogs == true)
+            #expect(notify == nil)
+            return self.makeRelationship(
+                id: "target", following: true, showingReblogs: true, notifying: true
+            )
+        }
+        let shownResult = await viewModel.toggleReblogs()
+        #expect(shownResult == true)
+        #expect(viewModel.relationship?.showingReblogs == true)
+
+        // Not following: must ignore toggle without invoking the API.
+        viewModel.relationship = makeRelationship(id: "target", following: false, showingReblogs: false)
+        var calledWhenNotFollowing = false
+        api.followAccountHandler = { _, _, _ in
+            calledWhenNotFollowing = true
+            return self.makeRelationship(id: "target", following: true)
+        }
+        let ignored = await viewModel.toggleReblogs()
+        #expect(ignored == nil)
+        #expect(!calledWhenNotFollowing)
     }
 
     @Test @MainActor func timelinePageOrderMatchesHomeLocalFederated() async throws {
@@ -8167,6 +8323,7 @@ extension moroTests {
     func makeRelationship(
         id: String,
         following: Bool = false,
+        showingReblogs: Bool = true,
         followedBy: Bool = false,
         blocking: Bool = false,
         blockedBy: Bool = false,
@@ -8181,6 +8338,7 @@ extension moroTests {
         Relationship(
             id: id,
             following: following,
+            showingReblogs: showingReblogs,
             followedBy: followedBy,
             blocking: blocking,
             blockedBy: blockedBy,
@@ -8392,6 +8550,11 @@ final class MockMastodonAPI: MastodonAPI {
 
     func fetchTag(name: String) async throws -> SearchTag { throw MockError.unimplemented }
     func setTagFollowed(name: String, followed: Bool) async throws -> SearchTag { throw MockError.unimplemented }
+    var statusEngagementHandler: ((String, StatusEngagementKind, String?) async throws -> StatusEngagementPage)?
+    func fetchStatusEngagement(id: String, kind: StatusEngagementKind, maxID: String?) async throws -> StatusEngagementPage {
+        guard let statusEngagementHandler else { throw MockError.unimplemented }
+        return try await statusEngagementHandler(id, kind, maxID)
+    }
     func fetchFollowedTags(maxID: String?, limit: Int) async throws -> FollowedTagsPage { throw MockError.unimplemented }
 
     enum MockError: Error {

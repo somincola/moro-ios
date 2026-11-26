@@ -58,11 +58,11 @@ final class AppStoreScreenshotUITests: XCTestCase {
                     ? ["分享", "复制链接", "复制文字", "浏览器打开"]
                     : ["Share", "Copy Link", "Copy text", "Open in Browser"]
                 let own = chinese
-                    ? ["编辑帖子", "置顶到个人主页", "删除并继续编辑", "删除"]
+                    ? ["编辑嘟文", "置顶到个人主页", "删除并继续编辑", "删除"]
                     : ["Edit Post", "Pin to profile", "Delete and continue editing", "Delete"]
                 let other = chinese
-                    ? ["隐藏 @luna", "屏蔽 @luna", "屏蔽并举报", "举报"]
-                    : ["Mute @luna", "Block @luna", "Block and report", "Report"]
+                    ? ["静音", "屏蔽", "屏蔽并举报", "举报"]
+                    : ["Mute", "Block", "Block and report", "Report"]
                 for title in common + (index == 0 ? own : other) {
                     XCTAssertTrue(app.buttons[title].waitForExistence(timeout: 5), "\(locale): \(title)\n\(app.debugDescription)")
                 }

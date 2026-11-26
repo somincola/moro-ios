@@ -177,6 +177,83 @@ final class MoroWidgetSharedStoreTests: XCTestCase {
             )
         )
     }
+
+    func testWidgetDestinationDeepLinksRoundTripAndRejectMalformedURLs() throws {
+        for destination in MoroWidgetDestination.allCases {
+            XCTAssertEqual(MoroWidgetDestination(deepLinkURL: destination.deepLinkURL), destination)
+        }
+
+        let legacyNotifications = try XCTUnwrap(URL(string: "moro://open/notifications"))
+        XCTAssertEqual(MoroWidgetDestination(deepLinkURL: legacyNotifications), .inbox)
+
+        let invalidURLs = [
+            "https://open/search",
+            "moro://share/compose",
+            "moro://open/search?q=mastodon",
+            "moro://open/search/extra",
+            "moro://user@open/search",
+            "moro://open/search#frag",
+            "moro://open/unknown",
+        ]
+        for raw in invalidURLs {
+            let url = try XCTUnwrap(URL(string: raw))
+            XCTAssertNil(MoroWidgetDestination(deepLinkURL: url), raw)
+        }
+    }
+
+    func testThemeAccentRoundTripsAndDefaultsCleanly() {
+        XCTAssertEqual(MoroWidgetSharedStore.loadAccent(from: userDefaults), .default)
+
+        let customAccent = MoroWidgetAccent(themeColorRawValue: "custom", customRGB: 0xC2185B)
+        MoroWidgetSharedStore.saveAccent(customAccent, to: userDefaults)
+
+        XCTAssertEqual(MoroWidgetSharedStore.loadAccent(from: userDefaults), customAccent)
+        XCTAssertEqual(MoroWidgetAccent(themeColorRawValue: "green").resolvedHex(isDarkMode: false), 0x007F5F)
+        XCTAssertEqual(MoroWidgetAccent(themeColorRawValue: "green").resolvedHex(isDarkMode: true), 0x53D6A4)
+    }
+
+    func testAccountInstanceDomainExtractsFederatedHost() {
+        let federated = MoroWidgetAccount(
+            id: "1",
+            username: "moro",
+            acct: "moro@mastodon.social",
+            displayName: "Moro",
+            avatar: "",
+            avatarStatic: ""
+        )
+        let localOnly = MoroWidgetAccount(
+            id: "2",
+            username: "local",
+            acct: "local",
+            displayName: "Local",
+            avatar: "",
+            avatarStatic: ""
+        )
+
+        XCTAssertEqual(federated.instanceDomain, "mastodon.social")
+        XCTAssertNil(localOnly.instanceDomain)
+    }
+
+    func testHandoffWritePostsNotification() {
+        let center = NotificationCenter()
+        var received = false
+        let token = center.addObserver(
+            forName: MoroWidgetHandoffStore.didWriteNotification,
+            object: nil,
+            queue: nil
+        ) { _ in
+            received = true
+        }
+        defer { center.removeObserver(token) }
+
+        MoroWidgetHandoffStore.write(
+            destination: .search,
+            to: userDefaults,
+            notificationCenter: center
+        )
+
+        XCTAssertTrue(received)
+    }
 }
 
 private struct ActiveSessionFixture: Encodable {

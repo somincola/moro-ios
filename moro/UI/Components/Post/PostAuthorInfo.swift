@@ -75,6 +75,7 @@ struct PostAuthorInfo: View {
                     typography: .bodyStrong,
                     textColor: isQuoted ? theme.colors.textSecondary : theme.colors.textPrimary,
                     lineLimit: dynamicTypeSize.isAccessibilitySize ? 2 : 1,
+                    isPostByline: true,
                     truncationMode: .tail,
                     minimumScaleFactor: dynamicTypeSize.isAccessibilitySize ? 1 : 0.86,
                     allowsTightening: !dynamicTypeSize.isAccessibilitySize

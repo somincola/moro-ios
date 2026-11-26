@@ -40,6 +40,36 @@ import SwiftUI
     }
 }
 
+private enum EngagementFixtures {
+    static let favourites = [
+        account("yuki", "小雪"), account("rei", "阿澪"), account("lin", "林间"),
+        account("kai", "Kai"), account("mira", "Mira"),
+    ]
+    static let boosts = [account("sora", "空山"), account("moss", "Moss")]
+
+    static func readers(_ count: Int) -> [Account] {
+        let extra = (0..<max(0, count - favourites.count)).map { index in
+            account("fern-\(index)", "园友 \(index + 1)")
+        }
+        return Array((favourites + extra).prefix(count))
+    }
+
+    static func post(_ mode: String) -> Status {
+        let post = ThreadReadingFixtures.status("garden-walk", content: "<p>周末去植物园散步，温室里的龟背竹又长出了一片新叶。</p>")
+        if mode == "partial" {
+            return post.updating(favouritesCount: 24, reblogsCount: 6, repliesCount: 1)
+        }
+        return post.updating(favouritesCount: mode == "long" ? 24 : (mode == "both" ? favourites.count : 0),
+                             reblogsCount: mode == "none" ? 0 : boosts.count, repliesCount: 1)
+    }
+
+    private static func account(_ name: String, _ displayName: String) -> Account {
+        Account(id: name, username: name, acct: "\(name)@garden.example", displayName: displayName,
+                note: "", avatar: "", avatarStatic: "", header: "", headerStatic: "",
+                followersCount: 12, followingCount: 16, statusesCount: 0)
+    }
+}
+
 struct ThreadReadingHarnessView: View {
     @StateObject private var router = AppRouter()
     @StateObject private var appState = AppState()
@@ -51,11 +81,16 @@ struct ThreadReadingHarnessView: View {
 
     init() {
         let useSample = ProcessInfo.processInfo.arguments.contains("UITEST_THREAD_REAL_SAMPLE")
-        focusedStatus = useSample ? ThreadReadingSample.focus : ThreadReadingFixtures.focus
-        client = ThreadFixtureProtocol.makeClient(
-            focus: focusedStatus,
-            context: useSample ? ThreadReadingSample.context : ThreadReadingFixtures.controlsContext
-        )
+        let context: StatusContext
+        if let mode = ProcessInfo.processInfo.environment["UITEST_POST_INTERACTIONS"] {
+            focusedStatus = EngagementFixtures.post(mode)
+            context = StatusContext(ancestors: [], descendants: [ThreadReadingFixtures.status(
+                "garden-reply", parent: focusedStatus.id, own: false, content: "<p>我也喜欢这间温室！</p>")])
+        } else {
+            focusedStatus = useSample ? ThreadReadingSample.focus : ThreadReadingFixtures.focus
+            context = useSample ? ThreadReadingSample.context : ThreadReadingFixtures.controlsContext
+        }
+        client = ThreadFixtureProtocol.makeClient(focus: focusedStatus, context: context)
     }
 
     var body: some View {
@@ -106,6 +141,20 @@ final class ThreadFixtureProtocol: URLProtocol, @unchecked Sendable {
             prepared["/api/v1/statuses/\(status.id)/context"] = try! encoder.encode(
                 status.id == focus.id ? context : StatusContext(ancestors: ancestors.reversed(), descendants: descendants))
         }
+        if focus.id == "garden-walk" {
+            let prefix = "/api/v1/statuses/\(focus.id)"
+            let partial = ProcessInfo.processInfo.environment["UITEST_POST_INTERACTIONS"] == "partial"
+            let likes = EngagementFixtures.readers(partial ? 1 : focus.favouritesCount)
+            let boosts = !partial && focus.reblogsCount > 0 ? EngagementFixtures.boosts : []
+            prepared[prefix + "/favourited_by"] = try! encoder.encode(Array(likes.prefix(2)))
+            if likes.count > 2 {
+                prepared[prefix + "/favourited_by?max_id=relation-7"] = try! encoder.encode(Array(likes.dropFirst(2)))
+            }
+            prepared[prefix + "/reblogged_by"] = try! encoder.encode(boosts)
+            for account in likes + boosts {
+                prepared["/api/v1/accounts/\(account.id)"] = try! encoder.encode(account)
+            }
+        }
         lock.withLock { payloads = prepared }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [Self.self]
@@ -115,8 +164,17 @@ final class ThreadFixtureProtocol: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        let data = Self.lock.withLock { Self.payloads[request.url!.path] ?? Data("[]".utf8) }
-        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        let url = request.url!
+        let (data, headers): (Data, [String: String]) = Self.lock.withLock {
+            let firstPage = Self.payloads[url.path] ?? Data("[]".utf8)
+            let next = url.path + "?max_id=relation-7"
+            if let nextPage = Self.payloads[next] {
+                if url.query == "max_id=relation-7" { return (nextPage, [:]) }
+                return (firstPage, ["Link": "<" + next + ">; rel=\"next\""])
+            }
+            return (firstPage, [:])
+        }
+        let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: headers)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data)
         client?.urlProtocolDidFinishLoading(self)

@@ -8,17 +8,8 @@
 import SwiftUI
 
 fileprivate enum PostContentMetrics {
-    static let quoteHeaderIconSize: CGFloat = 12
-    static let quoteAvatarSize: CGFloat = 20
     static let quoteMetadataSpacing: CGFloat = 4
-    static let quoteCardCornerRadius: CGFloat = 8
-    static let quoteHintIconSize: CGFloat = 11
-    static let quoteHintCornerRadius: CGFloat = 6
-}
-
-fileprivate struct QuoteHintItem: Hashable {
-    let icon: String
-    let title: String
+    static let quoteCardCornerRadius: CGFloat = 14
 }
 
 /// Post content component
@@ -125,17 +116,8 @@ struct PostContent: View {
                     onLinkTap: onLinkTap
                 )
 
-                // Render an accepted quote only after the original author has
-                // authorized it. Other states remain privacy-safe placeholders.
-                if let quote = status.quote {
-                    if let quotedStatus = quote.displayableStatus {
-                        quoteView(quotedStatus, style: quoteStyle)
-                    } else {
-                        quotePlaceholderView(for: quote.state, style: quoteStyle)
-                    }
-                }
-
-                // Attachments: Media > Poll > Link Preview Card (priority order)
+                // Attachments: Media > Poll > Link Preview Card (priority order), placed before
+                // the quoted post so the author's own media reads naturally with their text.
                 switch status.attachmentType {
                 case .media:
                     MediaGridView(
@@ -170,6 +152,21 @@ struct PostContent: View {
                     }
                 case .none:
                     EmptyView()
+                }
+
+                // Render an accepted quote only after the original author has
+                // authorized it. Other states remain privacy-safe placeholders.
+                if let quote = status.quote {
+                    if let quotedStatus = quote.displayableStatus {
+                        QuotedStatusCardView(
+                            quote: quotedStatus,
+                            style: quoteStyle,
+                            onTap: onQuotedStatusTap,
+                            onImageTap: onImageTap
+                        )
+                    } else {
+                        quotePlaceholderView(for: quote.state, style: quoteStyle)
+                    }
                 }
 
                 if let tags = status.tags, !tags.isEmpty {
@@ -263,14 +260,21 @@ struct PostContent: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, theme.spacing.s)
-                .padding(.vertical, theme.spacing.xs)
+                .padding(.horizontal, theme.spacing.m)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(
+                        cornerRadius: PostContentMetrics.quoteCardCornerRadius,
+                        style: .continuous
+                    )
+                    .fill(theme.colors.surfaceSubtle)
+                )
                 .overlay {
                     RoundedRectangle(
                         cornerRadius: PostContentMetrics.quoteCardCornerRadius,
                         style: .continuous
                     )
-                    .stroke(theme.colors.primary300.opacity(0.9), lineWidth: 1)
+                    .strokeBorder(theme.colors.borderSubtle, lineWidth: 1)
                 }
                 .contentShape(
                     RoundedRectangle(
@@ -323,139 +327,6 @@ struct PostContent: View {
             withAnimation(AnimationTokens.easing.springSoft, update)
         }
     }
-    
-    @ViewBuilder
-    private func quoteView(_ quote: Status, style: QuoteStyle) -> some View {
-        if let onQuotedStatusTap {
-            Button(action: { onQuotedStatusTap(quote.displayStatus) }) {
-                quoteBodyView(quote, style: style)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(MoroL10n.Post.openQuotedPost(quote.account.displayNameFormatted))
-        } else {
-            quoteBodyView(quote, style: style)
-        }
-    }
-
-    @ViewBuilder
-    private func quoteBodyView(_ quote: Status, style: QuoteStyle) -> some View {
-        let quoteText = quotePreviewText(for: quote)
-        let quoteHintItems = quoteHints(for: quote)
-
-        VStack(alignment: .leading, spacing: theme.spacing.s) {
-            HStack(spacing: theme.spacing.xs) {
-                Image(systemName: "quote.bubble")
-                    .moroScaledFont(size: PostContentMetrics.quoteHeaderIconSize, weight: .medium)
-                Text(MoroL10n.Post.quotedPost)
-                    .font(theme.typography.caption)
-                Spacer(minLength: theme.spacing.xs)
-                if onQuotedStatusTap != nil {
-                    Image(systemName: "chevron.right")
-                        .moroScaledFont(size: 11, weight: .semibold)
-                }
-            }
-            .foregroundStyle(theme.colors.textSecondary)
-
-            HStack(alignment: .top, spacing: theme.spacing.s) {
-                MoroAvatar(
-                    imageURL: quote.account.avatarAnimatedURL,
-                    staticImageURL: quote.account.avatarURL,
-                    initials: quote.account.displayNameInitials, seed: quote.account.placeholderSeed,
-                    size: PostContentMetrics.quoteAvatarSize
-                )
-
-                VStack(alignment: .leading, spacing: PostContentMetrics.quoteMetadataSpacing) {
-                    HStack(spacing: theme.spacing.xs) {
-                        AccountDisplayNameView(
-                            account: quote.account,
-                            typography: .captionStrong,
-                            textColor: theme.colors.textPrimary,
-                            lineLimit: 1,
-                            truncationMode: .tail
-                        )
-
-                        Text("@\(quote.account.acct.isEmpty ? quote.account.username : quote.account.acct)")
-                            .font(theme.typography.caption)
-                            .foregroundStyle(theme.colors.textSecondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-
-                    Text(DateFormatting.relativeString(for: quote.createdAt))
-                        .font(theme.typography.caption)
-                        .foregroundStyle(theme.colors.textTertiary)
-
-                    if !quoteText.isEmpty {
-                        Text(quoteText)
-                            .font(Font(theme.postUIFont(sizeAdjustment: -3)))
-                            .foregroundStyle(theme.colors.textSecondary)
-                            .lineLimit(theme.dynamicTypeSize.isAccessibilitySize ? nil : 3)
-                            .multilineTextAlignment(.leading)
-                    } else {
-                        Text(MoroL10n.Post.noTextContent)
-                            .font(theme.typography.caption)
-                            .foregroundStyle(theme.colors.textTertiary)
-                    }
-
-                    if !quoteHintItems.isEmpty {
-                        HStack(spacing: theme.spacing.xs) {
-                            ForEach(quoteHintItems, id: \.self) { hint in
-                                HStack(spacing: 3) {
-                                    Image(systemName: hint.icon)
-                                        .moroScaledFont(size: PostContentMetrics.quoteHintIconSize, weight: .medium)
-                                    Text(hint.title)
-                                        .font(theme.typography.caption)
-                                        .lineLimit(1)
-                                }
-                                .foregroundStyle(theme.colors.textSecondary)
-                                .padding(.horizontal, theme.spacing.xs)
-                                .padding(.vertical, 2)
-                                .background(theme.colors.surfaceBase)
-                                .overlay(
-                                    RoundedRectangle(
-                                        cornerRadius: PostContentMetrics.quoteHintCornerRadius,
-                                        style: .continuous
-                                    )
-                                    .stroke(theme.colors.borderSubtle, lineWidth: 1)
-                                )
-                                .clipShape(
-                                    RoundedRectangle(
-                                        cornerRadius: PostContentMetrics.quoteHintCornerRadius,
-                                        style: .continuous
-                                    ))
-                            }
-                            Spacer(minLength: 0)
-                        }
-                    }
-                }
-            }
-        }
-        .applyQuoteStyle(style, theme: theme)
-    }
-
-    private func quotePreviewText(for quote: Status) -> String {
-        HTMLParser.stripHTML(quote.content)
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func quoteHints(for quote: Status) -> [QuoteHintItem] {
-        var hints: [QuoteHintItem] = []
-
-        if !quote.mediaAttachments.isEmpty {
-            let mediaCount = quote.mediaAttachments.count
-            let mediaTitle = MoroL10n.Post.quoteMediaCount(mediaCount)
-            hints.append(QuoteHintItem(icon: "photo.on.rectangle", title: mediaTitle))
-        }
-
-        if let poll = quote.poll {
-            let optionCount = poll.options.count
-            let pollTitle = optionCount > 0 ? MoroL10n.Post.quotePollOptions(optionCount) : MoroL10n.ComposeOriginal.badgePoll
-            hints.append(QuoteHintItem(icon: "chart.bar.xaxis", title: pollTitle))
-        }
-
-        return hints
-    }
 }
 
 // MARK: - Quote Style Modifier
@@ -476,25 +347,20 @@ private struct QuoteNoticePressStyle: ButtonStyle {
 extension View {
     @ViewBuilder
     func applyQuoteStyle(_ style: PostContent.QuoteStyle, theme: MoroTheme) -> some View {
+        let shape = RoundedRectangle(cornerRadius: PostContentMetrics.quoteCardCornerRadius, style: .continuous)
         switch style {
         case .flat:
             self
-                .padding(theme.spacing.s)
-                .background(theme.colors.surfaceSubtle)
-                .overlay(
-                    RoundedRectangle(cornerRadius: PostContentMetrics.quoteCardCornerRadius, style: .continuous)
-                        .stroke(theme.colors.borderSubtle, lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: PostContentMetrics.quoteCardCornerRadius))
+                .padding(12)
+                .background(shape.fill(theme.colors.surfaceSubtle))
+                .overlay(shape.strokeBorder(theme.colors.borderSubtle, lineWidth: 1))
+                .clipShape(shape)
         case .card:
             self
-                .padding(theme.spacing.m)
-                .background(theme.colors.surfaceSubtle)
-                .overlay(
-                    RoundedRectangle(cornerRadius: PostContentMetrics.quoteCardCornerRadius, style: .continuous)
-                        .stroke(theme.colors.borderSubtle, lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: PostContentMetrics.quoteCardCornerRadius))
+                .padding(14)
+                .background(shape.fill(theme.colors.surfaceSubtle))
+                .overlay(shape.strokeBorder(theme.colors.borderSubtle, lineWidth: 1))
+                .clipShape(shape)
         }
     }
 }

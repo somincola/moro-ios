@@ -50,6 +50,10 @@ final class MoroSceneTests: XCTestCase {
             (.explore, "root.explore", .discovery, .continuous),
             (.inbox, "root.inbox", .stream, .continuous),
             (.me, "root.me", .hero, .hero),
+            (.lists, "root.lists", .stream, .continuous),
+            (.bookmarks, "root.bookmarks", .stream, .continuous),
+            (.favourites, "root.favourites", .stream, .continuous),
+            (.settings, "root.settings", .stream, .continuous),
         ]
 
         for (tab, identity, kind, surface) in expected {
@@ -63,6 +67,10 @@ final class MoroSceneTests: XCTestCase {
         XCTAssertEqual(MainTab.explore.rootSceneDescriptor.canvas, .content)
         XCTAssertEqual(MainTab.inbox.rootSceneDescriptor.canvas, .content)
         XCTAssertEqual(MainTab.me.rootSceneDescriptor.canvas, .hero)
+        XCTAssertEqual(MainTab.lists.rootSceneDescriptor.canvas, .content)
+        XCTAssertEqual(MainTab.lists.rootSceneDescriptor.topBar, .content)
+        XCTAssertEqual(MainTab.settings.rootSceneDescriptor.canvas, .content)
+        XCTAssertEqual(MainTab.settings.rootSceneDescriptor.topBar, .content)
         XCTAssertTrue(MainTab.home.rootSceneDescriptor.scrollBehavior.contains(.reportsElevation))
         XCTAssertTrue(MainTab.inbox.rootSceneDescriptor.scrollBehavior.contains(.refreshable))
         XCTAssertTrue(MainTab.me.rootSceneDescriptor.scrollBehavior.contains(.collapsesHero))
@@ -70,12 +78,21 @@ final class MoroSceneTests: XCTestCase {
 
     func testRoutesDeclareSceneSemantics() throws {
         XCTAssertEqual(Route.bookmarks.sceneDescriptor.kind, .stream)
+        XCTAssertEqual(Route.lists.sceneDescriptor.kind, .stream)
+        XCTAssertEqual(Route.lists.sceneDescriptor.topBar, .content)
+        XCTAssertEqual(
+            Route.listMembers(MastodonList(id: "1", title: "List", repliesPolicy: nil, exclusive: nil))
+                .sceneDescriptor.topBar,
+            .content
+        )
         XCTAssertEqual(
             Route.profileConnections(accountID: "account", kind: .followers, totalCount: 1).sceneDescriptor.kind,
             .stream
         )
         XCTAssertEqual(Route.search(query: nil).sceneDescriptor.kind, .discovery)
         XCTAssertEqual(Route.editProfile.sceneDescriptor.kind, .task)
+        XCTAssertEqual(Route.editProfile.sceneDescriptor.canvas, .content)
+        XCTAssertEqual(Route.editProfile.sceneDescriptor.topBar, .content)
 
         let mediaURL = try XCTUnwrap(URL(string: "https://example.com/media.jpg"))
         let mediaScene = Route.mediaPreview(url: mediaURL).sceneDescriptor

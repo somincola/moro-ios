@@ -136,6 +136,12 @@ struct MainTabView: View {
             ?? accountSessions.first?.account.avatarURL
     }
 
+    private var currentDrawerAccount: Account? {
+        appState.currentAccount
+            ?? accountSessions.first(where: { $0.id == activeSessionID })?.account
+            ?? accountSessions.first?.account
+    }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             MainShellContainerRepresentable(
@@ -153,6 +159,21 @@ struct MainTabView: View {
                 additionalRootView: additionalRootView(for:)
             )
 
+            MoroNavigationDrawerHost(
+                coordinator: coordinator,
+                currentAccount: currentDrawerAccount,
+                accountSessions: accountSessions,
+                activeSessionID: activeSessionID,
+                onSwitchAccount: { sessionID in
+                    coordinator.popAllToRoot()
+                    onSwitchAccount(sessionID)
+                },
+                onAddAccount: {
+                    coordinator.popAllToRoot()
+                    coordinator.showAddAccountLogin = true
+                }
+            )
+            .zIndex(50)
         }
         // UIKit owns the system bars and their safe-area backgrounds. Give the shell the
         // full window so pushed scenes can carry their canvas through the bottom inset, and
@@ -190,6 +211,18 @@ struct MainTabView: View {
                     }
                 }
                 .moroSheetSurface(detents: [.large], cornerRadius: 20)
+            case .search(let autoFocus):
+                SearchSheetView(
+                    apiClient: apiClient,
+                    autoFocusSearch: autoFocus,
+                    routeView: routeView(for:router:)
+                )
+                .environment(\.activeAccountKey, activeSessionID ?? "no-active-session")
+                .environment(\.settingsContext, settingsContext)
+                .environment(\.settingsPresentationAction) {
+                    coordinator.dismissPresentedSheet { coordinator.presentSettings() }
+                }
+                .moroSheetSurface(detents: [.large], cornerRadius: 20)
             }
         }
         .fullScreenCover(isPresented: $coordinator.showAddAccountLogin) {
@@ -201,8 +234,9 @@ struct MainTabView: View {
             }
         }
         .onAppear {
-            consumePendingWidgetHandoffIfNeeded()
+            consumePendingQuickActionIfNeeded()
             consumePendingSharedDraftIfNeeded()
+            syncHomeScreenQuickActions()
             ensureInboxStreamSubscription()
             updateNotificationListVisibility()
             #if DEBUG
@@ -212,6 +246,12 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: SharedComposeHandoff.received)) { _ in
             guard scenePhase == .active else { return }
             consumePendingSharedDraftIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AppQuickActionCenter.didReceiveDestination)) { _ in
+            consumePendingQuickActionIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: MoroWidgetHandoffStore.didWriteNotification)) { _ in
+            consumePendingQuickActionIfNeeded()
         }
         .task(id: activeSessionID) {
             async let instanceMetadataLoad: Void = refreshInstanceMetadataIfNeeded()
@@ -227,12 +267,14 @@ struct MainTabView: View {
                 apiClient: apiClient
             )
             updateNotificationListVisibility()
+            syncHomeScreenQuickActions()
             await instanceMetadataLoad
         }
         .onChange(of: scenePhase) { _, newPhase in
+            syncHomeScreenQuickActions()
             guard newPhase == .active else { return }
             coordinator.noteAppBecameActive()
-            consumePendingWidgetHandoffIfNeeded()
+            consumePendingQuickActionIfNeeded()
             consumePendingSharedDraftIfNeeded()
             ensureInboxStreamSubscription()
             // The socket may have died or given up while suspended; don't wait out a backoff.
@@ -249,12 +291,20 @@ struct MainTabView: View {
             }
         }
         .onChange(of: activeSessionID) { _, _ in
-            consumePendingWidgetHandoffIfNeeded()
+            consumePendingQuickActionIfNeeded()
             consumePendingSharedDraftIfNeeded()
+            syncHomeScreenQuickActions()
         }
         .onChange(of: appState.currentAccount?.id) { _, _ in
-            consumePendingWidgetHandoffIfNeeded()
+            consumePendingQuickActionIfNeeded()
             consumePendingSharedDraftIfNeeded()
+            syncHomeScreenQuickActions()
+        }
+        .onChange(of: appState.currentAccount?.acct) { _, _ in
+            syncHomeScreenQuickActions()
+        }
+        .onChange(of: notificationUnreadStore.activeUnreadCount) { _, _ in
+            syncHomeScreenQuickActions()
         }
         .onChange(of: coordinator.isInboxVisible) { _, _ in
             updateNotificationListVisibility()
@@ -441,26 +491,22 @@ struct MainTabView: View {
         }
     }
 
-    private func consumePendingWidgetHandoffIfNeeded() {
-        guard coordinator.composeContext == nil,
-            let handoff = MoroWidgetHandoffStore.consume()
-        else {
+    private func consumePendingQuickActionIfNeeded() {
+        guard let destination = AppQuickActionCenter.shared.consumePendingDestination() else {
             return
         }
 
-        switch handoff.destination {
-        case .home:
-            coordinator.selectTab(.home)
-        case .compose:
-            coordinator.openCompose()
-        case .search:
-            coordinator.openExplore()
-        case .inbox:
-            coordinator.openInbox(.all)
+        coordinator.openQuickDestination(destination, account: currentDrawerAccount)
+        if destination == .inbox {
             updateNotificationListVisibility()
-        case .profile:
-            coordinator.openProfile(appState.currentAccount ?? accountSessions.first { $0.id == activeSessionID }?.account)
         }
+    }
+
+    private func syncHomeScreenQuickActions() {
+        AppQuickActionCenter.shared.syncShortcutItems(
+            account: currentDrawerAccount,
+            unreadCount: notificationUnreadStore.activeUnreadCount
+        )
     }
 
     private func updateNotificationListVisibility() {
@@ -511,14 +557,24 @@ struct MainTabView: View {
 
 private struct HomeTabRootView: View {
     @ObservedObject var coordinator: RootTabCoordinator
+    @ObservedObject private var inboxUnreadStore = InboxUnreadStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.moroTheme) private var theme
+    @State private var composeVisibilitySubject = PassthroughSubject<Bool, Never>()
 
     let apiClient: MastodonAPI
     let cacheClientID: String
 
     private let composeButtonSize: CGFloat = 52
     private let composeButtonTabBarSpacing: CGFloat = 10
+
+    private var navigationPolicy: NavigationAccessPolicy {
+        NavigationAccessPolicy(
+            tabLayout: coordinator.tabLayout,
+            unreadInboxCount: inboxUnreadStore.totalUnreadCount,
+            unreadAnnouncementsCount: appState.unreadAnnouncementsCount
+        )
+    }
 
     var body: some View {
         ThreadSplitView(coordinator: coordinator, tab: .home, router: coordinator.homeRouter, apiClient: apiClient) {
@@ -527,14 +583,14 @@ private struct HomeTabRootView: View {
         // The whole root's corner: with two columns that is the thread column, clear of the
         // fold between them (the system's guidance for book-style half open).
         .overlay(alignment: .bottomTrailing) {
-            composeButton
-                .padding(.trailing, theme.spacing.l)
-                .padding(.bottom, composeButtonTabBarSpacing)
-                // Steps aside for the account switcher, which floats in the same corner.
-                .scaleEffect(coordinator.isAccountSwitcherPresented ? 0.6 : 1)
-                .opacity(coordinator.isAccountSwitcherPresented ? 0 : 1)
-                .allowsHitTesting(!coordinator.isAccountSwitcherPresented)
-                .animation(.snappy(duration: 0.22), value: coordinator.isAccountSwitcherPresented)
+            HomeComposeButtonOverlay(
+                size: composeButtonSize,
+                isObscured: coordinator.isAccountSwitcherPresented || coordinator.isDrawerPresented,
+                visibilitySubject: composeVisibilitySubject,
+                onCompose: { coordinator.openCompose() }
+            )
+            .padding(.trailing, coordinator.tabBarTrailingInset)
+            .padding(.bottom, composeButtonTabBarSpacing)
         }
     }
 
@@ -550,17 +606,24 @@ private struct HomeTabRootView: View {
                 }
             ),
             onAvatarTap: {
-                coordinator.presentSettings()
+                coordinator.openDrawer()
             },
+            onOpenSearch: {
+                coordinator.openExplore(autoFocus: true)
+            },
+            navigationPolicy: navigationPolicy,
             onTimelineSelectionChange: { timeline in
                 guard coordinator.timelineSelection != timeline else { return }
                 coordinator.timelineSelection = timeline
             },
             onChromeFraction: nil,
+            onComposeVisibilityChange: { isVisible in
+                composeVisibilitySubject.send(isVisible)
+            },
             usesSystemNavigationBar: coordinator.usesSystemHomeBar,
             isActive: coordinator.selectedTab == .home && coordinator.isAtRoot(.home)
                 && coordinator.presentedSheet == nil && coordinator.composeContext == nil
-                && !coordinator.showAddAccountLogin,
+                && !coordinator.showAddAccountLogin && !coordinator.isDrawerPresented,
             bottomContentInset: coordinator.tabBarHeight + composeButtonClearance
         )
         .environment(\.tabReselection, coordinator.tabReselection)
@@ -569,26 +632,93 @@ private struct HomeTabRootView: View {
     private var composeButtonClearance: CGFloat {
         composeButtonSize + theme.spacing.xl
     }
+}
 
-    private var composeButton: some View {
-        Button {
-            coordinator.openCompose()
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(theme.colors.primaryForeground)
-                .frame(width: composeButtonSize, height: composeButtonSize)
-                .background(theme.colors.primary500, in: Circle())
-                .contentShape(Circle())
+/// Isolated floating compose button rendered with iOS 26 Liquid Glass (with automatic
+/// solid high-contrast fallback) and scroll-responsive hide/reveal behavior.
+private struct HomeComposeButtonOverlay: View {
+    let size: CGFloat
+    let isObscured: Bool
+    let visibilitySubject: PassthroughSubject<Bool, Never>
+    let onCompose: () -> Void
+
+    @Environment(\.moroTheme) private var theme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
+    @State private var isScrollVisible = true
+
+    private var isVisible: Bool {
+        !isObscured && isScrollVisible
+    }
+
+    private var scale: CGFloat {
+        if isObscured { return 0.6 }
+        if !isScrollVisible { return reduceMotion ? 1 : 0.76 }
+        return 1
+    }
+
+    private var verticalOffset: CGFloat {
+        (!isObscured && !isScrollVisible && !reduceMotion) ? 12 : 0
+    }
+
+    var body: some View {
+        Button(action: onCompose) {
+            buttonSurface
         }
         .buttonStyle(.plain)
-        .shadow(
-            color: Color.black.opacity(theme.colorScheme == .dark ? 0.30 : 0.18),
-            radius: 9,
-            y: 4
-        )
         .accessibilityLabel(MoroL10n.Navigation.compose)
         .accessibilityIdentifier("home.composeButton")
+        .scaleEffect(scale)
+        .offset(y: verticalOffset)
+        .opacity(isVisible ? 1 : 0)
+        .allowsHitTesting(isVisible)
+        .accessibilityHidden(!isVisible)
+        .animation(
+            reduceMotion ? nil : .snappy(duration: 0.22),
+            value: isObscured
+        )
+        .animation(
+            reduceMotion
+                ? nil
+                : (isScrollVisible
+                    ? .spring(response: 0.34, dampingFraction: 0.78)
+                    : .snappy(duration: 0.22)),
+            value: isScrollVisible
+        )
+        .onReceive(visibilitySubject) { nextVisible in
+            guard isScrollVisible != nextVisible else { return }
+            isScrollVisible = nextVisible
+        }
+        .onChange(of: isObscured) { _, obscured in
+            if !obscured, !isScrollVisible {
+                isScrollVisible = true
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var buttonSurface: some View {
+        let glyph = Image(systemName: "plus")
+            .font(.system(size: 21, weight: .semibold))
+            .frame(width: size, height: size)
+
+        if #available(iOS 26, *), !reduceTransparency, contrast != .increased {
+            glyph
+                .foregroundStyle(theme.colors.textPrimary)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(Circle())
+        } else {
+            glyph
+                .foregroundStyle(theme.colors.primaryForeground)
+                .background(theme.colors.primary500, in: Circle())
+                .contentShape(Circle())
+                .shadow(
+                    color: Color.black.opacity(theme.colorScheme == .dark ? 0.30 : 0.18),
+                    radius: 9,
+                    y: 4
+                )
+        }
     }
 }
 
@@ -610,7 +740,7 @@ private struct MeTabRootView: View {
     let coordinator: RootTabCoordinator
     @State private var tabReselection: TabReselection?
     @State private var tabActivation: TabActivation?
-    @State private var isExploreHidden: Bool
+    @State private var showsSettingsButton: Bool
     @EnvironmentObject private var appState: AppState
 
     let apiClient: MastodonAPI
@@ -630,7 +760,9 @@ private struct MeTabRootView: View {
         // Start from the current event so an earlier re-tap is not mistaken for a new one.
         _tabReselection = State(initialValue: coordinator.tabReselection)
         _tabActivation = State(initialValue: coordinator.tabActivation)
-        _isExploreHidden = State(initialValue: !coordinator.tabLayout.tabs.contains(.explore))
+        _showsSettingsButton = State(
+            initialValue: NavigationAccessPolicy(tabLayout: coordinator.tabLayout).showsProfileSettingsButton
+        )
     }
 
     private var currentAccount: Account? {
@@ -647,7 +779,7 @@ private struct MeTabRootView: View {
                     accountID: account.id,
                     onLogout: {},
                     apiClient: apiClient,
-                    onExplore: isExploreHidden ? { coordinator.meRouter.navigate(to: .search(query: nil)) } : nil
+                    showsSettingsButton: showsSettingsButton
                 )
                 // The page's view models are created once per identity. While switching,
                 // `currentAccount` can resolve to a fallback first; without this the real
@@ -667,8 +799,12 @@ private struct MeTabRootView: View {
         .environment(\.tabActivation, tabActivation)
         .onReceive(coordinator.$tabReselection.removeDuplicates()) { tabReselection = $0 }
         .onReceive(coordinator.$tabActivation.removeDuplicates()) { tabActivation = $0 }
-        .onReceive(coordinator.$tabLayout.map { !$0.tabs.contains(.explore) }.removeDuplicates()) {
-            isExploreHidden = $0
+        .onReceive(
+            coordinator.$tabLayout
+                .map { NavigationAccessPolicy(tabLayout: $0).showsProfileSettingsButton }
+                .removeDuplicates()
+        ) {
+            showsSettingsButton = $0
         }
     }
 }

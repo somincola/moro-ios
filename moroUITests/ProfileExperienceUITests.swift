@@ -156,6 +156,23 @@ final class ProfileExperienceUITests: XCTestCase {
             waitLabel(bell, contains: "Turn off")
             Thread.sleep(forTimeInterval: 1.2)  // let the replace + wiggle finish for the screenshot
             attach(app, "profile-bell-on-\(scheme)")
+
+            let reblog = app.buttons["profile.reblogToggle"]
+            XCTAssertTrue(reblog.waitForExistence(timeout: 3))
+            XCTAssertGreaterThan(reblog.frame.minX, bell.frame.maxX - 1)
+            XCTAssertEqual(reblog.label, "Hide boosts from timeline")
+            attach(app, "profile-reblog-shown-\(scheme)")
+            let notice = app.descendants(matching: .any).matching(identifier: "app.feedbackNotice").firstMatch
+            reblog.tap()
+            XCTAssertTrue(notice.exists || notice.waitForExistence(timeout: 3))
+            XCTAssertEqual(notice.label, "Boosts hidden from timeline")
+            attach(app, "profile-reblog-hidden-\(scheme)")
+            waitLabel(reblog, contains: "Show boosts")
+            reblog.tap()
+            XCTAssertTrue(notice.exists || notice.waitForExistence(timeout: 3))
+            XCTAssertEqual(notice.label, "Boosts shown in timeline")
+            attach(app, "profile-reblog-shown-toast-\(scheme)")
+            waitLabel(reblog, contains: "Hide boosts")
             app.terminate()
         }
     }
@@ -251,10 +268,9 @@ final class ProfileExperienceUITests: XCTestCase {
         let posts = app.buttons["profile.tab.posts"].firstMatch
         XCTAssertTrue(posts.waitForExistence(timeout: 5), file: file, line: line)
         let navigationBar = app.navigationBars.firstMatch
-        // Accessibility exposes the title bounds, below 12 pt section padding
-        // and 10 pt button padding. Compare the actual section edge to UIKit.
-        let sectionTop = posts.frame.minY - 22
-        XCTAssertEqual(sectionTop, navigationBar.frame.maxY, accuracy: 1,
+        // The shared section tab exposes the entire touch target, including its padding.
+        XCTAssertGreaterThanOrEqual(posts.frame.height, 44, file: file, line: line)
+        XCTAssertEqual(posts.frame.minY, navigationBar.frame.maxY, accuracy: 1,
             "Pinned tabs must meet the native navigation bar without overlap or a gap.", file: file, line: line)
         XCTAssertTrue(app.buttons["profile.moreButton"].isReachable(in: app), file: file, line: line)
     }
@@ -821,6 +837,42 @@ final class ProfileExperienceUITests: XCTestCase {
         assertRestored(tile, at: tileY)
         replies.tap()
         assertRestored(reply, at: replyY)
+    }
+
+    func testReturningToPostsFromPinnedTabKeepsTabBarPinnedInsteadOfDroppingHeader() {
+        let app = launch(extra: ["UITEST_PROFILE_LONG_TABS": "1", "UITEST_PROFILE_GALLERY": "1"], animations: true)
+        defer { app.terminate() }
+        let posts = app.buttons["profile.tab.posts"].firstMatch
+        let replies = app.buttons["profile.tab.replies"].firstMatch
+        let media = app.buttons["profile.tab.media"].firstMatch
+        XCTAssertTrue(media.waitForExistence(timeout: 5))
+
+        // Start at top of Posts (un-scrolled), then switch to Media and ensure the tab bar is pinned.
+        media.tap()
+        XCTAssertTrue(app.buttons["profile.media.tile.320"].waitForExistence(timeout: 5))
+        for _ in 0..<4 where media.frame.minY > app.frame.height * 0.28 {
+            app.swipeUp()
+        }
+        let pinnedTabY = media.frame.minY
+        XCTAssertLessThan(pinnedTabY, app.frame.height * 0.28)
+
+        // Switching Media -> Replies stays pinned.
+        replies.tap()
+        XCTAssertTrue(app.staticTexts["Scroll reply 700"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(replies.frame.minY, pinnedTabY, accuracy: 6)
+
+        // Returning to Posts (which was never scrolled) must stay pinned instead of dropping the header back down.
+        posts.tap()
+        let firstPost = app.staticTexts["Scroll post 500"].firstMatch
+        XCTAssertTrue(firstPost.waitForExistence(timeout: 5))
+        let stayedPinned = NSPredicate { _, _ in
+            abs(posts.frame.minY - pinnedTabY) < 6 && firstPost.isHittable
+        }
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: stayedPinned, object: nil)], timeout: 5),
+            .completed,
+            "Expected Posts tab bar to remain pinned at y=\(pinnedTabY), got \(posts.frame.minY)"
+        )
     }
 
     func testMediaGalleryShowsGridSkeletonAndRetriesThumbnailInPlace() {

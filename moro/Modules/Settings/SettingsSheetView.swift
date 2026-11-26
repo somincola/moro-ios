@@ -48,7 +48,7 @@ struct SettingsSheetView: View {
 
     private var settingsPage: some View {
         SettingsView(apiClient: apiClient)
-            .toolbarBackground(theme.colors.groupedBackground, for: .navigationBar)
+            .toolbarBackground(theme.colors.surfaceBase, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
     }
 }

@@ -40,10 +40,8 @@ extension SearchCoreViewController: UISearchBarDelegate {
 extension SearchCoreViewController: UITableViewDataSource {
     func numberOfSections(in tableView: UITableView) -> Int {
         switch mode {
-        case .placeholder, .loading, .empty:
+        case .placeholder, .loading, .empty, .error:
             return 0
-        case .error:
-            return 1
         case .results:
             return sections.count + (showsPaginationSection ? 1 : 0)
         }
@@ -51,10 +49,8 @@ extension SearchCoreViewController: UITableViewDataSource {
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch mode {
-        case .placeholder, .loading, .empty:
+        case .placeholder, .loading, .empty, .error:
             return 0
-        case .error:
-            return 1
         case .results:
             if showsPaginationSection, section == sections.count {
                 return 1
@@ -66,22 +62,6 @@ extension SearchCoreViewController: UITableViewDataSource {
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         switch mode {
-        case .error(let message):
-            let cell = tableView.dequeueReusableCell(withIdentifier: "StateCell", for: indexPath)
-            let palette = appliedTheme.uiKitPalette
-            var config = UIListContentConfiguration.subtitleCell()
-            config.text = trimmedQuery.isEmpty ? MoroL10n.Search.errorDiscoverFailed : MoroL10n.Search.errorSearchFailed
-            config.secondaryText = message
-            config.secondaryTextProperties.numberOfLines = 2
-            config.textProperties.color = palette.textPrimary
-            config.secondaryTextProperties.color = palette.textSecondary
-            config.textProperties.font = palette.font(forTextStyle: .body, weight: .semibold)
-            config.secondaryTextProperties.font = palette.font(forTextStyle: .subheadline)
-            cell.contentConfiguration = config
-            cell.accessoryType = .disclosureIndicator
-            applyStateCellTheme(cell, palette: palette)
-            return cell
-
         case .results:
             if showsPaginationSection, indexPath.section == sections.count {
                 guard
@@ -131,7 +111,7 @@ extension SearchCoreViewController: UITableViewDataSource {
             if let content = rowContent(for: row) { cell.configure(with: content, theme: appliedTheme) }
             return cell
 
-        case .placeholder, .loading, .empty:
+        case .placeholder, .loading, .empty, .error:
             return UITableViewCell()
         }
     }

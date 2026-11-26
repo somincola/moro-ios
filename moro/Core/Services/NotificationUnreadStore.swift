@@ -357,6 +357,7 @@ final class NotificationUnreadStore: ObservableObject {
         userDefaults.set(countsBySession, forKey: Keys.countsBySession)
         WidgetCenter.shared.reloadTimelines(ofKind: MoroWidgetKind.overview)
         WidgetCenter.shared.reloadTimelines(ofKind: MoroWidgetKind.quickActions)
+        WidgetCenter.shared.reloadTimelines(ofKind: MoroWidgetKind.profileCard)
     }
 
     private func persistRecentIDs() {

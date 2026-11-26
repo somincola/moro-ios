@@ -144,7 +144,7 @@ struct DirectMessagesView: View {
             return .error(
                 ErrorStateSpec(
                     title: MoroL10n.DirectMessages.errorLoadFailed,
-                    message: error.localizedDescription,
+                    message: MoroErrorCopy.message(for: error),
                     actionTitle: MoroL10n.DirectMessages.retry,
                     action: {
                         Task { await viewModel.loadInitial() }
@@ -160,7 +160,8 @@ struct DirectMessagesView: View {
                     actionTitle: MoroL10n.DirectMessages.emptyAction,
                     action: {
                         showNewConversation()
-                    }
+                    },
+                    actionProminent: true
                 ))
         }
         return .loaded
@@ -187,22 +188,11 @@ struct DirectMessagesView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 if let transientErrorMessage = viewModel.transientErrorMessage {
-                    HStack(alignment: .top, spacing: theme.spacing.s) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(theme.colors.error)
-                            .padding(.top, 2)
-                        Text(transientErrorMessage)
-                            .font(theme.typography.caption)
-                            .foregroundStyle(theme.colors.textPrimary)
-                            .multilineTextAlignment(.leading)
-                        Spacer()
-                    }
-                    .padding(theme.spacing.s)
-                    .background(theme.colors.surfaceBase)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(theme.colors.borderSubtle, lineWidth: 1)
+                    MoroInlineNoticeBanner(
+                        message: transientErrorMessage,
+                        tone: .error,
+                        actionTitle: MoroL10n.DirectMessages.retry,
+                        action: { Task { await viewModel.refresh() } }
                     )
                     .padding(.horizontal, theme.spacing.m)
                     .padding(.vertical, theme.spacing.s)

@@ -237,6 +237,7 @@ final class InboxUnreadStore: ObservableObject {
         userDefaults.set(value, forKey: InboxUnreadPersistenceKeys.directMessageUnreadConversationIDsBySession)
         WidgetCenter.shared.reloadTimelines(ofKind: MoroWidgetKind.overview)
         WidgetCenter.shared.reloadTimelines(ofKind: MoroWidgetKind.quickActions)
+        WidgetCenter.shared.reloadTimelines(ofKind: MoroWidgetKind.profileCard)
         Task { [weak notificationUnreadStore = notificationUnreadStore] in
             await notificationUnreadStore?.refreshAppIconBadge()
         }

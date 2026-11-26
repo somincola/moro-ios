@@ -42,10 +42,14 @@ extension TimelineHomeView {
     var floatingHeader: some View {
         HStack(spacing: theme.spacing.m) {
             if let onAvatarTap, let account = appState.currentAccount {
-                SettingsAvatarButton(account: account, action: onAvatarTap)
+                SettingsAvatarButton(
+                    account: account,
+                    showsUnreadDot: navigationPolicy.showsDrawerAvatarBadge,
+                    action: onAvatarTap
+                )
             } else {
                 Color.clear
-                    .frame(width: 38, height: 38)
+                    .frame(width: 44, height: 44)
             }
 
             Spacer()
@@ -55,8 +59,8 @@ extension TimelineHomeView {
 
             Spacer()
 
-            // Right: Announcements
-            announcementsButton
+            // Right: Smart contextual slot (unread announcements > hidden Explore search > clean whitespace)
+            homeTrailingHeaderSlot
         }
         .padding(.horizontal, theme.spacing.contentHorizontalInset)
         .frame(height: headerHeight)
@@ -64,22 +68,42 @@ extension TimelineHomeView {
         .dynamicTypeSize(.xSmall ... .xxxLarge)
     }
 
-    /// The same three controls as toolbar items, used when the system bar replaces the header.
+    @ViewBuilder
+    private var homeTrailingHeaderSlot: some View {
+        switch navigationPolicy.homeTrailingAction {
+        case .announcements:
+            announcementsButton
+        case .search:
+            homeSearchButton
+        case .none:
+            Color.clear
+                .frame(width: 44, height: 44)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// The same contextual controls as toolbar items, used when the system bar replaces the header.
     @ToolbarContentBuilder
     var systemBarToolbar: some ToolbarContent {
         // iPhone Duo with the panel open: the bar shows the panel's controls instead.
         if usesSystemNavigationBar && !panelOwnsSystemBar {
-            // In the side bar the Me tab's avatar sits in the same column, so settings shows as
-            // a gear there instead of a second avatar.
+            // In the side bar the Me tab's avatar sits in the same column, so the drawer trigger
+            // shows as a menu glyph there instead of a second avatar.
             if let onAvatarTap, toolbarIsVertical {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: onAvatarTap) {
-                        Label(MoroL10n.Navigation.settings, systemImage: "gearshape")
+                        Label(MoroL10n.Navigation.openMenu, systemImage: "line.3.horizontal")
                     }
+                    .accessibilityIdentifier("home.drawerButton")
                 }
             } else if let onAvatarTap, let account = appState.currentAccount {
                 VerticalPreferredToolbarItem(placement: .topBarLeading) {
-                    SettingsAvatarButton(account: account, isToolbarItem: true, action: onAvatarTap)
+                    SettingsAvatarButton(
+                        account: account,
+                        isToolbarItem: true,
+                        showsUnreadDot: navigationPolicy.showsDrawerAvatarBadge,
+                        action: onAvatarTap
+                    )
                 }
             }
             // A title-slot item stays in a bar across the top, so with vertical bars the menu
@@ -93,8 +117,14 @@ extension TimelineHomeView {
                     timelineSwitcher(style: .toolbar)
                 }
             }
-            VerticalPreferredToolbarItem(placement: .topBarTrailing) {
-                announcementsButton
+            if case .announcements = navigationPolicy.homeTrailingAction {
+                VerticalPreferredToolbarItem(placement: .topBarTrailing) {
+                    announcementsButton
+                }
+            } else if case .search = navigationPolicy.homeTrailingAction {
+                VerticalPreferredToolbarItem(placement: .topBarTrailing) {
+                    homeSearchButton
+                }
             }
         }
     }
@@ -104,9 +134,30 @@ extension TimelineHomeView {
             selectedTimeline: $selectedTimeline,
             pinnedTimelines: pinnedTimelineTypes,
             style: style,
-            onManageLists: { router.navigate(to: .lists) },
+            onManageLists: navigationPolicy.showsTimelineSwitcherListsShortcut
+                ? { router.navigate(to: .lists) }
+                : nil,
             onManageTopics: { router.navigate(to: .followedTopics) }
         )
+    }
+
+    var homeSearchButton: some View {
+        Button {
+            if let onOpenSearch {
+                onOpenSearch()
+            } else {
+                router.navigate(to: .search(query: nil))
+            }
+        } label: {
+            Image(systemName: "magnifyingglass")
+                .moroScaledFont(size: 17, weight: .semibold)
+                .foregroundStyle(theme.colors.textPrimary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(MoroL10n.Navigation.search)
+        .accessibilityIdentifier("home.searchButton")
     }
 
     var announcementsButton: some View {
@@ -141,6 +192,7 @@ extension TimelineHomeView {
             appState.unreadAnnouncementsCount > 0
                 ? MoroL10n.Timeline.announcements(appState.unreadAnnouncementsCount)
                 : MoroL10n.Timeline.announcementsTitle)
+        .accessibilityIdentifier("home.announcementsButton")
     }
 
     func refreshAnnouncementBadge(initialDelay: Bool) {

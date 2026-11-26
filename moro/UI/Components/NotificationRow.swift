@@ -8,6 +8,34 @@
 import SwiftUI
 import UIKit
 
+nonisolated enum NotificationQuotePresentation: Equatable {
+    /// No quote preview shown (no quote, or `quotedUpdate` whose main target IS already the quoted post).
+    case none
+    /// Full-width lightweight quoted card below the main row (for `kind == .quote`).
+    /// Never renders a second thumbnail when the quoting post already displays a trailing media thumbnail.
+    case fullWidthCard(showsQuotedThumbnail: Bool)
+    /// Single-line left-bar quote hint inside the summary for interaction notifications (like/boost/mention)
+    /// so the row stays compact and never stacks two thumbnails side by side.
+    case inlineHint
+    /// Pending or unavailable quote placeholder.
+    case placeholder(Status.QuoteState)
+
+    static func resolve(kind: NotificationKind, status: Status) -> Self {
+        guard kind != .quotedUpdate, let quote = status.quote else {
+            return .none
+        }
+        guard let quoted = quote.displayableStatus?.displayStatus else {
+            return .placeholder(quote.state)
+        }
+        if kind == .quote {
+            let mainHasMedia = !status.mediaAttachments.isEmpty
+            let quotedHasMedia = !quoted.mediaAttachments.isEmpty
+            return .fullWidthCard(showsQuotedThumbnail: !mainHasMedia && quotedHasMedia)
+        }
+        return .inlineHint
+    }
+}
+
 struct NotificationRow: View {
     let notification: NotificationDisplayItem
     var reportURL: URL? = nil
@@ -104,17 +132,35 @@ struct NotificationRow: View {
         HStack(alignment: .top, spacing: 12) {
             semanticIconColumn
 
-            trailingMediaLayout(status: effectiveStatusTarget) {
-                VStack(alignment: .leading, spacing: 7) {
-                    actorAvatarStrip
-                    postActionSummary
+            VStack(alignment: .leading, spacing: 8) {
+                trailingMediaLayout(status: effectiveStatusTarget) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        actorAvatarStrip
+                        postActionSummary
 
-                    if descriptor.showsStatusPreview, let status = effectiveStatusTarget {
-                        inlineStatusSummary(status: status)
+                        if descriptor.showsStatusPreview, let status = effectiveStatusTarget {
+                            inlineStatusSummary(status: status)
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if descriptor.showsStatusPreview,
+                   let status = effectiveStatusTarget,
+                   case .fullWidthCard(let showsQuotedThumbnail) = NotificationQuotePresentation.resolve(
+                       kind: kind,
+                       status: status
+                   ),
+                   let quotedStatus = status.quote?.displayableStatus?.displayStatus
+                {
+                    fullWidthQuotedCard(
+                        quotedStatus,
+                        parentStatus: status,
+                        showsThumbnail: showsQuotedThumbnail
+                    )
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -508,7 +554,7 @@ struct NotificationRow: View {
         status: Status?,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -520,11 +566,13 @@ struct NotificationRow: View {
                         statusThumbnail(status)
                     }
                     .buttonStyle(.plain)
+                    .padding(.top, 2)
                     .accessibilityLabel(
                         statusPreviewText(for: status) ?? actionText
                     )
                 } else {
                     statusThumbnail(status)
+                        .padding(.top, 2)
                 }
             }
         }
@@ -533,19 +581,32 @@ struct NotificationRow: View {
 
     @ViewBuilder
     private func inlineStatusSummary(status: Status) -> some View {
-        let content = VStack(alignment: .leading, spacing: 4) {
-            if let text = statusPreviewText(for: status) {
-                Text(text)
-                    .moroScaledFont(size: 14)
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .lineLimit(kind == .mention ? 3 : 2)
-                    .lineSpacing(2)
-                    .truncationMode(.tail)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+        let previewElements = statusPreviewElements(for: status)
+        let quotePresentation = NotificationQuotePresentation.resolve(kind: kind, status: status)
+        let lineLimit = kind == .mention ? 3 : 2
+
+        let content = VStack(alignment: .leading, spacing: 5) {
+            if let previewElements {
+                compactPreviewText(
+                    elements: previewElements,
+                    fontSize: 14,
+                    textColor: theme.colors.textSecondary,
+                    lineLimit: lineLimit
+                )
             }
 
-            if let metadata = statusPreviewMetadata(for: status) {
+            switch quotePresentation {
+            case .inlineHint:
+                if let quotedStatus = status.quote?.displayableStatus?.displayStatus {
+                    inlineQuoteHintRow(quotedStatus)
+                }
+            case .placeholder(let state):
+                compactQuotePlaceholderBadge(for: state)
+            case .fullWidthCard, .none:
+                EmptyView()
+            }
+
+            if let metadata = statusPreviewMetadata(for: status, includesQuoteFallback: quotePresentation == .none) {
                 Text(metadata)
                     .font(theme.typography.caption)
                     .foregroundStyle(subtleMetaColor)
@@ -570,6 +631,207 @@ struct NotificationRow: View {
         }
     }
 
+    @ViewBuilder
+    private func compactPreviewText(
+        elements: [ContentElement],
+        fontSize: CGFloat,
+        textColor: Color,
+        lineLimit: Int
+    ) -> some View {
+        if elements.containsCustomEmoji {
+            let style = InlineTextStyle(
+                textColor: textColor,
+                linkColor: textColor,
+                codeBackgroundColor: theme.colors.surfaceSubtle,
+                codeFontSize: max(12, fontSize - 1),
+                underlinesLinks: false,
+                linksAreInteractive: false
+            )
+            let runs = InlineTextRunBuilder.runs(for: elements, style: style)
+            InlineEmojiText(runs: runs, emojiSize: fontSize + 2)
+                .moroScaledFont(size: fontSize)
+                .foregroundStyle(textColor)
+                .lineLimit(lineLimit)
+                .lineSpacing(2)
+                .truncationMode(.tail)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .allowsHitTesting(false)
+                .accessibilityLabel(elements.plainTextValue)
+        } else {
+            Text(elements.plainTextValue)
+                .moroScaledFont(size: fontSize)
+                .foregroundStyle(textColor)
+                .lineLimit(lineLimit)
+                .lineSpacing(2)
+                .truncationMode(.tail)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Ultra-lightweight single-line left-bar quote hint for interaction notifications
+    /// (likes, boosts, mentions) so the row stays uncluttered beside a trailing thumbnail.
+    private func inlineQuoteHintRow(_ quotedStatus: Status) -> some View {
+        let authorName = quotedStatus.account.displayNameFormatted
+        let quoteElements = statusPreviewElements(for: quotedStatus, includeEmptyFallback: false)
+        let fallbackSummary: String? = quoteElements == nil && !quotedStatus.mediaAttachments.isEmpty
+            ? MoroL10n.Post.quoteMediaCount(quotedStatus.mediaAttachments.count)
+            : nil
+        let textColor = subtleMetaColor
+
+        let style = InlineTextStyle(
+            textColor: textColor,
+            linkColor: textColor,
+            codeBackgroundColor: theme.colors.surfaceSubtle,
+            codeFontSize: 12,
+            underlinesLinks: false,
+            linksAreInteractive: false
+        )
+        var authorPrefix = AttributedString("\(authorName)：")
+        authorPrefix.foregroundColor = theme.colors.textSecondary
+        authorPrefix.inlinePresentationIntent = .stronglyEmphasized
+
+        var runs: [InlineTextRun] = [.text(authorPrefix)]
+        if let quoteElements {
+            runs.append(contentsOf: InlineTextRunBuilder.runs(for: quoteElements, style: style))
+        } else if let fallbackSummary {
+            runs.append(.text(AttributedString(fallbackSummary)))
+        } else {
+            runs.append(.text(AttributedString(MoroL10n.Notifications.containsQuote)))
+        }
+
+        let hasEmoji = quoteElements?.containsCustomEmoji == true
+        let accessibilityText = "\(authorName)：\(quoteElements?.plainTextValue ?? fallbackSummary ?? MoroL10n.Notifications.containsQuote)"
+
+        return HStack(alignment: .center, spacing: 6) {
+            Capsule()
+                .fill(theme.colors.textTertiary.opacity(colorScheme == .dark ? 0.50 : 0.35))
+                .frame(width: 2, height: 14)
+                .accessibilityHidden(true)
+
+            Group {
+                if hasEmoji {
+                    InlineEmojiText(runs: runs, emojiSize: 15)
+                        .allowsHitTesting(false)
+                } else {
+                    Text(InlineTextRunBuilder.flattened(runs))
+                }
+            }
+            .moroScaledFont(size: 13)
+            .foregroundStyle(textColor)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityIdentifier("notifications.quoteHint.\(notification.id)")
+    }
+
+    /// Full-width lightweight quoted card reserved for `kind == .quote` notifications.
+    /// Placed below `trailingMediaLayout` so it spans the full content width and never shows
+    /// a second thumbnail alongside the quoting post's own media.
+    @ViewBuilder
+    private func fullWidthQuotedCard(
+        _ quotedStatus: Status,
+        parentStatus: Status,
+        showsThumbnail: Bool
+    ) -> some View {
+        let quoteElements = statusPreviewElements(for: quotedStatus, includeEmptyFallback: false)
+        let shape = RoundedRectangle(cornerRadius: 11, style: .continuous)
+        let borderColor = colorScheme == .dark
+            ? theme.colors.borderSubtle
+            : theme.colors.textPrimary.opacity(0.10)
+
+        let card = HStack(alignment: .top, spacing: 10) {
+            if showsThumbnail {
+                NotificationMediaThumbnail(
+                    attachments: quotedStatus.mediaAttachments,
+                    isSensitive: quotedStatus.sensitive,
+                    size: 46
+                )
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .center, spacing: 5) {
+                    MoroAvatar(
+                        imageURL: quotedStatus.account.avatarAnimatedURL,
+                        staticImageURL: quotedStatus.account.avatarURL,
+                        initials: quotedStatus.account.displayNameInitials,
+                        seed: quotedStatus.account.placeholderSeed,
+                        size: 16,
+                        allowsAnimation: false
+                    )
+
+                    AccountDisplayNameView(
+                        account: quotedStatus.account,
+                        typography: .captionStrong,
+                        textColor: theme.colors.textPrimary,
+                        lineLimit: 1,
+                        fitsInlineWidth: true,
+                        truncationMode: .tail
+                    )
+                }
+
+                if let quoteElements {
+                    compactPreviewText(
+                        elements: quoteElements,
+                        fontSize: 13,
+                        textColor: theme.colors.textSecondary,
+                        lineLimit: 2
+                    )
+                } else if !quotedStatus.mediaAttachments.isEmpty {
+                    Text(MoroL10n.Post.quoteMediaCount(quotedStatus.mediaAttachments.count))
+                        .font(theme.typography.caption)
+                        .foregroundStyle(subtleMetaColor)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(shape.fill(theme.colors.surfaceSubtle))
+        .overlay(shape.strokeBorder(borderColor, lineWidth: 0.75))
+        .clipShape(shape)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("notifications.quoteCard.\(notification.id)")
+
+        if let onStatusTap {
+            Button {
+                onStatusTap(parentStatus)
+            } label: {
+                card
+            }
+            .buttonStyle(.plain)
+        } else {
+            card
+        }
+    }
+
+    private func compactQuotePlaceholderBadge(for state: Status.QuoteState) -> some View {
+        let icon = state == .pending ? "clock" : "quote.bubble"
+        let title = state == .pending
+            ? MoroL10n.Post.quotePendingTitle
+            : MoroL10n.Post.quoteUnavailableTitle
+        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+
+        return HStack(spacing: 5) {
+            Image(systemName: icon)
+                .moroScaledFont(size: 11, weight: .medium)
+            Text(title)
+                .font(theme.typography.caption)
+                .lineLimit(1)
+        }
+        .foregroundStyle(subtleMetaColor)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(shape.fill(theme.colors.surfaceSubtle))
+        .overlay(shape.strokeBorder(theme.colors.borderSubtle, lineWidth: 0.75))
+        .clipShape(shape)
+    }
+
     private func statusThumbnail(_ status: Status) -> some View {
         NotificationMediaThumbnail(
             attachments: status.mediaAttachments,
@@ -578,33 +840,48 @@ struct NotificationRow: View {
         )
     }
 
-    private func statusPreviewText(for status: Status) -> String? {
-        let spoiler = status.spoilerText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    private func statusPreviewElements(
+        for status: Status,
+        includeEmptyFallback: Bool = true
+    ) -> [ContentElement]? {
+        let spoiler = status.spoilerText?
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !spoiler.isEmpty {
-            return spoiler
+            return [.text(spoiler)]
         }
 
-        let plainText = ContentParser.parseToElements(
+        let compacted = ContentParser.parseToElements(
             html: status.content,
             mentions: status.mentions,
             tags: status.tags,
-            emojis: status.emojis
+            emojis: status.emojis,
+            options: .statusBody
         )
-        .plainTextValue
-        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .compactedForInlinePreview
 
-        if !plainText.isEmpty {
-            return plainText
+        if !compacted.isEmpty {
+            return compacted
         }
-        return status.mediaAttachments.isEmpty ? MoroL10n.Notifications.noTextContent : nil
+        if includeEmptyFallback, status.mediaAttachments.isEmpty, status.quote == nil {
+            return [.text(MoroL10n.Notifications.noTextContent)]
+        }
+        return nil
     }
 
-    private func statusPreviewMetadata(for status: Status) -> String? {
+    private func statusPreviewText(for status: Status) -> String? {
+        statusPreviewElements(for: status)?.plainTextValue
+    }
+
+    private func statusPreviewMetadata(
+        for status: Status,
+        includesQuoteFallback: Bool = true
+    ) -> String? {
         var segments: [String] = []
         if status.poll != nil {
             segments.append(MoroL10n.Notifications.containsPoll)
         }
-        if status.quote?.displayableStatus != nil {
+        if includesQuoteFallback, status.quote?.displayableStatus != nil {
             segments.append(MoroL10n.Notifications.containsQuote)
         }
         return segments.isEmpty ? nil : segments.joined(separator: " · ")
@@ -676,8 +953,7 @@ struct NotificationRow: View {
 
     private func plainText(fromHTML html: String) -> String {
         ContentParser.parseToElements(html: html)
-            .plainTextValue
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .normalizedInlinePlainText
     }
 
     // MARK: - Follow request

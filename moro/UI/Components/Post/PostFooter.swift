@@ -26,14 +26,9 @@ struct PostFooter: View {
         VStack(alignment: .leading, spacing: Metrics.sectionSpacing) {
             // Full timestamp (for detail view)
             if showFullTimestamp {
-                HStack(spacing: Metrics.inlineSpacing) {
-                    Image(systemName: "calendar")
-                        .moroScaledFont(size: Metrics.iconSize)
-                        .accessibilityHidden(true)
-                    Text(fullDateString(from: status.createdAt))
-                        .font(theme.typography.body)
-                }
-                .foregroundStyle(theme.colors.textSecondary)
+                Text(fullDateString(from: status.createdAt))
+                    .font(theme.typography.caption)
+                    .foregroundStyle(theme.colors.textSecondary)
             }
 
             // Engagement stats bar (if any)

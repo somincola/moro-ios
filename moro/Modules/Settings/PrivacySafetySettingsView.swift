@@ -53,7 +53,7 @@ struct PrivacySafetySettingsView: View {
         }
         .disabled(isSaving)
         .moroSettingsSwitchStyle()
-        .moroSettingsListChrome(separators: .visible)
+        .moroSettingsListChrome()
         .textCase(nil)
         .navigationTitle(MoroL10n.Settings.privacyVisibility)
         .navigationBarTitleDisplayMode(.inline)
@@ -211,7 +211,7 @@ struct ContentSafetySettingsView: View {
                 Text(MoroL10n.Settings.serverScope)
             }
         }
-        .moroSettingsListChrome(separators: .visible)
+        .moroSettingsListChrome()
         .textCase(nil)
         .navigationTitle(MoroL10n.Settings.contentSafety)
         .navigationBarTitleDisplayMode(.inline)

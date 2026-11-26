@@ -36,6 +36,7 @@ struct PostToolbar: View {
     var onDeleteAndRedraft: (() -> Void)? = nil
     var onDelete: (() -> Void)? = nil
     var showCounts: Bool = true
+    var showsMoreButton: Bool = true
 
     @Environment(\.moroTheme) private var theme
 
@@ -47,11 +48,21 @@ struct PostToolbar: View {
         // shifting neighbouring icons. The "more" button sits at the very
         // right edge so the row still reads as Twitter-style chrome.
         HStack(spacing: 0) {
-            replyButton.frame(maxWidth: .infinity, alignment: .leading)
-            boostButton.frame(maxWidth: .infinity, alignment: .leading)
-            likeButton.frame(maxWidth: .infinity, alignment: .leading)
-            bookmarkButton.frame(maxWidth: .infinity, alignment: .leading)
-            moreButton
+            if showsMoreButton {
+                replyButton.frame(maxWidth: .infinity, alignment: .leading)
+                boostButton.frame(maxWidth: .infinity, alignment: .leading)
+                likeButton.frame(maxWidth: .infinity, alignment: .leading)
+                bookmarkButton.frame(maxWidth: .infinity, alignment: .leading)
+                moreButton
+            } else {
+                replyButton
+                Spacer(minLength: 0)
+                boostButton
+                Spacer(minLength: 0)
+                likeButton
+                Spacer(minLength: 0)
+                bookmarkButton
+            }
         }
         .frame(maxWidth: .infinity, minHeight: PostToolbarMetrics.minBarHeight)
         .contentShape(Rectangle())

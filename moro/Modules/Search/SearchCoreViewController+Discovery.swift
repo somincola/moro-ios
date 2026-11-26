@@ -167,9 +167,14 @@ extension SearchCoreViewController {
         let directory = await capture {
             try await self.apiClient.fetchDirectoryAccounts(limit: limit, offset: 0, order: .active, local: nil)
         }
-        guard directory.error != nil else { return (directory, true) }
+        if directory.error == nil, let accounts = directory.value, !accounts.isEmpty {
+            return (directory, true)
+        }
         let suggested = await capture { try await self.apiClient.fetchSuggestedAccounts(limit: min(limit, 40)) }
-        return (suggested.error == nil ? suggested : directory, false)
+        if suggested.error == nil, let accounts = suggested.value, !accounts.isEmpty {
+            return (suggested, false)
+        }
+        return (directory.error == nil ? directory : (suggested.error == nil ? suggested : directory), false)
     }
 
     private func capture<T>(_ work: () async throws -> T) async -> DiscoveryResult<T> {

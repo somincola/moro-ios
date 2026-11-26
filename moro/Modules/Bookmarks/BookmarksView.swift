@@ -51,7 +51,7 @@ struct BookmarksView: View {
         if viewModel.statuses.isEmpty, viewModel.isLoading { return .loading(.timeline) }
         if viewModel.statuses.isEmpty, case .error(let error) = viewModel.loadingState {
             return .error(ErrorStateSpec(title: MoroL10n.Bookmarks.loadFailed,
-                message: error.localizedDescription, actionTitle: MoroL10n.Bookmarks.retry,
+                message: MoroErrorCopy.message(for: error), actionTitle: MoroL10n.Bookmarks.retry,
                 action: { Task { await viewModel.refresh() } }))
         }
         if viewModel.statuses.isEmpty, !viewModel.hasMore {
@@ -72,24 +72,29 @@ struct BookmarksView: View {
                     .padding(.vertical, theme.spacing.s)
 
                 if let error = viewModel.transientErrorMessage {
-                    VStack(alignment: .leading, spacing: theme.spacing.s) {
-                        Label(error, systemImage: "exclamationmark.triangle")
-                            .font(theme.typography.caption)
-                            .foregroundStyle(theme.colors.textSecondary)
-                            .accessibilityIdentifier("bookmarks.error")
-                        if viewModel.isOfflineSnapshot {
-                            Button(MoroL10n.Bookmarks.retry) { Task { await viewModel.refresh() } }
-                                .accessibilityIdentifier("bookmarks.retry")
-                        }
-                    }
-                    .padding(theme.spacing.m)
+                    MoroInlineNoticeBanner(
+                        message: error,
+                        tone: viewModel.isOfflineSnapshot ? .neutral : .error,
+                        actionTitle: viewModel.isOfflineSnapshot ? MoroL10n.Bookmarks.retry : nil,
+                        action: viewModel.isOfflineSnapshot ? { Task { await viewModel.refresh() } } : nil,
+                        messageAccessibilityIdentifier: "bookmarks.error",
+                        actionAccessibilityIdentifier: viewModel.isOfflineSnapshot ? "bookmarks.retry" : nil
+                    )
+                    .padding(.horizontal, theme.spacing.m)
+                    .padding(.vertical, theme.spacing.s)
                 }
 
                 if viewModel.filteredStatuses.isEmpty {
-                    Text(MoroL10n.BookmarkReading.noMatches)
-                        .foregroundStyle(theme.colors.textSecondary)
-                        .padding(theme.spacing.l)
-                        .accessibilityIdentifier("bookmarks.noMatches")
+                    EmptyStateView(
+                        spec: EmptyStateSpec(
+                            icon: "magnifyingglass",
+                            title: MoroL10n.BookmarkReading.noMatches,
+                            message: "",
+                            mascot: .curious
+                        )
+                    )
+                    .frame(minHeight: 240)
+                    .accessibilityIdentifier("bookmarks.noMatches")
                 }
 
                 ForEach(viewModel.filteredStatuses) { status in
@@ -105,17 +110,22 @@ struct BookmarksView: View {
 
                 if viewModel.hasMore, !viewModel.isOfflineSnapshot {
                     HStack {
-                        Spacer()
-                        if viewModel.isLoading { ProgressView() }
-                        else {
-                            Button(viewModel.loadMoreFailed ? MoroL10n.Common.loadMoreRetry : MoroL10n.BookmarkReading.loadMore) {
+                        Spacer(minLength: 0)
+                        if viewModel.isLoading {
+                            MoroMascotView(expression: .thinking, size: 32)
+                        } else {
+                            MoroStateActionButton(
+                                title: viewModel.loadMoreFailed ? MoroL10n.Common.loadMoreRetry : MoroL10n.BookmarkReading.loadMore,
+                                style: .subtle,
+                                systemImage: viewModel.loadMoreFailed ? "arrow.clockwise" : nil,
+                                accessibilityIdentifier: "bookmarks.loadMore"
+                            ) {
                                 Task { await viewModel.loadMore() }
                             }
-                            .accessibilityIdentifier("bookmarks.loadMore")
                         }
-                        Spacer()
+                        Spacer(minLength: 0)
                     }
-                    .frame(minHeight: 52)
+                    .padding(.vertical, theme.spacing.m)
                 }
             }
             .listRowSeparator(.hidden)

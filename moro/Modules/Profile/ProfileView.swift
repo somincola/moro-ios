@@ -5,6 +5,7 @@
 //  User profile view with posts, replies, and media tabs.
 //
 
+import Combine
 import SwiftUI
 
 // MARK: - Profile View
@@ -17,6 +18,16 @@ private struct ProfileStatButtonStyle: ButtonStyle {
     }
 }
 
+private struct ProfileDisableTopScrollEdgeEffect: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.scrollEdgeEffectHidden(true, for: .top)
+        } else {
+            content
+        }
+    }
+}
+
 struct ProfileView: View {
     @Environment(\.moroTheme) private var theme
     @Environment(\.moroPlaybackScope) private var playbackScope
@@ -24,6 +35,7 @@ struct ProfileView: View {
     /// iPhone Duo: a post is open in the Me tab's panel and its controls take over the bar.
     @Environment(\.threadSplitPanelOwnsBar) private var panelOwnsBar
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.displayScale) private var displayScale
     @ScaledMetric(relativeTo: .subheadline) private var bioLineSpacing: CGFloat = 2
@@ -33,6 +45,7 @@ struct ProfileView: View {
     @Environment(\.activeAccountKey) private var activeAccountKey
     @StateObject private var profilePreferences = ProfilePresentationPreferences.shared
     @Environment(\.settingsPresentationAction) private var presentSettings
+    @Environment(\.settingsContext) private var settingsContext
     @EnvironmentObject private var appState: AppState
 
     @StateObject private var viewModel: ProfileViewModel
@@ -40,10 +53,12 @@ struct ProfileView: View {
     let account: Account?
     let accountID: String?
     let onLogout: () -> Void
-    private let onExplore: (() -> Void)?
+    private let showsSettingsButtonOverride: Bool?
     private let apiClient: MastodonAPI
     @StateObject private var postMenuActionCenter: PostMenuActionCenter
 
+    @State private var emojiSource: ProfileEmojiSource?
+    @State private var catalogEmoji: [Account.Emoji] = []
     @State private var chromeState = ProfileChromeState()
     /// The Me tab's own profile refreshes quietly on coming back to it once older than five
     /// minutes (pushed profiles never get tab activations).
@@ -98,17 +113,27 @@ struct ProfileView: View {
         return currentAccountID == profileAccountID
     }
 
+    private var showsProfileSettingsButton: Bool {
+        if let showsSettingsButtonOverride {
+            return showsSettingsButtonOverride
+        }
+        if let coordinator = settingsContext.tabCoordinator {
+            return NavigationAccessPolicy(tabLayout: coordinator.tabLayout).showsProfileSettingsButton
+        }
+        return true
+    }
+
     init(
         account: Account?,
         accountID: String? = nil,
         onLogout: @escaping () -> Void,
         apiClient: MastodonAPI,
-        onExplore: (() -> Void)? = nil
+        showsSettingsButton: Bool? = nil
     ) {
         self.account = account
         self.accountID = accountID
         self.onLogout = onLogout
-        self.onExplore = onExplore
+        self.showsSettingsButtonOverride = showsSettingsButton
 
         let resolvedAccountID = accountID ?? account?.id ?? ""
         // Required: a fallback client built here had no token, so every request on the
@@ -126,7 +151,10 @@ struct ProfileView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
+        let source = ProfileEmojiSource(account: resolvedProfileAccount, server: apiClient.instanceURL)
+        let emoji = ProfileAccountEmoji(accountID: source?.id,
+            emojis: (source?.embedded ?? []) + (source == emojiSource ? catalogEmoji : []))
+        return GeometryReader { geometry in
             let topSafeInset = resolvedTopSafeInset(geometry.safeAreaInsets.top)
             let topChromeHeight = navigationChromeHeight(topSafeInset: topSafeInset)
             let chromeLayout = chromeState.layout(
@@ -140,8 +168,14 @@ struct ProfileView: View {
             }
             let pin = ProfileStickyTabLogic.pinThreshold(headerHeight: chromeState.headerHeight,
                                                          topChromeHeight: topChromeHeight)
-            let firstOffset = chromeLayout.tabPlacement == .bottomDocked && !retainedTabs.isEmpty
-                ? pin : min(max(0, chromeState.scrollOffset), pin)
+            let firstOffset: CGFloat = retainedTabs.isEmpty
+                ? 0
+                : ProfileStickyTabLogic.activatedTabOffset(
+                    savedOffset: 0,
+                    currentScrollOffset: chromeState.scrollOffset,
+                    currentPlacement: chromeLayout.tabPlacement,
+                    pinThreshold: pin
+                )
 
             ZStack(alignment: .top) {
                 sceneCanvasColor
@@ -158,20 +192,22 @@ struct ProfileView: View {
                 .ignoresSafeArea(.container, edges: .horizontal)
 
                 ForEach(pages, id: \.self) { page in
-                    profileScrollPage(page, isActive: page == contentID, topSafeInset: topSafeInset,
-                                      chromeLayout: chromeLayout, initialOffset: firstOffset)
+                    profileScrollPage(page, profileEmoji: emoji, isActive: page == contentID, topSafeInset: topSafeInset,
+                                      chromeLayout: chromeLayout, pinThreshold: pin, initialOffset: firstOffset)
                 }
 
                 profileNavigationChromeBackground(
                     topChromeHeight: topChromeHeight,
-                    progress: profileChromeProgress
+                    progress: profileChromeProgress,
+                    showsBottomDivider: chromeLayout.tabPlacement != .topPinned
                 )
                 .ignoresSafeArea(.container, edges: .horizontal)
                 .zIndex(1)
 
                 if let tabOverlayOffset = chromeLayout.tabOverlayOffset {
                     tabBarSection(
-                        hidesAccessibility: false
+                        hidesAccessibility: false,
+                        placement: chromeLayout.tabPlacement
                     )
                         .offset(y: tabOverlayOffset)
                         .zIndex(2)
@@ -183,6 +219,7 @@ struct ProfileView: View {
             .onChange(of: pages, initial: true) { _, pages in retainedTabs = Set(pages) }
         }
         .ignoresSafeArea(.container, edges: .top)
+        .modifier(ProfileDisableTopScrollEdgeEffect())
         .background(sceneCanvasColor)
         .background {
             // The panel's controls sit on the plain side bar, not over the banner.
@@ -196,9 +233,10 @@ struct ProfileView: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
-        // With the bar in the vertical side bar the system floats the title at the top leading
-        // corner; the page's own band already shows the name, so the system title stays empty.
-        .navigationTitle(navChromeVisible && !navigationBarIsVertical ? collapsedTitle : "")
+        // Keep system title empty and render the collapsed account name via `.principal`
+        // (or the vertical-bar band on iPhone Duo) so custom emojis, empty-name fallback,
+        // and long-name tightening/truncation behave consistently.
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(
@@ -207,9 +245,32 @@ struct ProfileView: View {
         )
         .toolbar {
             if !panelOwnsBar {
+                if navChromeVisible && !navigationBarIsVertical {
+                    ToolbarItem(placement: .principal) {
+                        collapsedNavigationTitleView
+                            .allowsHitTesting(false)
+                            .accessibilityAddTraits(.isHeader)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     profileNavigationAction
                 }
+            }
+        }
+        .environment(\.profileAccountEmoji, emoji)
+        .task(id: source) {
+            guard let source else { return }
+            let codes = source.missingCodes
+            guard !codes.isEmpty,
+                  let catalog = EmojiService.shared.dequeueCustomEmojiViewModel(for: source.domain, apiClient: apiClient)
+            else { return }
+            for await dictionary in catalog.$emojiDict.values {
+                guard !Task.isCancelled else { return }
+                guard let dictionary else { continue }
+                catalogEmoji = codes.sorted().compactMap { code in
+                    dictionary[code]?.first.map { Account.Emoji(shortcode: code, url: $0.url, staticURL: $0.staticURL) }
+                }
+                emojiSource = source
             }
         }
         .task {
@@ -264,12 +325,13 @@ struct ProfileView: View {
         )
     }
 
-    private func profileScrollPage(_ id: ProfileViewModel.TabContentID, isActive: Bool, topSafeInset: CGFloat,
-                                   chromeLayout: ProfileChromeLayout, initialOffset: CGFloat) -> some View {
+    private func profileScrollPage(_ id: ProfileViewModel.TabContentID, profileEmoji: ProfileAccountEmoji, isActive: Bool, topSafeInset: CGFloat,
+                                   chromeLayout: ProfileChromeLayout, pinThreshold: CGFloat,
+                                   initialOffset: CGFloat) -> some View {
         ScrollView {
             VStack(spacing: 0) {
                 if isActive {
-                    profileHeaderRow(topSafeInset: topSafeInset)
+                    profileHeaderRow(topSafeInset: topSafeInset, profileEmoji: profileEmoji)
                         .background {
                             GeometryReader { proxy in
                                 Color.clear.preference(key: ProfileHeaderHeightKey.self, value: proxy.size.height)
@@ -296,14 +358,22 @@ struct ProfileView: View {
                     .background(theme.colors.surfaceBase)
             }
         }
-        .modifier(ProfileTabScrollPosition(initialOffset: initialOffset, isActive: isActive,
-                                           scrollToTopRequest: scrollToTopRequest) { offset in
+        .modifier(ProfileTabScrollPosition(
+            initialOffset: initialOffset,
+            isActive: isActive,
+            currentScrollOffset: chromeState.scrollOffset,
+            currentPlacement: chromeLayout.tabPlacement,
+            pinThreshold: pinThreshold,
+            scrollToTopRequest: scrollToTopRequest
+        ) { offset in
             if id == viewModel.selectedContentID { updateScrollState(offset) }
         })
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.always, axes: .vertical)
         .scrollDisabled(!isActive)
+        .modifier(ProfileDisableTopScrollEdgeEffect())
         .ignoresSafeArea(.container, edges: .top)
+        .environment(\.animatesPostEmoji, true)
         .modifier(PostEmojiScrollPlayback(isActive: isActive) { oldPhase, newPhase in
             if id == viewModel.selectedContentID, chromeState.didReleasePull(oldPhase: oldPhase, newPhase: newPhase) {
                 startPullRefreshIfNeeded()
@@ -331,6 +401,7 @@ struct ProfileView: View {
         return [
             current.id,
             current.displayName,
+            String(current.emojis.hashValue),
             current.note,
             current.avatar,
             current.avatarStatic,
@@ -432,10 +503,7 @@ struct ProfileView: View {
                 relationship: nil,
                 iconColor: navigationForeground,
                 onShare: shareUser,
-                onSettings: presentSettings,
-                onBookmarks: { router.navigate(to: .bookmarks) },
-                onFavourites: { router.navigate(to: .favourites) },
-                onExplore: onExplore,
+                onSettings: showsProfileSettingsButton ? presentSettings : nil,
                 onCopyLink: copyUserLink,
                 onOpenInBrowser: openUserInBrowser
             )
@@ -458,10 +526,50 @@ struct ProfileView: View {
         navigationBarBottom ?? (topSafeInset + navigationBarHeight)
     }
 
+    private var profileChromeHairlineColor: Color {
+        if colorScheme == .dark {
+            return Color.white.opacity(colorSchemeContrast == .increased ? 0.24 : 0.12)
+        }
+        return Color.black.opacity(colorSchemeContrast == .increased ? 0.22 : 0.09)
+    }
+
+    private var profileChromeEdgeShadowColor: Color {
+        Color.black.opacity(colorScheme == .dark ? 0.24 : 0.055)
+    }
+
+    private var resolvedProfileAccount: Account? {
+        viewModel.account ?? account
+    }
+
+    @ViewBuilder
+    private var collapsedNavigationTitleView: some View {
+        if let resolvedProfileAccount {
+            AccountDisplayNameView(
+                account: resolvedProfileAccount,
+                typography: .subtitle,
+                textColor: theme.colors.textPrimary,
+                lineLimit: 1,
+                fitsInlineWidth: true,
+                truncationMode: .tail,
+                minimumScaleFactor: 0.9,
+                allowsTightening: true
+            )
+        } else {
+            Text(MoroL10n.Profile.navTitle)
+                .font(.system(.headline, weight: .semibold))
+                .foregroundStyle(theme.colors.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .minimumScaleFactor(0.9)
+                .allowsTightening(true)
+        }
+    }
+
     @ViewBuilder
     private func profileNavigationChromeBackground(
         topChromeHeight: CGFloat,
-        progress: CGFloat
+        progress: CGFloat,
+        showsBottomDivider: Bool
     ) -> some View {
         VStack(spacing: 0) {
             theme.colors.surfaceBase
@@ -469,10 +577,7 @@ struct ProfileView: View {
                 .overlay(alignment: .bottom) {
                     // The collapsed name goes in the band (the system title is left empty).
                     if navigationBarIsVertical {
-                        Text(collapsedTitle)
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(theme.colors.textPrimary)
-                            .lineLimit(1)
+                        collapsedNavigationTitleView
                             .padding(.horizontal, theme.spacing.contentHorizontalInset)
                             .frame(height: navigationBarHeight)
                             .opacity(navChromeVisible ? 1 : 0)
@@ -480,18 +585,16 @@ struct ProfileView: View {
                     }
                 }
 
-            Rectangle()
-                .fill(theme.colors.borderSubtle)
-                .frame(height: 0.5)
+            if showsBottomDivider {
+                Rectangle()
+                    .fill(profileChromeHairlineColor)
+                    .frame(height: 0.5)
+            }
         }
         .frame(maxWidth: .infinity)
         .opacity(progress)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-    }
-
-    private var collapsedTitle: String {
-        viewModel.account?.displayName ?? account?.displayName ?? MoroL10n.Profile.navTitle
     }
 
     private static var activeKeyWindow: UIWindow? {
@@ -544,20 +647,59 @@ struct ProfileView: View {
 
     @ViewBuilder
     private func tabBarSection(
-        hidesAccessibility: Bool
+        hidesAccessibility: Bool,
+        placement: ProfileTabPlacement = .natural
     ) -> some View {
         VStack(spacing: 0) {
-            tabBar(hidesAccessibility: hidesAccessibility)
-            if viewModel.showsFeaturedTags {
-                ProfileFeaturedTagBar(tags: viewModel.featuredTags, selection: viewModel.selectedFeaturedTag) { tag in
-                    Task { await viewModel.selectFeaturedTag(tag) }
+            VStack(spacing: 0) {
+                tabBar(hidesAccessibility: hidesAccessibility)
+                if viewModel.showsFeaturedTags && viewModel.selectedTab == .posts {
+                    ProfileFeaturedTagBar(tags: viewModel.featuredTags, selection: viewModel.selectedFeaturedTag) { tag in
+                        Task { await viewModel.selectFeaturedTag(tag) }
+                    }
+                    .accessibilityHidden(hidesAccessibility)
                 }
-                .accessibilityHidden(hidesAccessibility)
             }
-            MoroDivider()
+            .moroReadableColumn()
+
+            Rectangle()
+                .fill(profileChromeHairlineColor)
+                .frame(height: 0.5)
         }
-        .moroReadableColumn()
+        .frame(maxWidth: .infinity)
         .background(theme.colors.surfaceBase)
+        .overlay(alignment: .top) {
+            if placement == .bottomDocked {
+                Rectangle()
+                    .fill(profileChromeHairlineColor)
+                    .frame(height: 0.5)
+                    .allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .top) {
+            if placement == .bottomDocked {
+                LinearGradient(
+                    colors: [.clear, profileChromeEdgeShadowColor],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 6)
+                .offset(y: -6)
+                .allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if placement == .topPinned {
+                LinearGradient(
+                    colors: [profileChromeEdgeShadowColor, .clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 6)
+                .offset(y: 6)
+                .allowsHitTesting(false)
+            }
+        }
     }
 
     @ViewBuilder
@@ -648,7 +790,7 @@ struct ProfileView: View {
     // MARK: - Profile Header
 
     @ViewBuilder
-    private func profileHeaderRow(topSafeInset: CGFloat) -> some View {
+    private func profileHeaderRow(topSafeInset: CGFloat, profileEmoji: ProfileAccountEmoji) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Color.clear
                 .frame(height: profileBannerBaseHeight + topSafeInset)
@@ -665,9 +807,9 @@ struct ProfileView: View {
                 .background(theme.colors.surfaceBase)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    profileBioSection(account: acc)
-
-                    profileInfoSection(account: acc)
+                    let resolved = profileEmoji.applying(to: acc)
+                    profileBioSection(account: resolved)
+                    profileInfoSection(account: resolved)
                 }
                 .moroReadableColumn()
                 .background(theme.colors.surfaceBase)
@@ -829,6 +971,7 @@ struct ProfileView: View {
                     minimumScaleFactor: 0.88,
                     allowsTightening: true
                 )
+                .accessibilityIdentifier("profile.displayName")
             }
 
             if let acc {
@@ -903,25 +1046,32 @@ struct ProfileView: View {
     }
 
     private var actionButtons: some View {
-        HStack(spacing: theme.spacing.m) {
+        HStack(spacing: theme.spacing.s) {
             FollowButton(
                 relationship: viewModel.relationship,
                 isResolved: viewModel.isRelationshipResolved,
                 isLoading: viewModel.isUpdatingRelationship,
-                isInteractionDisabled: viewModel.isUpdatingNotification,
+                isInteractionDisabled: viewModel.isUpdatingNotification || viewModel.isUpdatingReblogs,
                 onFollow: toggleFollow,
                 onUnfollow: requestUnfollow,
                 onCancelRequest: toggleFollow,
                 onUnblock: toggleBlock
             )
 
-            // Notification button (only show if following)
+            // Notification & boost visibility toggles (only show if following)
             if viewModel.relationship?.following == true {
                 NotificationToggleButton(
                     isNotifying: viewModel.relationship?.notifying == true,
                     isLoading: viewModel.isUpdatingNotification,
-                    isInteractionDisabled: viewModel.isUpdatingRelationship,
+                    isInteractionDisabled: viewModel.isUpdatingRelationship || viewModel.isUpdatingReblogs,
                     onToggle: toggleNotification
+                )
+
+                ReblogToggleButton(
+                    isShowingReblogs: viewModel.relationship?.showingReblogs ?? true,
+                    isLoading: viewModel.isUpdatingReblogs,
+                    isInteractionDisabled: viewModel.isUpdatingRelationship || viewModel.isUpdatingNotification,
+                    onToggle: toggleReblogs
                 )
             }
         }
@@ -952,6 +1102,21 @@ struct ProfileView: View {
         Task { await viewModel.toggleNotification() }
     }
 
+    private func toggleReblogs() {
+        Task {
+            if let showingReblogs = await viewModel.toggleReblogs() {
+                AppFeedbackCenter.shared.showInfo(
+                    showingReblogs
+                        ? MoroL10n.Profile.reblogToggleShownToast
+                        : MoroL10n.Profile.reblogToggleHiddenToast,
+                    autoDismissAfter: 2.6
+                )
+            } else if viewModel.relationship?.following == true {
+                AppFeedbackCenter.shared.showError(MoroL10n.Profile.reblogToggleFailedToast)
+            }
+        }
+    }
+
     // MARK: - Stats Section
 
     @ViewBuilder
@@ -969,8 +1134,8 @@ struct ProfileView: View {
             }
         }
         .padding(.horizontal, theme.spacing.contentHorizontalInset)
-        .padding(.top, theme.spacing.m)
-        .padding(.bottom, theme.spacing.s)
+        .padding(.top, theme.spacing.xs)
+        .padding(.bottom, 0)
     }
 
     @ViewBuilder
@@ -1108,6 +1273,7 @@ struct ProfileView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, theme.spacing.contentHorizontalInset)
             .padding(.top, theme.spacing.s)
+            .padding(.bottom, theme.spacing.xs)
         }
     }
 
@@ -1115,6 +1281,10 @@ struct ProfileView: View {
     private func profileFieldRow(field: AccountField, account: Account) -> some View {
         let emojis = account.contentEmojis
         let nameElements = field.nameContentElements(
+            emojis: emojis,
+            contentBaseURL: account.contentBaseURL
+        )
+        let valueElements = field.valueContentElements(
             emojis: emojis,
             contentBaseURL: account.contentBaseURL
         )
@@ -1143,27 +1313,26 @@ struct ProfileView: View {
                     : nameElements.plainTextValue
             )
 
-            HStack(alignment: .firstTextBaseline, spacing: theme.spacing.xs) {
-                RichTextContentView(
-                    elements: field.valueContentElements(
-                        emojis: emojis,
-                        contentBaseURL: account.contentBaseURL
-                    ),
-                    emojiSize: 16,
-                    isSelectable: true,
-                    fontOverride: .system(.subheadline, weight: .medium),
-                    uiFontOverride: .moroScaled(ofSize: 15, weight: .medium, relativeTo: .subheadline),
-                    textColorOverride: theme.colors.textPrimary,
-                    linkColorOverride: theme.colors.contentLink,
-                    underlinesLinks: false,
-                    lineSpacing: 3,
-                    trailingSystemImage: field.isVerified ? "checkmark.seal.fill" : nil,
-                    trailingSystemImageColor: theme.colors.success,
-                    trailingSystemImageSize: 11
-                )
-                .multilineTextAlignment(.leading)
+            if !valueElements.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: theme.spacing.xs) {
+                    RichTextContentView(
+                        elements: valueElements,
+                        emojiSize: 16,
+                        isSelectable: true,
+                        fontOverride: .system(.subheadline, weight: .medium),
+                        uiFontOverride: .moroScaled(ofSize: 15, weight: .medium, relativeTo: .subheadline),
+                        textColorOverride: theme.colors.textPrimary,
+                        linkColorOverride: theme.colors.contentLink,
+                        underlinesLinks: false,
+                        lineSpacing: 3,
+                        trailingSystemImage: field.isVerified ? "checkmark.seal.fill" : nil,
+                        trailingSystemImageColor: theme.colors.success,
+                        trailingSystemImageSize: 11
+                    )
+                    .multilineTextAlignment(.leading)
 
-                Spacer(minLength: 0)
+                    Spacer(minLength: 0)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1176,38 +1345,14 @@ struct ProfileView: View {
     private func tabBar(
         hidesAccessibility: Bool
     ) -> some View {
-        HStack(spacing: 0) {
-            ForEach(viewModel.availableTabs, id: \.rawValue) { tab in
-                Button(action: {
-                    selectProfileTab(tab)
-                }) {
-                    VStack(spacing: 0) {
-                        Text(tab.localizedTitle)
-                            .font(theme.typography.body)
-                            .fontWeight(viewModel.selectedTab == tab ? .semibold : .regular)
-                            .foregroundStyle(
-                                viewModel.selectedTab == tab
-                                    ? theme.colors.textPrimary : theme.colors.textSecondary
-                            )
-                            .padding(.vertical, theme.spacing.sm)
-
-                        Rectangle()
-                            .fill(
-                                viewModel.selectedTab == tab
-                                    ? theme.colors.primary500 : Color.clear
-                            )
-                            .frame(height: 2)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.plain)
-                .accessibilityHidden(hidesAccessibility)
-                .accessibilityIdentifier("profile.tab.\(tab.rawValue.lowercased())")
-            }
-        }
-        .padding(.horizontal, theme.spacing.contentHorizontalInset)
-        .padding(.top, theme.spacing.m)
-        .background(theme.colors.surfaceBase)
+        MoroSectionTabBar(
+            tabs: viewModel.availableTabs,
+            selection: viewModel.selectedTab,
+            title: { $0.localizedTitle },
+            accessibilityIdentifier: { "profile.tab.\($0.rawValue.lowercased())" },
+            onSelect: selectProfileTab
+        )
+        .accessibilityHidden(hidesAccessibility)
     }
 
     private func selectProfileTab(_ tab: ProfileViewModel.Tab) {

@@ -45,7 +45,7 @@ struct StatusEditHistorySheetView: View {
 
     private var loadingView: some View {
         VStack(spacing: theme.spacing.m) {
-            ProgressView()
+            MoroMascotView(expression: .thinking, size: 36)
             Text(MoroL10n.EditHistory.loading)
                 .font(theme.typography.caption)
                 .foregroundStyle(theme.colors.textSecondary)
@@ -56,9 +56,7 @@ struct StatusEditHistorySheetView: View {
 
     private var emptyView: some View {
         VStack(spacing: theme.spacing.s) {
-            Image(systemName: "clock.arrow.circlepath")
-                .moroScaledFont(size: 24, weight: .medium)
-                .foregroundStyle(theme.colors.textTertiary)
+            MoroMascotView(expression: .calm, size: 42)
             Text(MoroL10n.EditHistory.emptyTitle)
                 .font(theme.typography.bodyStrong)
                 .foregroundStyle(theme.colors.textPrimary)

@@ -6,20 +6,22 @@ struct ProfileEditorLoadingView: View {
     let retry: () -> Void
 
     var body: some View {
-        VStack(spacing: 20) {
+        Group {
             if let error {
-                Text(error).font(theme.typography.body)
-                    .foregroundStyle(theme.colors.textSecondary)
-                    .multilineTextAlignment(.center)
-                Button(MoroL10n.Timeline.retry, action: retry)
-                    .buttonStyle(.bordered)
+                ErrorStateView(
+                    spec: ErrorStateSpec(
+                        title: MoroL10n.Timeline.loadFailed,
+                        message: error,
+                        actionTitle: MoroL10n.Timeline.retry,
+                        action: retry
+                    )
+                )
             } else {
-                ProgressView()
+                MoroLoadingStateView()
             }
         }
-        .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.colors.groupedBackground)
+        .background(theme.colors.surfaceBase)
     }
 }
 

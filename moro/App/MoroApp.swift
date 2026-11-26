@@ -93,6 +93,8 @@ struct MoroApp: App {
                     composeCounterHarness
                         .moroTheme(MoroTheme(accent: .monochrome))
                         .preferredColorScheme(colorScheme)
+                } else if shouldUseQuoteShowcaseHarness {
+                    quoteShowcaseHarness.preferredColorScheme(colorScheme)
                 } else if shouldUseNotificationTapHarness {
                     notificationTapHarness
                         .moroTheme(
@@ -122,7 +124,9 @@ struct MoroApp: App {
                 }
             }
             .onOpenURL { url in
-                SharedComposeHandoff.shared.receive(url)
+                if !SharedComposeHandoff.shared.receive(url) {
+                    AppQuickActionCenter.shared.receive(url: url)
+                }
             }
             .task {
                 // Once per launch: drop shared photos that nothing will ever import.
@@ -152,7 +156,9 @@ struct MoroApp: App {
 
     private var shouldUseAppStoreScreenshotHarness: Bool {
         #if DEBUG
+        // SpringBoard cold launches cannot inherit XCTest launch arguments.
         launchArguments.contains("APP_STORE_SCREENSHOTS")
+            || UserDefaults.standard.bool(forKey: "MoroOfflineScreenshotSession")
         #else
         false
         #endif
@@ -499,6 +505,21 @@ struct MoroApp: App {
     @ViewBuilder private var composeCounterHarness: some View {
         #if DEBUG
         ComposeCounterHarnessView()
+        #endif
+    }
+
+    private var shouldUseQuoteShowcaseHarness: Bool {
+        #if DEBUG
+        launchArguments.contains("UITEST_QUOTE_SHOWCASE")
+            || launchEnvironment["UITEST_QUOTE_SHOWCASE"] == "1"
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder private var quoteShowcaseHarness: some View {
+        #if DEBUG
+        QuoteShowcaseHarnessView()
         #endif
     }
 

@@ -170,12 +170,12 @@ struct StatusMoreMenu: View {
 
             // Mute User
             Button(action: onMuteUser) {
-                MoroMenuItemLabel(title: "\(MoroL10n.PostMenu.actionMute) @\(status.account.username)", systemImage: "bell.slash")
+                MoroMenuItemLabel(title: MoroL10n.PostMenu.actionMute, systemImage: "bell.slash")
             }
 
             // Block User
             MoroMenuActionButton(
-                title: "\(MoroL10n.PostMenu.actionBlock) @\(status.account.username)",
+                title: MoroL10n.PostMenu.actionBlock,
                 systemImage: "hand.raised",
                 tone: .destructive,
                 action: onBlockUser
@@ -371,8 +371,8 @@ struct StatusMoreButton: View {
                     }) {
                         MoroMenuItemLabel(
                             title: isMutingUser == true
-                                ? "\(MoroL10n.PostMenu.actionUnmute) @\(actionAccount.username)"
-                                : "\(MoroL10n.PostMenu.actionMute) @\(actionAccount.username)",
+                                ? MoroL10n.PostMenu.actionUnmute
+                                : MoroL10n.PostMenu.actionMute,
                             systemImage: isMutingUser == true ? "bell" : "bell.slash"
                         )
                     }
@@ -384,13 +384,13 @@ struct StatusMoreButton: View {
                             performAction(onBlockUser)
                         }) {
                             MoroMenuItemLabel(
-                                title: "\(MoroL10n.PostMenu.actionUnblock) @\(actionAccount.username)",
+                                title: MoroL10n.PostMenu.actionUnblock,
                                 systemImage: "hand.raised.slash"
                             )
                         }
                     } else {
                         MoroMenuActionButton(
-                            title: "\(MoroL10n.PostMenu.actionBlock) @\(actionAccount.username)",
+                            title: MoroL10n.PostMenu.actionBlock,
                             systemImage: "hand.raised",
                             tone: .destructive,
                             action: { performAction(onBlockUser) }
@@ -429,10 +429,6 @@ struct StatusMoreButton: View {
         .transaction { transaction in
             transaction.disablesAnimations = true
         }
-    }
-
-    private var actionAccount: Account {
-        status.displayStatus.account
     }
 
     private var menuVisibility: StatusMoreMenuVisibility {

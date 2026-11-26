@@ -38,18 +38,12 @@ extension MainTab {
                 presentation: .root,
                 surface: .hero
             )
-        case .bookmarks, .favourites:
+        case .bookmarks, .favourites, .lists, .settings:
             return MoroSceneDescriptor(
                 identity: "root.\(rawValue)",
                 kind: .stream,
                 presentation: .root,
                 surface: .continuous
-            )
-        case .lists, .settings:
-            return MoroSceneDescriptor(
-                identity: "root.\(rawValue)",
-                kind: .grouped,
-                presentation: .root
             )
         }
     }
@@ -91,14 +85,12 @@ extension Route {
                 scrollBehavior: []
             )
 
-        case .bookmarks, .favourites, .listTimeline, .scheduledStatuses, .profileConnections:
+        case .bookmarks, .favourites, .listTimeline, .scheduledStatuses, .profileConnections,
+            .lists, .listMembers, .savedSearches, .followedTopics:
             return MoroSceneDescriptor(kind: .stream)
 
-        case .lists, .listMembers, .savedSearches, .followedTopics:
-            return MoroSceneDescriptor(kind: .grouped)
-
         case .editProfile:
-            return MoroSceneDescriptor(kind: .task)
+            return MoroSceneDescriptor(kind: .task, canvas: .content, topBar: .content)
         }
     }
 }

@@ -38,8 +38,6 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
     private let presentFeedback = UIImpactFeedbackGenerator(style: .medium)
     private var pressOrigin: CGPoint = .zero
     private var didTravel = false
-    /// The tabs run down the leading side (iPhone Duo, the left app in Split View).
-    private var barIsLeading = false
 
     init(container: UIViewController, tabBarController: UITabBarController, theme: MoroTheme) {
         self.container = container
@@ -94,13 +92,17 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
             applyInterfaceStyle()
         }
         if model.isPresented {
-            model.entries = makeEntries()
+            let entries = makeEntries()
+            if entries != model.entries {
+                model.entries = entries
+                refreshPresentedLayout()
+            }
         }
     }
 
     /// VoiceOver and Switch Control reach every account from the Me tab without the hold.
     func refreshAccessibilityActions() {
-        guard let meTab = meTabView() else { return }
+        guard let meTab = meTabView(in: tabButtons()) else { return }
         let others = configuration.sessions.filter { $0.id != configuration.activeSessionID }
         var actions = others.map { session in
             UIAccessibilityCustomAction(name: MoroL10n.AccountSwitcher.switchTo("@\(session.account.acct)")) {
@@ -135,7 +137,8 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
 
     /// `point` is in the press recognizer's view.
     private func isOnMeTab(_ point: CGPoint) -> Bool {
-        guard let space = pressRecognizer.view, let meFrame = meTabFrame(in: space) else { return false }
+        guard let space = pressRecognizer.view,
+              let meFrame = meTabFrame(in: space, button: meTabView(in: tabButtons())) else { return false }
         return meFrame.insetBy(dx: -6, dy: -6).contains(point)
     }
 
@@ -179,12 +182,13 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
             didTravel = false
             cancelTabBarTracking()
             present()
-            // Item frames arrive after the first layout pass.
-            DispatchQueue.main.async { [weak self] in self?.updateHover(at: location, haptic: false) }
+            updateHover(at: location, haptic: false)
         case .changed:
+            guard model.isPresented else { return }
             if hypot(location.x - pressOrigin.x, location.y - pressOrigin.y) > 10 { didTravel = true }
             updateHover(at: location, haptic: true)
         case .ended:
+            guard model.isPresented else { return }
             let target = entry(at: location)
             if !didTravel {
                 enterSticky()
@@ -213,19 +217,8 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
     /// Hit test by column: anywhere between the panel and the screen edge picks the
     /// item above or below the finger, so sliding along the tab bar is enough.
     private func entry(at point: CGPoint) -> AccountSwitcherEntry? {
-        guard let bounds = host?.view.bounds else { return nil }
-        let frames = model.entries.compactMap { entry in model.itemFrames[entry.id].map { (entry, $0) } }
-        guard let union = frames.map(\.1).reduce(nil, { $0?.union($1) ?? $1 }) else { return nil }
-        let reach: CGFloat = 70
-        let inBand = model.placement == .aboveTabBar
-            ? point.y >= union.minY - reach && point.y <= bounds.maxY
-            : point.y >= bounds.minY && point.y <= union.maxY + reach
-        let slack = AccountSwitcherMetrics.spacing / 2 + AccountSwitcherMetrics.padding
-        // The finger starts on the Me tab beside the panel: trailing of it on a bottom or
-        // trailing bar, leading of it on a leading bar.
-        let reachesPanel = barIsLeading ? point.x <= union.maxX + slack : point.x >= union.minX - slack
-        guard inBand, reachesPanel else { return nil }
-        return frames.min { abs($0.1.midX - point.x) < abs($1.1.midX - point.x) }?.0
+        guard let index = model.layout.entryIndex(at: point), model.entries.indices.contains(index) else { return nil }
+        return model.entries[index]
     }
 
     // MARK: - Presentation
@@ -247,7 +240,11 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
         for url in model.entries.compactMap(\.avatarURL) {
             Task { _ = await ImageCache.shared.load(from: url) }
         }
-        layoutPanel()
+        guard layoutPanel() else { return }
+        // Commit the collapsed position at this tab before starting the spring. The
+        // hidden prewarmed host may still contain the geometry of a previous layout.
+        hostView.setNeedsLayout()
+        hostView.layoutIfNeeded()
         hostView.isUserInteractionEnabled = false
         hostView.isHidden = false
         container?.view.bringSubviewToFront(hostView)
@@ -303,7 +300,7 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
         if let frame = model.itemFrames[entry.id] {
             let hovered = model.hoveredID.flatMap { id in model.entries.first { $0.id == id } }
             let size = AccountSwitcherMetrics.visualSize(of: entry, hovered: hovered)
-            let offsetY = (model.placement == .aboveTabBar ? -1 : 1)
+            let offsetY = (model.layout.placement == .aboveTabBar ? -1 : 1)
                 * AccountSwitcherMetrics.lift(of: entry, hovered: hovered)
             let visual = CGRect(
                 x: frame.midX - size / 2, y: frame.midY - size / 2 + offsetY,
@@ -335,11 +332,14 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
 
         // Land on where the Me avatar rests, not where it is drawn right now: on iOS 26
         // the glass tab bar is still swollen from the hold and settles back after release.
+        let source = hostView.convert(model.layout.source, to: window)
+        let fallback = CGRect(origin: source, size: .zero)
+            .insetBy(dx: -MeTabAvatarMetrics.avatar / 2, dy: -MeTabAvatarMetrics.avatar / 2)
         AccountSwitchTransition.shared.begin(
             window: window,
             panel: panel, panelFrame: panelFrame,
             avatar: avatar, from: avatarFrame,
-            to: meIconFrame(in: window)
+            to: meIconFrame(in: window, button: meTabView(in: tabButtons())) ?? fallback
         )
         model.isPresented = false
         model.isSticky = false
@@ -373,50 +373,28 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
         }
     }
 
-    private func layoutPanel() {
-        guard let hostView = host?.view, let tabBar = tabBarController?.tabBar else { return }
-        if let column = verticalTabColumn(in: hostView), let me = meTabFrame(in: hostView) {
-            layoutPanelBeside(column: column, me: me, in: hostView)
-            return
-        }
-        barIsLeading = false
-        let bar = tabBar.convert(tabBar.bounds, to: hostView)
-        let me = meTabFrame(in: hostView) ?? bar
-        let above = bar.midY > hostView.bounds.midY
-        model.placement = above ? .aboveTabBar : .belowTabBar
-        // Align the current account with Me while keeping the whole panel on screen.
-        let half = AccountSwitcherMetrics.avatarSize / 2 + AccountSwitcherMetrics.padding
-        let isRTL = hostView.effectiveUserInterfaceLayoutDirection == .rightToLeft
-        let distanceFromTrailingEdge = isRTL ? me.midX : hostView.bounds.width - me.midX
-        let margin = AccountSwitcherMetrics.edgeMargin
-        let maximumInset = max(margin, hostView.bounds.width - panelWidth - margin)
-        model.trailingInset = min(maximumInset, max(margin, distanceFromTrailingEdge - half))
-        model.edgeInset = above
-            ? hostView.bounds.height - bar.minY + AccountSwitcherMetrics.gapToTabBar
-            : bar.maxY + AccountSwitcherMetrics.gapToTabBar
+    func refreshPresentedLayout() {
+        if model.isPresented, !layoutPanel() { dismiss() }
     }
 
-    /// iPhone Duo: the tabs run down the side of the display. Open the panel beside the
-    /// column, level with the Me tab, so sliding from Me toward the content crosses the
-    /// accounts the way sliding along a bottom bar does.
-    private func layoutPanelBeside(column: CGRect, me: CGRect, in hostView: UIView) {
-        let gap = AccountSwitcherMetrics.gapToTabBar
-        let half = AccountSwitcherMetrics.avatarSize / 2 + AccountSwitcherMetrics.padding
-        barIsLeading = column.midX < hostView.bounds.midX
-        model.placement = .aboveTabBar
-        if barIsLeading {
-            model.trailingInset = max(
-                AccountSwitcherMetrics.edgeMargin, hostView.bounds.width - column.maxX - gap - panelWidth)
-        } else {
-            model.trailingInset = max(AccountSwitcherMetrics.edgeMargin, hostView.bounds.width - column.minX + gap)
-        }
-        model.edgeInset = max(AccountSwitcherMetrics.edgeMargin, hostView.bounds.height - me.midY - half)
-    }
-
-    private var panelWidth: CGFloat {
-        let count = CGFloat(max(model.entries.count, 1))
-        return count * AccountSwitcherMetrics.avatarSize
-            + (count - 1) * AccountSwitcherMetrics.spacing + 2 * AccountSwitcherMetrics.padding
+    @discardableResult
+    private func layoutPanel() -> Bool {
+        guard let hostView = host?.view, let tabBar = tabBarController?.tabBar,
+              let window = hostView.window, !hostView.bounds.isEmpty else { return false }
+        let buttons = tabButtons()
+        let button = meTabView(in: buttons)
+        guard let me = meTabFrame(in: hostView, button: button) else { return false }
+        let avatar = meIconFrame(in: window, button: button).map { hostView.convert($0, from: window) } ?? me
+        let layout = AccountSwitcherLayout(
+            source: CGPoint(x: avatar.midX, y: avatar.midY),
+            bar: tabBar.convert(tabBar.bounds, to: hostView),
+            column: verticalTabColumn(buttons, in: hostView),
+            safeArea: container?.view.safeAreaLayoutGuide.layoutFrame ?? hostView.bounds,
+            count: model.entries.count,
+            rightToLeft: tabBar.effectiveUserInterfaceLayoutDirection == .rightToLeft
+        )
+        if layout != model.layout { model.layout = layout }
+        return true
     }
 
     private func makeHostIfNeeded() -> UIHostingController<AnyView>? {
@@ -457,7 +435,7 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
 
     // MARK: - Me tab geometry
 
-    /// The system's tab buttons, one per tab in bar order (Me last). Found by class, not by
+    /// The system's tab buttons, one per tab in the current tab order. Found by class, not by
     /// identifier: the system fills in the buttons' identifiers only while accessibility is
     /// running (UI tests, VoiceOver), so a normal session sees none. The classic bar keeps them
     /// inside `tabBar`; iPhone Duo's vertical bar hosts them in a system bar elsewhere under
@@ -499,12 +477,12 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
 
     private static func isTabButton(_ view: UIView) -> Bool {
         if let id = view.accessibilityIdentifier, id.hasPrefix("mainTab.") { return true }
-        return String(describing: type(of: view)) == "_UITabButton"
+        let name = String(describing: type(of: view))
+        return name == "_UITabButton" || name == "UITabBarButton"
     }
 
-    private func meTabView() -> UIView? {
+    private func meTabView(in buttons: [UIView]) -> UIView? {
         guard let index = meTabIndex else { return nil }
-        let buttons = tabButtons()
         if let button = buttons.first(where: { $0.accessibilityIdentifier == Self.meTabIdentifier }) {
             return button
         }
@@ -517,8 +495,8 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
     }
 
     /// The column of tabs on iPhone Duo's vertical bar, or nil while the bar is horizontal.
-    private func verticalTabColumn(in space: UIView) -> CGRect? {
-        let frames = tabButtons().map { $0.convert($0.bounds, to: space) }
+    private func verticalTabColumn(_ buttons: [UIView], in space: UIView) -> CGRect? {
+        let frames = buttons.map { $0.convert($0.bounds, to: space) }
         guard frames.count > 1, let first = frames.first else { return nil }
         let column = frames.dropFirst().reduce(first) { $0.union($1) }
         return column.height > column.width ? column : nil
@@ -550,8 +528,8 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
     }
 
     /// The Me tab's frame in `space`.
-    private func meTabFrame(in space: UIView) -> CGRect? {
-        if let view = meTabView(), view.bounds.width > 0 {
+    private func meTabFrame(in space: UIView, button: UIView?) -> CGRect? {
+        if let view = button, view.bounds.width > 0 {
             return view.convert(view.bounds, to: space)
         }
         // Fall back to Me's slot in the current horizontal layout.
@@ -575,16 +553,16 @@ final class AccountSwitcherController: NSObject, UIGestureRecognizerDelegate {
 
     /// Where the Me tab's glyph is drawn. The iOS 26 tab bar doesn't expose the item's
     /// view by identifier, so pick the icon-sized image view nearest the Me slot.
-    private func meIconFrame(in window: UIWindow) -> CGRect {
+    private func meIconFrame(in window: UIWindow, button: UIView?) -> CGRect? {
         let size = MeTabAvatarMetrics.avatar
         // Where the Me tab exposes its own button (iPhone Duo's vertical bar), its icon is inside it.
-        if let meView = meTabView(),
+        if let meView = button,
             let icon = Self.iconViews(in: meView).max(by: { $0.bounds.width < $1.bounds.width })
         {
             return Self.landingFrame(of: icon, in: window, size: size)
         }
-        guard let tabBar = tabBarController?.tabBar, let slot = meTabFrame(in: tabBar) else {
-            return CGRect(x: window.bounds.maxX - 60, y: window.bounds.maxY - 70, width: size, height: size)
+        guard let tabBar = tabBarController?.tabBar, let slot = meTabFrame(in: tabBar, button: button) else {
+            return nil
         }
         let nearest = Self.iconViews(in: tabBar).min { lhs, rhs in
             let l = lhs.convert(lhs.bounds, to: tabBar), r = rhs.convert(rhs.bounds, to: tabBar)
@@ -735,7 +713,7 @@ final class AccountSwitchTransition {
         let start = CGPoint(x: from.midX, y: from.midY)
         let end = CGPoint(x: to.midX, y: to.midY)
         // A short hop: up and over, then down into the tab.
-        let control = CGPoint(x: (start.x + end.x) / 2 + 12, y: min(start.y, end.y) - 40)
+        let control = CGPoint(x: (start.x + end.x) / 2, y: min(start.y, end.y) - 40)
         let path = UIBezierPath()
         path.move(to: start)
         path.addQuadCurve(to: end, controlPoint: control)

@@ -1,11 +1,11 @@
 # README artwork sources
 
-The README reuses two promotional screenshots from Moro's published App Store listing. Existing repository files match the source checksums reported by App Store Connect for version 1.3.2, English (US), `APP_IPHONE_67`.
+The README uses two English (US) promotional screenshots from Moro’s 1.5.0 App Store Connect draft (`APP_IPHONE_67`).
 
 | Repository file | App Store screenshot ID | Source MD5 |
 | --- | --- | --- |
-| [`04-moro.png`](04-moro.png) | `5d9e2e6f-3ac8-42f1-9b1f-47faa296dffc` | `b083441f34f4cf2cb6d1089e6e192c07` |
-| [`10-moro.png`](10-moro.png) | `6b0e2f92-85b1-41be-86a3-f7ec5a11326f` | `4a5d057b1dce16ab15b3ffa72f5e765c` |
+| [04-moro.png](04-moro.png) | `84000019-3e35-819e-801f-7e6d2345f34a` | `ebedc87a86c9ec0cf7cf7856640681c1` |
+| [10-moro.png](10-moro.png) | `55800019-3e35-819e-803e-324f3a5ad2f1` | `11506ad46a11a622923a4754a5015059` |
 
 The previews use fictional demo accounts. Photography credits are preserved in the [showcase asset credits](showcase-credits.md).
 

@@ -67,6 +67,8 @@ struct SettingsView: View {
             Section {
                 accountCardRow(currentAccount)
             }
+            .listSectionSeparator(.visible, edges: .bottom)
+            .listSectionSeparatorTint(theme.colors.divider)
         }
 
         Section {
@@ -90,17 +92,18 @@ struct SettingsView: View {
                 settingsRow(MoroL10n.Settings.postingInteractions, icon: "square.and.pencil")
             }
             .accessibilityIdentifier("settings.posting")
+        }
+        .listSectionSeparator(.visible, edges: .bottom)
+        .listSectionSeparatorTint(theme.colors.divider)
 
+        Section {
             NavigationLink {
                 NotificationSettingsView(apiClient: apiClient)
             } label: {
                 settingsRow(MoroL10n.NotificationSettings.title, icon: "bell.badge")
             }
             .accessibilityIdentifier("settings.notifications")
-            .listRowSeparator(.hidden, edges: .bottom)
-        }
 
-        Section {
             NavigationLink {
                 PrivacySafetySettingsView(apiClient: apiClient)
             } label: {
@@ -115,9 +118,10 @@ struct SettingsView: View {
                     settingsRow(MoroL10n.Settings.contentSafety, icon: "line.3.horizontal.decrease.circle")
                 }
                 .accessibilityIdentifier("settings.contentSafety")
-                .listRowSeparator(.hidden, edges: .bottom)
             }
         }
+        .listSectionSeparator(.visible, edges: .bottom)
+        .listSectionSeparatorTint(theme.colors.divider)
 
         Section {
             NavigationLink {
@@ -130,10 +134,7 @@ struct SettingsView: View {
                 )
             }
             .accessibilityIdentifier("settings.storage")
-            .listRowSeparator(.hidden, edges: .bottom)
-        }
 
-        Section {
             NavigationLink {
                 FeedbackView(apiClient: apiClient)
             } label: { settingsRow(MoroL10n.AppSupport.feedback, icon: "bubble.left") }
@@ -214,7 +215,7 @@ struct SettingsView: View {
         let foregroundColor = color ?? theme.colors.textPrimary
 
         HStack(spacing: Metrics.rowSpacing) {
-            settingsIcon(icon, color: color ?? theme.colors.textSecondary)
+            settingsIcon(icon, color: color ?? theme.colors.textPrimary)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)

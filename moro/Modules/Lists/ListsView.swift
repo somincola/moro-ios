@@ -171,7 +171,7 @@ struct ListsView: View {
             return .error(
                 ErrorStateSpec(
                     title: MoroL10n.Lists.loadFailed,
-                    message: error.localizedDescription,
+                    message: MoroErrorCopy.message(for: error),
                     actionTitle: MoroL10n.Lists.retry,
                     action: { Task { await viewModel.refresh() } }
                 )
@@ -184,7 +184,8 @@ struct ListsView: View {
                     title: MoroL10n.Lists.emptyTitle,
                     message: MoroL10n.Lists.emptyMessage,
                     actionTitle: MoroL10n.Lists.newList,
-                    action: startNewList
+                    action: startNewList,
+                    actionProminent: true
                 )
             )
         }
@@ -255,18 +256,14 @@ struct ListsView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 if let transientErrorMessage = viewModel.transientErrorMessage {
-                    HStack(alignment: .top, spacing: theme.spacing.s) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(theme.colors.error)
-                            .padding(.top, 2)
-                        Text(transientErrorMessage)
-                            .font(theme.typography.caption)
-                            .foregroundStyle(theme.colors.textPrimary)
-                        Spacer()
-                    }
+                    MoroInlineNoticeBanner(
+                        message: transientErrorMessage,
+                        tone: .error,
+                        actionTitle: MoroL10n.Lists.retry,
+                        action: { Task { await viewModel.refresh() } }
+                    )
                     .padding(.horizontal, theme.spacing.contentHorizontalInset)
                     .padding(.vertical, theme.spacing.s)
-                    MoroDivider()
                 }
 
                 // Creating beside the lists: where the new list will land, so the left
@@ -552,7 +549,7 @@ private struct ListEditorForm: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .background(theme.colors.surfaceSubtle)
+        .background(theme.colors.surfaceBase)
         .disabled(isSaving)
         .overlay {
             if isSaving {
@@ -738,7 +735,7 @@ struct ListTimelineView: View {
             return .error(
                 ErrorStateSpec(
                     title: MoroL10n.Lists.loadFailed,
-                    message: error.localizedDescription,
+                    message: MoroErrorCopy.message(for: error),
                     actionTitle: MoroL10n.Lists.retry,
                     action: {
                         Task { await viewModel.loadInitial() }
