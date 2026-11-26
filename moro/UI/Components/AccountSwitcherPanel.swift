@@ -29,18 +29,17 @@ struct AccountSwitcherEntry: Identifiable, Equatable {
         activeSessionID: String?,
         addTitle: String
     ) -> [AccountSwitcherEntry] {
-        // Left to right: add, older accounts, most recent, then the current account
-        // nearest the Me tab, so the likeliest target is the shortest slide away.
+        // Priority outward from the Me tab, independent of its position on screen.
         let current = sessions.first { $0.id == activeSessionID }
         let others = sessions
             .filter { $0.id != activeSessionID }
-            .sorted { $0.lastUsedAt < $1.lastUsedAt }
-        var result = [AccountSwitcherEntry(
+            .sorted { $0.lastUsedAt > $1.lastUsedAt }
+        var result = current.map { [entry(for: $0, isCurrent: true)] } ?? []
+        result += others.map { entry(for: $0, isCurrent: false) }
+        result.append(AccountSwitcherEntry(
             id: "add", kind: .addAccount, avatarURL: nil,
             title: addTitle, handle: "", isCurrent: false
-        )]
-        result += others.map { entry(for: $0, isCurrent: false) }
-        if let current { result.append(entry(for: current, isCurrent: true)) }
+        ))
         return result
     }
 
@@ -70,16 +69,86 @@ final class AccountSwitcherModel: ObservableObject {
     @Published var hoveredID: String?
     /// Hidden while its snapshot flies to the tab bar.
     @Published var flyingID: String?
-    @Published var placement: Placement = .aboveTabBar
-    /// Distance from the host's trailing edge to the panel's trailing edge.
-    @Published var trailingInset: CGFloat = 16
-    /// Distance from the host's bottom (or top, below placement) to the panel.
-    @Published var edgeInset: CGFloat = 100
+    @Published var layout = AccountSwitcherLayout()
     /// Item frames in the host view's coordinates, for hit testing the drag.
     var itemFrames: [String: CGRect] = [:]
 
     var onSelect: (AccountSwitcherEntry) -> Void = { _ in }
     var onDismiss: () -> Void = {}
+}
+
+/// Physical coordinates in the overlay. The same geometry drives drawing, animation and drag selection.
+struct AccountSwitcherLayout: Equatable {
+    var source: CGPoint = .zero
+    var frame: CGRect = .zero
+    var placement: AccountSwitcherModel.Placement = .aboveTabBar
+    var slots: [Int] = []
+    private var visibleCount = 0
+    var scrolls: Bool { slots.count > visibleCount }
+    var opensRight = false
+
+    init() {}
+
+    init(source: CGPoint, bar: CGRect, column: CGRect?, safeArea: CGRect, count: Int, rightToLeft: Bool) {
+        self.source = source
+        guard count > 0 else { return }
+        let margin = AccountSwitcherMetrics.edgeMargin
+        let gap = AccountSwitcherMetrics.gapToTabBar
+        let spacing = AccountSwitcherMetrics.spacing
+        let height = AccountSwitcherMetrics.avatarSize + 2 * AccountSwitcherMetrics.padding
+        let step = AccountSwitcherMetrics.avatarSize + spacing
+        var left = safeArea.minX + margin
+        var right = safeArea.maxX - margin
+        var centerY: CGFloat
+        if let column {
+            opensRight = column.midX < safeArea.midX
+            if opensRight { left = max(left, column.maxX + gap) }
+            else { right = min(right, column.minX - gap) }
+            centerY = source.y
+        } else {
+            let offset = source.x - safeArea.midX
+            opensRight = abs(offset) <= 1 ? rightToLeft : offset < 0
+            placement = bar.midY >= safeArea.midY ? .aboveTabBar : .belowTabBar
+            centerY = placement == .aboveTabBar ? bar.minY - gap - height / 2 : bar.maxY + gap + height / 2
+        }
+        centerY = min(max(centerY, safeArea.minY + height / 2), safeArea.maxY - height / 2)
+        let capacity = max(1, 1 + Int(floor((right - left - height) / step)))
+        let visible = min(count, capacity)
+        let width = height + CGFloat(visible - 1) * step
+        visibleCount = visible
+
+        // Pick a slot near Me, then shift the capsule just enough to line up their centers.
+        // At an edge the accounts fan inward. In the middle both sides are within reach.
+        let centered = min(max(source.x - width / 2, left), right - width)
+        let fraction = (source.x - centered - height / 2) / step
+        let closest = opensRight ? ceil(fraction - 0.5) : floor(fraction + 0.5)
+        let current = min(max(Int(closest), 0), visible - 1)
+        let x = max(left, min(source.x - height / 2 - CGFloat(current) * step, right - width))
+        frame = CGRect(x: x, y: centerY - height / 2, width: width, height: height)
+
+        let nearestFirst = (0..<visible).sorted { a, b in
+            let da = abs(a - current), db = abs(b - current)
+            return da == db ? (opensRight ? a > b : a < b) : da < db
+        }
+        var visibleSlots = Array(repeating: 0, count: visible)
+        for (priority, slot) in nearestFirst.enumerated() { visibleSlots[slot] = priority }
+        let overflow = Array(visible..<count)
+        slots = opensRight ? visibleSlots + overflow : Array(overflow.reversed()) + visibleSlots
+    }
+
+    /// The held gesture uses resting positions even while the spring is still opening.
+    /// The overflow row can scroll only after release, when selection is by direct tap.
+    func entryIndex(at point: CGPoint) -> Int? {
+        let slack = AccountSwitcherMetrics.spacing / 2 + AccountSwitcherMetrics.padding
+        let band = frame.union(CGRect(origin: source, size: CGSize(width: 1, height: 1)))
+            .insetBy(dx: -slack, dy: -70)
+        guard visibleCount > 0, band.contains(point) else { return nil }
+        let step = AccountSwitcherMetrics.avatarSize + AccountSwitcherMetrics.spacing
+        let nearest = ((point.x - frame.minX - frame.height / 2) / step).rounded()
+        let index = min(max(Int(nearest), 0), visibleCount - 1)
+        let first = opensRight ? 0 : slots.count - visibleCount
+        return slots[first + index]
+    }
 }
 
 /// Every account is the same size; the current one wears the same ring as the Me tab's
@@ -121,9 +190,12 @@ struct AccountSwitcherOverlay: View {
         reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.34, dampingFraction: 0.8)
     }
 
+    @Environment(\.layoutDirection) private var contentDirection
+
     var body: some View {
-        ZStack(alignment: model.placement == .aboveTabBar ? .bottomTrailing : .topTrailing) {
-            // A quiet scrim focuses the panel; in sticky mode it also dismisses on tap.
+        let layout = model.layout
+        let atRest = model.isPresented || reduceMotion
+        ZStack {
             Color.black
                 .opacity(model.isPresented ? (theme.colorScheme == .dark ? 0.22 : 0.1) : 0)
                 .ignoresSafeArea()
@@ -131,15 +203,17 @@ struct AccountSwitcherOverlay: View {
                 .onTapGesture { model.onDismiss() }
                 .accessibilityHidden(true)
 
-            panel
-                .padding(.trailing, model.trailingInset)
-                .padding(model.placement == .aboveTabBar ? .bottom : .top, model.edgeInset)
-                .scaleEffect(
-                    model.isPresented || reduceMotion ? 1 : 0.5,
-                    anchor: model.placement == .aboveTabBar ? .bottomTrailing : .topTrailing
-                )
+            capsule
+                .scaleEffect(atRest ? 1 : 0.25)
                 .opacity(model.isPresented ? 1 : 0)
+                .position(
+                    x: atRest ? layout.frame.midX : layout.source.x,
+                    y: atRest ? layout.frame.midY : layout.source.y
+                )
         }
+        .overlayPreferenceValue(AccountSwitcherFramesKey.self) { frames in hoverLabel(frames: frames) }
+        // The controller supplies physical UIKit coordinates, including in RTL layouts.
+        .environment(\.layoutDirection, .leftToRight)
         .coordinateSpace(name: AccountSwitcherOverlay.space)
         .onPreferenceChange(AccountSwitcherFramesKey.self) { model.itemFrames = $0 }
         .animation(presentAnimation, value: model.isPresented)
@@ -147,14 +221,6 @@ struct AccountSwitcherOverlay: View {
     }
 
     static let space = "accountSwitcher"
-
-    private var panel: some View {
-        VStack(alignment: .trailing, spacing: 14) {
-            if model.placement == .aboveTabBar { hoverLabel }
-            capsule
-            if model.placement == .belowTabBar { hoverLabel }
-        }
-    }
 
     private var hoveredEntryForEmphasis: AccountSwitcherEntry? {
         model.hoveredID.flatMap { id in model.entries.first { $0.id == id } }
@@ -165,36 +231,68 @@ struct AccountSwitcherOverlay: View {
         return model.entries.first { $0.id == id }
     }
 
-    /// One caption for the hovered account, centred over its avatar but kept
-    /// inside the capsule's trailing edge and the screen's leading margin.
     @ViewBuilder
-    private var hoverLabel: some View {
-        if let entry = hoveredEntry, let frame = model.itemFrames[entry.id] {
-            let capsuleTrailing = (model.itemFrames.values.map(\.maxX).max() ?? frame.maxX)
-                + AccountSwitcherMetrics.padding
-            let toItemCenter = capsuleTrailing - frame.midX
-            AccountSwitcherLabel(entry: entry)
-                .fixedSize()
-                .alignmentGuide(.trailing) { dimensions in
-                    let centred = max(0, toItemCenter - dimensions.width / 2)
-                    let leadingLimit = max(0, capsuleTrailing - AccountSwitcherMetrics.edgeMargin - dimensions.width)
-                    return dimensions.width + min(centred, leadingLimit)
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.92,
-                    anchor: model.placement == .aboveTabBar ? .bottom : .top)))
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+    private func hoverLabel(frames: [String: CGRect]) -> some View {
+        if model.isPresented, let entry = hoveredEntry, let frame = frames[entry.id] {
+            let panel = model.layout.frame
+            let above = model.layout.placement == .aboveTabBar
+            GeometryReader { proxy in
+                let margin = AccountSwitcherMetrics.edgeMargin
+                AccountSwitcherLabel(entry: entry)
+                    .environment(\.layoutDirection, contentDirection)
+                    .padding(.horizontal, margin)
+                    .alignmentGuide(.leading) { size in
+                        -min(max(0, frame.midX - size.width / 2), max(0, proxy.size.width - size.width))
+                    }
+                    .alignmentGuide(.top) { size in
+                        -(above ? panel.minY - 14 - size.height : panel.maxY + 14)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+            .transition(.opacity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
     }
 
     private var capsule: some View {
-        HStack(spacing: AccountSwitcherMetrics.spacing) {
-            ForEach(model.entries) { entry in
+        Group {
+            if model.layout.scrolls {
+                let anchor: UnitPoint = model.layout.opensRight ? .leading : .trailing
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal) { items }
+                        .scrollIndicators(.hidden)
+                        .defaultScrollAnchor(anchor)
+                        .scrollDisabled(!model.isSticky)
+                        .onChange(of: model.isPresented) { _, presented in
+                            let edge = model.layout.opensRight ? model.layout.slots.first : model.layout.slots.last
+                            if presented, let edge, model.entries.indices.contains(edge) {
+                                proxy.scrollTo(model.entries[edge].id, anchor: anchor)
+                            }
+                        }
+                }
+                .id(model.layout.opensRight)
+            } else {
+                items
+            }
+        }
+        .frame(width: model.layout.frame.width, height: model.layout.frame.height)
+        .modifier(AccountSwitcherCapsuleBackground())
+        .accessibilityElement(children: .contain)
+    }
+
+    private var items: some View {
+        let entries = model.layout.slots.compactMap { index in
+            model.entries.indices.contains(index) ? model.entries[index] : nil
+        }
+        return HStack(spacing: AccountSwitcherMetrics.spacing) {
+            ForEach(entries) { entry in
                 AccountSwitcherItem(
                     entry: entry,
                     hovered: hoveredEntryForEmphasis,
-                    placement: model.placement
+                    placement: model.layout.placement
                 )
+                .environment(\.layoutDirection, contentDirection)
                 .opacity(model.flyingID == entry.id ? 0 : 1)
                 .background {
                     GeometryReader { proxy in
@@ -211,8 +309,6 @@ struct AccountSwitcherOverlay: View {
             }
         }
         .padding(AccountSwitcherMetrics.padding)
-        .modifier(AccountSwitcherCapsuleBackground())
-        .accessibilityElement(children: .contain)
     }
 }
 

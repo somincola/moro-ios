@@ -234,8 +234,9 @@ struct MainTabView: View {
             }
         }
         .onAppear {
-            consumePendingWidgetHandoffIfNeeded()
+            consumePendingQuickActionIfNeeded()
             consumePendingSharedDraftIfNeeded()
+            syncHomeScreenQuickActions()
             ensureInboxStreamSubscription()
             updateNotificationListVisibility()
             #if DEBUG
@@ -245,6 +246,12 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: SharedComposeHandoff.received)) { _ in
             guard scenePhase == .active else { return }
             consumePendingSharedDraftIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AppQuickActionCenter.didReceiveDestination)) { _ in
+            consumePendingQuickActionIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: MoroWidgetHandoffStore.didWriteNotification)) { _ in
+            consumePendingQuickActionIfNeeded()
         }
         .task(id: activeSessionID) {
             async let instanceMetadataLoad: Void = refreshInstanceMetadataIfNeeded()
@@ -260,12 +267,14 @@ struct MainTabView: View {
                 apiClient: apiClient
             )
             updateNotificationListVisibility()
+            syncHomeScreenQuickActions()
             await instanceMetadataLoad
         }
         .onChange(of: scenePhase) { _, newPhase in
+            syncHomeScreenQuickActions()
             guard newPhase == .active else { return }
             coordinator.noteAppBecameActive()
-            consumePendingWidgetHandoffIfNeeded()
+            consumePendingQuickActionIfNeeded()
             consumePendingSharedDraftIfNeeded()
             ensureInboxStreamSubscription()
             // The socket may have died or given up while suspended; don't wait out a backoff.
@@ -282,12 +291,20 @@ struct MainTabView: View {
             }
         }
         .onChange(of: activeSessionID) { _, _ in
-            consumePendingWidgetHandoffIfNeeded()
+            consumePendingQuickActionIfNeeded()
             consumePendingSharedDraftIfNeeded()
+            syncHomeScreenQuickActions()
         }
         .onChange(of: appState.currentAccount?.id) { _, _ in
-            consumePendingWidgetHandoffIfNeeded()
+            consumePendingQuickActionIfNeeded()
             consumePendingSharedDraftIfNeeded()
+            syncHomeScreenQuickActions()
+        }
+        .onChange(of: appState.currentAccount?.acct) { _, _ in
+            syncHomeScreenQuickActions()
+        }
+        .onChange(of: notificationUnreadStore.activeUnreadCount) { _, _ in
+            syncHomeScreenQuickActions()
         }
         .onChange(of: coordinator.isInboxVisible) { _, _ in
             updateNotificationListVisibility()
@@ -474,26 +491,22 @@ struct MainTabView: View {
         }
     }
 
-    private func consumePendingWidgetHandoffIfNeeded() {
-        guard coordinator.composeContext == nil,
-            let handoff = MoroWidgetHandoffStore.consume()
-        else {
+    private func consumePendingQuickActionIfNeeded() {
+        guard let destination = AppQuickActionCenter.shared.consumePendingDestination() else {
             return
         }
 
-        switch handoff.destination {
-        case .home:
-            coordinator.selectTab(.home)
-        case .compose:
-            coordinator.openCompose()
-        case .search:
-            coordinator.openExplore()
-        case .inbox:
-            coordinator.openInbox(.all)
+        coordinator.openQuickDestination(destination, account: currentDrawerAccount)
+        if destination == .inbox {
             updateNotificationListVisibility()
-        case .profile:
-            coordinator.openProfile(appState.currentAccount ?? accountSessions.first { $0.id == activeSessionID }?.account)
         }
+    }
+
+    private func syncHomeScreenQuickActions() {
+        AppQuickActionCenter.shared.syncShortcutItems(
+            account: currentDrawerAccount,
+            unreadCount: notificationUnreadStore.activeUnreadCount
+        )
     }
 
     private func updateNotificationListVisibility() {

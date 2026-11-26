@@ -17,6 +17,18 @@ public enum MoroL10n {
         public static var retry: String { text("shareImport.retry") }
         public static var ignore: String { text("shareImport.ignore") }
     }
+
+    public enum QuickAction {
+        public static var composeTitle: String { text("quickAction.compose.title") }
+        public static var searchTitle: String { text("quickAction.search.title") }
+        public static var searchSubtitle: String { text("quickAction.search.subtitle") }
+        public static var inboxTitle: String { text("quickAction.inbox.title") }
+        public static var inboxSubtitleEmpty: String { text("quickAction.inbox.subtitleEmpty") }
+        public static func inboxSubtitleUnread(_ count: Int) -> String {
+            format("quickAction.inbox.subtitleUnread", Int64(count))
+        }
+        public static var profileTitle: String { text("quickAction.profile.title") }
+    }
     private static let tableName = "Moro"
     private static let moduleBundle = Bundle.module
 
@@ -339,6 +351,7 @@ public enum MoroL10n {
         public static var appIconAppleGummy: String { text("appsettings.icon.appleGummy") }
         public static var appIconZebraPrint: String { text("appsettings.icon.zebraPrint") }
         public static var appIconNotAwake: String { text("appsettings.icon.notAwake") }
+        public static var appIconForestCalf: String { text("appsettings.icon.forestCalf") }
         public static var videoAutoplayNever: String { text("appsettings.videoAutoplay.never") }
         public static var videoAutoplayWiFi: String { text("appsettings.videoAutoplay.wifi") }
         public static var videoAutoplayAlways: String { text("appsettings.videoAutoplay.always") }
@@ -1837,6 +1850,12 @@ public enum MoroL10n {
     }
 
     public enum StatusDetail {
+        public static var viewEngagement: String { text("statusDetail.viewEngagement") }
+        public static var engagementTitle: String { text("statusDetail.engagementTitle") }
+        public static var engagementEmpty: String { text("statusDetail.engagementEmpty") }
+        public static var engagementSourceNote: String { text("statusDetail.engagementSourceNote") }
+        public static func likesCount(_ count: String) -> String { format("statusDetail.likesCount", count) }
+        public static func boostsCount(_ count: String) -> String { format("statusDetail.boostsCount", count) }
         public static var headerTitle: String { text("statusDetail.headerTitle") }
         public static var openFullScreen: String { text("statusDetail.openFullScreen") }
         public static var splitDivider: String { text("statusDetail.splitDivider") }

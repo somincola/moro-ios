@@ -43,9 +43,10 @@ struct PostEmojiScrollPlayback: ViewModifier {
 /// The native Text owns wrapping, links and accessibility. Only visible animated glyphs
 /// get a layer; Core Animation advances their frames on the render server without updating
 /// the text or row while scrolling.
-struct PostEmojiPlaybackText: View {
+struct PostEmojiPlaybackText<Content: View>: View {
     let emojiSize: CGFloat
-    let content: (Set<InlineEmojiMarker>) -> Text
+    var textKitSlots: [InlineEmojiSlot]? = nil
+    let content: (Set<InlineEmojiMarker>) -> Content
 
     @Environment(\.displayScale) private var displayScale
     @Environment(\.moroPlaybackScope) private var scope
@@ -83,7 +84,7 @@ struct PostEmojiPlaybackText: View {
         // including when Text temporarily publishes an empty layout after foregrounding.
         content(mask)
             .backgroundPreferenceValue(Text.LayoutKey.self) { layouts in
-                if allowed {
+                if allowed, textKitSlots == nil {
                     GeometryReader { proxy in
                         if proxy.size.height > PostEmojiPlaybackPolicy.viewportClipHeightThreshold {
                             TallPostEmojiSlotMeasurer(
@@ -107,6 +108,9 @@ struct PostEmojiPlaybackText: View {
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
                 }
+            }
+            .onChange(of: allowed ? textKitSlots : nil, initial: true) { _, measured in
+                if let measured { applyMeasuredSlots(measured, pixelSize: pixelSize) }
             }
             .overlay {
                 if !mask.isEmpty {
@@ -229,7 +233,7 @@ private struct TallPostEmojiSlotMeasurer: View {
         ) {
             let viewport = proxy.bounds(of: .scrollView) ?? CGRect(origin: .zero, size: proxy.size)
             Color.clear.onChange(
-                of: PostEmojiPlaybackText.measureSlots(
+                of: PostEmojiPlaybackText<Text>.measureSlots(
                     layouts, in: proxy, emojiSize: emojiSize, viewport: viewport
                 ),
                 initial: true

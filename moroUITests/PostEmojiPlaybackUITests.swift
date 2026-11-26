@@ -179,6 +179,67 @@ final class PostEmojiPlaybackUITests: XCTestCase {
                              returningToApp: true)
     }
 
+    func testProfileNameBioFieldsAndPinnedAuthorPlayCustomEmoji() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_PROFILE_EXPERIENCE", "UITEST_PROFILE_IDENTITY_EMOJI"]
+        app.launchEnvironment = ["UITEST_USE_FULL_APP": "1"]
+        app.launch(isolatedFor: self)
+        defer { app.terminate() }
+        let name = app.staticTexts["profile.displayName"]
+        XCTAssertTrue(name.waitForExistence(timeout: 10))
+        let size = app.frame.size
+        let bio = app.descendants(matching: .any)["profile.bio"].firstMatch
+        let fieldName = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Field'")).firstMatch
+        let fieldValue = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Value'")).firstMatch
+        for element in [name, bio, fieldName, fieldValue] {
+            XCTAssertTrue(element.waitForExistence(timeout: 5))
+            try waitForProfileFrame(.blue, in: element, app: app, size: size)
+            try waitForProfileFrame(.red, in: element, app: app, size: size)
+        }
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "profile-custom-emoji"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let pinned = app.descendants(matching: .any)["profile.pinnedPosts"].firstMatch
+        app.swipeUp(velocity: .slow)
+        XCTAssertTrue(pinned.waitForExistence(timeout: 5))
+        try waitForProfileFrame(.blue, in: pinned, app: app, size: size)
+        try waitForProfileFrame(.red, in: pinned, app: app, size: size)
+        try verifyAuthorBadges(in: app, size: size)
+    }
+
+    func testPinnedAndTimelineAuthorBadgeFitsWithPlaybackOff() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_PROFILE_EXPERIENCE", "UITEST_PROFILE_IDENTITY_EMOJI"]
+        app.launchEnvironment = ["UITEST_USE_FULL_APP": "1", "UITEST_PROFILE_STATIC_EMOJI": "1"]
+        app.launch(isolatedFor: self)
+        defer { app.terminate() }
+        XCTAssertTrue(app.staticTexts["profile.displayName"].waitForExistence(timeout: 10))
+        app.swipeUp(velocity: .slow)
+        try verifyAuthorBadges(in: app, size: app.frame.size)
+    }
+
+    private func verifyAuthorBadges(in app: XCUIApplication, size: CGSize) throws {
+        let bylines = XCTAttachment(screenshot: app.screenshot())
+        bylines.name = "pinned-and-timeline-author-emoji"
+        bylines.lifetime = .keepAlways
+        add(bylines)
+        for body in ["Pinned app post", "Latest app post"] {
+            let post = app.staticTexts[body].firstMatch
+            XCTAssertTrue(post.exists, body)
+            let region = CGRect(x: post.frame.minX - 1, y: post.frame.minY - 50,
+                                width: 130, height: 34)
+            let pixels = try Pixels(app, size: size)
+            let badge = try XCTUnwrap(pixels.glyphs(in: region, includesSquare: true).first, "\(body) at \(region)")
+            // The transparent border and one-point sampling can remove a pixel on each edge.
+            // A clipped right edge changes the aspect ratio even when the height is correct.
+            XCTAssertEqual(badge.width, badge.height, accuracy: 1, body)
+            XCTAssertTrue((14...17).contains(badge.height), "\(body): \(badge)")
+            let textCenter = try XCTUnwrap(pixels.textMidY(before: badge, startingAt: post.frame.minX))
+            XCTAssertEqual(badge.midY, textCenter, accuracy: 1.5, body)
+        }
+    }
+
     func testProfileEmojiContinuesPlayingDuringDragAndResumesAfterReturningFromHome() throws {
         let app = XCUIApplication()
         app.launchArguments = ["UITEST_PROFILE_EXPERIENCE", "UITEST_POST_EMOJI"]
@@ -219,7 +280,7 @@ final class PostEmojiPlaybackUITests: XCTestCase {
         repeat {
             let frame = row.frame.insetBy(dx: -2, dy: -2)
             let pixels = try Pixels(app, size: size)
-            if pixels.glyphs(in: frame).contains(where: { pixels.color(in: $0) == color }) { return }
+            if pixels.glyphs(in: frame, includesSquare: true).contains(where: { pixels.color(in: $0) == color }) { return }
             RunLoop.current.run(until: Date().addingTimeInterval(0.13))
         } while Date() < deadline
         add(XCTAttachment(screenshot: app.screenshot()))
@@ -285,7 +346,7 @@ final class PostEmojiPlaybackUITests: XCTestCase {
             glyphs(in: CGRect(x: 0, y: top, width: width, height: max(0, height - top)))
         }
 
-        func glyphs(in region: CGRect) -> [CGRect] {
+        func glyphs(in region: CGRect, includesSquare: Bool = false) -> [CGRect] {
             var slots: [CGRect] = []
             // Every poster has a solid left edge. Merge horizontal bands across
             // consecutive scan lines, including the APNG's transparent corner.
@@ -307,8 +368,19 @@ final class PostEmojiPlaybackUITests: XCTestCase {
                     } else { slots.append(band) }
                 }
             }
-            return slots.filter { (8...24).contains($0.height) && $0.width > $0.height }
+            return slots.filter { (8...24).contains($0.height) && (includesSquare || $0.width > $0.height) }
                 .sorted { abs($0.midY - $1.midY) > 4 ? $0.midY < $1.midY : $0.minX < $1.minX }
+        }
+
+        func textMidY(before badge: CGRect, startingAt startX: CGFloat) -> CGFloat? {
+            let rows = (Int(badge.minY) - 3..<Int(badge.maxY) + 3).filter { y in
+                (Int(startX)..<Int(badge.minX) - 2).contains { x in
+                    let i = (y * width + x) * 4
+                    return rgba[i] < 90 && rgba[i + 1] < 90 && rgba[i + 2] < 90
+                }
+            }
+            guard let top = rows.first, let bottom = rows.last else { return nil }
+            return CGFloat(top + bottom + 1) / 2
         }
     }
 }

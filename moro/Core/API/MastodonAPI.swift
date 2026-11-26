@@ -217,6 +217,7 @@ protocol MastodonAPI {
     func fetchStatusDetail(id: String) async throws -> Status
     func fetchStatusContext(id: String) async throws -> StatusContext
     func fetchStatusHistory(id: String) async throws -> [StatusEditHistoryItem]
+    func fetchStatusEngagement(id: String, kind: StatusEngagementKind, maxID: String?) async throws -> StatusEngagementPage
     func fetchStatusSource(id: String) async throws -> StatusSource
     func translateStatus(id: String, targetLanguage: String?) async throws -> StatusTranslationPayload
     /// Source → supported-target map from the instance translation backend.
@@ -573,6 +574,16 @@ struct SearchTag: Codable, Hashable, Identifiable {
     }
 
     var id: String { name.lowercased() }
+}
+
+enum StatusEngagementKind: String {
+    case favourites = "favourited_by"
+    case boosts = "reblogged_by"
+}
+
+struct StatusEngagementPage {
+    let accounts: [Account]
+    let nextMaxID: String?
 }
 
 struct BookmarkedStatusesPage {

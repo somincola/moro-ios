@@ -674,6 +674,12 @@ struct MastodonClient: MastodonAPI {
         return try await perform(request)
     }
 
+    func fetchStatusEngagement(id: String, kind: StatusEngagementKind, maxID: String?) async throws -> StatusEngagementPage {
+        let request = try authorizedRequest(for: .statusEngagement(id: id, kind: kind, maxID: maxID))
+        let (accounts, response): ([Account], HTTPURLResponse) = try await performWithResponse(request)
+        return StatusEngagementPage(accounts: accounts, nextMaxID: MastodonLinkPagination.nextMaxID(in: response))
+    }
+
     func fetchStatusHistory(id: String) async throws -> [StatusEditHistoryItem] {
         let endpoint = MastodonEndpoint.statusHistory(id: id)
         let request = try authorizedRequest(for: endpoint)

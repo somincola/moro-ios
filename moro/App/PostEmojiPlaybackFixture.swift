@@ -37,6 +37,23 @@ enum PostEmojiPlaybackFixture {
                       reblogged: false, emojis: emojis)
     }()
 
+    // Opaque square frames expose clipping on any edge of a trailing name badge.
+    static let profileBadge: Status.Emoji = {
+        let data = Data(base64Encoded: "R0lGODlhFAAUAPAAAP8AAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQAKgAAACwAAAAAFAAUAAACEYSPqcvtD6OctNqLs968+68VACH5BAAqAAAALAAAAAAUABQAgAAA/wAAAAIRhI+py+0Po5y02ouz3rz7rxUAOw==")!
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("profile-badge.gif")
+        try! data.write(to: url, options: .atomic)
+        // Real servers also supply large transparent PNG posters, loaded after first layout.
+        let posterURL = url.deletingPathExtension().appendingPathExtension("png")
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let poster = UIGraphicsImageRenderer(size: CGSize(width: 512, height: 512), format: format).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 6, y: 6, width: 500, height: 500))
+        }
+        try! poster.pngData()!.write(to: posterURL, options: .atomic)
+        return Status.Emoji(shortcode: "gif", url: url, staticURL: posterURL)
+    }()
+
     // A scroll restart is visible on the same row: red for 6.5 s, then blue for 120 s.
     static let scrollGIF: Status.Emoji = {
         let data = Data(base64Encoded: "R0lGODlhIAAUAPAAAAAAAP8AACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJigIAACwAAAAAIAAUAAACK4yPmcDtrGJ8FMh76sNYO355DSiJEKmYFrqYbCu+iCrX9o3n+s73/g/EFQAAIfkECeAuAAAsAAAAACAAFACAAAAAAAD/AiuMj5nA7axifBTIe+rDWDt+eQ0oiRCpmBa6mGwrvogq1/aN5/rO9/4PxBUAADs=")!

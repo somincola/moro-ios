@@ -6,6 +6,32 @@ import UIKit
 
 @MainActor
 struct RichTextImmediateRenderingTests {
+    @Test func profileEmojiFallbackUsesOnlyLocalCodesAndPreservesEmbeddedEmoji() throws {
+        let server = URL(string: "https://home.example")!
+        let original = URL(string: "https://media.example/wave.gif")!
+        let wave = Account.Emoji(shortcode: "wave", url: original, staticURL: original)
+        let local = Account.Emoji(shortcode: "field-only", url: server, staticURL: server)
+        func account(_ handle: String) -> Account {
+            Account(id: handle, username: "ada", acct: handle, displayName: "Ada :wave:",
+                    note: "<p>:wave:</p>", avatar: "", avatarStatic: "", header: "", headerStatic: "",
+                    followersCount: 0, followingCount: 0, statusesCount: 0,
+                    fields: [.init(name: ":field-only:", value: ":unknown:", verifiedAt: nil)], emojis: [wave])
+        }
+        let owner = account("ada")
+        let remote = account("ada@elsewhere.example")
+        #expect(ProfileEmojiSource(account: owner, server: server)?.missingCodes == ["field-only", "unknown"])
+        #expect(ProfileEmojiSource(account: remote, server: server)?.missingCodes.isEmpty == true)
+        let fallback = ProfileAccountEmoji(accountID: owner.id, emojis: [
+            .init(shortcode: "wave", url: server, staticURL: server), local
+        ])
+        let resolved = fallback.applying(to: owner)
+        #expect(resolved.emojis == [wave, local])
+        #expect(fallback.applying(to: remote).emojis == [wave])
+        #expect(resolved.fields[0].nameContentElements(emojis: resolved.contentEmojis)
+            == [.emoji(shortcode: local.shortcode, url: server, staticURL: server)])
+        #expect(resolved.fields[0].valueContentElements(emojis: resolved.contentEmojis) == [.text(":unknown:")])
+    }
+
     @Test func tapActionsPreserveParsedLinksMentionsAndHashtags() {
         let links = [
             "https://biplus.date/@Blocklist/117347208588612359",

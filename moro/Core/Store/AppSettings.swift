@@ -9,6 +9,7 @@ import Combine
 import Foundation
 import MoroLocalization
 import SwiftUI
+import WidgetKit
 
 /// Centralized app settings manager
 @MainActor
@@ -110,12 +111,14 @@ final class AppSettings: ObservableObject {
     @Published var themeColor: MoroThemeColor {
         didSet {
             userDefaults.set(themeColor.rawValue, forKey: Keys.themeColor)
+            syncWidgetAccent(reloadWidgets: true)
         }
     }
 
     @Published var customThemeColor: UInt32 {
         didSet {
             userDefaults.set(Int(customThemeColor), forKey: Keys.customThemeColor)
+            syncWidgetAccent(reloadWidgets: true)
         }
     }
 
@@ -135,6 +138,7 @@ final class AppSettings: ObservableObject {
         case appleGummy
         case zebraPrint
         case notAwake
+        case forestCalf
 
         var title: String {
             switch self {
@@ -147,6 +151,7 @@ final class AppSettings: ObservableObject {
             case .appleGummy: return MoroL10n.AppSettings.appIconAppleGummy
             case .zebraPrint: return MoroL10n.AppSettings.appIconZebraPrint
             case .notAwake: return MoroL10n.AppSettings.appIconNotAwake
+            case .forestCalf: return MoroL10n.AppSettings.appIconForestCalf
             }
         }
 
@@ -161,6 +166,7 @@ final class AppSettings: ObservableObject {
             case .appleGummy: return "AppIconAppleGummy"
             case .zebraPrint: return "AppIconZebraPrint"
             case .notAwake: return "AppIconNotAwake"
+            case .forestCalf: return "AppIconForestCalf"
             }
         }
 
@@ -175,6 +181,7 @@ final class AppSettings: ObservableObject {
             case .appleGummy: return "AppIconPreviewAppleGummy"
             case .zebraPrint: return "AppIconPreviewZebraPrint"
             case .notAwake: return "AppIconPreviewNotAwake"
+            case .forestCalf: return "AppIconPreviewForestCalf"
             }
         }
 
@@ -901,5 +908,19 @@ final class AppSettings: ObservableObject {
         // Retired global scaling has different semantics from post reading size.
         userDefaults.removeObject(forKey: "typographyFontScale")
         userDefaults.set(timelineDensity.rawValue, forKey: Keys.timelineDensity)
+        syncWidgetAccent(reloadWidgets: false)
+    }
+
+    private func syncWidgetAccent(reloadWidgets: Bool) {
+        guard userDefaults === UserDefaults.standard else { return }
+        let accent = MoroWidgetAccent(
+            themeColorRawValue: themeColor.rawValue,
+            customRGB: customThemeColor
+        )
+        MoroWidgetSharedStore.saveAccent(accent)
+        guard reloadWidgets else { return }
+        WidgetCenter.shared.reloadTimelines(ofKind: MoroWidgetKind.overview)
+        WidgetCenter.shared.reloadTimelines(ofKind: MoroWidgetKind.quickActions)
+        WidgetCenter.shared.reloadTimelines(ofKind: MoroWidgetKind.profileCard)
     }
 }

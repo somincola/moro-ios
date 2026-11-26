@@ -89,3 +89,6 @@ moro/Config/Secrets.swift
 
 # Project-specific local Xcode state
 moro.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+
+# Local design & verification reports (untracked)
+/reports/

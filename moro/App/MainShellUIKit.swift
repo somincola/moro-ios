@@ -229,6 +229,7 @@ struct MainShellContainerRepresentable: UIViewControllerRepresentable {
         override func viewDidLayoutSubviews() {
             super.viewDidLayoutSubviews()
             publishTabBarHeight()
+            accountSwitcher.refreshPresentedLayout()
             accountSwitcher.refreshAccessibilityActions()
         }
 

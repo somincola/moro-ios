@@ -16,7 +16,11 @@ struct ProfileExperienceHarnessView: View {
     }
 
     private static func makeState() -> AppState {
-        if ProcessInfo.processInfo.arguments.contains("UITEST_POST_EMOJI") {
+        if ProfileFixtureProtocol.testsProfileEmoji {
+            let badge = ProcessInfo.processInfo.environment["UITEST_PROFILE_BADGE_URL"].flatMap(URL.init(string:))
+                .map { Status.Emoji(shortcode: "gif", url: $0, staticURL: $0) }
+            ProfileFixtureProtocol.usePostEmoji(badge ?? PostEmojiPlaybackFixture.profileBadge)
+        } else if ProcessInfo.processInfo.arguments.contains("UITEST_POST_EMOJI") {
             ProfileFixtureProtocol.usePostEmoji(PostEmojiPlaybackFixture.scrollGIF)
         }
         if ProcessInfo.processInfo.environment["UITEST_PROFILE_ANIMATED_MEDIA"] == "1" || ProfileFixtureProtocol.hasGallery {
@@ -73,6 +77,7 @@ struct ProfileExperienceHarnessView: View {
         .environmentObject(appState)
         .environment(\.activeAccountKey, Self.accountKey)
         .environment(\.moroMediaPrefs, MoroMediaPreferences(
+            playAnimations: ProcessInfo.processInfo.environment["UITEST_PROFILE_STATIC_EMOJI"] != "1",
             autoplayGIFs: ProcessInfo.processInfo.environment["UITEST_PROFILE_AUTOPLAY_OFF"] != "1"))
         .moroTheme(theme)
         .task {
@@ -114,6 +119,7 @@ private final class ProfileFixtureToken: AuthTokenProvider {
 final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
     private var pushResponseTask: Task<Void, Never>?
     private static let lock = NSLock()
+    static let testsProfileEmoji = ProcessInfo.processInfo.arguments.contains("UITEST_PROFILE_IDENTITY_EMOJI")
     private static var postEmoji: [String: String]?
     static func usePostEmoji(_ emoji: Status.Emoji) {
         lock.withLock {
@@ -205,6 +211,12 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
             payload["following_count"] = 86
             payload["followers_count"] = 70
         }
+        if testsProfileEmoji, let postEmoji {
+            payload["display_name"] = "acacius :gif:"
+            payload["note"] = "<p>Bio :gif: <a href=\"https://profile-fixture.invalid/tags/garden\" class=\"hashtag\">#garden</a></p>"
+            payload["fields"] = [["name": "Field :local:", "value": "Value :local:"]]
+            payload["emojis"] = [postEmoji]
+        }
         if legacy { for key in ["show_media", "show_media_replies", "show_featured"] { payload.removeValue(forKey: key) } }
         if let avatar = ProcessInfo.processInfo.environment["UITEST_PROFILE_AVATAR_URL"] {
             payload["avatar"] = avatar
@@ -282,6 +294,12 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
         let method = request.httpMethod ?? "GET"
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         func parameter(_ name: String) -> String? { query.first { $0.name == name }?.value }
+        if path == "/api/v1/custom_emojis", testsProfileEmoji, let postEmoji {
+            var local: [String: Any] = postEmoji
+            local["shortcode"] = "local"
+            local["visible_in_picker"] = true
+            return (200, [local])
+        }
         if path == "/api/v1/mutes" || path == "/api/v1/blocks" {
             var managed = accountPayload()
             managed.merge(["id": "fixture-governance", "username": "managed", "acct": "managed",
@@ -475,8 +493,10 @@ final class ProfileFixtureProtocol: URLProtocol, @unchecked Sendable {
 
     private static func post(_ id: String) -> [String: Any] {
         let active = interactions[id] ?? []
+        var author = accountPayload()
+        if testsProfileEmoji, id == "100" { author.removeValue(forKey: "emojis") }
         return ["id": id, "content": "<p>\(id == "100" ? "Pinned app post" : id == "99" ? "Latest app post" : "Daily garden post")</p>",
-         "created_at": "2026-09-05T10:00:00.000Z", "account": accountPayload(),
+         "created_at": "2026-09-05T10:00:00.000Z", "account": author,
          "media_attachments": [], "favourites_count": active.contains("favourite") ? 1 : 0,
          "reblogs_count": active.contains("reblog") ? 1 : 0, "replies_count": 0,
          "favourited": active.contains("favourite"), "reblogged": active.contains("reblog"),

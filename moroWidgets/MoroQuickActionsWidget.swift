@@ -2,7 +2,10 @@
 //  MoroQuickActionsWidget.swift
 //  moroWidgets
 //
-
+//  Tactile quick-launcher widget with labeled 2x2 Small grid,
+//  asymmetric Bento Medium launchpad (Hero Compose + Search/Inbox/Home/Profile),
+//  and Lock Screen quick-compose circular launcher.
+//
 
 import AppIntents
 import SwiftUI
@@ -13,168 +16,364 @@ struct MoroQuickActionsWidget: Widget {
         StaticConfiguration(kind: MoroWidgetKind.quickActions, provider: MoroWidgetProvider()) { entry in
             MoroQuickActionsWidgetView(entry: entry)
                 .containerBackground(for: .widget) {
-                    MoroWidgetBackground(variant: .midnight)
+                    MoroWidgetSurfaceBackground(accent: entry.snapshot?.accent ?? .default)
                 }
         }
         .configurationDisplayName("widget.actions.name")
         .description("widget.actions.description")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular])
         .contentMarginsDisabled()
     }
 }
 
 private struct MoroQuickActionsWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
     let entry: MoroWidgetEntry
 
-    private var actions: [MoroWidgetAction] {
-        [
-            MoroWidgetAction(destination: .compose, icon: "plus", title: "widget.action.compose", emphasized: true),
-            MoroWidgetAction(destination: .search, icon: "magnifyingglass", title: "widget.action.search"),
-            MoroWidgetAction(
-                destination: .inbox,
-                icon: "tray.full.fill",
-                title: "widget.action.inbox",
-                badge: entry.snapshot?.unreadCount
-            ),
-            MoroWidgetAction(destination: .profile, icon: "person.fill", title: "widget.action.profile"),
-            MoroWidgetAction(
-                destination: .home,
-                icon: "house.fill",
-                title: "widget.action.home"
-            ),
-        ]
+    private var palette: MoroWidgetPalette {
+        MoroWidgetPalette(
+            colorScheme: colorScheme,
+            renderingMode: renderingMode,
+            accent: entry.snapshot?.accent ?? .default
+        )
     }
 
     var body: some View {
         Group {
-            if let snapshot = entry.snapshot {
-                if family == .systemMedium {
+            switch family {
+            case .accessoryCircular:
+                accessoryCircularCompose
+            case .systemMedium:
+                if let snapshot = entry.snapshot {
                     mediumContent(snapshot)
                 } else {
-                    smallContent(snapshot)
+                    MoroWidgetEmptyState(title: "widget.signIn.title")
+                        .padding(16)
                 }
-            } else {
-                MoroWidgetEmptyState(title: "widget.signIn.title")
-                    .padding(16)
+            default:
+                if let snapshot = entry.snapshot {
+                    smallContent(snapshot)
+                } else {
+                    MoroWidgetEmptyState(title: "widget.signIn.title")
+                        .padding(16)
+                }
             }
         }
         .privacySensitive()
     }
 
+    // MARK: - Home Screen Small (2x2 Labeled Tiles)
+
     private func smallContent(_ snapshot: MoroWidgetDataSnapshot) -> some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 9) {
-                MoroWidgetAvatar(account: snapshot.account, avatarData: entry.avatarData, size: 34)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(snapshot.account.preferredName)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    Text("widget.actions.shortTitle")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(Color.white.opacity(0.58))
-                }
-                Spacer(minLength: 0)
+        VStack(spacing: 9) {
+            HStack(spacing: 7) {
+                MoroWidgetAvatar(
+                    account: snapshot.account,
+                    avatarData: entry.avatarData,
+                    size: 24,
+                    palette: palette
+                )
+
+                Text(snapshot.account.preferredName)
+                    .font(.system(size: 12.5, weight: .bold))
+                    .foregroundStyle(palette.inkPrimary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 4)
+
+                MoroWidgetElephantMark(
+                    size: 16,
+                    primaryColor: palette.inkSecondary,
+                    secondaryColor: palette.inkTertiary
+                )
+                .widgetAccentable()
             }
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                ForEach(Array(actions.prefix(4))) { action in
-                    MoroWidgetActionButton(action: action, compact: true)
+            VStack(spacing: 7) {
+                HStack(spacing: 7) {
+                    MoroSmallActionTile(
+                        destination: .compose,
+                        icon: "square.and.pencil",
+                        title: "widget.action.compose",
+                        palette: palette,
+                        emphasized: true
+                    )
+
+                    MoroSmallActionTile(
+                        destination: .search,
+                        icon: "magnifyingglass",
+                        title: "widget.action.search",
+                        palette: palette
+                    )
+                }
+
+                HStack(spacing: 7) {
+                    MoroSmallActionTile(
+                        destination: .inbox,
+                        icon: "bell.fill",
+                        title: "widget.action.inbox",
+                        badge: snapshot.unreadCount,
+                        palette: palette
+                    )
+
+                    MoroSmallActionTile(
+                        destination: .profile,
+                        icon: "person.fill",
+                        title: "widget.action.profile",
+                        palette: palette
+                    )
                 }
             }
         }
         .padding(14)
+        .widgetURL(MoroWidgetDestination.home.deepLinkURL)
     }
 
+    // MARK: - Home Screen Medium (Asymmetric Bento Launchpad)
+
     private func mediumContent(_ snapshot: MoroWidgetDataSnapshot) -> some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 10) {
-                MoroWidgetAvatar(account: snapshot.account, avatarData: entry.avatarData, size: 40)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(snapshot.account.preferredName)
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    Text("widget.actions.title")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(Color.white.opacity(0.58))
-                }
-                Spacer()
-                Image(systemName: "arrow.up.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.white.opacity(0.46))
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                MoroWidgetAvatar(
+                    account: snapshot.account,
+                    avatarData: entry.avatarData,
+                    size: 24,
+                    palette: palette
+                )
+
+                Text(snapshot.account.preferredName)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(palette.inkPrimary)
+                    .lineLimit(1)
+
+                Text(snapshot.account.handle)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(palette.inkSecondary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 4)
+
+                MoroWidgetElephantMark(
+                    size: 17,
+                    primaryColor: palette.inkSecondary,
+                    secondaryColor: palette.inkTertiary
+                )
+                .widgetAccentable()
             }
 
-            HStack(spacing: 9) {
-                ForEach(actions) { action in
-                    MoroWidgetActionButton(action: action, compact: false)
+            HStack(spacing: 8) {
+                heroComposeCard
+
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        MoroMediumBentoTile(
+                            destination: .search,
+                            icon: "magnifyingglass",
+                            title: "widget.action.search",
+                            palette: palette
+                        )
+
+                        MoroMediumBentoTile(
+                            destination: .inbox,
+                            icon: "bell.fill",
+                            title: "widget.action.inbox",
+                            badge: snapshot.unreadCount,
+                            palette: palette
+                        )
+                    }
+
+                    HStack(spacing: 8) {
+                        MoroMediumBentoTile(
+                            destination: .home,
+                            icon: "house.fill",
+                            title: "widget.action.home",
+                            palette: palette
+                        )
+
+                        MoroMediumBentoTile(
+                            destination: .profile,
+                            icon: "person.fill",
+                            title: "widget.action.profile",
+                            palette: palette
+                        )
+                    }
                 }
             }
         }
-        .padding(16)
+        .padding(15)
+        .widgetURL(MoroWidgetDestination.home.deepLinkURL)
+    }
+
+    private var heroComposeCard: some View {
+        Button(intent: OpenMoroDestinationIntent(destination: .compose)) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 18, weight: .semibold))
+                        .widgetAccentable()
+                    Spacer(minLength: 0)
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(palette.primaryTileSecondaryForeground)
+                }
+
+                Spacer(minLength: 8)
+
+                Text("widget.action.compose")
+                    .font(.system(size: 14, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                Text("widget.actions.shortTitle")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(palette.primaryTileSecondaryForeground)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .padding(.top, 1)
+            }
+            .padding(12)
+            .frame(minWidth: 106, maxWidth: 106, maxHeight: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("widget.action.compose"))
+        .foregroundStyle(palette.primaryTileForeground)
+        .background(
+            palette.primaryTileFill,
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(palette.primaryTileBorder, lineWidth: 0.75)
+        }
+        .shadow(color: palette.tileShadowColor, radius: 4, y: 2)
+    }
+
+    // MARK: - Lock Screen Circular Quick Compose
+
+    private var accessoryCircularCompose: some View {
+        ZStack {
+            AccessoryWidgetBackground()
+            Image(systemName: "square.and.pencil")
+                .font(.system(size: 21, weight: .semibold))
+                .widgetAccentable()
+        }
+        .widgetURL(MoroWidgetDestination.compose.deepLinkURL)
+        .accessibilityLabel(Text("widget.action.compose"))
     }
 }
 
-private struct MoroWidgetAction: Identifiable {
+private struct MoroSmallActionTile: View {
     let destination: MoroWidgetDestination
     let icon: String
     let title: LocalizedStringKey
-    var badge: Int?
-    var emphasized = false
-
-    var id: MoroWidgetDestination { destination }
-}
-
-private struct MoroWidgetActionButton: View {
-    let action: MoroWidgetAction
-    let compact: Bool
+    var badge: Int? = nil
+    let palette: MoroWidgetPalette
+    var emphasized: Bool = false
 
     var body: some View {
-        Button(intent: OpenMoroDestinationIntent(destination: action.destination)) {
-            if compact {
-                actionIcon(size: 18)
-                .frame(maxWidth: .infinity, minHeight: 38)
-            } else {
-                VStack(spacing: 6) {
-                    actionIcon(size: 15)
-                    Text(action.title)
-                        .font(.system(size: 9, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
+        Button(intent: OpenMoroDestinationIntent(destination: destination)) {
+            VStack(spacing: 4) {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 20, height: 20)
+                        .widgetAccentable(emphasized)
+
+                    if let badge, badge > 0 {
+                        MoroWidgetUnreadPill(count: badge, palette: palette, compact: true)
+                            .scaleEffect(0.82, anchor: .topTrailing)
+                            .offset(x: 10, y: -5)
+                    }
                 }
-                .frame(maxWidth: .infinity, minHeight: 64)
+
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(
+                        emphasized ? palette.primaryTileForeground : palette.inkSecondary
+                    )
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
             }
+            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(action.title))
-        .foregroundStyle(.white)
+        .accessibilityLabel(Text(title))
+        .foregroundStyle(emphasized ? palette.primaryTileForeground : palette.inkPrimary)
         .background(
-            action.emphasized ? Color.white.opacity(0.23) : Color.white.opacity(0.09),
-            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+            emphasized ? palette.primaryTileFill : palette.tileSurface,
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .stroke(Color.white.opacity(action.emphasized ? 0.2 : 0.07), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(
+                    emphasized ? palette.primaryTileBorder : palette.tileBorder,
+                    lineWidth: 0.75
+                )
         }
+        .shadow(color: palette.tileShadowColor, radius: 2.5, y: 1)
+    }
+}
+
+private struct MoroMediumBentoTile: View {
+    let destination: MoroWidgetDestination
+    let icon: String
+    let title: LocalizedStringKey
+    var badge: Int? = nil
+    let palette: MoroWidgetPalette
+
+    var body: some View {
+        Button(intent: OpenMoroDestinationIntent(destination: destination)) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) {
+                    tileIcon
+                    tileTitle.fixedSize()
+                    unreadBadge
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 4) {
+                        tileIcon
+                        Spacer(minLength: 0)
+                        unreadBadge
+                    }
+                    tileTitle.minimumScaleFactor(0.75)
+                }
+            }
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(title))
+        .background(
+            palette.tileSurface,
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(palette.tileBorder, lineWidth: 0.75)
+        }
+        .shadow(color: palette.tileShadowColor, radius: 2.5, y: 1)
     }
 
-    private func actionIcon(size: CGFloat) -> some View {
-        ZStack(alignment: .topTrailing) {
-            Image(systemName: action.icon)
-                .font(.system(size: size, weight: .bold))
-                .frame(width: 18, height: 18)
-                .widgetAccentable()
+    private var tileIcon: some View {
+        Image(systemName: icon)
+            .font(.system(size: 13.5, weight: .semibold))
+            .foregroundStyle(palette.inkPrimary)
+    }
 
-            if let badge = action.badge, badge > 0 {
-                Text(badge > 99 ? "99+" : "\(badge)")
-                    .font(.system(size: 6.5, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(red: 0.06, green: 0.16, blue: 0.2))
-                    .padding(.horizontal, 3)
-                    .frame(minWidth: 11, minHeight: 11)
-                    .background(.white, in: Capsule())
-                    .offset(x: 6, y: -5)
-            }
+    private var tileTitle: some View {
+        Text(title)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(palette.inkPrimary)
+            .lineLimit(1)
+    }
+
+    @ViewBuilder private var unreadBadge: some View {
+        if let badge, badge > 0 {
+            MoroWidgetUnreadPill(count: badge, palette: palette, compact: true)
         }
     }
 }

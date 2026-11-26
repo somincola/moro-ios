@@ -67,6 +67,7 @@ struct AccountDisplayNameView: View {
     var lineLimit: Int? = 1
     /// Inline bylines leave the remaining width to the handle beside the name.
     var fitsInlineWidth = false
+    var isPostByline = false
     var truncationMode: Text.TruncationMode = .tail
     var minimumScaleFactor: CGFloat = 1
     var allowsTightening: Bool = false
@@ -75,12 +76,28 @@ struct AccountDisplayNameView: View {
     var uiFontOverride: UIFont? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.animatesPostEmoji) private var animatesEmoji
+    @Environment(\.profileAccountEmoji) private var profileEmoji
 
     var body: some View {
-        let content = account.displayNameContent
+        let content = profileEmoji.applying(to: account).displayNameContent
 
         Group {
-            if content.containsCustomEmoji {
+            if content.containsCustomEmoji && animatesEmoji {
+                let font = resolvedUIFont
+                let size = font.pointSize * emojiScale
+                InlineEmojiText(runs: content.inlineRuns, emojiSize: size,
+                                emojiDescent: isPostByline ? (size - font.capHeight) / 2 : nil)
+                    .font(resolvedSwiftUIFont)
+                    .foregroundStyle(textColor)
+                    .lineLimit(lineLimit)
+                    .truncationMode(truncationMode)
+                    // Shrinking a profile byline scales its text but clips the trailing image.
+                    // Let the single-line truncation handle names wider than the column.
+                    .minimumScaleFactor(isPostByline ? 1 : minimumScaleFactor)
+                    .allowsTightening(allowsTightening)
+                    .accessibilityLabel(content.plainText)
+            } else if content.containsCustomEmoji {
                 AccountDisplayNameLabelRepresentable(
                     content: content,
                     font: resolvedUIFont,
@@ -152,6 +169,15 @@ nonisolated struct AccountDisplayNameContent: Equatable {
         segments.contains {
             if case .emoji = $0 { return true }
             return false
+        }
+    }
+
+    var inlineRuns: [InlineTextRun] {
+        segments.map { segment in
+            switch segment {
+            case .text(let value): .text(AttributedString(value))
+            case .emoji(let emoji): .emoji(shortcode: emoji.shortcode, url: emoji.url, staticURL: emoji.staticURL)
+            }
         }
     }
 
@@ -315,6 +341,7 @@ nonisolated enum AccountDisplayNameParser {
         hasher.combine(emojis.count)
         for emoji in emojis {
             hasher.combine(emoji.shortcode)
+            hasher.combine(emoji.url)
             hasher.combine(emoji.staticURL.absoluteString)
         }
         return NSString(string: String(hasher.finalize()))

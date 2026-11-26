@@ -89,10 +89,65 @@ final class AccountSwitcherUITests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["accountSwitcher.add"].exists)
     }
 
-    private func launch(dark: Bool) -> XCUIApplication {
+    func testMovedMeTabAnchorsThePanelAndSlidesToTheNearestAccount() {
+        for (position, order) in [
+            ("left", "(me,home,explore,inbox,lists)"),
+            ("middle", "(home,explore,me,inbox,lists)"),
+            ("right", "(home,explore,inbox,lists,me)"),
+        ] {
+            let app = launch(dark: false, order: order)
+            let me = meTab(app)
+            let slot = me.frame
+            let home = app.buttons["mainTab.home"].frame
+            let isSideBar = abs(home.midY - slot.midY) > abs(home.midX - slot.midX)
+            let start = me.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            let current = app.buttons["accountSwitcher.account.push-a"]
+            let recent = app.buttons["accountSwitcher.account.push-c"]
+            me.press(forDuration: 0.6)
+            XCTAssertTrue(current.waitForExistence(timeout: 5), position)
+            let add = app.buttons["accountSwitcher.add"]
+            XCTAssertTrue(app.windows.firstMatch.frame.contains(add.frame), position)
+            if isSideBar {
+                XCTAssertEqual(current.frame.midY, slot.midY, accuracy: 20, position)
+            } else {
+                XCTAssertEqual(current.frame.midX, slot.midX, accuracy: 12, position)
+                switch position {
+                case "left":
+                    XCTAssertLessThan(slot.midX, home.midX)
+                    XCTAssertGreaterThan(recent.frame.midX, current.frame.midX)
+                case "middle":
+                    XCTAssertEqual(slot.midX, app.windows.firstMatch.frame.midX, accuracy: 15)
+                    let older = app.buttons["accountSwitcher.account.push-b"]
+                    XCTAssertLessThan((recent.frame.midX - slot.midX) * (older.frame.midX - slot.midX), 0)
+                default:
+                    XCTAssertGreaterThan(slot.midX, app.buttons["mainTab.lists"].frame.midX)
+                    XCTAssertLessThan(recent.frame.midX, current.frame.midX)
+                }
+            }
+            XCTAssertEqual(abs(recent.frame.midX - current.frame.midX), 56, accuracy: 3)
+            attach(app, "switcher-anchor-\(position)")
+            let dx = recent.frame.midX - start.screenPoint.x
+            current.tap()
+            XCTAssertTrue(current.waitForNonExistence(timeout: 3))
+            start.press(forDuration: 0.6, thenDragTo: start.withOffset(CGVector(dx: dx, dy: 0)))
+            // The target account has its own default layout with four tabs.
+            XCTAssertTrue(app.buttons["mainTab.lists"].waitForNonExistence(timeout: 8))
+            meTab(app).press(forDuration: 0.6)
+            XCTAssertTrue(recent.waitForExistence(timeout: 5))
+            XCTAssertTrue(recent.isSelected, position)
+            app.terminate()
+        }
+    }
+
+    private func launch(dark: Bool, order: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["UITEST_PUSH_OPEN", "UITEST_DISABLE_ANIMATIONS",
+        app.launchArguments = ["UITEST_PUSH_OPEN",
             "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        if let order {
+            app.launchArguments += ["-navigationTabLayout.https://push-a.push-fixture.invalid/switcher-push-a", order]
+        } else {
+            app.launchArguments.append("UITEST_DISABLE_ANIMATIONS")
+        }
         app.launchEnvironment["UITEST_PUSH_SCENARIO"] = "inbox"
         app.launchEnvironment["UITEST_SWITCHER_ACCOUNTS"] = "1"
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = dark ? "dark" : "light"
