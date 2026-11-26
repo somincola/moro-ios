@@ -358,6 +358,35 @@ final class RootTabCoordinator: ObservableObject {
         }
     }
 
+    /// Unified router for Home Screen Quick Actions, Widgets, and `moro://open/*` deep links.
+    /// Search opens an auto-focused search sheet immediately without disturbing underlying tabs.
+    func openQuickDestination(_ destination: MoroWidgetDestination, account: Account?) {
+        closeDrawer()
+        showAddAccountLogin = false
+
+        switch destination {
+        case .home:
+            composeContext = nil
+            presentedSheet = nil
+            selectTab(.home)
+        case .compose:
+            // Preserve an already open compose session so an accidental repeat tap never drops a draft.
+            guard composeContext == nil else { return }
+            openCompose()
+        case .search:
+            composeContext = nil
+            presentedSheet = .search(autoFocus: true)
+        case .inbox:
+            composeContext = nil
+            presentedSheet = nil
+            openInbox(.all)
+        case .profile:
+            composeContext = nil
+            presentedSheet = nil
+            openProfile(account)
+        }
+    }
+
     func openProfile(_ account: Account?) {
         closeDrawer()
         if tabLayout.tabs.contains(.me) {

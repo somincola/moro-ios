@@ -124,7 +124,9 @@ struct MoroApp: App {
                 }
             }
             .onOpenURL { url in
-                SharedComposeHandoff.shared.receive(url)
+                if !SharedComposeHandoff.shared.receive(url) {
+                    AppQuickActionCenter.shared.receive(url: url)
+                }
             }
             .task {
                 // Once per launch: drop shared photos that nothing will ever import.
@@ -154,7 +156,9 @@ struct MoroApp: App {
 
     private var shouldUseAppStoreScreenshotHarness: Bool {
         #if DEBUG
+        // SpringBoard cold launches cannot inherit XCTest launch arguments.
         launchArguments.contains("APP_STORE_SCREENSHOTS")
+            || UserDefaults.standard.bool(forKey: "MoroOfflineScreenshotSession")
         #else
         false
         #endif

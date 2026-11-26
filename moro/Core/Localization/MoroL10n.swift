@@ -17,6 +17,18 @@ public enum MoroL10n {
         public static var retry: String { text("shareImport.retry") }
         public static var ignore: String { text("shareImport.ignore") }
     }
+
+    public enum QuickAction {
+        public static var composeTitle: String { text("quickAction.compose.title") }
+        public static var searchTitle: String { text("quickAction.search.title") }
+        public static var searchSubtitle: String { text("quickAction.search.subtitle") }
+        public static var inboxTitle: String { text("quickAction.inbox.title") }
+        public static var inboxSubtitleEmpty: String { text("quickAction.inbox.subtitleEmpty") }
+        public static func inboxSubtitleUnread(_ count: Int) -> String {
+            format("quickAction.inbox.subtitleUnread", Int64(count))
+        }
+        public static var profileTitle: String { text("quickAction.profile.title") }
+    }
     private static let tableName = "Moro"
     private static let moduleBundle = Bundle.module
 

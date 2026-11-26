@@ -62,28 +62,16 @@
     "widget.action.home" : {
       "extractionState" : "stale",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Home"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "首页"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "首頁"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Startseite"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Home"
           }
         },
         "es" : {
@@ -114,6 +102,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Início"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "首页"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "首頁"
           }
         }
       }
@@ -178,30 +178,17 @@
       }
     },
     "widget.action.profile" : {
-      "extractionState" : "stale",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Profile"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "我的"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "我的"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Profil"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profile"
           }
         },
         "es" : {
@@ -233,34 +220,34 @@
             "state" : "translated",
             "value" : "Perfil"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的"
+          }
         }
       }
     },
     "widget.action.search" : {
       "extractionState" : "stale",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Search"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜索"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜尋"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Suchen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search"
           }
         },
         "es" : {
@@ -291,6 +278,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pesquisar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜尋"
           }
         }
       }
@@ -357,28 +356,16 @@
     "widget.actions.name" : {
       "extractionState" : "stale",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro Quick Actions"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro 快捷操作"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro 快捷操作"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Moro Schnellaktionen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moro Quick Actions"
           }
         },
         "es" : {
@@ -410,33 +397,33 @@
             "state" : "translated",
             "value" : "Ações rápidas do Moro"
           }
-        }
-      }
-    },
-    "widget.actions.shortTitle" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quick Actions"
-          }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "快捷操作"
+            "value" : "Moro 快捷操作"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "快捷操作"
+            "value" : "Moro 快捷操作"
           }
-        },
+        }
+      }
+    },
+    "widget.actions.shortTitle" : {
+      "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schnellaktionen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quick Actions"
           }
         },
         "es" : {
@@ -468,33 +455,34 @@
             "state" : "translated",
             "value" : "Ações rápidas"
           }
-        }
-      }
-    },
-    "widget.actions.title" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Where would you like to go?"
-          }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "想从哪里开始？"
+            "value" : "快捷操作"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "想從哪裡開始？"
+            "value" : "快捷操作"
           }
-        },
+        }
+      }
+    },
+    "widget.actions.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wohin möchtest du?"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Where would you like to go?"
           }
         },
         "es" : {
@@ -526,63 +514,17 @@
             "state" : "translated",
             "value" : "Para onde queres ir?"
           }
-        }
-      }
-    },
-    "widget.comfort.accessibility" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro Soft Garden. Take it slow. You're doing fine."
-          }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Moro 治愈花园。慢慢来，也很好。"
+            "value" : "想从哪里开始？"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Moro 治癒花園。慢慢來，也很好。"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro Sanfter Garten. Lass dir Zeit. Du machst das gut."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jardín tranquilo de Moro. Ve con calma. Lo estás haciendo bien."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jardin paisible Moro. Prenez votre temps. Tout va bien."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Giardino sereno Moro. Prenditi il tuo tempo. Stai andando bene."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro やすらぎの庭。ゆっくりで大丈夫。よく頑張っています。"
-          }
-        },
-        "pt-PT" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jardim tranquilo do Moro. Vai com calma. Estás a fazer bem."
+            "value" : "想從哪裡開始？"
           }
         }
       }
@@ -590,83 +532,71 @@
     "widget.comfort.description" : {
       "extractionState" : "stale",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A gentle pocket garden made only to soften your Home Screen."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "一座只为装点桌面、让心情柔软一点的口袋花园。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "一座只為裝點桌面、讓心情柔軟一點的口袋花園。"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ein sanfter kleiner Garten, der deinen Home-Bildschirm verschönert."
+            "value" : "Zwei Drucke für deinen Home-Bildschirm: ein kleiner Elefant unter einem Blatt und Elefanten im Regenwald."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Two prints for your Home Screen: a little elephant under a leaf and elephants walking through the rainforest."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un pequeño jardín para dar calma a tu pantalla de inicio."
+            "value" : "Dos estampas para tu pantalla de inicio: un elefantito bajo una hoja y elefantes que pasean por la selva."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un petit jardin apaisant pour adoucir votre écran d’accueil."
+            "value" : "Deux estampes pour votre écran d’accueil : un éléphanteau sous une feuille et des éléphants en promenade dans la forêt tropicale."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un piccolo giardino sereno per rendere più dolce la schermata Home."
+            "value" : "Due stampe per la schermata Home: un elefantino sotto una foglia ed elefanti in cammino nella foresta pluviale."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホーム画面にやすらぎを添える、小さな庭。"
+            "value" : "ホーム画面に飾る2枚の版画。葉の下で休む子ゾウと、熱帯雨林を歩くゾウたち。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Um pequeno jardim tranquilo para suavizar o teu ecrã principal."
+            "value" : "Duas gravuras para o ecrã principal: um elefante pequeno debaixo de uma folha e elefantes a passear pela floresta tropical."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "两幅主屏版画：绿叶下歇脚的小象，热带雨林中漫步的象群。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "兩幅主畫面版畫：綠葉下歇腳的小象，熱帶雨林中漫步的象群。"
           }
         }
       }
     },
     "widget.comfort.eyebrow" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MORO"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MORO"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MORO"
-          }
-        },
         "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MORO"
+          }
+        },
+        "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "MORO"
@@ -697,6 +627,18 @@
           }
         },
         "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MORO"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MORO"
+          }
+        },
+        "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "MORO"
@@ -704,60 +646,60 @@
         }
       }
     },
-    "widget.comfort.message" : {
+    "widget.comfort.leaf" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Take it slow.\nYou're doing fine."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "慢慢来，\n也很好。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "慢慢來，\n也很好。"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lass dir Zeit.\nDu machst das gut."
+            "value" : "Ein kleiner Elefant ruht unter einem großen grünen Blatt neben roten Blüten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A little elephant rests under a broad green leaf beside red flowers."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ve con calma.\nLo estás haciendo bien."
+            "value" : "Un pequeño elefante descansa bajo una gran hoja verde junto a unas flores rojas."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Prenez votre temps.\nTout va bien."
+            "value" : "Un petit éléphant se repose sous une grande feuille verte, près de fleurs rouges."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Prenditi il tuo tempo.\nStai andando bene."
+            "value" : "Un elefantino riposa sotto una grande foglia verde accanto a fiori rossi."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ゆっくりで大丈夫。\nよく頑張っています。"
+            "value" : "小さなゾウが赤い花のそばで、大きな緑の葉の下にたたずんでいます。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vai com calma.\nEstás a fazer bem."
+            "value" : "Um pequeno elefante descansa debaixo de uma folha verde larga, junto a flores vermelhas."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小象在宽大的绿叶下歇脚，身旁开着红花。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小象在寬大的綠葉下歇腳，身旁開著紅花。"
           }
         }
       }
@@ -765,28 +707,16 @@
     "widget.comfort.name" : {
       "extractionState" : "stale",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro Soft Garden"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro 治愈花园"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro 治癒花園"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Moro Sanfter Garten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moro Soft Garden"
           }
         },
         "es" : {
@@ -818,91 +748,149 @@
             "state" : "translated",
             "value" : "Jardim tranquilo do Moro"
           }
-        }
-      }
-    },
-    "widget.comfort.subtitle" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A quiet corner for today."
-          }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "给今天留一点呼吸。"
+            "value" : "Moro 治愈花园"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "給今天留一點呼吸。"
+            "value" : "Moro 治癒花園"
           }
-        },
+        }
+      }
+    },
+    "widget.comfort.rainforest" : {
+      "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ein ruhiger Ort für heute."
+            "value" : "Ein Elefant und ein Kalb wandern gemeinsam durch den dichten tropischen Regenwald."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An elephant and a calf walk together through the dense tropical rainforest."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un rincón tranquilo para hoy."
+            "value" : "Un elefante y una cría caminan juntos por la densa selva tropical."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un coin tranquille pour aujourd’hui."
+            "value" : "Un éléphant et un éléphanteau marchent ensemble dans la forêt tropicale dense."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un angolo tranquillo per oggi."
+            "value" : "Un elefante e un cucciolo camminano insieme nella fitta foresta pluviale."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "今日のための、静かな場所。"
+            "value" : "ゾウと子ゾウが寄り添って、緑の生い茂る熱帯雨林を歩いています。"
           }
         },
         "pt-PT" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Um canto tranquilo para hoje."
+            "value" : "Um elefante e uma cria caminham juntos pela densa floresta tropical."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一头大象带着小象，缓缓走过枝叶茂密的热带雨林。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一頭大象帶著小象，緩緩走過枝葉茂密的熱帶雨林。"
+          }
+        }
+      }
+    },
+    "widget.overview.allCaughtUp" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles gelesen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All caught up"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todo al día"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tout est lu"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tutto letto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべて確認済み"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tudo lido"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已读完所有通知"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已讀完所有通知"
           }
         }
       }
     },
     "widget.overview.caption" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A calm glance at what is waiting for you."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "轻轻一瞥，看看有什么正在等你。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "輕輕一瞥，看看有什麼正在等你。"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein ruhiger Blick auf das, was dich erwartet."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A calm glance at what is waiting for you."
           }
         },
         "es" : {
@@ -933,6 +921,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Um olhar tranquilo sobre o que te espera."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻轻一瞥，看看有什么正在等你。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輕輕一瞥，看看有什麼正在等你。"
           }
         }
       }
@@ -997,29 +997,18 @@
       }
     },
     "widget.overview.greeting" : {
+      "extractionState" : "stale",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "YOUR MORO"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你的 MORO"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你的 MORO"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "DEIN MORO"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YOUR MORO"
           }
         },
         "es" : {
@@ -1051,34 +1040,34 @@
             "state" : "translated",
             "value" : "O TEU MORO"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 MORO"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 MORO"
+          }
         }
       }
     },
     "widget.overview.name" : {
       "extractionState" : "stale",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro Overview"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro 概览"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro 概覽"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Moro Übersicht"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moro Overview"
           }
         },
         "es" : {
@@ -1109,6 +1098,135 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Visão geral do Moro"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moro 概览"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moro 概覽"
+          }
+        }
+      }
+    },
+    "widget.overview.quiet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ruhig"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quiet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Al día"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calme"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calmo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未読なし"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Em dia"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无未读"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暫無未讀"
+          }
+        }
+      }
+    },
+    "widget.overview.unreadStatus" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld ungelesen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld unread"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld sin leer"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld à lire"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld da leggere"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件の未読"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld por ler"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 条未读"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 則未讀"
           }
         }
       }
@@ -1175,28 +1293,16 @@
     "widget.profile.followers" : {
       "extractionState" : "stale",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Followers"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "粉丝"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "粉絲"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Follower"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Followers"
           }
         },
         "es" : {
@@ -1228,34 +1334,34 @@
             "state" : "translated",
             "value" : "Seguidores"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粉丝"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粉絲"
+          }
         }
       }
     },
     "widget.profile.following" : {
       "extractionState" : "stale",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Following"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关注"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "關注"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Folge ich"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Following"
           }
         },
         "es" : {
@@ -1287,34 +1393,34 @@
             "state" : "translated",
             "value" : "A seguir"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关注"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關注"
+          }
         }
       }
     },
     "widget.profile.name" : {
       "extractionState" : "stale",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro Profile Card"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro 个人资料卡"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moro 個人資料卡"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Moro Profilkarte"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moro Profile Card"
           }
         },
         "es" : {
@@ -1346,33 +1452,92 @@
             "state" : "translated",
             "value" : "Cartão de perfil do Moro"
           }
-        }
-      }
-    },
-    "widget.signIn.subtitle" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Open Moro and sign in to bring this card to life."
-          }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "打开 Moro 登录后，这张卡片就会亮起来。"
+            "value" : "Moro 个人资料卡"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "打開 Moro 登入後，這張卡片就會亮起來。"
+            "value" : "Moro 個人資料卡"
+          }
+        }
+      }
+    },
+    "widget.profile.unread" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungelesen"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unread"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin leer"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non lues"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non lette"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未読"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por ler"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未读"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未讀"
+          }
+        }
+      }
+    },
+    "widget.signIn.subtitle" : {
+      "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Öffne Moro und melde dich an, um diese Karte zu aktivieren."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Moro and sign in to bring this card to life."
           }
         },
         "es" : {
@@ -1404,34 +1569,33 @@
             "state" : "translated",
             "value" : "Abre o Moro e inicia sessão para dar vida a este cartão."
           }
-        }
-      }
-    },
-    "widget.signIn.title" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Make it yours"
-          }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "让它成为你的卡片"
+            "value" : "打开 Moro 登录后，这张卡片就会亮起来。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "讓它成為你的卡片"
+            "value" : "打開 Moro 登入後，這張卡片就會亮起來。"
           }
-        },
+        }
+      }
+    },
+    "widget.signIn.title" : {
+      "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mach sie zu deiner Karte"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Make it yours"
           }
         },
         "es" : {
@@ -1462,6 +1626,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Faz dele o teu cartão"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让它成为你的卡片"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讓它成為你的卡片"
           }
         }
       }

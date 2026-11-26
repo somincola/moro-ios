@@ -27,7 +27,7 @@ final class LocalizationRegressionTests: XCTestCase {
         let widget = try XCTUnwrap(Bundle(url: plugins.appendingPathComponent("moroWidgets.appex")))
         let share = try XCTUnwrap(Bundle(url: plugins.appendingPathComponent("moroShareExtension.appex")))
         for (bundle, table, keys) in [
-            (widget, "Localizable", ["widget.action.search", "widget.profile.followers", "widget.comfort.message"]),
+            (widget, "Localizable", ["widget.action.search", "widget.profile.followers", "widget.comfort.leaf", "widget.comfort.rainforest"]),
             (share, "Localizable", ["share.state.loading", "share.state.opening", "share.action.open", "share.action.retry",
                 "share.error.openFailed", "share.error.tooManyImages", "share.error.unreadableImage",
                 "share.error.videoMustBeAlone", "share.error.unreadableVideo"]),
