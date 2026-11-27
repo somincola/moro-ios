@@ -73,8 +73,11 @@ final class AppSettings: ObservableObject {
         static let appearInSearchEngines = "appearInSearchEngines"
         static let defaultPostVisibility = "defaultPostVisibility"
 
-        // Timeline Detection Settings
+        // Timeline Detection & Reading Position Settings
         static let timelineInAppNewPostBannerEnabled = "timelineInAppNewPostBannerEnabled"
+        static let timelineOpenBehavior = "timelineOpenBehavior"
+        static let timelineSmartRefreshMinutes = "timelineSmartRefreshMinutes"
+        static let timelineSyncReadingPositionWithServer = "timelineSyncReadingPositionWithServer"
 
         // Emoji Management
         static let customEmojiGroupOrderByDomain = "customEmojiGroupOrderByDomain"
@@ -623,13 +626,102 @@ final class AppSettings: ObservableObject {
         }
     }
 
-    // MARK: - Timeline Detection Settings
+    // MARK: - Timeline Detection & Reading Position Settings
+
+    /// Controls where the Home timeline opens on cold launch and after returning from background.
+    enum TimelineOpenBehavior: String, CaseIterable {
+        case keepPosition = "keep_position"
+        case smartRefresh = "smart_refresh"
+        case alwaysLatest = "always_latest"
+
+        var title: String {
+            switch self {
+            case .keepPosition: return MoroL10n.ReadingPosition.keepPositionTitle
+            case .smartRefresh: return MoroL10n.ReadingPosition.smartRefreshTitle
+            case .alwaysLatest: return MoroL10n.ReadingPosition.alwaysLatestTitle
+            }
+        }
+
+        func detail(smartMinutes: Int) -> String {
+            switch self {
+            case .keepPosition:
+                return MoroL10n.ReadingPosition.keepPositionDetail
+            case .smartRefresh:
+                return MoroL10n.ReadingPosition.smartRefreshDetail(
+                    AppSettings.formattedSmartRefreshDuration(minutes: smartMinutes)
+                )
+            case .alwaysLatest:
+                return MoroL10n.ReadingPosition.alwaysLatestDetail
+            }
+        }
+
+        func summary(smartMinutes: Int) -> String {
+            switch self {
+            case .keepPosition:
+                return MoroL10n.ReadingPosition.keepPositionTitle
+            case .smartRefresh:
+                return MoroL10n.ReadingPosition.smartRefreshSummary(
+                    AppSettings.formattedSmartRefreshDuration(minutes: smartMinutes)
+                )
+            case .alwaysLatest:
+                return MoroL10n.ReadingPosition.alwaysLatestTitle
+            }
+        }
+    }
+
+    /// Discrete slider stops for `.smartRefresh` away threshold (30 min to 24 hours).
+    static let smartRefreshMinuteSteps: [Int] = [30, 60, 120, 240, 360, 720, 1440]
+    static let defaultSmartRefreshMinutes = 60
+
+    static func normalizedSmartRefreshMinutes(_ rawMinutes: Int) -> Int {
+        smartRefreshMinuteSteps.min { abs($0 - rawMinutes) < abs($1 - rawMinutes) }
+            ?? defaultSmartRefreshMinutes
+    }
+
+    static func formattedSmartRefreshDuration(minutes: Int) -> String {
+        let normalized = normalizedSmartRefreshMinutes(minutes)
+        if normalized < 60 {
+            return MoroL10n.ReadingPosition.durationMinutes(normalized)
+        }
+        return MoroL10n.ReadingPosition.durationHours(normalized / 60)
+    }
+
+    var smartRefreshWindow: TimeInterval {
+        TimeInterval(smartRefreshIntervalMinutes * 60)
+    }
 
     /// Whether to show in-app banner for new posts
     @Published var timelineInAppNewPostBannerEnabled: Bool {
         didSet {
             userDefaults.set(
                 timelineInAppNewPostBannerEnabled, forKey: Keys.timelineInAppNewPostBannerEnabled)
+        }
+    }
+
+    @Published var timelineOpenBehavior: TimelineOpenBehavior {
+        didSet {
+            userDefaults.set(timelineOpenBehavior.rawValue, forKey: Keys.timelineOpenBehavior)
+        }
+    }
+
+    @Published var smartRefreshIntervalMinutes: Int {
+        didSet {
+            let normalized = Self.normalizedSmartRefreshMinutes(smartRefreshIntervalMinutes)
+            if smartRefreshIntervalMinutes != normalized {
+                smartRefreshIntervalMinutes = normalized
+                return
+            }
+            userDefaults.set(normalized, forKey: Keys.timelineSmartRefreshMinutes)
+        }
+    }
+
+    /// Syncs the Home timeline reading position with Mastodon's Marker API across devices.
+    @Published var syncReadingPositionWithServer: Bool {
+        didSet {
+            userDefaults.set(
+                syncReadingPositionWithServer,
+                forKey: Keys.timelineSyncReadingPositionWithServer
+            )
         }
     }
 
@@ -885,9 +977,23 @@ final class AppSettings: ObservableObject {
             self.defaultPostVisibility = .public
         }
 
-        // Timeline Detection Settings (default: banner on)
+        // Timeline Detection & Reading Position Settings
         self.timelineInAppNewPostBannerEnabled =
             userDefaults.object(forKey: Keys.timelineInAppNewPostBannerEnabled) as? Bool ?? true
+        if let behaviorRaw = userDefaults.string(forKey: Keys.timelineOpenBehavior),
+            let behavior = TimelineOpenBehavior(rawValue: behaviorRaw)
+        {
+            self.timelineOpenBehavior = behavior
+        } else {
+            self.timelineOpenBehavior = .keepPosition
+        }
+        if let storedMinutes = userDefaults.object(forKey: Keys.timelineSmartRefreshMinutes) as? NSNumber {
+            self.smartRefreshIntervalMinutes = Self.normalizedSmartRefreshMinutes(storedMinutes.intValue)
+        } else {
+            self.smartRefreshIntervalMinutes = Self.defaultSmartRefreshMinutes
+        }
+        self.syncReadingPositionWithServer =
+            userDefaults.object(forKey: Keys.timelineSyncReadingPositionWithServer) as? Bool ?? true
 
         // Pinned Timelines (default: none)
         if let pinnedData = userDefaults.data(forKey: Keys.pinnedTimelineListsByAccount),

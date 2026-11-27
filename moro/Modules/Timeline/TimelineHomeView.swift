@@ -461,18 +461,57 @@ struct TimelineHomeView: View {
             scrollBridge.setActive(isActive && newValue == .active && !hasLocalModal)
             switch newValue {
             case .active:
-                // Coming back to the app is not "watching live": keep the post that was
-                // showing, even at the top, and let new posts wait behind the notice.
-                if lastInactiveAt != nil { scrollBridge.resumeAfterBackground() }
+                let inactiveAt = lastInactiveAt
+                lastInactiveAt = nil
+                let awayDuration = inactiveAt.map { Date().timeIntervalSince($0) } ?? 0
+                let shouldJumpToLatest = inactiveAt != nil
+                    && TimelineLaunchPolicy.shouldJumpToLatestOnResume(
+                        behaviorRawValue: settings.timelineOpenBehavior.rawValue,
+                        smartWindow: settings.smartRefreshWindow,
+                        awayDuration: awayDuration
+                    )
+
+                // Coming back without jumping to latest keeps the post that was showing,
+                // even at the top, and lets new posts wait behind the notice.
+                if inactiveAt != nil, !shouldJumpToLatest {
+                    scrollBridge.resumeAfterBackground()
+                }
                 guard hasLoadedHome else { return }
                 refreshAnnouncementBadge(initialDelay: false)
                 detectionManager.startDetection()
                 streamWatcher.ensureUserSession(accessToken: appState.authToken)
 
-                let inactiveAt = lastInactiveAt
-                lastInactiveAt = nil
-                guard let inactiveAt,
-                    Date().timeIntervalSince(inactiveAt) >= 60,
+                if shouldJumpToLatest {
+                    let target = viewModel
+                    let timeline = selectedTimeline
+                    Task { @MainActor in
+                        _ = await target.refresh(trigger: .foreground)
+                        guard selectedTimeline == timeline, scenePhase == .active else { return }
+                        syncDetectionTopID(for: timeline)
+                        loadDetectedPosts(scrollToTop: true, providesFeedback: false)
+                    }
+                    return
+                }
+
+                if settings.syncReadingPositionWithServer,
+                    selectedTimeline == .home,
+                    awayDuration >= 15
+                {
+                    Task { @MainActor in
+                        if let synced = await homeViewModel.syncRemoteMarkerOnResume(allowAdvance: true),
+                            selectedTimeline == .home,
+                            scenePhase == .active,
+                            !scrollBridge.isUserDragging(.home),
+                            !scrollBridge.isUserScrolling(.home)
+                        {
+                            scrollBridge.holdReadingPosition(synced, for: .home)
+                            processLiveUpdates(for: .home, viewModel: homeViewModel)
+                        }
+                    }
+                }
+
+                guard inactiveAt != nil,
+                    awayDuration >= 60,
                     let dimension = detectionDimension(for: selectedTimeline)
                 else { return }
 
@@ -627,6 +666,8 @@ struct TimelineHomeView: View {
     private func flushTimelineCachesOnDeparture(models: [TimelineViewModel]) {
         let modelsToFlush = models.filter(\.hasReadingState)
         guard !modelsToFlush.isEmpty else { return }
+        let shouldSyncMarker = settings.syncReadingPositionWithServer
+        let homeModel = homeViewModel
         #if os(iOS)
         let guardBox = BackgroundFlushGuard()
         guardBox.begin(name: "moro.timeline.flush")
@@ -635,11 +676,17 @@ struct TimelineHomeView: View {
             for model in modelsToFlush {
                 await model.flushCacheWrites()
             }
+            if shouldSyncMarker {
+                await homeModel.flushPendingMarkerSave()
+            }
         }
         #else
         Task {
             for model in modelsToFlush {
                 await model.flushCacheWrites()
+            }
+            if shouldSyncMarker {
+                await homeModel.flushPendingMarkerSave()
             }
         }
         #endif

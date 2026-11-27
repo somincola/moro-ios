@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import os
 
 /// Source identity is independent of display titles. List IDs never become file paths.
 enum TimelineFilter: Codable, Hashable, Sendable {
@@ -42,6 +43,9 @@ actor TimelineCache {
     private var liveMetadata: [String: TimelineLiveMetadata] = [:]
     private var dirtyKeys: Set<String> = []
     private var dirtyMetadataKeys: Set<String> = []
+    /// Tracks the latest anchor written synchronously via `saveReadingAnchorImmediately` so an
+    /// in-flight background `.cache` write can never clobber a newer `.anchor` with stale metadata.
+    private nonisolated let latestImmediateAnchors = OSAllocatedUnfairLock<[String: TimelineReadingAnchor?]>(initialState: [:])
     private var persistenceTask: Task<Void, Never>?
     private var persistenceTaskIsDelayed = false
     /// Bumped by every schedule and flush; a scheduled write that is no longer current
@@ -109,7 +113,34 @@ actor TimelineCache {
         for client: String,
         filter: TimelineFilter
     ) {
-        writeAnchorFile(anchor, forKey: "\(client)-\(filter.cacheKey)")
+        let key = "\(client)-\(filter.cacheKey)"
+        latestImmediateAnchors.withLock { overrides in
+            overrides[key] = anchor
+            writeAnchorFile(anchor, forKey: key)
+        }
+    }
+
+    nonisolated func loadLastKnownServerMarkerID(
+        for client: String,
+        filter: TimelineFilter
+    ) -> String? {
+        let url = cacheDirectory.appendingPathComponent("\(client)-\(filter.cacheKey).marker")
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    nonisolated func saveLastKnownServerMarkerID(
+        _ statusID: String?,
+        for client: String,
+        filter: TimelineFilter
+    ) {
+        let url = cacheDirectory.appendingPathComponent("\(client)-\(filter.cacheKey).marker")
+        guard let statusID, !statusID.isEmpty else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        try? Data(statusID.utf8).write(to: url, options: .atomic)
     }
 
     /// Keeps in-memory `liveMetadata` aligned with a lightweight `.anchor` write without
@@ -184,6 +215,7 @@ actor TimelineCache {
         liveMetadata.removeAll()
         dirtyKeys.removeAll()
         dirtyMetadataKeys.removeAll()
+        latestImmediateAnchors.withLock { $0.removeAll() }
         try? FileManager.default.removeItem(at: cacheDirectory)
         try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
     }
@@ -193,6 +225,7 @@ actor TimelineCache {
         memoryCache.removeAll()
         liveMetadata.removeAll()
         dirtyKeys.removeAll()
+        latestImmediateAnchors.withLock { $0.removeAll() }
         // Pending metadata is user reading state and must survive this operation.
         flushPendingWrites()
         let files = try FileManager.default.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil)
@@ -260,11 +293,26 @@ actor TimelineCache {
         for key in dirtyKeys {
             guard let items = memoryCache[key] else { continue }
             do {
+                var liveToWrite = liveMetadata[key]
+                if let overrideAnchor = latestImmediateAnchors.withLock({ $0[key] }) {
+                    if var state = liveToWrite {
+                        state.readingAnchor = overrideAnchor
+                        liveToWrite = state
+                    }
+                    liveMetadata[key] = liveToWrite
+                }
                 let encoder = JSONEncoder()
                 encoder.dateEncodingStrategy = .iso8601
-                try encoder.encode(CachedSnapshot(items: items, live: liveMetadata[key]))
+                try encoder.encode(CachedSnapshot(items: items, live: liveToWrite))
                     .write(to: fileURL(key, extension: "cache"), options: .atomic)
-                writeAnchorFile(liveMetadata[key]?.readingAnchor, forKey: key)
+                let fallbackAnchor = liveToWrite?.readingAnchor
+                // Only write `.anchor` from a body flush if no synchronous anchor write has
+                // taken ownership of this key (checked under the same lock as `.anchor` writes).
+                latestImmediateAnchors.withLock { overrides in
+                    if overrides[key] == nil {
+                        writeAnchorFile(fallbackAnchor, forKey: key)
+                    }
+                }
                 dirtyKeys.remove(key)
             } catch { /* Retain dirty state so the next flush can retry. */ }
         }
@@ -369,6 +417,7 @@ actor TimelineCache {
         liveMetadata[key] = nil
         dirtyKeys.remove(key)
         dirtyMetadataKeys.remove(key)
+        _ = latestImmediateAnchors.withLock { $0.removeValue(forKey: key) }
         try? FileManager.default.removeItem(at: fileURL(key, extension: "cache"))
         try? FileManager.default.removeItem(at: fileURL(key, extension: "meta"))
         try? FileManager.default.removeItem(at: fileURL(key, extension: "anchor"))

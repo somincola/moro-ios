@@ -750,4 +750,296 @@ struct TimelineLiveUpdatesTests {
         #expect(!bridge.isHoldingRestoredAnchor(for: .home))
     }
 
+    @Test func timelineOpenBehaviorPolicyCoversColdLaunchAndAntiMistouchWarmResume() {
+        let now = Date()
+        let twoHours: TimeInterval = 2 * 60 * 60
+
+        // 1. Keep reading position: always restores on cold launch, never auto-jumps on warm resume.
+        #expect(TimelineLaunchPolicy.shouldRestoreOnColdLaunch(
+            behaviorRawValue: AppSettings.TimelineOpenBehavior.keepPosition.rawValue,
+            smartWindow: twoHours, lastLeftAt: nil, now: now
+        ))
+        #expect(TimelineLaunchPolicy.shouldRestoreOnColdLaunch(
+            behaviorRawValue: AppSettings.TimelineOpenBehavior.keepPosition.rawValue,
+            smartWindow: twoHours, lastLeftAt: now.addingTimeInterval(-10 * 3600), now: now
+        ))
+        #expect(!TimelineLaunchPolicy.shouldJumpToLatestOnResume(
+            behaviorRawValue: AppSettings.TimelineOpenBehavior.keepPosition.rawValue,
+            smartWindow: twoHours, awayDuration: 10 * 3600
+        ))
+
+        // 2. Smart refresh: honors user-configured slider threshold on both cold launch and warm resume.
+        #expect(TimelineLaunchPolicy.shouldRestoreOnColdLaunch(
+            behaviorRawValue: AppSettings.TimelineOpenBehavior.smartRefresh.rawValue,
+            smartWindow: twoHours, lastLeftAt: now.addingTimeInterval(-90 * 60), now: now
+        ))
+        #expect(!TimelineLaunchPolicy.shouldRestoreOnColdLaunch(
+            behaviorRawValue: AppSettings.TimelineOpenBehavior.smartRefresh.rawValue,
+            smartWindow: twoHours, lastLeftAt: now.addingTimeInterval(-125 * 60), now: now
+        ))
+        #expect(!TimelineLaunchPolicy.shouldJumpToLatestOnResume(
+            behaviorRawValue: AppSettings.TimelineOpenBehavior.smartRefresh.rawValue,
+            smartWindow: twoHours, awayDuration: 119 * 60
+        ))
+        #expect(TimelineLaunchPolicy.shouldJumpToLatestOnResume(
+            behaviorRawValue: AppSettings.TimelineOpenBehavior.smartRefresh.rawValue,
+            smartWindow: twoHours, awayDuration: 120 * 60
+        ))
+
+        // 3. Always latest: cold launch goes to top; warm resume respects 2-minute anti-mistouch guard.
+        #expect(!TimelineLaunchPolicy.shouldRestoreOnColdLaunch(
+            behaviorRawValue: AppSettings.TimelineOpenBehavior.alwaysLatest.rawValue,
+            smartWindow: twoHours, lastLeftAt: now.addingTimeInterval(-5), now: now
+        ))
+        #expect(!TimelineLaunchPolicy.shouldJumpToLatestOnResume(
+            behaviorRawValue: AppSettings.TimelineOpenBehavior.alwaysLatest.rawValue,
+            smartWindow: twoHours, awayDuration: 30
+        ))
+        #expect(!TimelineLaunchPolicy.shouldJumpToLatestOnResume(
+            behaviorRawValue: AppSettings.TimelineOpenBehavior.alwaysLatest.rawValue,
+            smartWindow: twoHours, awayDuration: 119
+        ))
+        #expect(TimelineLaunchPolicy.shouldJumpToLatestOnResume(
+            behaviorRawValue: AppSettings.TimelineOpenBehavior.alwaysLatest.rawValue,
+            smartWindow: twoHours, awayDuration: 120
+        ))
+    }
+
+    @Test func readingPositionSettingsPersistAndSnapSliderSteps() throws {
+        let suite = "ReadingPositionSettingsTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let settings = AppSettings(userDefaults: defaults)
+        #expect(settings.timelineOpenBehavior == .keepPosition)
+        #expect(settings.smartRefreshIntervalMinutes == 60)
+        #expect(settings.syncReadingPositionWithServer == true)
+
+        settings.timelineOpenBehavior = .smartRefresh
+        settings.smartRefreshIntervalMinutes = 240
+        settings.syncReadingPositionWithServer = false
+
+        let reloaded = AppSettings(userDefaults: defaults)
+        #expect(reloaded.timelineOpenBehavior == .smartRefresh)
+        #expect(reloaded.smartRefreshIntervalMinutes == 240)
+        #expect(reloaded.syncReadingPositionWithServer == false)
+
+        #expect(AppSettings.normalizedSmartRefreshMinutes(10) == 30)
+        #expect(AppSettings.normalizedSmartRefreshMinutes(95) == 120)
+        #expect(AppSettings.normalizedSmartRefreshMinutes(5_000) == 1440)
+    }
+
+    @Test func remoteMarkerAdvancesReadingAnchorAndClearsAlreadyReadNewPosts() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let clientID = UUID().uuidString
+        let cache = TimelineCache(directory: directory)
+        let localAnchor = TimelineReadingAnchor(statusID: "100", viewportOffset: -64)
+        let metadata = TimelineLiveMetadata(
+            checkpointID: "100",
+            fetchedHeadID: "100",
+            readingAnchor: localAnchor
+        )
+        await cache.setLiveSnapshot(
+            statuses: [post("100"), post("99")],
+            live: metadata,
+            for: clientID,
+            filter: .home
+        )
+        await cache.flushPendingWrites()
+
+        let api = MockMastodonAPI()
+        api.fetchHomeTimelineHandler = { _, _, _ in
+            [post("104"), post("103"), post("102"), post("101"), post("100")]
+        }
+        api.fetchMarkersHandler = { _ in
+            Marker(home: MarkerContent(lastReadId: "102", updatedAt: Date(), version: 5))
+        }
+
+        let model = TimelineViewModel(
+            apiClient: api,
+            feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory),
+            cacheClientID: clientID,
+            defersLivePresentation: true,
+            markerSyncEnabled: { true },
+            restoresReadingPositionOverride: true
+        )
+        defer { model.clearStatuses() }
+
+        await model.loadInitial()
+        #expect(model.savedReadingAnchor == TimelineReadingAnchor(statusID: "102", viewportOffset: 0))
+        #expect(model.pendingRemoteSyncedAnchor == TimelineReadingAnchor(statusID: "102", viewportOffset: 0))
+        // 102 and 101 were already read on another device; only 104 and 103 remain unread.
+        #expect(model.newPostCount == 2)
+    }
+
+    @Test func remoteMarkerNeverPullsNewerLocalAnchorBackwardAndRespectsSyncToggle() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let clientID = UUID().uuidString
+        let cache = TimelineCache(directory: directory)
+        let localAnchor = TimelineReadingAnchor(statusID: "103", viewportOffset: -145)
+        let metadata = TimelineLiveMetadata(
+            checkpointID: "104",
+            fetchedHeadID: "104",
+            readingAnchor: localAnchor
+        )
+        await cache.setLiveSnapshot(
+            statuses: [post("104"), post("103"), post("102"), post("101")],
+            live: metadata,
+            for: clientID,
+            filter: .home
+        )
+        await cache.flushPendingWrites()
+
+        let api = MockMastodonAPI()
+        api.fetchHomeTimelineHandler = { _, _, _ in [post("104"), post("103")] }
+        var markerFetchCount = 0
+        var savedMarkerIDs: [String] = []
+        api.fetchMarkersHandler = { _ in
+            markerFetchCount += 1
+            return Marker(home: MarkerContent(lastReadId: "101", updatedAt: Date(), version: 2))
+        }
+        api.saveMarkerHandler = { home, _ in
+            if let home { savedMarkerIDs.append(home) }
+            return Marker(home: home.map { MarkerContent(lastReadId: $0, updatedAt: Date(), version: 3) })
+        }
+
+        // 1. Enabled sync: older remote marker (101) keeps pixel-accurate local anchor (103, -145).
+        let enabledModel = TimelineViewModel(
+            apiClient: api,
+            feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory),
+            cacheClientID: clientID,
+            defersLivePresentation: true,
+            markerSyncEnabled: { true },
+            restoresReadingPositionOverride: true
+        )
+        defer { enabledModel.clearStatuses() }
+        await enabledModel.loadInitial()
+        #expect(markerFetchCount == 1)
+        #expect(enabledModel.savedReadingAnchor == localAnchor)
+
+        // Forward-only push: scrolling backward to 100 never overwrites server marker 101;
+        // flushing from 103 advances server marker to 103 immediately.
+        await enabledModel.saveMarker(statusID: "100")
+        #expect(savedMarkerIDs.isEmpty)
+        await enabledModel.flushPendingMarkerSave()
+        #expect(savedMarkerIDs == ["103"])
+
+        // 2. Disabled sync: makes zero Marker API requests.
+        let disabledModel = TimelineViewModel(
+            apiClient: api,
+            feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory),
+            cacheClientID: clientID,
+            defersLivePresentation: true,
+            markerSyncEnabled: { false },
+            restoresReadingPositionOverride: true
+        )
+        defer { disabledModel.clearStatuses() }
+        await disabledModel.loadInitial()
+        await disabledModel.saveMarker(statusID: "104")
+        await disabledModel.flushPendingMarkerSave()
+        #expect(markerFetchCount == 1)
+        #expect(savedMarkerIDs == ["103"])
+    }
+
+    @Test func warmResumeMarkerSyncFetchesNewerPageAndAdvancesAnchor() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let api = MockMastodonAPI()
+        api.fetchHomeTimelineHandler = { _, _, _ in [post("105"), post("104"), post("103")] }
+        api.fetchMarkersHandler = { _ in
+            Marker(home: MarkerContent(lastReadId: "104", updatedAt: Date(), version: 9))
+        }
+
+        let model = TimelineViewModel(
+            apiClient: api,
+            feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory),
+            cacheClientID: UUID().uuidString,
+            defersLivePresentation: true,
+            markerSyncEnabled: { true },
+            restoresReadingPositionOverride: true
+        )
+        defer { model.clearStatuses() }
+        model.statuses = [post("102"), post("101"), post("100")]
+        model.saveReadingAnchor(TimelineReadingAnchor(statusID: "100", viewportOffset: -40))
+
+        let synced = await model.syncRemoteMarkerOnResume(allowAdvance: true)
+        #expect(synced == TimelineReadingAnchor(statusID: "104", viewportOffset: 0))
+        #expect(model.savedReadingAnchor == TimelineReadingAnchor(statusID: "104", viewportOffset: 0))
+        #expect(model.newPostCount == 1) // Only 105 is newer than 104
+    }
+
+    @Test func sameDeviceReadingOlderPostDoesNotSnapBackToOwnEarlierServerMarker() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let clientID = UUID().uuidString
+        let cache = TimelineCache(directory: directory)
+        let metadata = TimelineLiveMetadata(
+            checkpointID: "200",
+            fetchedHeadID: "200",
+            readingAnchor: TimelineReadingAnchor(statusID: "200", viewportOffset: 0)
+        )
+        await cache.setLiveSnapshot(
+            statuses: [post("200"), post("180"), post("150")],
+            live: metadata,
+            for: clientID,
+            filter: .home
+        )
+        await cache.flushPendingWrites()
+
+        var remoteMarkerID = "200"
+        let api = MockMastodonAPI()
+        api.fetchHomeTimelineHandler = { _, _, _ in [post("205"), post("200"), post("180"), post("150")] }
+        api.fetchMarkersHandler = { _ in
+            Marker(home: MarkerContent(lastReadId: remoteMarkerID, updatedAt: Date(), version: 10))
+        }
+        api.saveMarkerHandler = { home, _ in
+            if let home { remoteMarkerID = home }
+            return Marker(home: MarkerContent(lastReadId: remoteMarkerID, updatedAt: Date(), version: 11))
+        }
+
+        // Session 1: device confirms server marker 200, then reader scrolls back to older post 150.
+        let session1 = TimelineViewModel(
+            apiClient: api,
+            feedCoordinator: FeedCoordinator(),
+            timelineCache: cache,
+            cacheClientID: clientID,
+            defersLivePresentation: true,
+            markerSyncEnabled: { true },
+            restoresReadingPositionOverride: true
+        )
+        defer { session1.clearStatuses() }
+        await session1.loadInitial()
+        let olderAnchor = TimelineReadingAnchor(statusID: "150", viewportOffset: -55)
+        session1.saveReadingAnchor(olderAnchor)
+        await session1.flushPendingMarkerSave()
+        #expect(remoteMarkerID == "200")
+
+        // Session 2 (cold relaunch): server still holds this device's own 200 -> stay on 150!
+        let session2 = TimelineViewModel(
+            apiClient: api,
+            feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory),
+            cacheClientID: clientID,
+            defersLivePresentation: true,
+            markerSyncEnabled: { true },
+            restoresReadingPositionOverride: true
+        )
+        defer { session2.clearStatuses() }
+        await session2.loadInitial()
+        #expect(session2.savedReadingAnchor == olderAnchor)
+        #expect(session2.pendingRemoteSyncedAnchor == nil)
+
+        // Now another device (Web) advances the server marker to 205 -> phone syncs forward to 205!
+        remoteMarkerID = "205"
+        let synced = await session2.syncRemoteMarkerOnResume(allowAdvance: true)
+        #expect(synced == TimelineReadingAnchor(statusID: "205", viewportOffset: 0))
+        #expect(session2.savedReadingAnchor == TimelineReadingAnchor(statusID: "205", viewportOffset: 0))
+    }
+
 }

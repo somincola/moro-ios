@@ -159,9 +159,17 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
     /// Whether there are unread statuses above the current position
     @Published private(set) var hasUnreadAbove: Bool = false
 
+    /// Newer reading anchor received from another device via Mastodon's Marker API,
+    /// waiting for the scroll bridge to apply if the reader has not started scrolling.
+    @Published private(set) var pendingRemoteSyncedAnchor: TimelineReadingAnchor?
+
     /// Debounce timer for saving marker position
     private var markerSaveTask: Task<Void, Never>?
     private let markerSaveDebounceInterval: TimeInterval = 3.0
+    private var lastConfirmedServerMarkerID: String?
+    private var pendingMarkerSaveID: String?
+    private let markerSyncEnabled: @MainActor () -> Bool
+    private let restoresReadingPositionOverride: Bool?
 
     // MARK: - Stream (Real-time Updates) Support
 
@@ -294,7 +302,9 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         timelineCache: TimelineCache? = nil,
         cacheClientID: String = "active-session",
         bootstrapConfig: BootstrapConfig = .adaptiveDefault(),
-        defersLivePresentation: Bool = false
+        defersLivePresentation: Bool = false,
+        markerSyncEnabled: (@MainActor () -> Bool)? = nil,
+        restoresReadingPositionOverride: Bool? = nil
     ) {
         self.apiClient = apiClient
         self.timelineType = timelineType
@@ -303,6 +313,8 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         self.cacheClientID = cacheClientID
         self.bootstrapConfig = bootstrapConfig
         self.defersLivePresentation = defersLivePresentation
+        self.markerSyncEnabled = markerSyncEnabled ?? { AppSettings.shared.syncReadingPositionWithServer }
+        self.restoresReadingPositionOverride = restoresReadingPositionOverride
         // Use provided cache or fall back to shared instance
         self.accountCache = accountCache ?? CacheManager.shared.accountCache
 
@@ -351,6 +363,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         guard generation == dataGeneration, !Task.isCancelled else { return }
 
         do {
+            async let remoteMarkerTask: MarkerContent? = fetchRemoteHomeMarker()
             let page = try await apiClient.fetchTimelinePage(timeline: timelineType,
                 maxID: nil, sinceID: nil, limit: bootstrapConfig.initialLoadLimit)
             let newStatuses = page.statuses
@@ -385,6 +398,38 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
                     initialLive.receive(status, currentAccountID: currentAccountID)
                 }
             }
+
+            let remoteMarker = await remoteMarkerTask
+            guard generation == dataGeneration, !Task.isCancelled else { return }
+            let preservesCachedPresentation = defersLivePresentation && !statuses.isEmpty
+            if let remoteID = remoteMarker?.lastReadId {
+                let previousKnownServerMarker = effectiveKnownServerMarkerID()
+                recordConfirmedServerMarkerID(remoteID)
+                let shouldRestore = restoresReadingPositionOverride ?? TimelineLaunchPolicy.restoresReadingPosition
+                if shouldRestore,
+                    let targetID = resolveRemoteMarkerTarget(
+                        remoteID: remoteID,
+                        in: initialLive.statuses,
+                        currentAnchorID: initialLive.metadata.readingAnchor?.statusID,
+                        previousKnownServerMarkerID: previousKnownServerMarker
+                    )
+                {
+                    let syncedAnchor = TimelineReadingAnchor(statusID: targetID, viewportOffset: 0)
+                    initialLive.setReadingAnchor(syncedAnchor)
+                    initialLive.markReadThrough(statusID: remoteID)
+                    if let filter = timelineCacheFilter {
+                        timelineCache.saveReadingAnchorImmediately(
+                            syncedAnchor,
+                            for: cacheClientID,
+                            filter: filter
+                        )
+                    }
+                    if preservesCachedPresentation {
+                        pendingRemoteSyncedAnchor = syncedAnchor
+                    }
+                }
+            }
+
             hasResolvedInitialCache = true
             liveTimeline = initialLive
             if !initialLive.metadata.gaps.isEmpty { automaticGapBudget = 2 }
@@ -398,7 +443,6 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
                 mergedStatuses.dropFirst(initialStatuses.count)
             )
             deferredInitialFillTask?.cancel()
-            let preservesCachedPresentation = defersLivePresentation && !statuses.isEmpty
             if !preservesCachedPresentation {
                 statuses = initialStatuses
                 currentMaxID = initialStatuses.last?.id
@@ -407,6 +451,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
                 appliedLiveVersion = liveVersion
                 presentationRevision &+= 1
             }
+            updateUnreadState()
             currentSinceID = initialLive.metadata.fetchedHeadID
             initialLoadState = .loaded
             if preservesCachedPresentation { liveContentChanged(immediate: true) }
@@ -876,6 +921,10 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         cacheWriteTask?.cancel()
         cacheWriteTask = nil
         markerSaveTask?.cancel()
+        markerSaveTask = nil
+        lastConfirmedServerMarkerID = nil
+        pendingMarkerSaveID = nil
+        pendingRemoteSyncedAnchor = nil
         anonymousPendingIDs = []
         lastLatestCheckAt = nil
         publishLiveTask?.cancel()
@@ -938,56 +987,189 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
 
     // MARK: - Marker (Reading Position) API
 
-    /// Fetch the last reading position from the server
-    func fetchMarker() async {
-        // Only home timeline supports markers
-        guard timelineType == .home else { return }
+    func consumePendingRemoteSyncedAnchor() -> TimelineReadingAnchor? {
+        let anchor = pendingRemoteSyncedAnchor
+        pendingRemoteSyncedAnchor = nil
+        return anchor
+    }
 
+    private func fetchRemoteHomeMarker() async -> MarkerContent? {
+        guard timelineType == .home, markerSyncEnabled() else { return nil }
         do {
             let marker = try await apiClient.fetchMarkers(timelines: [.home])
-            if let homeMarker = marker.home {
-                lastReadStatusID = homeMarker.lastReadId
-                updateUnreadState()
-                debugLog("📍 [Marker] Fetched last read position: \(homeMarker.lastReadId)")
-            }
+            return marker.home
         } catch {
             debugLog("⚠️ [Marker] Failed to fetch marker: \(error)")
+            return nil
         }
     }
 
-    /// Save the current reading position to the server
+    private func effectiveKnownServerMarkerID() -> String? {
+        if let inMemory = lastConfirmedServerMarkerID {
+            return inMemory
+        }
+        guard let filter = timelineCacheFilter else { return nil }
+        let persisted = timelineCache.loadLastKnownServerMarkerID(for: cacheClientID, filter: filter)
+        lastConfirmedServerMarkerID = persisted
+        return persisted
+    }
+
+    private func recordConfirmedServerMarkerID(_ statusID: String) {
+        if let existing = effectiveKnownServerMarkerID(),
+            !TimelineLiveUpdates.isNewerID(statusID, than: existing)
+        {
+            lastReadStatusID = existing
+            return
+        }
+        lastConfirmedServerMarkerID = statusID
+        lastReadStatusID = statusID
+        if let filter = timelineCacheFilter {
+            timelineCache.saveLastKnownServerMarkerID(statusID, for: cacheClientID, filter: filter)
+        }
+    }
+
+    /// Resolves a remote Marker ID into a concrete target status ID in `list`, advancing
+    /// strictly forward AND only when the remote marker actually moved ahead of this device's
+    /// last known server high-water mark (so browsing older posts on the same phone never snaps back).
+    private func resolveRemoteMarkerTarget(
+        remoteID: String,
+        in list: [Status],
+        currentAnchorID: String?,
+        previousKnownServerMarkerID: String?
+    ) -> String? {
+        if let previousKnownServerMarkerID,
+            !TimelineLiveUpdates.isNewerID(remoteID, than: previousKnownServerMarkerID)
+        {
+            return nil
+        }
+        if let currentAnchorID {
+            guard TimelineLiveUpdates.isNewerID(remoteID, than: currentAnchorID) else { return nil }
+        }
+        if list.contains(where: { $0.id == remoteID }) {
+            return remoteID
+        }
+        // If the marked status was deleted but falls within our loaded timeline range,
+        // land cleanly on the nearest surviving post right below it.
+        guard let newest = list.first?.id, let oldest = list.last?.id,
+            TimelineLiveUpdates.isNewerID(newest, than: remoteID),
+            TimelineLiveUpdates.isNewerID(remoteID, than: oldest),
+            let neighbor = list.first(where: { TimelineLiveUpdates.isNewerID(remoteID, than: $0.id) })
+        else { return nil }
+        if let currentAnchorID, !TimelineLiveUpdates.isNewerID(neighbor.id, than: currentAnchorID) {
+            return nil
+        }
+        return neighbor.id
+    }
+
+    private func shouldAdvanceServerMarker(to statusID: String) -> Bool {
+        guard timelineType == .home, markerSyncEnabled(), !statusID.isEmpty else { return false }
+        guard let confirmed = effectiveKnownServerMarkerID() else { return true }
+        return TimelineLiveUpdates.isNewerID(statusID, than: confirmed)
+    }
+
+    /// Fetch the last reading position from the server
+    func fetchMarker() async {
+        guard let homeMarker = await fetchRemoteHomeMarker() else { return }
+        recordConfirmedServerMarkerID(homeMarker.lastReadId)
+        updateUnreadState()
+        debugLog("📍 [Marker] Fetched last read position: \(homeMarker.lastReadId)")
+    }
+
+    /// Pulls the server Home marker on foreground resume and advances the reading anchor if
+    /// another device (Web/iPad/Mac) has read further ahead.
+    @discardableResult
+    func syncRemoteMarkerOnResume(allowAdvance: Bool) async -> TimelineReadingAnchor? {
+        guard timelineType == .home, markerSyncEnabled(), hasReadingState else { return nil }
+        let generation = dataGeneration
+        let previousKnownServerMarker = effectiveKnownServerMarkerID()
+        guard let homeMarker = await fetchRemoteHomeMarker() else { return nil }
+        guard generation == dataGeneration, !Task.isCancelled else { return nil }
+
+        let remoteID = homeMarker.lastReadId
+        recordConfirmedServerMarkerID(remoteID)
+        updateUnreadState()
+
+        guard allowAdvance else { return nil }
+        if let previousKnownServerMarker,
+            !TimelineLiveUpdates.isNewerID(remoteID, than: previousKnownServerMarker)
+        {
+            return nil
+        }
+        let currentAnchorID = savedReadingAnchor?.statusID
+        if let currentAnchorID, !TimelineLiveUpdates.isNewerID(remoteID, than: currentAnchorID) {
+            return nil
+        }
+
+        // If another device read past our newest cached post, fetch the latest page first.
+        let currentList = liveTimeline?.statuses ?? statuses
+        if !currentList.contains(where: { $0.id == remoteID }),
+            let newest = currentList.first?.id,
+            TimelineLiveUpdates.isNewerID(remoteID, than: newest)
+        {
+            _ = await refresh(trigger: .foreground)
+            guard generation == dataGeneration, !Task.isCancelled else { return nil }
+        }
+
+        let updatedList = liveTimeline?.statuses ?? statuses
+        guard let targetID = resolveRemoteMarkerTarget(
+            remoteID: remoteID,
+            in: updatedList,
+            currentAnchorID: savedReadingAnchor?.statusID,
+            previousKnownServerMarkerID: previousKnownServerMarker
+        ) else { return nil }
+
+        let syncedAnchor = TimelineReadingAnchor(statusID: targetID, viewportOffset: 0)
+        liveTimeline?.setReadingAnchor(syncedAnchor)
+        liveTimeline?.markReadThrough(statusID: remoteID)
+        persistReadingAnchorOnly(syncedAnchor)
+        pendingRemoteSyncedAnchor = syncedAnchor
+        liveContentChanged(immediate: true)
+        return syncedAnchor
+    }
+
+    /// Save the current reading position to the server (strictly forward-only).
     func saveMarker(statusID: String) async {
-        // Only home timeline supports markers
-        guard timelineType == .home else { return }
+        guard shouldAdvanceServerMarker(to: statusID) else { return }
 
         do {
-            let _ = try await apiClient.saveMarker(home: statusID, notifications: nil)
-            lastReadStatusID = statusID
+            let updated = try await apiClient.saveMarker(home: statusID, notifications: nil)
+            let confirmedID = updated.home?.lastReadId ?? statusID
+            recordConfirmedServerMarkerID(confirmedID)
+            if pendingMarkerSaveID == statusID {
+                pendingMarkerSaveID = nil
+            }
             updateUnreadState()
-            debugLog("📍 [Marker] Saved reading position: \(statusID)")
+            debugLog("📍 [Marker] Saved reading position: \(confirmedID)")
         } catch {
             debugLog("⚠️ [Marker] Failed to save marker: \(error)")
         }
     }
 
+    /// Flushes any debounced Home marker immediately before leaving the foreground so
+    /// other devices see the reader's latest progress without waiting for the debounce window.
+    func flushPendingMarkerSave() async {
+        guard timelineType == .home, markerSyncEnabled() else { return }
+        markerSaveTask?.cancel()
+        markerSaveTask = nil
+        let candidate = pendingMarkerSaveID ?? savedReadingAnchor?.statusID
+        guard let statusID = candidate, shouldAdvanceServerMarker(to: statusID) else { return }
+        await saveMarker(statusID: statusID)
+    }
+
     /// Schedule a debounced marker save
     private func scheduleMarkerSave(statusID: String) {
-        // Only home timeline supports markers
-        guard timelineType == .home else { return }
+        guard shouldAdvanceServerMarker(to: statusID) else { return }
 
-        // Cancel any pending save task
+        pendingMarkerSaveID = statusID
         markerSaveTask?.cancel()
 
-        // Schedule a new save task with debounce
-        markerSaveTask = Task {
+        markerSaveTask = Task { [weak self] in
+            guard let self else { return }
             do {
                 try await Task.sleep(
-                    nanoseconds: UInt64(markerSaveDebounceInterval * 1_000_000_000))
-
-                // Check if task was cancelled during the delay
+                    nanoseconds: UInt64(self.markerSaveDebounceInterval * 1_000_000_000))
                 guard !Task.isCancelled else { return }
-
-                await saveMarker(statusID: statusID)
+                await self.saveMarker(statusID: statusID)
             } catch {
                 // Task was cancelled, ignore
             }

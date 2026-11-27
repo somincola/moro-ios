@@ -29,6 +29,34 @@ public enum MoroL10n {
         }
         public static var profileTitle: String { text("quickAction.profile.title") }
     }
+
+    public enum ReadingPosition {
+        public static var rowTitle: String { text("readingPosition.rowTitle") }
+        public static var pageHeading: String { text("readingPosition.pageHeading") }
+        public static var pageHint: String { text("readingPosition.pageHint") }
+        public static var keepPositionTitle: String { text("readingPosition.keepPosition.title") }
+        public static var keepPositionDetail: String { text("readingPosition.keepPosition.detail") }
+        public static var smartRefreshTitle: String { text("readingPosition.smartRefresh.title") }
+        public static func smartRefreshDetail(_ duration: String) -> String {
+            format("readingPosition.smartRefresh.detail", duration)
+        }
+        public static func smartRefreshSummary(_ duration: String) -> String {
+            format("readingPosition.smartRefresh.summary", duration)
+        }
+        public static var alwaysLatestTitle: String { text("readingPosition.alwaysLatest.title") }
+        public static var alwaysLatestDetail: String { text("readingPosition.alwaysLatest.detail") }
+        public static var smartThresholdLabel: String { text("readingPosition.smartThreshold.label") }
+        public static var smartThresholdFooter: String { text("readingPosition.smartThreshold.footer") }
+        public static func durationMinutes(_ count: Int) -> String {
+            format("readingPosition.duration.minutes", Int64(count))
+        }
+        public static func durationHours(_ count: Int) -> String {
+            format("readingPosition.duration.hours", Int64(count))
+        }
+        public static var syncSectionTitle: String { text("readingPosition.sync.sectionTitle") }
+        public static var syncWithServerTitle: String { text("readingPosition.sync.title") }
+        public static var syncWithServerFooter: String { text("readingPosition.sync.footer") }
+    }
     private static let tableName = "Moro"
     private static let moduleBundle = Bundle.module
 

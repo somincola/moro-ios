@@ -234,14 +234,16 @@ extension TimelineHomeView {
             guard !Task.isCancelled, scenePhase == .active else { return }
             streamWatcher.ensureUserSession(accessToken: appState.authToken)
 
-            // Stage 2: Sync marker later; if user is actively scrolling, back off once more.
+            // Stage 2: Sync marker as fallback if initial load did not yet resolve one.
             try? await Task.sleep(nanoseconds: startupMarkerDelayAfterStreamNanoseconds)
             guard !Task.isCancelled, scenePhase == .active else { return }
-            if scrollBridge.hasScrolledHome {
-                try? await Task.sleep(nanoseconds: startupMarkerBackoffOnInteractionNanoseconds)
-                guard !Task.isCancelled, scenePhase == .active else { return }
+            if settings.syncReadingPositionWithServer, homeViewModel.lastReadStatusID == nil {
+                if scrollBridge.hasScrolledHome {
+                    try? await Task.sleep(nanoseconds: startupMarkerBackoffOnInteractionNanoseconds)
+                    guard !Task.isCancelled, scenePhase == .active else { return }
+                }
+                await homeViewModel.fetchMarker()
             }
-            await homeViewModel.fetchMarker()
 
             // Stage 3: Announcements stay lowest priority and remain delayed inside helper.
             refreshAnnouncementBadge(initialDelay: true)

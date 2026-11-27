@@ -38,6 +38,30 @@ extension TimelineHomeView {
             scrollBridge.canPresentUpdates(for: timeline)
         else { return }
         let session = pageSessionStore.session(for: timeline)
+        if let remoteAnchor = target.consumePendingRemoteSyncedAnchor() {
+            let canAdoptRemote = !scrollBridge.isUserScrolling(timeline)
+                && !scrollBridge.isUserDragging(timeline)
+                && (!session.hasRestoredReadingAnchor || scrollBridge.isHoldingRestoredAnchor(for: timeline))
+            if canAdoptRemote {
+                if target.hasUnappliedUpdates {
+                    session.hasRestoredReadingAnchor = true
+                    scrollBridge.holdReadingPosition(remoteAnchor, for: timeline)
+                    if scrollBridge.prepareContentUpdate(
+                        for: timeline,
+                        revision: target.presentationRevision + 1,
+                        retainedIDs: target.canonicalStatusIDs
+                    ) {
+                        target.applyLiveUpdates()
+                        return
+                    }
+                } else if target.statuses.contains(where: { $0.id == remoteAnchor.statusID }) {
+                    session.hasRestoredReadingAnchor = true
+                    scrollBridge.holdReadingPosition(remoteAnchor, for: timeline)
+                    scrollBridge.restoreReadingAnchor(remoteAnchor, for: timeline)
+                    return
+                }
+            }
+        }
         if !session.hasRestoredReadingAnchor, !target.statuses.isEmpty {
             session.hasRestoredReadingAnchor = true
             // Back soon after leaving: reopen where the reader was. After a longer absence
