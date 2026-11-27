@@ -18,7 +18,7 @@ struct TimelineGap: Codable, Equatable, Identifiable {
     let sequence: UInt64
 }
 
-struct TimelineReadingAnchor: Codable, Equatable {
+nonisolated struct TimelineReadingAnchor: Codable, Equatable, Sendable {
     let statusID: String
     let viewportOffset: Double
 }
@@ -198,6 +198,14 @@ struct TimelineLiveUpdates {
         metadata.newIDs = metadata.newIDs.filter { $0.value > sequence }
     }
 
+    /// Marks statuses at or older than `statusID` as already read (e.g. synced from another
+    /// device via Mastodon's Marker API) so the new-posts badge reflects only truly unread items.
+    mutating func markReadThrough(statusID: String) {
+        metadata.newIDs = metadata.newIDs.filter { id, _ in
+            id != statusID && Self.isNewerID(id, than: statusID)
+        }
+    }
+
     mutating func setReadingAnchor(_ anchor: TimelineReadingAnchor?) {
         metadata.readingAnchor = anchor
     }
@@ -261,7 +269,7 @@ struct TimelineLiveUpdates {
         }
     }
 
-    private static func isNewerID(_ lhs: String, than rhs: String) -> Bool {
+    nonisolated static func isNewerID(_ lhs: String, than rhs: String) -> Bool {
         // Decimal cursors can exceed UInt64. Opaque IDs retain the server's
         // anchor-based order instead of receiving an invented lexical order.
         guard !lhs.isEmpty, !rhs.isEmpty,
