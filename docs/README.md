@@ -35,6 +35,9 @@
 
 - [默认应用图标](design/brand/README.md)包含品牌色值、矢量母版和导出方式。
 - 商店截图、视频和制作源文件保存在本地 `screenshots/app-store/`。GitHub README 使用的两张宣传图及其来源见 [README 素材](assets/readme/SOURCES.md)。
+- 商店发布包使用 [增量素材同步脚本](../scripts/sync-asc-media.py)。在仓库根目录运行 `python3 scripts/sync-asc-media.py build/releases/<版本>/store-media/manifest.json`，查看目标版本、保留的展示位数、需要调整的展示位和新增文件数。确认后在同一命令末尾加 `--apply` 更新该草稿。
+- 清单沿用发布包中的 `appId`、`version`、`storefronts` 和 `assets`。每个文件记录相对路径、字节数和 SHA-256。截图按文件名前缀指定位置（例如 `03-home.png`），预览也可用 `slot` 指定位置，封面使用 `posterFrameTimeCode`。可提供整包或只列变动位置。未列出的位置会保留，Header 会应用于清单列出的语言。
+- 同步会核对在线素材的规格、内容、预览封面及排列顺序；相同文件可以跨语言、跨版本复用。运行中断后重新执行同一清单。保留本地 `build/releases/*/asc-media-receipt.json` 供旧素材比对；遇到同大小且缺少源校验值的旧宣传素材，可用 `--known-assets` 传入由原始文件核实的 JSON，格式为 `{"appId":"6776115614","assets":{"素材ID":"64位小写SHA256"}}`。
 - `design/app-icon-concepts/`：已上线备用 App Icon 的源图，生产目标使用 `Assets.xcassets` 中的资源。该目录是当前资源源文件，不属于审计截图或执行历史。
 - `design/app-icon-dark-mode/`：全部 App Icon 的深色版本设计评价、交互对比页与系统渲染验证。
 
