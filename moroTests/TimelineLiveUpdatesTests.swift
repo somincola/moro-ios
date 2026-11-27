@@ -256,7 +256,7 @@ struct TimelineLiveUpdatesTests {
         #expect(model.failedGapIDs.isEmpty)
     }
 
-    @Test func approachingAGapContinuesBeyondTheBackgroundProbeBudget() async throws {
+    @Test func gapStopsAfterBackgroundProbeBudgetAndLoadsOnExplicitTap() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let api = MockMastodonAPI()
@@ -282,11 +282,146 @@ struct TimelineLiveUpdatesTests {
         #expect(model.gaps.count == 1)
         #expect(model.statuses.count == 7)
 
+        // Once the 2-page automatic budget is spent, scrolling near the gap does not
+        // fire surprise background requests; the explicit manual gap card owns it.
         await model.fillRecentGapsIfNeeded(near: ["103", "100"])?.value
+        #expect(cursors == ["107", "105"])
+        #expect(model.gaps.count == 1)
+
+        let remainingGap = try #require(model.gaps.first)
+        #expect(await model.loadGap(id: remainingGap.id, direction: .downward, initiatedByUser: true))
+        #expect(model.gaps.count == 1)
+        #expect(await model.loadGap(id: remainingGap.id, direction: .downward, initiatedByUser: true))
         #expect(model.gaps.isEmpty)
         #expect(cursors == ["107", "105", "103", "101"])
         let expectedIDs = (100...108).reversed().map { String($0) }
         #expect(model.statuses.map(\.id) == expectedIDs)
+    }
+
+    @Test func upwardGapFillAdvancesBottomCursorAndClosesAtUpperBoundary() throws {
+        var state = TimelineLiveUpdates(statuses: [post("100")])
+        _ = state.receiveHead(TimelinePage(statuses: [post("108"), post("107")]), sinceID: "100", currentAccountID: nil)
+        let gap = try #require(state.metadata.gaps.first)
+
+        // First upward page returns posts strictly inside the gap, newest-first.
+        let outcome1 = state.fillGap(
+            gap.id,
+            page: TimelinePage(statuses: [post("103"), post("102"), post("101")], prevMinID: "103"),
+            direction: .upward,
+            currentAccountID: nil
+        )
+        #expect(outcome1 == .progressed)
+        let updatedGap = try #require(state.metadata.gaps.first)
+        #expect(updatedGap.afterID == "107")
+        #expect(updatedGap.maxID == "107")
+        #expect(updatedGap.sinceID == "103")
+        #expect(updatedGap.beforeID == "103")
+        #expect(state.statuses.map(\.id) == ["108", "107", "103", "102", "101", "100"])
+
+        // Next upward page overlaps the upper edge (107) and even includes a newer post (109);
+        // posts above gap.maxID are ignored while the gap closes cleanly.
+        let outcome2 = state.fillGap(
+            gap.id,
+            page: TimelinePage(statuses: [post("109"), post("107"), post("106"), post("105"), post("104")]),
+            direction: .upward,
+            currentAccountID: nil
+        )
+        #expect(outcome2 == .closed)
+        #expect(state.metadata.gaps.isEmpty)
+        #expect(state.statuses.map(\.id) == ["108", "107", "106", "105", "104", "103", "102", "101", "100"])
+    }
+
+    @Test func upwardGapFillSetsBeforeIDAsPreferredAnchor() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let api = MockMastodonAPI()
+        var recordedMinIDs: [String?] = []
+        api.fetchTimelinePageHandler = { _, maxID, sinceID, minID, _ in
+            #expect(maxID == nil && sinceID == nil)
+            recordedMinIDs.append(minID)
+            return TimelinePage(statuses: [post("102"), post("101")], prevMinID: "102")
+        }
+        let model = TimelineViewModel(
+            apiClient: api,
+            feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory),
+            cacheClientID: UUID().uuidString,
+            defersLivePresentation: true
+        )
+        defer { model.clearStatuses() }
+        model.statuses = [post("100")]
+        model.receiveDetectedPage(TimelinePage(statuses: [post("108"), post("107")]), sinceID: "100")
+        model.applyLiveUpdates()
+
+        let gap = try #require(model.gaps.first)
+        #expect(await model.loadGap(id: gap.id, direction: .upward, initiatedByUser: true))
+        #expect(recordedMinIDs == ["100"])
+        #expect(model.pendingPreferredGapAnchorID == "100")
+        #expect(model.consumePendingPreferredGapAnchorID() == "100")
+        #expect(model.pendingPreferredGapAnchorID == nil)
+        model.applyLiveUpdates()
+        #expect(model.statuses.map(\.id) == ["108", "107", "102", "101", "100"])
+    }
+
+    @Test func upwardGapFillFallsBackToDownwardWhenServerIgnoresMinID() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let api = MockMastodonAPI()
+        var calls: [(maxID: String?, sinceID: String?, minID: String?)] = []
+        api.fetchTimelinePageHandler = { _, maxID, sinceID, minID, _ in
+            calls.append((maxID, sinceID, minID))
+            if minID != nil {
+                // Non-standard instance ignores min_id and returns the newest timeline head.
+                return TimelinePage(statuses: [post("110"), post("109"), post("108"), post("107")])
+            }
+            return TimelinePage(statuses: [post("106"), post("105")])
+        }
+        let model = TimelineViewModel(
+            apiClient: api,
+            feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory),
+            cacheClientID: UUID().uuidString,
+            defersLivePresentation: true
+        )
+        defer { model.clearStatuses() }
+        model.statuses = [post("100")]
+        model.receiveDetectedPage(TimelinePage(statuses: [post("108"), post("107")]), sinceID: "100")
+        model.applyLiveUpdates()
+
+        let gap = try #require(model.gaps.first)
+        #expect(await model.loadGap(id: gap.id, direction: .upward, initiatedByUser: true))
+        #expect(calls.count == 2)
+        #expect(calls[0].minID == "100" && calls[0].maxID == nil)
+        #expect(calls[1].maxID == "107" && calls[1].sinceID == "100" && calls[1].minID == nil)
+        // Because the fallback applied downward, preferred anchor follows the upper edge (afterID).
+        #expect(model.pendingPreferredGapAnchorID == "107")
+        model.applyLiveUpdates()
+        #expect(model.gaps.count == 1)
+        #expect(model.statuses.map(\.id) == ["108", "107", "106", "105", "100"])
+    }
+
+    @Test func gapTimeSpanFormatterRespectsMinimumThresholdAndLinkPaginationParsesPrevMinID() throws {
+        let now = Date()
+        #expect(TimelineGapTimeSpanFormatter.text(afterDate: now, beforeDate: nil) == nil)
+        #expect(TimelineGapTimeSpanFormatter.text(afterDate: now, beforeDate: now.addingTimeInterval(-1799)) == nil)
+        #expect(TimelineGapTimeSpanFormatter.text(afterDate: now, beforeDate: now.addingTimeInterval(3600)) == nil)
+        let twoHourSpan = TimelineGapTimeSpanFormatter.text(
+            afterDate: now,
+            beforeDate: now.addingTimeInterval(-7200)
+        )
+        #expect(twoHourSpan != nil && !twoHourSpan!.isEmpty)
+
+        let url = try #require(URL(string: "https://mastodon.example/api/v1/timelines/home?limit=40"))
+        let response = try #require(HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: [
+                "Link": "<https://mastodon.example/api/v1/timelines/home?max_id=101>; rel=\"next\", <https://mastodon.example/api/v1/timelines/home?min_id=140>; rel=\"prev\""
+            ]
+        ))
+        #expect(MastodonLinkPagination.nextMaxID(in: response) == "101")
+        #expect(MastodonLinkPagination.prevMinID(in: response) == "140")
     }
 
     @Test func gapFailuresWaitForAnchoredPresentationAndAnExplicitRetry() async throws {

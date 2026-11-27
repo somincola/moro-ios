@@ -6,6 +6,23 @@ struct TimelinePage {
     let statuses: [Status]
     var isPartial = false
     var nextMaxID: String?
+    var prevMinID: String?
+}
+
+nonisolated enum TimelineGapFillDirection: Equatable, Sendable {
+    case downward
+    case upward
+}
+
+nonisolated enum TimelineGapFillOutcome: Equatable, Sendable {
+    case progressed
+    case closed
+    case fallbackToDownward
+    case stalled
+
+    var didAdvance: Bool {
+        self == .progressed || self == .closed
+    }
 }
 
 struct TimelineGap: Codable, Equatable, Identifiable {
@@ -13,7 +30,7 @@ struct TimelineGap: Codable, Equatable, Identifiable {
     var afterID: String
     var beforeID: String
     var maxID: String
-    let sinceID: String
+    var sinceID: String
     let targetHeadID: String
     let sequence: UInt64
 }
@@ -114,32 +131,113 @@ struct TimelineLiveUpdates {
     /// first downloaded after the user returned to the latest batch.
     @discardableResult
     mutating func fillGap(_ id: UUID, page: TimelinePage, currentAccountID: String?) -> Bool {
-        guard let index = metadata.gaps.firstIndex(where: { $0.id == id }) else { return false }
+        fillGap(id, page: page, direction: .downward, currentAccountID: currentAccountID).didAdvance
+    }
+
+    @discardableResult
+    mutating func fillGap(
+        _ id: UUID,
+        page: TimelinePage,
+        direction: TimelineGapFillDirection,
+        currentAccountID: String?
+    ) -> TimelineGapFillOutcome {
+        guard let index = metadata.gaps.firstIndex(where: { $0.id == id }) else { return .stalled }
         let gap = metadata.gaps[index]
         let countsAsNew = gap.sequence > metadata.acknowledgedSequence
-        let pageStatuses = Self.unique(page.statuses.filter { !isDeleted($0) })
-        _ = merge(pageStatuses, before: gap.beforeID,
-            currentAccountID: currentAccountID, countsAsNew: countsAsNew,
-            sequence: gap.sequence)
 
-        let reachedBoundary = page.statuses.contains { $0.id == gap.sinceID || $0.id == gap.beforeID }
-        let exhausted = page.statuses.isEmpty && !page.isPartial
-        if !page.isPartial && (reachedBoundary || exhausted) {
-            metadata.gaps.remove(at: index)
-            if metadata.gaps.isEmpty {
-                metadata.checkpointID = metadata.fetchedHeadID
-                metadata.overflowSequence = nil
+        switch direction {
+        case .downward:
+            let pageStatuses = Self.unique(page.statuses.filter { !isDeleted($0) })
+            _ = merge(pageStatuses, before: gap.beforeID,
+                currentAccountID: currentAccountID, countsAsNew: countsAsNew,
+                sequence: gap.sequence)
+
+            let reachedBoundary = page.statuses.contains { $0.id == gap.sinceID || $0.id == gap.beforeID }
+            let exhausted = page.statuses.isEmpty && !page.isPartial
+            if !page.isPartial && (reachedBoundary || exhausted) {
+                closeGap(at: index)
+                return .closed
             }
-            return true
+            guard let next = page.nextMaxID ?? page.statuses.last?.id,
+                next != gap.maxID, next != gap.sinceID
+            else { return .stalled }
+            metadata.gaps[index].maxID = next
+            if let last = pageStatuses.last, last.id != gap.beforeID {
+                metadata.gaps[index].afterID = last.id
+            }
+            return .progressed
+
+        case .upward:
+            guard Self.isNumericID(gap.maxID), Self.isNumericID(gap.sinceID) else {
+                return .fallbackToDownward
+            }
+            if page.statuses.isEmpty {
+                if !page.isPartial {
+                    closeGap(at: index)
+                    return .closed
+                }
+                return .stalled
+            }
+
+            let rawInsideGap = page.statuses.filter {
+                Self.isNewerID(gap.maxID, than: $0.id) && Self.isNewerID($0.id, than: gap.sinceID)
+            }
+            // A non-empty response containing nothing strictly inside the gap is ambiguous:
+            // either the server ignored `min_id` and returned the timeline head, or the gap
+            // is empty and the response ran past `maxID`. Fall back to `max_id` so we never
+            // falsely close a real gap or drop posts on non-standard instances.
+            guard !rawInsideGap.isEmpty else {
+                return .fallbackToDownward
+            }
+
+            let upperKnownIDs: Set<String>
+            if let afterIndex = statuses.firstIndex(where: { $0.id == gap.afterID }) {
+                upperKnownIDs = Set(statuses[...afterIndex].map(\.id))
+            } else {
+                upperKnownIDs = []
+            }
+            let reachedUpperBoundary = page.statuses.contains {
+                $0.id == gap.maxID || $0.id == gap.afterID
+                    || Self.isNewerID($0.id, than: gap.maxID)
+                    || upperKnownIDs.contains($0.id)
+            }
+
+            let pageStatuses = Self.unique(rawInsideGap.filter { !isDeleted($0) })
+            _ = merge(pageStatuses, before: gap.beforeID,
+                currentAccountID: currentAccountID, countsAsNew: countsAsNew,
+                sequence: gap.sequence)
+
+            if !page.isPartial && reachedUpperBoundary {
+                closeGap(at: index)
+                return .closed
+            }
+
+            let cursorCandidate: String?
+            if let prev = page.prevMinID,
+                Self.isNewerID(gap.maxID, than: prev),
+                Self.isNewerID(prev, than: gap.sinceID)
+            {
+                cursorCandidate = prev
+            } else {
+                cursorCandidate = rawInsideGap.first?.id
+            }
+            guard let nextSince = cursorCandidate,
+                nextSince != gap.sinceID, nextSince != gap.maxID
+            else { return .stalled }
+            metadata.gaps[index].sinceID = nextSince
+            if let newestVisible = pageStatuses.first, newestVisible.id != gap.afterID {
+                metadata.gaps[index].beforeID = newestVisible.id
+            }
+            return .progressed
         }
-        guard let next = page.nextMaxID ?? page.statuses.last?.id,
-            next != gap.maxID, next != gap.sinceID
-        else { return false }
-        metadata.gaps[index].maxID = next
-        if let last = pageStatuses.last, last.id != gap.beforeID {
-            metadata.gaps[index].afterID = last.id
+    }
+
+    private mutating func closeGap(at index: Int) {
+        metadata.gaps.remove(at: index)
+        if metadata.gaps.isEmpty {
+            metadata.checkpointID = metadata.fetchedHeadID
+            metadata.overflowSequence = nil
         }
-        return true
     }
 
     mutating func appendOlder(_ page: [Status]) {
@@ -269,13 +367,14 @@ struct TimelineLiveUpdates {
         }
     }
 
+    nonisolated static func isNumericID(_ id: String) -> Bool {
+        !id.isEmpty && id.utf8.allSatisfy { $0 >= 48 && $0 <= 57 }
+    }
+
     nonisolated static func isNewerID(_ lhs: String, than rhs: String) -> Bool {
         // Decimal cursors can exceed UInt64. Opaque IDs retain the server's
         // anchor-based order instead of receiving an invented lexical order.
-        guard !lhs.isEmpty, !rhs.isEmpty,
-            lhs.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }),
-            rhs.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 })
-        else { return false }
+        guard isNumericID(lhs), isNumericID(rhs) else { return false }
         let left = lhs.utf8.drop(while: { $0 == 48 })
         let right = rhs.utf8.drop(while: { $0 == 48 })
         if left.count != right.count { return left.count > right.count }

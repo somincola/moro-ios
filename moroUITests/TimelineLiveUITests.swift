@@ -13,7 +13,7 @@ final class TimelineLiveUITests: XCTestCase {
         XCTAssertTrue(post(in: app, id: 102).isHittable)
     }
 
-    @MainActor func testGapFailurePreservesReadingPositionAndRetryResumesAutomaticLoading() throws {
+    @MainActor func testGapFailurePreservesReadingPositionAndManualRetryClosesGap() throws {
         let app = launch(scheme: "light", testsGaps: true)
         defer { app.terminate() }
         let anchor = try beginReading(in: app)
@@ -23,20 +23,59 @@ final class TimelineLiveUITests: XCTestCase {
         assertReadingPosition(anchor, in: app)
 
         app.buttons["timeline.newPosts"].tap()
-        let retry = app.buttons["timeline.gap.100"]
-        XCTAssertTrue(wait { retry.isHittable })
-        retry.tap()
+        let gapButton = app.buttons["timeline.gap.100"]
+        XCTAssertTrue(wait { gapButton.isHittable })
+        gapButton.tap()
         XCTAssertTrue(wait { (count.value as? String)?.contains("failed:0") == true })
+
         for _ in 0..<10 {
             if count.value as? String == "gaps:0;failed:0" { break }
-            app.swipeUp(velocity: .slow)
+            let currentGap = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "timeline.gap.")).firstMatch
+            if currentGap.exists && currentGap.isHittable {
+                currentGap.tap()
+                Thread.sleep(forTimeInterval: 0.2)
+            } else {
+                app.swipeUp(velocity: .slow)
+            }
         }
         XCTAssertTrue(wait { count.label == "68/0" && count.value as? String == "gaps:0;failed:0" })
-        XCTAssertFalse(retry.exists)
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "timeline.gap.")).firstMatch.exists)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "Timeline automatic gap loading"
+        screenshot.name = "Timeline explicit gap loading"
         screenshot.lifetime = .keepAlways
         add(screenshot)
+    }
+
+    @MainActor func testLargeGapShowsExplicitLoadButtonAfterProbeBudget() throws {
+        let app = launch(scheme: "light", testsGaps: true)
+        defer { app.terminate() }
+        let anchor = try beginReading(in: app)
+        let count = app.staticTexts["timeline.fixture.count"]
+
+        // Insert a 7-post gap: background probe fills 2 pages (4 posts), leaving an explicit manual gap.
+        app.buttons["timeline.fixture.gap"].tap()
+        XCTAssertTrue(wait { count.value as? String == "gaps:1;failed:0" && count.label.hasPrefix("65/") })
+        assertReadingPosition(anchor, in: app)
+
+        app.buttons["timeline.newPosts"].tap()
+        let gapButton = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "timeline.gap.")).firstMatch
+        for _ in 0..<8 {
+            if gapButton.exists && gapButton.isHittable { break }
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(wait { gapButton.exists && gapButton.isHittable })
+
+        for _ in 0..<8 {
+            if count.value as? String == "gaps:0;failed:0" { break }
+            if gapButton.exists && gapButton.isHittable {
+                gapButton.tap()
+                Thread.sleep(forTimeInterval: 0.2)
+            } else {
+                app.swipeUp(velocity: .slow)
+            }
+        }
+        XCTAssertTrue(wait { count.label == "68/0" && count.value as? String == "gaps:0;failed:0" })
+        XCTAssertFalse(gapButton.exists)
     }
 
     /// Not only the final position: no intermediate frame may show the reading position

@@ -91,6 +91,7 @@ struct TimelineLiveHarnessView: View {
 
     private func insertHead(hasGap: Bool) {
         let latest = nextID + (hasGap ? 7 : 1)
+        TimelineLiveFixtureProtocol.latestInsertedID = max(TimelineLiveFixtureProtocol.latestInsertedID, latest)
         let ids = hasGap ? [latest] : [latest, latest - 1]
         model.receiveDetectedPage(TimelinePage(statuses: ids.map { TimelineLiveFixtureProtocol.post($0) }),
             sinceID: model.detectionBaselineID)
@@ -100,8 +101,10 @@ struct TimelineLiveHarnessView: View {
 
 final class TimelineLiveFixtureProtocol: URLProtocol, @unchecked Sendable {
     @MainActor static var failNextGapRequest = false
+    @MainActor static var latestInsertedID = 100
 
     @MainActor static func makeClient(testsGaps: Bool = false) -> MastodonClient {
+        latestInsertedID = 100
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [Self.self]
         if testsGaps { config.httpAdditionalHeaders = ["X-Moro-Fixture-Gaps": "1"] }
@@ -117,12 +120,22 @@ final class TimelineLiveFixtureProtocol: URLProtocol, @unchecked Sendable {
             encoder.dateEncodingStrategy = .iso8601
             let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let isInitial = request.url!.path.contains("timelines") && query.isEmpty == false
-                && !query.contains { $0.name == "max_id" || $0.name == "since_id" }
+                && !query.contains { $0.name == "max_id" || $0.name == "since_id" || $0.name == "min_id" }
             let posts: [Status]
             if isInitial, ProcessInfo.processInfo.arguments.contains("UITEST_POST_EMOJI") {
                 posts = [PostEmojiPlaybackFixture.post]
             } else if isInitial {
                 posts = (41...100).reversed().map(Self.post)
+            } else if request.value(forHTTPHeaderField: "X-Moro-Fixture-Gaps") == "1",
+                let minLower = query.first(where: { $0.name == "min_id" })?.value.flatMap(Int.init)
+            {
+                if Self.failNextGapRequest {
+                    Self.failNextGapRequest = false
+                    self.client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+                    return
+                }
+                let upper = min(minLower + 2, Self.latestInsertedID)
+                posts = minLower < Self.latestInsertedID ? ((minLower + 1)...upper).reversed().map(Self.post) : []
             } else if request.value(forHTTPHeaderField: "X-Moro-Fixture-Gaps") == "1",
                 let upper = query.first(where: { $0.name == "max_id" })?.value.flatMap(Int.init),
                 let lower = query.first(where: { $0.name == "since_id" })?.value.flatMap(Int.init)

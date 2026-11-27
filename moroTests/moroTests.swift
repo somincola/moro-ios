@@ -8586,6 +8586,8 @@ final class MockMastodonAPI: MastodonAPI {
     var fetchRelationshipsCallIDs: [String] = []
     var fetchConversationsHandler: ((String?, String?, Int) async throws -> [Conversation])?
     var fetchConversationsPageHandler: ((String?, Int) async throws -> ConversationsPage)?
+    var fetchTimelinePageHandler:
+        ((TimelineType, String?, String?, String?, Int) async throws -> TimelinePage)?
     var fetchHomeTimelineHandler: ((String?, String?, Int) async throws -> [Status])?
     var fetchBookmarkedStatusesHandler: ((String?, String?, Int) async throws -> [Status])?
     var fetchPublicTimelineHandler: ((Bool, String?, String?, String?, Int) async throws -> [Status])?
@@ -8849,6 +8851,26 @@ final class MockMastodonAPI: MastodonAPI {
         }
         throw MockError.unimplemented
     }
+    func fetchTimelinePage(
+        timeline: TimelineType, maxID: String?, sinceID: String?, minID: String?, limit: Int
+    ) async throws -> TimelinePage {
+        if let fetchTimelinePageHandler {
+            return try await fetchTimelinePageHandler(timeline, maxID, sinceID, minID, limit)
+        }
+        let statuses: [Status]
+        switch timeline {
+        case .home:
+            statuses = try await fetchHomeTimeline(maxID: maxID, sinceID: sinceID ?? minID, limit: limit)
+        case .local, .federated:
+            statuses = try await fetchPublicTimeline(
+                local: timeline == .local, maxID: maxID, sinceID: sinceID, minID: minID, limit: limit
+            )
+        case .list(let id, _):
+            statuses = try await fetchListTimeline(id: id, maxID: maxID, sinceID: sinceID ?? minID, limit: limit)
+        }
+        return TimelinePage(statuses: statuses)
+    }
+
     func fetchHomeTimeline(maxID: String?, sinceID: String?, limit: Int) async throws -> [Status] {
         if let fetchHomeTimelineHandler {
             return try await fetchHomeTimelineHandler(maxID, sinceID, limit)

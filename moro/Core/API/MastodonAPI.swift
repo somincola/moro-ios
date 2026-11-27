@@ -118,6 +118,9 @@ protocol MastodonAPI {
     func fetchTimelinePage(
         timeline: TimelineType, maxID: String?, sinceID: String?, limit: Int
     ) async throws -> TimelinePage
+    func fetchTimelinePage(
+        timeline: TimelineType, maxID: String?, sinceID: String?, minID: String?, limit: Int
+    ) async throws -> TimelinePage
     /// Instance serving this client's account, including when a notification refers to remote users.
     var instanceURL: URL? { get }
     /// Stable identifier for instance-scoped metadata caches.
@@ -397,15 +400,23 @@ extension MastodonAPI {
     func fetchTimelinePage(
         timeline: TimelineType, maxID: String?, sinceID: String?, limit: Int
     ) async throws -> TimelinePage {
+        try await fetchTimelinePage(
+            timeline: timeline, maxID: maxID, sinceID: sinceID, minID: nil, limit: limit
+        )
+    }
+
+    func fetchTimelinePage(
+        timeline: TimelineType, maxID: String?, sinceID: String?, minID: String?, limit: Int
+    ) async throws -> TimelinePage {
         let statuses: [Status]
         switch timeline {
         case .home:
-            statuses = try await fetchHomeTimeline(maxID: maxID, sinceID: sinceID, limit: limit)
+            statuses = try await fetchHomeTimeline(maxID: maxID, sinceID: sinceID ?? minID, limit: limit)
         case .local, .federated:
             statuses = try await fetchPublicTimeline(local: timeline == .local,
-                maxID: maxID, sinceID: sinceID, minID: nil, limit: limit)
+                maxID: maxID, sinceID: sinceID, minID: minID, limit: limit)
         case .list(let id, _):
-            statuses = try await fetchListTimeline(id: id, maxID: maxID, sinceID: sinceID, limit: limit)
+            statuses = try await fetchListTimeline(id: id, maxID: maxID, sinceID: sinceID ?? minID, limit: limit)
         }
         return TimelinePage(statuses: statuses)
     }

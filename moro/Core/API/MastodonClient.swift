@@ -527,20 +527,32 @@ struct MastodonClient: MastodonAPI {
     func fetchTimelinePage(
         timeline: TimelineType, maxID: String?, sinceID: String?, limit: Int
     ) async throws -> TimelinePage {
+        try await fetchTimelinePage(
+            timeline: timeline, maxID: maxID, sinceID: sinceID, minID: nil, limit: limit
+        )
+    }
+
+    func fetchTimelinePage(
+        timeline: TimelineType, maxID: String?, sinceID: String?, minID: String?, limit: Int
+    ) async throws -> TimelinePage {
         let endpoint: MastodonEndpoint
         switch timeline {
         case .home:
-            endpoint = .homeTimeline(maxID: maxID, sinceID: sinceID, limit: limit)
+            endpoint = .homeTimeline(maxID: maxID, sinceID: sinceID, minID: minID, limit: limit)
         case .local, .federated:
             endpoint = .publicTimeline(local: timeline == .local, maxID: maxID,
-                sinceID: sinceID, minID: nil, limit: limit)
+                sinceID: sinceID, minID: minID, limit: limit)
         case .list(let id, _):
-            endpoint = .listTimeline(id: id, maxID: maxID, sinceID: sinceID, limit: limit)
+            endpoint = .listTimeline(id: id, maxID: maxID, sinceID: sinceID, minID: minID, limit: limit)
         }
         let (statuses, response): ([Status], HTTPURLResponse) = try await performWithResponse(
             authorizedRequest(for: endpoint))
-        return TimelinePage(statuses: statuses, isPartial: response.statusCode == 206,
-            nextMaxID: MastodonLinkPagination.nextMaxID(in: response))
+        return TimelinePage(
+            statuses: statuses,
+            isPartial: response.statusCode == 206,
+            nextMaxID: MastodonLinkPagination.nextMaxID(in: response),
+            prevMinID: MastodonLinkPagination.prevMinID(in: response)
+        )
     }
 
     func fetchHomeTimeline(maxID: String?, sinceID: String?, limit: Int = 40) async throws

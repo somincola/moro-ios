@@ -47,7 +47,7 @@ enum MastodonEndpoint {
     case deleteProfileHeader
 
     // Timeline & Status
-    case homeTimeline(maxID: String?, sinceID: String?, limit: Int)
+    case homeTimeline(maxID: String?, sinceID: String?, minID: String? = nil, limit: Int)
     case publicTimeline(local: Bool, maxID: String?, sinceID: String?, minID: String?, limit: Int)
     case hashtagTimeline(tag: String, maxID: String?, sinceID: String?, limit: Int)
     case search(query: String, type: String?, resolve: Bool, limit: Int, offset: Int?)
@@ -99,7 +99,7 @@ enum MastodonEndpoint {
     case listAccounts(id: String, maxID: String?, sinceID: String?, limit: Int)
     case addAccountsToList(id: String)
     case removeAccountsFromList(id: String)
-    case listTimeline(id: String, maxID: String?, sinceID: String?, limit: Int)
+    case listTimeline(id: String, maxID: String?, sinceID: String?, minID: String? = nil, limit: Int)
     case pushSubscription
     case createPushSubscription
     case updatePushSubscription
@@ -322,7 +322,7 @@ enum MastodonEndpoint {
             return "/api/v1/lists/\(id)"
         case .listAccounts(let id, _, _, _), .addAccountsToList(let id), .removeAccountsFromList(let id):
             return "/api/v1/lists/\(id)/accounts"
-        case .listTimeline(let id, _, _, _):
+        case .listTimeline(let id, _, _, _, _):
             return "/api/v1/timelines/list/\(id)"
         case .pushSubscription, .createPushSubscription, .updatePushSubscription,
             .deletePushSubscription:
@@ -380,10 +380,11 @@ enum MastodonEndpoint {
 
     var queryItems: [URLQueryItem]? {
         switch self {
-        case .homeTimeline(let maxID, let sinceID, let limit):
+        case .homeTimeline(let maxID, let sinceID, let minID, let limit):
             return [
                 maxID.map { URLQueryItem(name: "max_id", value: $0) },
                 sinceID.map { URLQueryItem(name: "since_id", value: $0) },
+                minID.map { URLQueryItem(name: "min_id", value: $0) },
                 URLQueryItem(name: "limit", value: "\(limit)"),
             ].compactMap { $0 }
         case .publicTimeline(let local, let maxID, let sinceID, let minID, let limit):
@@ -513,10 +514,11 @@ enum MastodonEndpoint {
                 sinceID.map { URLQueryItem(name: "since_id", value: $0) },
                 URLQueryItem(name: "limit", value: "\(limit)")
             ].compactMap { $0 }
-        case .listTimeline(_, let maxID, let sinceID, let limit):
+        case .listTimeline(_, let maxID, let sinceID, let minID, let limit):
             return [
                 maxID.map { URLQueryItem(name: "max_id", value: $0) },
                 sinceID.map { URLQueryItem(name: "since_id", value: $0) },
+                minID.map { URLQueryItem(name: "min_id", value: $0) },
                 URLQueryItem(name: "limit", value: "\(limit)")
             ].compactMap { $0 }
         case .listAccounts(_, let maxID, let sinceID, let limit):

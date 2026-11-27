@@ -196,6 +196,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
     // Publish failures with the body snapshot so retry rows use the same
     // anchor-preserving transaction when they appear or disappear.
     private var failedGapRequestIDs: Set<UUID> = []
+    private(set) var pendingPreferredGapAnchorID: String?
     private var dataGeneration = UUID()
     private var hasResolvedInitialCache = false
     private var cacheWriteTask: Task<Void, Never>?
@@ -686,18 +687,35 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         return automaticGapTask
     }
 
+    func consumePendingPreferredGapAnchorID() -> String? {
+        let anchorID = pendingPreferredGapAnchorID
+        pendingPreferredGapAnchorID = nil
+        return anchorID
+    }
+
     private func nextAutomaticGap(near visibleStatusIDs: Set<String>) -> TimelineGap? {
+        // Fill small gaps quietly within the background probe budget; once exhausted,
+        // leave the remaining gap as an explicit manual control so large breaks stay
+        // under the reader's control.
+        guard automaticGapBudget > 0 else { return nil }
         let candidates = liveTimeline?.metadata.gaps.filter { !failedGapRequestIDs.contains($0.id) } ?? []
         return candidates.first { visibleStatusIDs.contains($0.afterID) || visibleStatusIDs.contains($0.beforeID) }
-            ?? (automaticGapBudget > 0 ? candidates.last : nil)
+            ?? candidates.last
     }
 
     @discardableResult
-    func loadGap(id: UUID) async -> Bool {
+    func loadGap(
+        id: UUID,
+        direction: TimelineGapFillDirection = .downward,
+        initiatedByUser: Bool = false
+    ) async -> Bool {
         if let request = gapRequests[id] {
             return await request.value
         }
         guard liveTimeline?.metadata.gaps.contains(where: { $0.id == id }) == true else { return false }
+        if initiatedByUser {
+            automaticGapBudget = 0
+        }
         let generation = dataGeneration
         let previousGap = gapTask?.task
         let previousPagination = activeLoadMoreRequest?.task
@@ -711,15 +729,81 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
             if let previousPagination { await previousPagination.value }
             guard !Task.isCancelled, generation == self.dataGeneration,
                 let gap = self.liveTimeline?.metadata.gaps.first(where: { $0.id == id }) else { return false }
+            let originalAfterID = gap.afterID
+            let originalBeforeID = gap.beforeID
             do {
-                let page = try await self.apiClient.fetchTimelinePage(
-                    timeline: self.timelineType, maxID: gap.maxID, sinceID: gap.sinceID,
-                    limit: self.bootstrapConfig.refreshLoadLimit)
-                try Task.checkCancellation()
-                guard generation == self.dataGeneration else { return false }
-                let progressed = self.liveTimeline?.fillGap(id, page: page, currentAccountID: self.currentAccountID) ?? false
-                if progressed { self.failedGapRequestIDs.remove(id) }
-                else { self.failedGapRequestIDs.insert(id) }
+                let canLoadUpward = direction == .upward
+                    && TimelineLiveUpdates.isNumericID(gap.maxID)
+                    && TimelineLiveUpdates.isNumericID(gap.sinceID)
+                var appliedDirection: TimelineGapFillDirection = canLoadUpward ? .upward : .downward
+                var outcome: TimelineGapFillOutcome
+
+                if canLoadUpward {
+                    let upwardPage = try await self.apiClient.fetchTimelinePage(
+                        timeline: self.timelineType,
+                        maxID: nil,
+                        sinceID: nil,
+                        minID: gap.sinceID,
+                        limit: self.bootstrapConfig.refreshLoadLimit
+                    )
+                    try Task.checkCancellation()
+                    guard generation == self.dataGeneration else { return false }
+                    outcome = self.liveTimeline?.fillGap(
+                        id,
+                        page: upwardPage,
+                        direction: .upward,
+                        currentAccountID: self.currentAccountID
+                    ) ?? .stalled
+
+                    if outcome == .fallbackToDownward {
+                        guard let currentGap = self.liveTimeline?.metadata.gaps.first(where: { $0.id == id }) else {
+                            return false
+                        }
+                        appliedDirection = .downward
+                        let downwardPage = try await self.apiClient.fetchTimelinePage(
+                            timeline: self.timelineType,
+                            maxID: currentGap.maxID,
+                            sinceID: currentGap.sinceID,
+                            minID: nil,
+                            limit: self.bootstrapConfig.refreshLoadLimit
+                        )
+                        try Task.checkCancellation()
+                        guard generation == self.dataGeneration else { return false }
+                        outcome = self.liveTimeline?.fillGap(
+                            id,
+                            page: downwardPage,
+                            direction: .downward,
+                            currentAccountID: self.currentAccountID
+                        ) ?? .stalled
+                    }
+                } else {
+                    let downwardPage = try await self.apiClient.fetchTimelinePage(
+                        timeline: self.timelineType,
+                        maxID: gap.maxID,
+                        sinceID: gap.sinceID,
+                        minID: nil,
+                        limit: self.bootstrapConfig.refreshLoadLimit
+                    )
+                    try Task.checkCancellation()
+                    guard generation == self.dataGeneration else { return false }
+                    outcome = self.liveTimeline?.fillGap(
+                        id,
+                        page: downwardPage,
+                        direction: .downward,
+                        currentAccountID: self.currentAccountID
+                    ) ?? .stalled
+                }
+
+                let progressed = outcome.didAdvance
+                if progressed {
+                    self.failedGapRequestIDs.remove(id)
+                    if initiatedByUser {
+                        self.pendingPreferredGapAnchorID =
+                            appliedDirection == .upward ? originalBeforeID : originalAfterID
+                    }
+                } else {
+                    self.failedGapRequestIDs.insert(id)
+                }
                 self.liveContentChanged(immediate: true)
                 return progressed
             } catch {
@@ -936,6 +1020,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         gapRequests = [:]
         gapTask = nil
         failedGapRequestIDs = []
+        pendingPreferredGapAnchorID = nil
         liveTimeline = nil
         liveVersion = 0
         appliedLiveVersion = 0

@@ -306,10 +306,11 @@ extension TimelineHomeView {
         -> some View
     {
         let pageSession = pageSessionStore.session(for: timelineType)
-        // Grouped once per pass instead of filtering every gap for every row.
-        let retryGapsByAfterID = Dictionary(
-            grouping: viewModel.gaps.filter { viewModel.failedGapIDs.contains($0.id) },
-            by: \.afterID
+        // Grouped once per pass instead of scanning gaps or statuses for every row.
+        let gapsByAfterID = Dictionary(grouping: viewModel.gaps, by: \.afterID)
+        let statusByID = Dictionary(
+            viewModel.statuses.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
         )
 
         ForEach(viewModel.statuses.indexed(), id: \.element.id) { index, status in
@@ -383,26 +384,34 @@ extension TimelineHomeView {
                 }
             }
 
-            MoroDivider(leadingInset: theme.spacing.timelineDividerInset, height: 0.5)
-
-            // Unverified intervals are resolved quietly. Only a failed request
-            // needs an action in the timeline; its appearance is anchor-preserved.
-            ForEach(retryGapsByAfterID[status.id] ?? []) { gap in
-                Button {
-                    Task { await viewModel.loadGap(id: gap.id) }
-                } label: {
-                    HStack(spacing: theme.spacing.s) {
-                        if viewModel.loadingGapIDs.contains(gap.id) { ProgressView() }
-                        Text(MoroL10n.Timeline.gapRetry)
-                    }
-                    .font(theme.typography.caption)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .contentShape(Rectangle())
+            let rowGaps = gapsByAfterID[status.id] ?? []
+            if rowGaps.isEmpty {
+                MoroDivider(leadingInset: theme.spacing.timelineDividerInset, height: 0.5)
+            } else {
+                ForEach(rowGaps) { gap in
+                    TimelineGapRow(
+                        state: timelineGapRowState(for: gap, in: viewModel),
+                        timeSpanText: TimelineGapTimeSpanFormatter.text(
+                            afterDate: status.createdAt,
+                            beforeDate: statusByID[gap.beforeID]?.createdAt
+                        ),
+                        accessibilityID: "timeline.gap.\(gap.beforeID)",
+                        onTap: {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            let direction = scrollBridge.preferredGapFillDirection(
+                                for: gap,
+                                on: timelineType
+                            )
+                            Task {
+                                await viewModel.loadGap(
+                                    id: gap.id,
+                                    direction: direction,
+                                    initiatedByUser: true
+                                )
+                            }
+                        }
+                    )
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.colors.textSecondary)
-                .disabled(viewModel.loadingGapIDs.contains(gap.id))
-                .accessibilityIdentifier("timeline.gap.\(gap.beforeID)")
             }
         }
 
@@ -625,4 +634,147 @@ extension TimelineHomeView {
         await viewModel.loadInitial()
     }
 
+    private func timelineGapRowState(
+        for gap: TimelineGap,
+        in viewModel: TimelineViewModel
+    ) -> TimelineGapRow.DisplayState {
+        if viewModel.loadingGapIDs.contains(gap.id) {
+            return .loading
+        }
+        if viewModel.failedGapIDs.contains(gap.id) {
+            return .failed
+        }
+        return .idle
+    }
+}
+
+enum TimelineGapTimeSpanFormatter {
+    static let minimumInterval: TimeInterval = 30 * 60
+
+    private static let formatter: DateComponentsFormatter = {
+        let formatter = DateComponentsFormatter()
+        var calendar = Calendar.autoupdatingCurrent
+        calendar.locale = Locale.autoupdatingCurrent
+        formatter.calendar = calendar
+        formatter.unitsStyle = .abbreviated
+        formatter.allowedUnits = [.day, .hour, .minute]
+        formatter.maximumUnitCount = 1
+        formatter.zeroFormattingBehavior = .dropAll
+        return formatter
+    }()
+
+    static func text(afterDate: Date, beforeDate: Date?) -> String? {
+        guard let beforeDate else { return nil }
+        let interval = afterDate.timeIntervalSince(beforeDate)
+        guard interval >= minimumInterval,
+            let formatted = formatter.string(from: interval),
+            !formatted.isEmpty
+        else { return nil }
+        return MoroL10n.Timeline.gapTimeSpan(formatted)
+    }
+}
+
+private struct TimelineGapRow: View {
+    enum DisplayState: Equatable {
+        case idle
+        case loading
+        case failed
+    }
+
+    let state: DisplayState
+    let timeSpanText: String?
+    let accessibilityID: String
+    let onTap: () -> Void
+
+    @Environment(\.moroTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        VStack(spacing: 0) {
+            MoroDivider(height: 0.5)
+            Button(action: onTap) {
+                content
+                    .padding(.horizontal, theme.spacing.m)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(theme.colors.surfaceSubtle)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(state == .loading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(accessibilityLabelText)
+            .accessibilityIdentifier(accessibilityID)
+            MoroDivider(height: 0.5)
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: 4) {
+                primaryRow
+                if let timeSpanText {
+                    Text(timeSpanText)
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textTertiary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+        } else {
+            HStack(spacing: 6) {
+                primaryRow
+                if let timeSpanText {
+                    Text("·")
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textTertiary)
+                    Text(timeSpanText)
+                        .font(theme.typography.caption)
+                        .foregroundStyle(theme.colors.textTertiary)
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
+    private var primaryRow: some View {
+        HStack(spacing: theme.spacing.xs) {
+            switch state {
+            case .idle:
+                Image(systemName: "arrow.up.and.down.text.horizontal")
+                    .moroScaledFont(size: 12, weight: .medium)
+                    .foregroundStyle(theme.colors.textSecondary)
+            case .loading:
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(theme.colors.textSecondary)
+            case .failed:
+                Image(systemName: "arrow.clockwise")
+                    .moroScaledFont(size: 12, weight: .medium)
+                    .foregroundStyle(theme.colors.textSecondary)
+            }
+            Text(primaryLabelText)
+                .font(theme.typography.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(theme.colors.textSecondary)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    private var primaryLabelText: String {
+        switch state {
+        case .idle:
+            return MoroL10n.Timeline.loadGap
+        case .loading:
+            return MoroL10n.Timeline.gapLoading
+        case .failed:
+            return MoroL10n.Timeline.gapRetry
+        }
+    }
+
+    private var accessibilityLabelText: String {
+        guard let timeSpanText else { return primaryLabelText }
+        return "\(primaryLabelText), \(timeSpanText)"
+    }
 }

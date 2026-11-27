@@ -329,7 +329,13 @@ final class TimelineScrollBridge: ObservableObject {
     }
 
     @discardableResult
-    func prepareContentUpdate(for timeline: TimelineType, revision: UInt64, jumpToLatest: Bool = false, retainedIDs: Set<String>? = nil) -> Bool {
+    func prepareContentUpdate(
+        for timeline: TimelineType,
+        revision: UInt64,
+        jumpToLatest: Bool = false,
+        retainedIDs: Set<String>? = nil,
+        preferredAnchorID: String? = nil
+    ) -> Bool {
         guard active, isPresented(timeline) else { return false }
         if !jumpToLatest && !canPresentUpdates(for: timeline) { return false }
         let followsLatest = jumpToLatest || followsLatestAtTop(timeline)
@@ -338,6 +344,14 @@ final class TimelineScrollBridge: ObservableObject {
         let survivors = candidates.filter { retainedIDs?.contains($0.statusID) ?? true }
         let visible = survivors.filter { visibleIDs.contains($0.statusID) }
         var anchors = visible.isEmpty ? Array(survivors.sorted { abs($0.viewportOffset) < abs($1.viewportOffset) }.prefix(1)) : visible
+        // For user-initiated bidirectional gap fills, pin the side of the gap the reader
+        // was looking at so newly loaded posts unfold directly into view.
+        if !followsLatest, let preferredAnchorID,
+            let preferredIndex = anchors.firstIndex(where: { $0.statusID == preferredAnchorID })
+        {
+            let preferred = anchors.remove(at: preferredIndex)
+            anchors.insert(preferred, at: 0)
+        }
         // While a restored anchor is still held (user has not scrolled yet), prefer that
         // authoritative anchor over whatever the viewport drifted to before the update.
         if !followsLatest, let held = restoredAnchors[timeline],
@@ -353,6 +367,22 @@ final class TimelineScrollBridge: ObservableObject {
         return true
     }
 
+    func preferredGapFillDirection(
+        for gap: TimelineGap,
+        on timeline: TimelineType
+    ) -> TimelineGapFillDirection {
+        let visible = readingAnchors(for: timeline)
+        let afterAnchor = visible.first { $0.statusID == gap.afterID }
+        let beforeAnchor = visible.first { $0.statusID == gap.beforeID }
+        if beforeAnchor != nil, afterAnchor == nil || (afterAnchor?.viewportOffset ?? 0) < -40 {
+            return .upward
+        }
+        if afterAnchor != nil, beforeAnchor == nil {
+            return .downward
+        }
+        return lastReadingDirection[timeline] ?? .downward
+    }
+
     func latestIsVisible(for timeline: TimelineType, statusID: String?, revision: UInt64) -> Bool {
         guard canPresentUpdates(for: timeline), isAtTop(timeline), let statusID,
             let view = rows[timeline]?[statusID]?.value,
@@ -361,6 +391,7 @@ final class TimelineScrollBridge: ObservableObject {
     }
 
     func restoreReadingAnchor(_ anchor: TimelineReadingAnchor, for timeline: TimelineType) {
+        lastReadingDirection[timeline] = .upward
         guard let view = rows[timeline]?[anchor.statusID]?.value,
             let scrollView = nativeScrollViews[timeline]?.value else {
             proxies[timeline]?.scrollTo(anchor.statusID, anchor: .top)
@@ -622,6 +653,8 @@ final class TimelineScrollBridge: ObservableObject {
     /// hysteresis state for the show/hide logic, not observed by any view.
     var offsets: [TimelineType: CGFloat] = [:]
     var headerAnchors: [TimelineType: CGFloat] = [:]
+    private var previousChromeOffsets: [TimelineType: CGFloat] = [:]
+    private var lastReadingDirection: [TimelineType: TimelineGapFillDirection] = [:]
 
     private var proxies: [TimelineType: ScrollViewProxy] = [:]
     private var nativeScrollViews: [TimelineType: WeakScrollView] = [:]
@@ -734,6 +767,15 @@ final class TimelineScrollBridge: ObservableObject {
         }
 
         let driving = isUserDrivingScroll(for: timeline)
+        if driving, let previousOffset = previousChromeOffsets[timeline] {
+            let delta = offset - previousOffset
+            if delta > 2 {
+                lastReadingDirection[timeline] = .upward
+            } else if delta < -2 {
+                lastReadingDirection[timeline] = .downward
+            }
+        }
+        previousChromeOffsets[timeline] = offset
         let assistiveLocked = Self.isAssistiveChromeLocked
 
         if let nextChrome = headerScrollPolicy.update(
@@ -844,6 +886,7 @@ final class TimelineScrollBridge: ObservableObject {
     /// so it always scrolls the visible page (not whichever one registered last).
     func scrollToTop(_ timeline: TimelineType) {
         guard active, isPresented(timeline) else { return }
+        lastReadingDirection[timeline] = .downward
         releaseHold(for: timeline) // The reader asked for the latest.
         settlingTop[timeline] = Date().addingTimeInterval(anchorSettleDuration)
         startSettleTicker()

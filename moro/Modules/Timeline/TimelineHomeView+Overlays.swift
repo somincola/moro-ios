@@ -76,7 +76,14 @@ extension TimelineHomeView {
             scrollBridge.endRestoreVeil(for: timeline)
         }
         if target.hasUnappliedUpdates {
-            guard scrollBridge.prepareContentUpdate(for: timeline, revision: target.presentationRevision + 1, retainedIDs: target.canonicalStatusIDs) else { return }
+            let preferredAnchorID = target.pendingPreferredGapAnchorID
+            guard scrollBridge.prepareContentUpdate(
+                for: timeline,
+                revision: target.presentationRevision + 1,
+                retainedIDs: target.canonicalStatusIDs,
+                preferredAnchorID: preferredAnchorID
+            ) else { return }
+            _ = target.consumePendingPreferredGapAnchorID()
             target.applyLiveUpdates()
             return // The matching row layout event will finish the transaction.
         }
