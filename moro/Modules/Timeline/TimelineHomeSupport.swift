@@ -254,27 +254,88 @@ private struct TimelineHomePreviewHost: View {
     }
 }
 
-/// Decides what a fresh launch does with the reading position saved by the last one.
+/// Decides what a fresh launch or background resume does with the saved reading position.
 ///
-/// iOS does not tell an app whether it was swiped away or quietly evicted in the
-/// background, so the time away stands in for the reader's intent: back within the window
-/// (typically after an eviction), the timeline reopens where it was; after a longer
-/// absence it opens at the top with the latest posts. While the app stays alive the
-/// position is always kept; this only concerns a new process.
+/// Controlled by `AppSettings.timelineOpenBehavior`:
+/// - `.keepPosition` (default): stay on the saved post on launch & resume; new posts appear in the pill.
+/// - `.smartRefresh`: return to the latest after being away longer than the user's configured window.
+/// - `.alwaysLatest`: open at the latest on cold launch, and on warm resume after a 2-minute anti-mistouch guard.
 nonisolated enum TimelineLaunchPolicy {
     static let restoreWindow: TimeInterval = 30 * 60
+    static let alwaysLatestResumeGraceWindow: TimeInterval = 2 * 60
     private static let lastLeftKey = "timeline.lastLeftAt"
 
+    /// Captured once per process, before this launch records its own leaving time.
+    static let coldLaunchLastLeftAt: Date? = {
+        let raw = UserDefaults.standard.object(forKey: lastLeftKey) as? TimeInterval
+        return raw.map(Date.init(timeIntervalSince1970:))
+    }()
+
+    /// Timestamp when this process started evaluating launch policy.
+    private static let processLaunchDate = Date()
+
     /// Evaluated once per process, before this launch records its own leaving time.
+    /// Respects `UITEST_TIMELINE_RESTORE_WINDOW` when set by UI tests, otherwise reads user settings.
     static let restoresReadingPosition: Bool = {
-        var window = restoreWindow
         #if DEBUG
         if let override = ProcessInfo.processInfo.environment["UITEST_TIMELINE_RESTORE_WINDOW"]
-            .flatMap(TimeInterval.init) { window = override }
+            .flatMap(TimeInterval.init) {
+            return shouldRestore(lastLeftAt: coldLaunchLastLeftAt, now: processLaunchDate, window: override)
+        }
         #endif
-        let lastLeft = UserDefaults.standard.object(forKey: lastLeftKey) as? TimeInterval
-        return shouldRestore(lastLeftAt: lastLeft.map(Date.init(timeIntervalSince1970:)), now: Date(), window: window)
+        let defaults = UserDefaults.standard
+        let behaviorRaw = defaults.string(forKey: "timelineOpenBehavior") ?? "keep_position"
+        let smartMinutes: Int
+        if let stored = defaults.object(forKey: "timelineSmartRefreshMinutes") as? NSNumber {
+            smartMinutes = max(30, stored.intValue)
+        } else {
+            smartMinutes = 60
+        }
+        return shouldRestoreOnColdLaunch(
+            behaviorRawValue: behaviorRaw,
+            smartWindow: TimeInterval(smartMinutes * 60),
+            lastLeftAt: coldLaunchLastLeftAt,
+            now: processLaunchDate
+        )
     }()
+
+    static func shouldRestoreOnColdLaunch(
+        behaviorRawValue: String,
+        smartWindow: TimeInterval,
+        lastLeftAt: Date?,
+        now: Date
+    ) -> Bool {
+        switch behaviorRawValue {
+        case "keep_position":
+            return true
+        case "always_latest":
+            return false
+        case "smart_refresh":
+            return shouldRestore(lastLeftAt: lastLeftAt, now: now, window: smartWindow)
+        default:
+            return true
+        }
+    }
+
+    static func shouldJumpToLatestOnResume(
+        behaviorRawValue: String,
+        smartWindow: TimeInterval,
+        awayDuration: TimeInterval
+    ) -> Bool {
+        guard awayDuration >= 0 else { return false }
+        switch behaviorRawValue {
+        case "keep_position":
+            return false
+        case "smart_refresh":
+            return awayDuration >= smartWindow
+        case "always_latest":
+            // 2-minute anti-mistouch guard: brief switches (e.g. replying to a message or
+            // opening an external link) never yank the reader back to the top.
+            return awayDuration >= alwaysLatestResumeGraceWindow
+        default:
+            return false
+        }
+    }
 
     static func shouldRestore(lastLeftAt: Date?, now: Date, window: TimeInterval) -> Bool {
         guard let lastLeftAt else { return false }
@@ -283,6 +344,7 @@ nonisolated enum TimelineLaunchPolicy {
     }
 
     static func recordLeaving(at date: Date = Date()) {
+        _ = coldLaunchLastLeftAt
         _ = restoresReadingPosition // settle this launch's decision before overwriting its input
         UserDefaults.standard.set(date.timeIntervalSince1970, forKey: lastLeftKey)
     }

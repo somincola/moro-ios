@@ -94,6 +94,9 @@ extension TimelineHomeView {
             .onChange(of: viewModel.liveRevision) { _, _ in
                 processLiveUpdates(for: timelineType, viewModel: viewModel)
             }
+            .onChange(of: viewModel.pendingRemoteSyncedAnchor) { _, _ in
+                processLiveUpdates(for: timelineType, viewModel: viewModel)
+            }
             .onChange(of: viewModel.timelineType) { _, _ in
                 updateThreadContexts()
             }

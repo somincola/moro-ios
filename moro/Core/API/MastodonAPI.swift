@@ -623,7 +623,7 @@ struct CustomEmoji: Identifiable, Codable, Hashable {
 }
 
 /// Relationship between accounts
-struct Relationship: Identifiable, Codable {
+nonisolated struct Relationship: Identifiable, Codable {
     let id: String
     let following: Bool
     let showingReblogs: Bool

@@ -10,7 +10,7 @@
 import Foundation
 
 struct NavigationAccessPolicy: Equatable, Sendable {
-    enum HomeTrailingAction: Equatable, Sendable {
+    nonisolated enum HomeTrailingAction: Equatable, Sendable {
         case announcements(unreadCount: Int)
         case search
         case none

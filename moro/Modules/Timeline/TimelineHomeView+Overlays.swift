@@ -33,14 +33,43 @@ extension TimelineHomeView {
     }
 
     func processLiveUpdates(for timeline: TimelineType, viewModel target: TimelineViewModel) {
-        guard target.hasReadingState, scrollBridge.canPresentUpdates(for: timeline) else { return }
+        guard target.hasReadingState,
+            !target.isAwaitingInitialCacheCheck,
+            scrollBridge.canPresentUpdates(for: timeline)
+        else { return }
         let session = pageSessionStore.session(for: timeline)
+        if let remoteAnchor = target.consumePendingRemoteSyncedAnchor() {
+            let canAdoptRemote = !scrollBridge.isUserScrolling(timeline)
+                && !scrollBridge.isUserDragging(timeline)
+                && (!session.hasRestoredReadingAnchor || scrollBridge.isHoldingRestoredAnchor(for: timeline))
+            if canAdoptRemote {
+                if target.hasUnappliedUpdates {
+                    session.hasRestoredReadingAnchor = true
+                    scrollBridge.holdReadingPosition(remoteAnchor, for: timeline)
+                    if scrollBridge.prepareContentUpdate(
+                        for: timeline,
+                        revision: target.presentationRevision + 1,
+                        retainedIDs: target.canonicalStatusIDs
+                    ) {
+                        target.applyLiveUpdates()
+                        return
+                    }
+                } else if target.statuses.contains(where: { $0.id == remoteAnchor.statusID }) {
+                    session.hasRestoredReadingAnchor = true
+                    scrollBridge.holdReadingPosition(remoteAnchor, for: timeline)
+                    scrollBridge.restoreReadingAnchor(remoteAnchor, for: timeline)
+                    return
+                }
+            }
+        }
         if !session.hasRestoredReadingAnchor, !target.statuses.isEmpty {
             session.hasRestoredReadingAnchor = true
             // Back soon after leaving: reopen where the reader was. After a longer absence
             // the timeline starts at the top with the latest posts.
-            if TimelineLaunchPolicy.restoresReadingPosition, let saved = target.savedReadingAnchor {
-                scrollBridge.holdReadingPosition(for: timeline)
+            if TimelineLaunchPolicy.restoresReadingPosition,
+                let saved = target.savedReadingAnchor,
+                target.statuses.contains(where: { $0.id == saved.statusID }) {
+                scrollBridge.holdReadingPosition(saved, for: timeline)
                 scrollBridge.restoreReadingAnchor(saved, for: timeline)
                 return
             }
@@ -56,6 +85,15 @@ extension TimelineHomeView {
             target.acknowledgePresentedUpdates(through: target.presentedSequence)
         }
         let visibleAnchors = scrollBridge.readingAnchors(for: timeline)
+        if let held = scrollBridge.heldRestoredAnchor(for: timeline) {
+            if target.statuses.contains(where: { $0.id == held.statusID }) {
+                // Keep the restored anchor untouched until the reader actively scrolls or
+                // jumps to the latest; passive layout drift must never overwrite saved progress.
+                target.fillRecentGapsIfNeeded(near: Set(visibleAnchors.map(\.statusID)))
+                return
+            }
+            scrollBridge.releaseRestoredAnchorHold(for: timeline)
+        }
         if let anchor = visibleAnchors.first {
             target.saveReadingAnchor(anchor)
             if timeline == .home, target.currentTopVisibleStatusID != anchor.statusID {

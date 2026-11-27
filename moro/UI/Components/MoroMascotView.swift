@@ -11,7 +11,7 @@ import SwiftUI
 import UIKit
 #endif
 
-enum MoroMascotExpression: Equatable, Sendable, CaseIterable {
+nonisolated enum MoroMascotExpression: Equatable, Sendable, CaseIterable {
     /// Serene relaxed expression for general empty lists, profiles, announcements, and inbox.
     case calm
     /// Perked, inquisitive expression for search with no matches, empty discovery, and filters.

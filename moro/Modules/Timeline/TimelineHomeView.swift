@@ -10,6 +10,7 @@ import SwiftUI
 
 #if os(iOS)
     import UIKit
+    import os
 #endif
 
 struct TimelineHomeView: View {
@@ -350,9 +351,7 @@ struct TimelineHomeView: View {
             }
             if !active {
                 viewModel.cancelBackgroundTasks()
-                if let anchor = scrollBridge.readingAnchors(for: selectedTimeline).first {
-                    viewModel.saveReadingAnchor(anchor)
-                }
+                captureVisibleReadingAnchorForDeparture()
             }
         }
         .task(id: activeListPollingKey) {
@@ -462,18 +461,57 @@ struct TimelineHomeView: View {
             scrollBridge.setActive(isActive && newValue == .active && !hasLocalModal)
             switch newValue {
             case .active:
-                // Coming back to the app is not "watching live": keep the post that was
-                // showing, even at the top, and let new posts wait behind the notice.
-                if lastInactiveAt != nil { scrollBridge.resumeAfterBackground() }
+                let inactiveAt = lastInactiveAt
+                lastInactiveAt = nil
+                let awayDuration = inactiveAt.map { Date().timeIntervalSince($0) } ?? 0
+                let shouldJumpToLatest = inactiveAt != nil
+                    && TimelineLaunchPolicy.shouldJumpToLatestOnResume(
+                        behaviorRawValue: settings.timelineOpenBehavior.rawValue,
+                        smartWindow: settings.smartRefreshWindow,
+                        awayDuration: awayDuration
+                    )
+
+                // Coming back without jumping to latest keeps the post that was showing,
+                // even at the top, and lets new posts wait behind the notice.
+                if inactiveAt != nil, !shouldJumpToLatest {
+                    scrollBridge.resumeAfterBackground()
+                }
                 guard hasLoadedHome else { return }
                 refreshAnnouncementBadge(initialDelay: false)
                 detectionManager.startDetection()
                 streamWatcher.ensureUserSession(accessToken: appState.authToken)
 
-                let inactiveAt = lastInactiveAt
-                lastInactiveAt = nil
-                guard let inactiveAt,
-                    Date().timeIntervalSince(inactiveAt) >= 60,
+                if shouldJumpToLatest {
+                    let target = viewModel
+                    let timeline = selectedTimeline
+                    Task { @MainActor in
+                        _ = await target.refresh(trigger: .foreground)
+                        guard selectedTimeline == timeline, scenePhase == .active else { return }
+                        syncDetectionTopID(for: timeline)
+                        loadDetectedPosts(scrollToTop: true, providesFeedback: false)
+                    }
+                    return
+                }
+
+                if settings.syncReadingPositionWithServer,
+                    selectedTimeline == .home,
+                    awayDuration >= 15
+                {
+                    Task { @MainActor in
+                        if let synced = await homeViewModel.syncRemoteMarkerOnResume(allowAdvance: true),
+                            selectedTimeline == .home,
+                            scenePhase == .active,
+                            !scrollBridge.isUserDragging(.home),
+                            !scrollBridge.isUserScrolling(.home)
+                        {
+                            scrollBridge.holdReadingPosition(synced, for: .home)
+                            processLiveUpdates(for: .home, viewModel: homeViewModel)
+                        }
+                    }
+                }
+
+                guard inactiveAt != nil,
+                    awayDuration >= 60,
                     let dimension = detectionDimension(for: selectedTimeline)
                 else { return }
 
@@ -485,13 +523,16 @@ struct TimelineHomeView: View {
                 }
 
             case .inactive, .background:
+                // Capture the live visible post right before leaving (even mid-deceleration),
+                // while preserving any untouched restored anchor.
+                captureVisibleReadingAnchorForDeparture()
+                TimelineLaunchPolicy.recordLeaving()
                 let models = [homeViewModel, localViewModel, federatedViewModel] + pinnedTimelineStore.allViewModels
                 for model in models { model.cancelBackgroundTasks() }
-                Task { for model in models where model.hasReadingState { await model.flushCacheWrites() } }
+                flushTimelineCachesOnDeparture(models: models)
                 if lastInactiveAt == nil {
                     lastInactiveAt = Date()
                 }
-                if newValue == .background { TimelineLaunchPolicy.recordLeaving() }
             @unknown default:
                 break
             }
@@ -603,6 +644,52 @@ struct TimelineHomeView: View {
         actionSurface.composeContext != nil || actionSurface.boostDialogStatus != nil
             || actionSurface.reportStatus != nil || actionSurface.deleteRequest != nil
             || interactionService.activeAlert != nil
+    }
+
+    @MainActor
+    private func captureVisibleReadingAnchorForDeparture() {
+        let target = viewModel
+        guard target.hasReadingState, !target.statuses.isEmpty, !target.isAwaitingInitialCacheCheck else {
+            return
+        }
+        if let held = scrollBridge.heldRestoredAnchor(for: selectedTimeline),
+            target.statuses.contains(where: { $0.id == held.statusID }) {
+            target.saveReadingAnchor(held)
+            return
+        }
+        if let anchor = scrollBridge.readingAnchors(for: selectedTimeline).first {
+            target.saveReadingAnchor(anchor)
+        }
+    }
+
+    @MainActor
+    private func flushTimelineCachesOnDeparture(models: [TimelineViewModel]) {
+        let modelsToFlush = models.filter(\.hasReadingState)
+        guard !modelsToFlush.isEmpty else { return }
+        let shouldSyncMarker = settings.syncReadingPositionWithServer
+        let homeModel = homeViewModel
+        #if os(iOS)
+        let guardBox = BackgroundFlushGuard()
+        guardBox.begin(name: "moro.timeline.flush")
+        Task { @MainActor in
+            defer { guardBox.end() }
+            for model in modelsToFlush {
+                await model.flushCacheWrites()
+            }
+            if shouldSyncMarker {
+                await homeModel.flushPendingMarkerSave()
+            }
+        }
+        #else
+        Task {
+            for model in modelsToFlush {
+                await model.flushCacheWrites()
+            }
+            if shouldSyncMarker {
+                await homeModel.flushPendingMarkerSave()
+            }
+        }
+        #endif
     }
 
     private var activeListPollingKey: String? {
@@ -778,3 +865,32 @@ private struct SystemBarTitle: ViewModifier {
         }
     }
 }
+
+#if os(iOS)
+private nonisolated final class BackgroundFlushGuard: Sendable {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
+    private let taskID = OSAllocatedUnfairLock<UIBackgroundTaskIdentifier>(initialState: .invalid)
+
+    @MainActor
+    func begin(name: String) {
+        let id = UIApplication.shared.beginBackgroundTask(withName: name) { [self] in
+            self.end()
+        }
+        taskID.withLock { $0 = id }
+    }
+
+    func end() {
+        let id = taskID.withLock { current -> UIBackgroundTaskIdentifier in
+            let previous = current
+            current = .invalid
+            return previous
+        }
+        guard id != .invalid else { return }
+        Task { @MainActor in
+            UIApplication.shared.endBackgroundTask(id)
+        }
+    }
+}
+#endif
