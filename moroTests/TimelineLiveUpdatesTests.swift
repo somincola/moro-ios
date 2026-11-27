@@ -577,4 +577,177 @@ struct TimelineLiveUpdatesTests {
         #expect(!SourcedStreamEvent(event: event, streams: []).canInsertIntoHome)
     }
 
+    @Test func lightweightAnchorUpdatePersistsImmediatelyWithoutReencodingCachedStatuses() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let clientID = UUID().uuidString
+        let cache = TimelineCache(directory: directory, persistenceDelay: .seconds(60))
+        let initialAnchor = TimelineReadingAnchor(statusID: "100", viewportOffset: -12)
+        let metadata = TimelineLiveMetadata(
+            checkpointID: "102",
+            fetchedHeadID: "102",
+            readingAnchor: initialAnchor
+        )
+        await cache.setLiveSnapshot(
+            statuses: [post("102"), post("101"), post("100")],
+            live: metadata,
+            for: clientID,
+            filter: .home
+        )
+        await cache.flushPendingWrites()
+
+        let cacheURL = directory.appendingPathComponent("\(clientID)-Home.cache")
+        let initialCacheModified = try #require(
+            try FileManager.default.attributesOfItem(atPath: cacheURL.path)[.modificationDate] as? Date
+        )
+
+        let model = TimelineViewModel(
+            apiClient: MockMastodonAPI(),
+            feedCoordinator: FeedCoordinator(),
+            timelineCache: cache,
+            cacheClientID: clientID,
+            defersLivePresentation: true
+        )
+        defer { model.clearStatuses() }
+        model.statuses = [post("102"), post("101"), post("100")]
+        let updatedAnchor = TimelineReadingAnchor(statusID: "101", viewportOffset: -84)
+        model.saveReadingAnchor(updatedAnchor)
+
+        // Cold reader sees the updated anchor immediately without flushing the 60s delayed body cache.
+        let cold = TimelineCache(directory: directory)
+        let coldMetadata = try #require(await cold.getLiveMetadata(for: clientID, filter: .home))
+        #expect(coldMetadata.readingAnchor == updatedAnchor)
+
+        let afterCacheModified = try #require(
+            try FileManager.default.attributesOfItem(atPath: cacheURL.path)[.modificationDate] as? Date
+        )
+        #expect(afterCacheModified == initialCacheModified)
+    }
+
+    @Test func earlyLiveEventBeforeInitialCacheMergePreservesSavedAnchorAndCachedPosts() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let clientID = UUID().uuidString
+        let cache = TimelineCache(directory: directory)
+        let savedAnchor = TimelineReadingAnchor(statusID: "100", viewportOffset: -140)
+        let metadata = TimelineLiveMetadata(
+            checkpointID: "102",
+            fetchedHeadID: "102",
+            readingAnchor: savedAnchor
+        )
+        await cache.setLiveSnapshot(
+            statuses: [post("102"), post("101"), post("100")],
+            live: metadata,
+            for: clientID,
+            filter: .home
+        )
+        await cache.flushPendingWrites()
+
+        let cold = TimelineCache(directory: directory)
+        let api = MockMastodonAPI()
+        let requestStarted = AsyncStream<CheckedContinuation<[Status], Error>>.makeStream()
+        api.fetchHomeTimelineHandler = { _, _, _ in
+            try await withCheckedThrowingContinuation { requestStarted.continuation.yield($0) }
+        }
+        // Short soft timeout guarantees hydration yields while we simulate an early stream event.
+        let config = TimelineViewModel.BootstrapConfig(
+            initialLoadLimit: 20,
+            refreshLoadLimit: 20,
+            paginationLoadLimit: 40,
+            initialRenderCap: 24,
+            cacheHydrationSoftTimeoutNanoseconds: 1,
+            deferredFillBatchSize: 6,
+            deferredFillStepNanoseconds: 50_000_000,
+            deferredFillInitialDelayNanoseconds: 50_000_000
+        )
+        let model = TimelineViewModel(
+            apiClient: api,
+            feedCoordinator: FeedCoordinator(),
+            timelineCache: cold,
+            cacheClientID: clientID,
+            bootstrapConfig: config,
+            defersLivePresentation: true
+        )
+        defer { model.clearStatuses(); requestStarted.continuation.finish() }
+
+        // Simulate a stream update arriving before loadInitial() has hydrated the cached timeline.
+        model.receiveLiveStatus(post("104"))
+        #expect(model.savedReadingAnchor == nil)
+
+        let loadTask = Task { await model.loadInitial() }
+        var iterator = requestStarted.stream.makeAsyncIterator()
+        let reply = try #require(await iterator.next())
+        reply.resume(returning: [post("104"), post("103"), post("102")])
+        await loadTask.value
+
+        #expect(model.savedReadingAnchor == savedAnchor)
+        #expect(model.canonicalStatusIDs.contains("100"))
+        #expect(model.canonicalStatusIDs.contains("103"))
+        #expect(model.canonicalStatusIDs.contains("104"))
+    }
+
+    @Test func heldRestoredAnchorResistsPassiveDriftAndContentUpdatesUntilUserScrolls() async throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 400, height: 800))
+        let scroll = UIScrollView(frame: window.bounds)
+        scroll.contentSize = CGSize(width: 400, height: 5000)
+        window.addSubview(scroll)
+        window.isHidden = false
+        defer { window.isHidden = true }
+
+        let bridge = TimelineScrollBridge()
+        bridge.setActive(true)
+        bridge.register(scroll, for: .home)
+
+        let driftedRow = TimelineRowAnchorView(frame: CGRect(x: 0, y: 400, width: 400, height: 300))
+        driftedRow.statusID = "323"
+        driftedRow.bridge = bridge
+        scroll.addSubview(driftedRow)
+
+        let targetRow = TimelineRowAnchorView(frame: CGRect(x: 0, y: 1200, width: 400, height: 300))
+        targetRow.statusID = "267"
+        targetRow.bridge = bridge
+        scroll.addSubview(targetRow)
+
+        scroll.contentOffset.y = 0
+        bridge.updateGeometry(for: .home, headerHeight: 48)
+        driftedRow.setNeedsLayout()
+        driftedRow.layoutIfNeeded()
+        targetRow.setNeedsLayout()
+        targetRow.layoutIfNeeded()
+
+        let saved = TimelineReadingAnchor(statusID: "267", viewportOffset: -120)
+        bridge.holdReadingPosition(saved, for: .home)
+        bridge.restoreReadingAnchor(saved, for: .home)
+        // Direct restore aligns immediately: 1200 - 48 - (-120) = 1272.
+        #expect(scroll.contentOffset.y == 1272)
+        #expect(bridge.heldRestoredAnchor(for: .home) == saved)
+
+        let events = AsyncStream<TimelineType>.makeStream()
+        let subscription = bridge.layoutEvents.sink { events.continuation.yield($0) }
+        defer { subscription.cancel() }
+        var iterator = events.stream.makeAsyncIterator()
+
+        // Simulate passive LazyVStack drift away from 267 onto 323 without user interaction.
+        scroll.contentOffset.y = 430
+        bridge.updateGeometry(for: .home, headerHeight: 48)
+        _ = await iterator.next()
+        #expect(scroll.contentOffset.y == 1272)
+        #expect(bridge.heldRestoredAnchor(for: .home) == saved)
+
+        // A content update while held must preserve 267 rather than adopting a drifted row.
+        scroll.contentOffset.y = 430
+        #expect(bridge.prepareContentUpdate(for: .home, revision: 1, retainedIDs: ["323", "267"]))
+        targetRow.frame.origin.y += 240
+        targetRow.revision = 1
+        targetRow.setNeedsLayout()
+        targetRow.layoutIfNeeded()
+        _ = await iterator.next()
+        #expect(scroll.contentOffset.y == 1512)
+        #expect(bridge.heldRestoredAnchor(for: .home) == saved)
+
+        // Once the reader actively touches the timeline, the restored-anchor hold releases.
+        bridge.updatePhase(.tracking, for: .home)
+        #expect(!bridge.isHoldingRestoredAnchor(for: .home))
+    }
+
 }

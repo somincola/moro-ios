@@ -18,7 +18,7 @@ struct TimelineGap: Codable, Equatable, Identifiable {
     let sequence: UInt64
 }
 
-struct TimelineReadingAnchor: Codable, Equatable {
+nonisolated struct TimelineReadingAnchor: Codable, Equatable, Sendable {
     let statusID: String
     let viewportOffset: Double
 }

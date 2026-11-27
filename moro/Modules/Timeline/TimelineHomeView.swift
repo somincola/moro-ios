@@ -10,6 +10,7 @@ import SwiftUI
 
 #if os(iOS)
     import UIKit
+    import os
 #endif
 
 struct TimelineHomeView: View {
@@ -350,9 +351,7 @@ struct TimelineHomeView: View {
             }
             if !active {
                 viewModel.cancelBackgroundTasks()
-                if let anchor = scrollBridge.readingAnchors(for: selectedTimeline).first {
-                    viewModel.saveReadingAnchor(anchor)
-                }
+                captureVisibleReadingAnchorForDeparture()
             }
         }
         .task(id: activeListPollingKey) {
@@ -485,13 +484,16 @@ struct TimelineHomeView: View {
                 }
 
             case .inactive, .background:
+                // Capture the live visible post right before leaving (even mid-deceleration),
+                // while preserving any untouched restored anchor.
+                captureVisibleReadingAnchorForDeparture()
+                TimelineLaunchPolicy.recordLeaving()
                 let models = [homeViewModel, localViewModel, federatedViewModel] + pinnedTimelineStore.allViewModels
                 for model in models { model.cancelBackgroundTasks() }
-                Task { for model in models where model.hasReadingState { await model.flushCacheWrites() } }
+                flushTimelineCachesOnDeparture(models: models)
                 if lastInactiveAt == nil {
                     lastInactiveAt = Date()
                 }
-                if newValue == .background { TimelineLaunchPolicy.recordLeaving() }
             @unknown default:
                 break
             }
@@ -603,6 +605,44 @@ struct TimelineHomeView: View {
         actionSurface.composeContext != nil || actionSurface.boostDialogStatus != nil
             || actionSurface.reportStatus != nil || actionSurface.deleteRequest != nil
             || interactionService.activeAlert != nil
+    }
+
+    @MainActor
+    private func captureVisibleReadingAnchorForDeparture() {
+        let target = viewModel
+        guard target.hasReadingState, !target.statuses.isEmpty, !target.isAwaitingInitialCacheCheck else {
+            return
+        }
+        if let held = scrollBridge.heldRestoredAnchor(for: selectedTimeline),
+            target.statuses.contains(where: { $0.id == held.statusID }) {
+            target.saveReadingAnchor(held)
+            return
+        }
+        if let anchor = scrollBridge.readingAnchors(for: selectedTimeline).first {
+            target.saveReadingAnchor(anchor)
+        }
+    }
+
+    @MainActor
+    private func flushTimelineCachesOnDeparture(models: [TimelineViewModel]) {
+        let modelsToFlush = models.filter(\.hasReadingState)
+        guard !modelsToFlush.isEmpty else { return }
+        #if os(iOS)
+        let guardBox = BackgroundFlushGuard()
+        guardBox.begin(name: "moro.timeline.flush")
+        Task { @MainActor in
+            defer { guardBox.end() }
+            for model in modelsToFlush {
+                await model.flushCacheWrites()
+            }
+        }
+        #else
+        Task {
+            for model in modelsToFlush {
+                await model.flushCacheWrites()
+            }
+        }
+        #endif
     }
 
     private var activeListPollingKey: String? {
@@ -778,3 +818,32 @@ private struct SystemBarTitle: ViewModifier {
         }
     }
 }
+
+#if os(iOS)
+private nonisolated final class BackgroundFlushGuard: Sendable {
+    // Avoid synthesized isolated teardown on the iOS 26.0–26.2 concurrency runtime.
+    nonisolated deinit {}
+
+    private let taskID = OSAllocatedUnfairLock<UIBackgroundTaskIdentifier>(initialState: .invalid)
+
+    @MainActor
+    func begin(name: String) {
+        let id = UIApplication.shared.beginBackgroundTask(withName: name) { [self] in
+            self.end()
+        }
+        taskID.withLock { $0 = id }
+    }
+
+    func end() {
+        let id = taskID.withLock { current -> UIBackgroundTaskIdentifier in
+            let previous = current
+            current = .invalid
+            return previous
+        }
+        guard id != .invalid else { return }
+        Task { @MainActor in
+            UIApplication.shared.endBackgroundTask(id)
+        }
+    }
+}
+#endif

@@ -102,6 +102,31 @@ actor TimelineCache {
         liveMetadata[key] = state
     }
 
+    /// Persists only the tiny reading anchor (~80 bytes) synchronously without waiting for
+    /// the cache actor or re-encoding up to 800 cached statuses.
+    nonisolated func saveReadingAnchorImmediately(
+        _ anchor: TimelineReadingAnchor?,
+        for client: String,
+        filter: TimelineFilter
+    ) {
+        writeAnchorFile(anchor, forKey: "\(client)-\(filter.cacheKey)")
+    }
+
+    /// Keeps in-memory `liveMetadata` aligned with a lightweight `.anchor` write without
+    /// dirtying the full `.cache` body file.
+    func updateReadingAnchorInMemory(
+        _ anchor: TimelineReadingAnchor?,
+        for client: String,
+        filter: TimelineFilter
+    ) {
+        let key = cacheKey(client: client, filter: filter)
+        writeAnchorFile(anchor, forKey: key)
+        if var state = liveMetadata[key] {
+            state.readingAnchor = anchor
+            liveMetadata[key] = state
+        }
+    }
+
     func prepend(statuses: [Status], for client: String, filter: TimelineFilter) {
         let key = cacheKey(client: client, filter: filter)
         assign(statuses + (items(for: key)?.map(\.status) ?? []), key: key)
@@ -171,7 +196,7 @@ actor TimelineCache {
         // Pending metadata is user reading state and must survive this operation.
         flushPendingWrites()
         let files = try FileManager.default.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil)
-        for file in files where file.pathExtension == "cache" {
+        for file in files where file.pathExtension == "cache" || file.pathExtension == "anchor" {
             try FileManager.default.removeItem(at: file)
         }
     }
@@ -239,6 +264,7 @@ actor TimelineCache {
                 encoder.dateEncodingStrategy = .iso8601
                 try encoder.encode(CachedSnapshot(items: items, live: liveMetadata[key]))
                     .write(to: fileURL(key, extension: "cache"), options: .atomic)
+                writeAnchorFile(liveMetadata[key]?.readingAnchor, forKey: key)
                 dirtyKeys.remove(key)
             } catch { /* Retain dirty state so the next flush can retry. */ }
         }
@@ -275,7 +301,16 @@ actor TimelineCache {
             if let data = try? Data(contentsOf: fileURL(key, extension: "cache")) {
                 if let snapshot = try? decoder.decode(CachedSnapshot.self, from: data) {
                     cached = snapshot.items
-                    liveMetadata[key] = snapshot.live
+                    var live = snapshot.live
+                    if let anchor = readAnchorFile(forKey: key) {
+                        var resolved = live ?? TimelineLiveMetadata(
+                            checkpointID: snapshot.items.first?.status.id,
+                            fetchedHeadID: snapshot.items.first?.status.id
+                        )
+                        resolved.readingAnchor = anchor
+                        live = resolved
+                    }
+                    liveMetadata[key] = live
                 } else {
                     cached = try? decoder.decode([CachedItem].self, from: data)
                 }
@@ -336,6 +371,23 @@ actor TimelineCache {
         dirtyMetadataKeys.remove(key)
         try? FileManager.default.removeItem(at: fileURL(key, extension: "cache"))
         try? FileManager.default.removeItem(at: fileURL(key, extension: "meta"))
+        try? FileManager.default.removeItem(at: fileURL(key, extension: "anchor"))
+    }
+
+    private nonisolated func writeAnchorFile(_ anchor: TimelineReadingAnchor?, forKey key: String) {
+        let url = cacheDirectory.appendingPathComponent("\(key).anchor")
+        guard let anchor else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        guard let data = try? JSONEncoder().encode(anchor) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    private nonisolated func readAnchorFile(forKey key: String) -> TimelineReadingAnchor? {
+        let url = cacheDirectory.appendingPathComponent("\(key).anchor")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(TimelineReadingAnchor.self, from: data)
     }
 
     private func cacheKey(client: String, filter: TimelineFilter) -> String { "\(client)-\(filter.cacheKey)" }

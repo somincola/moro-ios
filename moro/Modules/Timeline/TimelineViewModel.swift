@@ -189,6 +189,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
     // anchor-preserving transaction when they appear or disappear.
     private var failedGapRequestIDs: Set<UUID> = []
     private var dataGeneration = UUID()
+    private var hasResolvedInitialCache = false
     private var cacheWriteTask: Task<Void, Never>?
     private(set) var lastLatestCheckAt: Date?
     private var anonymousPendingIDs: Set<String> = []
@@ -198,6 +199,10 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
     var hasUnappliedUpdates: Bool { liveVersion != appliedLiveVersion }
     var detectionBaselineID: String? { liveTimeline?.metadata.fetchedHeadID ?? currentSinceID }
     var hasReadingState: Bool { liveTimeline != nil }
+    var isAwaitingInitialCacheCheck: Bool {
+        if case .loading = initialLoadState { return !hasResolvedInitialCache }
+        return false
+    }
     var canonicalStatusIDs: Set<String> { Set((liveTimeline?.statuses ?? statuses).map(\.id)) }
     var savedReadingAnchor: TimelineReadingAnchor? { liveTimeline?.metadata.readingAnchor }
 
@@ -364,7 +369,13 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
             } else {
                 let cachedState = await timelineCache.getLiveMetadata(for: cacheClientID, filter: timelineCacheFilter!)
                 guard generation == dataGeneration, !Task.isCancelled else { return }
-                initialLive = liveTimeline ?? TimelineLiveUpdates(statuses: cachedStatusesForMerge, metadata: cachedState)
+                // Never let an early empty liveTimeline (e.g. from stream/refresh before cache
+                // hydration completed) shadow the cached timeline and its saved reading anchor.
+                if hasResolvedInitialCache, let hydratedLive = liveTimeline {
+                    initialLive = hydratedLive
+                } else {
+                    initialLive = TimelineLiveUpdates(statuses: cachedStatusesForMerge, metadata: cachedState)
+                }
                 _ = initialLive.receiveHead(page,
                     sinceID: initialLive.metadata.fetchedHeadID, currentAccountID: currentAccountID)
             }
@@ -374,6 +385,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
                     initialLive.receive(status, currentAccountID: currentAccountID)
                 }
             }
+            hasResolvedInitialCache = true
             liveTimeline = initialLive
             if !initialLive.metadata.gaps.isEmpty { automaticGapBudget = 2 }
             let mergedStatuses = initialLive.statuses
@@ -433,6 +445,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
                 let cachedState = await timelineCache.getLiveMetadata(for: cacheClientID, filter: timelineCacheFilter!)
                 guard generation == dataGeneration, !Task.isCancelled else { return }
                 let restored = TimelineLiveUpdates(statuses: cachedFallbackStatuses, metadata: cachedState)
+                hasResolvedInitialCache = true
                 liveTimeline = restored
                 let restoredStatuses = restored.statuses
                 let anchorIndex = cachedState?.readingAnchor.flatMap { anchor in
@@ -451,6 +464,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
                 refreshState = .failed(error)
                 scheduleDeferredInitialFill(with: Array(restoredStatuses.dropFirst(statuses.count)))
             } else {
+                hasResolvedInitialCache = true
                 initialLoadState = .failed(error)
             }
         }
@@ -483,7 +497,11 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
             try Task.checkCancellation()
             guard generation == dataGeneration else { return .cancelled }
             let count = receiveDetectedPage(page, sinceID: baseline)
-            initialLoadState = .loaded
+            if case .loading = initialLoadState {
+                // Keep initialLoadState in .loading so loadInitial() still merges cached metadata.
+            } else {
+                initialLoadState = .loaded
+            }
             refreshState = .idle
             triggeredLoadMoreForStatusIDs.removeAll()
             if currentMaxID == nil { currentMaxID = page.statuses.last?.id }
@@ -593,7 +611,12 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         guard liveTimeline?.metadata.readingAnchor != anchor else { return }
         ensureLiveTimeline()
         liveTimeline?.setReadingAnchor(anchor)
-        persistCurrentStatusesToCache()
+        persistReadingAnchorOnly(anchor)
+        // If the in-memory timeline exceeds the 800-item cache cap, recenter the
+        // sliding cache window around the new anchor so it remains present on disk.
+        if let count = liveTimeline?.statuses.count, count > 800 {
+            persistCurrentStatusesToCache()
+        }
     }
 
     @discardableResult
@@ -849,6 +872,7 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
     /// Clear all statuses and reset state (for timeline switching)
     func clearStatuses() {
         dataGeneration = UUID()
+        hasResolvedInitialCache = false
         cacheWriteTask?.cancel()
         cacheWriteTask = nil
         markerSaveTask?.cancel()
@@ -1103,6 +1127,7 @@ extension TimelineViewModel {
         let metadata = await timelineCache.getLiveMetadata(for: cacheClientID, filter: cacheFilter)
         guard generation == dataGeneration, !Task.isCancelled else { return false }
         let restored = TimelineLiveUpdates(statuses: cached, metadata: metadata)
+        hasResolvedInitialCache = true
         liveTimeline = restored
         let restoredStatuses = restored.statuses
         let anchorIndex = metadata?.readingAnchor.flatMap { anchor in restoredStatuses.firstIndex { $0.id == anchor.statusID } }
@@ -1207,7 +1232,18 @@ extension TimelineViewModel {
         }
     }
 
+    fileprivate func persistReadingAnchorOnly(_ anchor: TimelineReadingAnchor?) {
+        guard let filter = timelineCacheFilter else { return }
+        timelineCache.saveReadingAnchorImmediately(anchor, for: cacheClientID, filter: filter)
+        enqueueCacheWrite(dropsWhenDataChanges: true) { cache, client, filter in
+            await cache.updateReadingAnchorInMemory(anchor, for: client, filter: filter)
+        }
+    }
+
     func flushCacheWrites() async {
+        if let filter = timelineCacheFilter, hasReadingState {
+            timelineCache.saveReadingAnchorImmediately(savedReadingAnchor, for: cacheClientID, filter: filter)
+        }
         persistCurrentStatusesToCache()
         await cacheWriteTask?.value
         await timelineCache.flushPendingWrites()
