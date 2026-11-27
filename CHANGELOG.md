@@ -10,6 +10,24 @@ Source history in this repository begins with the 1.0.2 commercial baseline. Ver
 
 [Latest release / 最新版本](https://github.com/somincola/moro-ios/releases/latest) · [All releases / 全部 Releases](https://github.com/somincola/moro-ios/releases) · [App Store](https://apps.apple.com/app/id6776115614)
 
+## 1.6.0
+
+App Store build / 构建号：**54**。
+
+[Release](https://github.com/somincola/moro-ios/releases/tag/v1.6.0) · [Source / 源码](https://github.com/somincola/moro-ios/tree/v1.6.0)
+
+### 中文
+
+回到 Moro 时，首页时间线现在能更稳地停在你上次读到的位置，即使有新帖到达或滑动中切出也不再跑偏。在「设置 › 阅读与媒体 › 重新打开时」里，你可以选择保持阅读位置（默认）、按离开时长智能回到最新（支持 30 分钟到 24 小时自定义），或总是显示最新（带短时防误触保护）。
+
+新增跨设备同步阅读进度（Beta）：通过 Mastodon 官方 Marker API 同步首页进度，在网页端或其他设备读到更新的内容时自动跟进，在本机回看旧帖则不会倒推进度。
+
+### English
+
+Your home timeline now holds your exact reading spot more reliably when you return to Moro, even when new posts arrive or you leave mid-scroll. Under Settings → Reading & Media → On Reopen, choose whether to keep your reading position (default), smart-refresh after a custom away interval (30 minutes to 24 hours), or always open at the latest posts with a brief grace period against quick app switches.
+
+Cross-device reading sync (Beta) is here too: powered by Mastodon’s Marker API, newer progress from the web or another device moves your home timeline forward automatically, while browsing older posts on this device won’t roll progress back.
+
 ## 1.5.1
 
 App Store build / 构建号：**53**。
