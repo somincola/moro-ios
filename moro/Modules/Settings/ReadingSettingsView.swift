@@ -245,20 +245,8 @@ private struct TimelineReadingPositionSettingsView: View {
 
             Section {
                 Toggle(isOn: $settings.syncReadingPositionWithServer) {
-                    HStack(spacing: 8) {
-                        Text(MoroL10n.ReadingPosition.syncWithServerTitle)
-                            .foregroundStyle(theme.colors.textPrimary)
-                        Text(verbatim: "Beta")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(theme.colors.textSecondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(theme.colors.surfaceSubtle, in: Capsule())
-                            .overlay {
-                                Capsule()
-                                    .stroke(theme.colors.borderSubtle, lineWidth: 0.75)
-                            }
-                    }
+                    Text(MoroL10n.ReadingPosition.syncWithServerTitle)
+                        .foregroundStyle(theme.colors.textPrimary)
                 }
                 .accessibilityIdentifier("settings.reading.syncMarker")
             } header: {

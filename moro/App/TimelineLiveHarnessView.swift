@@ -24,7 +24,8 @@ struct TimelineLiveHarnessView: View {
         self.client = client
         _model = StateObject(wrappedValue: TimelineViewModel(apiClient: client,
             accountCache: AccountCache(), feedCoordinator: FeedCoordinator(),
-            timelineCache: TimelineCache(), cacheClientID: key, defersLivePresentation: true))
+            timelineCache: TimelineCache(), cacheClientID: key, defersLivePresentation: true,
+            markerSyncEnabled: { testsGaps }, restoresReadingPositionOverride: true))
     }
 
     var body: some View {
@@ -43,6 +44,13 @@ struct TimelineLiveHarnessView: View {
                                 insertHead(hasGap: true)
                             }
                             .accessibilityIdentifier("timeline.fixture.gapFailure")
+                            Button("同步") {
+                                TimelineLiveFixtureProtocol.latestInsertedID = 120
+                                TimelineLiveFixtureProtocol.remoteMarkerID = "110"
+                                TimelineLiveFixtureProtocol.nextHeadRefreshIDs = [120, 119]
+                                Task { _ = await model.syncRemoteMarkerOnResume(allowAdvance: true) }
+                            }
+                            .accessibilityIdentifier("timeline.fixture.remoteSync")
                         } else {
                             Button("+20") {
                                 TimelineScrollBridge.resetCommitProbe()
@@ -102,9 +110,15 @@ struct TimelineLiveHarnessView: View {
 final class TimelineLiveFixtureProtocol: URLProtocol, @unchecked Sendable {
     @MainActor static var failNextGapRequest = false
     @MainActor static var latestInsertedID = 100
+    @MainActor static var remoteMarkerID: String?
+    @MainActor static var nextHeadRefreshIDs: [Int]?
+    @MainActor static var hasServedInitialPage = false
 
     @MainActor static func makeClient(testsGaps: Bool = false) -> MastodonClient {
         latestInsertedID = 100
+        remoteMarkerID = nil
+        nextHeadRefreshIDs = nil
+        hasServedInitialPage = false
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [Self.self]
         if testsGaps { config.httpAdditionalHeaders = ["X-Moro-Fixture-Gaps": "1"] }
@@ -118,13 +132,48 @@ final class TimelineLiveFixtureProtocol: URLProtocol, @unchecked Sendable {
         Task { @MainActor in
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
+            let path = request.url!.path
+            if path == "/api/v1/markers" {
+                let marker = Marker(
+                    home: Self.remoteMarkerID.map {
+                        MarkerContent(lastReadId: $0, updatedAt: Date(), version: 1)
+                    },
+                    notifications: nil
+                )
+                let data = (try? encoder.encode(marker)) ?? Data("{}".utf8)
+                self.client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200,
+                    httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
+                self.client?.urlProtocol(self, didLoad: data)
+                self.client?.urlProtocolDidFinishLoading(self)
+                return
+            }
+            if path.hasPrefix("/api/v1/statuses/"),
+                let idValue = Int(String(path.dropFirst("/api/v1/statuses/".count)))
+            {
+                let data = (try? encoder.encode(Self.post(idValue))) ?? Data("{}".utf8)
+                self.client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200,
+                    httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
+                self.client?.urlProtocol(self, didLoad: data)
+                self.client?.urlProtocolDidFinishLoading(self)
+                return
+            }
+
             let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
-            let isInitial = request.url!.path.contains("timelines") && query.isEmpty == false
+            let isInitial = path.contains("timelines") && query.isEmpty == false
                 && !query.contains { $0.name == "max_id" || $0.name == "since_id" || $0.name == "min_id" }
+            let isHeadRefresh = path.contains("timelines")
+                && !query.contains { $0.name == "max_id" || $0.name == "min_id" }
             let posts: [Status]
-            if isInitial, ProcessInfo.processInfo.arguments.contains("UITEST_POST_EMOJI") {
+            if isHeadRefresh, let headRefreshIDs = Self.nextHeadRefreshIDs {
+                Self.nextHeadRefreshIDs = nil
+                posts = headRefreshIDs.map(Self.post)
+            } else if isInitial, !Self.hasServedInitialPage,
+                ProcessInfo.processInfo.arguments.contains("UITEST_POST_EMOJI")
+            {
+                Self.hasServedInitialPage = true
                 posts = [PostEmojiPlaybackFixture.post]
-            } else if isInitial {
+            } else if isInitial, !Self.hasServedInitialPage {
+                Self.hasServedInitialPage = true
                 posts = (41...100).reversed().map(Self.post)
             } else if request.value(forHTTPHeaderField: "X-Moro-Fixture-Gaps") == "1",
                 let minLower = query.first(where: { $0.name == "min_id" })?.value.flatMap(Int.init)

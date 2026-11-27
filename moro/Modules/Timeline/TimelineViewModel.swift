@@ -159,12 +159,28 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
     /// Whether there are unread statuses above the current position
     @Published private(set) var hasUnreadAbove: Bool = false
 
+    struct RemoteSyncUndoState: Equatable {
+        let previousAnchor: TimelineReadingAnchor
+        let syncedStatusID: String
+    }
+
+    struct PendingRemoteSyncJump: Equatable {
+        let anchor: TimelineReadingAnchor
+        let previousAnchor: TimelineReadingAnchor?
+        let requiresRestoredHold: Bool
+    }
+
     /// Newer reading anchor received from another device via Mastodon's Marker API,
     /// waiting for the scroll bridge to apply if the reader has not started scrolling.
     @Published private(set) var pendingRemoteSyncedAnchor: TimelineReadingAnchor?
+    /// Active undo banner context after another device's Marker moved the viewport.
+    @Published private(set) var remoteSyncUndoState: RemoteSyncUndoState?
 
     /// Debounce timer for saving marker position
     private var markerSaveTask: Task<Void, Never>?
+    private var remoteSyncUndoTask: Task<Void, Never>?
+    private var pendingRemoteSyncJump: PendingRemoteSyncJump?
+    var remoteSyncUndoDurationOverride: TimeInterval?
     private let markerSaveDebounceInterval: TimeInterval = 3.0
     private var lastConfirmedServerMarkerID: String?
     private var pendingMarkerSaveID: String?
@@ -403,19 +419,24 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
             let remoteMarker = await remoteMarkerTask
             guard generation == dataGeneration, !Task.isCancelled else { return }
             let preservesCachedPresentation = defersLivePresentation && !statuses.isEmpty
+            var insertedRemoteCrossGap = false
             if let remoteID = remoteMarker?.lastReadId {
                 let previousKnownServerMarker = effectiveKnownServerMarkerID()
+                let previousLocalAnchor = initialLive.metadata.readingAnchor
                 recordConfirmedServerMarkerID(remoteID)
                 let shouldRestore = restoresReadingPositionOverride ?? TimelineLaunchPolicy.restoresReadingPosition
                 if shouldRestore,
-                    let targetID = resolveRemoteMarkerTarget(
+                    let resolved = await resolveOrFetchRemoteMarkerTarget(
                         remoteID: remoteID,
-                        in: initialLive.statuses,
-                        currentAnchorID: initialLive.metadata.readingAnchor?.statusID,
-                        previousKnownServerMarkerID: previousKnownServerMarker
+                        in: &initialLive,
+                        currentAnchorID: previousLocalAnchor?.statusID,
+                        previousKnownServerMarkerID: previousKnownServerMarker,
+                        generation: generation
                     )
                 {
-                    let syncedAnchor = TimelineReadingAnchor(statusID: targetID, viewportOffset: 0)
+                    guard generation == dataGeneration, !Task.isCancelled else { return }
+                    insertedRemoteCrossGap = resolved.insertedCrossGap
+                    let syncedAnchor = TimelineReadingAnchor(statusID: resolved.targetID, viewportOffset: 0)
                     initialLive.setReadingAnchor(syncedAnchor)
                     initialLive.markReadThrough(statusID: remoteID)
                     if let filter = timelineCacheFilter {
@@ -425,15 +446,35 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
                             filter: filter
                         )
                     }
+                    let undoAnchor = previousLocalAnchor.flatMap {
+                        $0.statusID != syncedAnchor.statusID ? $0 : nil
+                    }
                     if preservesCachedPresentation {
-                        pendingRemoteSyncedAnchor = syncedAnchor
+                        setPendingRemoteSyncJump(
+                            PendingRemoteSyncJump(
+                                anchor: syncedAnchor,
+                                previousAnchor: undoAnchor,
+                                requiresRestoredHold: true
+                            )
+                        )
+                    } else if let undoAnchor {
+                        presentRemoteSyncUndo(
+                            previousAnchor: undoAnchor,
+                            syncedStatusID: syncedAnchor.statusID
+                        )
                     }
                 }
             }
 
             hasResolvedInitialCache = true
             liveTimeline = initialLive
-            if !initialLive.metadata.gaps.isEmpty { automaticGapBudget = 2 }
+            if insertedRemoteCrossGap {
+                // Keep cross-gap breaks as explicit manual cards so we do not immediately
+                // burn background requests pulling posts the reader already skipped elsewhere.
+                automaticGapBudget = 0
+            } else if !initialLive.metadata.gaps.isEmpty {
+                automaticGapBudget = 2
+            }
             let mergedStatuses = initialLive.statuses
             let anchorIndex = initialLive.metadata.readingAnchor.flatMap { anchor in
                 mergedStatuses.firstIndex { $0.id == anchor.statusID }
@@ -1006,9 +1047,13 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         cacheWriteTask = nil
         markerSaveTask?.cancel()
         markerSaveTask = nil
+        remoteSyncUndoTask?.cancel()
+        remoteSyncUndoTask = nil
         lastConfirmedServerMarkerID = nil
         pendingMarkerSaveID = nil
+        pendingRemoteSyncJump = nil
         pendingRemoteSyncedAnchor = nil
+        remoteSyncUndoState = nil
         anonymousPendingIDs = []
         lastLatestCheckAt = nil
         publishLiveTask?.cancel()
@@ -1072,10 +1117,135 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
 
     // MARK: - Marker (Reading Position) API
 
+    private func setPendingRemoteSyncJump(_ jump: PendingRemoteSyncJump?) {
+        pendingRemoteSyncJump = jump
+        pendingRemoteSyncedAnchor = jump?.anchor
+    }
+
+    func peekPendingRemoteSyncJump() -> PendingRemoteSyncJump? {
+        pendingRemoteSyncJump
+    }
+
+    func consumePendingRemoteSyncJump() -> PendingRemoteSyncJump? {
+        let jump = pendingRemoteSyncJump
+        setPendingRemoteSyncJump(nil)
+        return jump
+    }
+
+    func discardPendingRemoteSyncJump() {
+        setPendingRemoteSyncJump(nil)
+    }
+
     func consumePendingRemoteSyncedAnchor() -> TimelineReadingAnchor? {
-        let anchor = pendingRemoteSyncedAnchor
-        pendingRemoteSyncedAnchor = nil
-        return anchor
+        consumePendingRemoteSyncJump()?.anchor
+    }
+
+    func presentRemoteSyncUndo(
+        previousAnchor: TimelineReadingAnchor,
+        syncedStatusID: String,
+        autoDismissAfter: TimeInterval = 5.0
+    ) {
+        guard previousAnchor.statusID != syncedStatusID else { return }
+        remoteSyncUndoTask?.cancel()
+        let nextState = RemoteSyncUndoState(
+            previousAnchor: previousAnchor,
+            syncedStatusID: syncedStatusID
+        )
+        remoteSyncUndoState = nextState
+        let delay = max(0.05, remoteSyncUndoDurationOverride ?? autoDismissAfter)
+        remoteSyncUndoTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            } catch {
+                return
+            }
+            guard let self, !Task.isCancelled, self.remoteSyncUndoState == nextState else { return }
+            self.remoteSyncUndoState = nil
+            self.remoteSyncUndoTask = nil
+        }
+    }
+
+    func dismissRemoteSyncUndo() {
+        remoteSyncUndoTask?.cancel()
+        remoteSyncUndoTask = nil
+        if remoteSyncUndoState != nil {
+            remoteSyncUndoState = nil
+        }
+    }
+
+    /// Reverts the local viewport anchor back to where the reader was right before a remote
+    /// Marker jump, without rolling back `lastConfirmedServerMarkerID` on the server.
+    @discardableResult
+    func undoRemoteMarkerSync() -> TimelineReadingAnchor? {
+        guard let undo = remoteSyncUndoState else { return nil }
+        dismissRemoteSyncUndo()
+        let activeStatuses = liveTimeline?.statuses ?? statuses
+        guard activeStatuses.contains(where: { $0.id == undo.previousAnchor.statusID }) else {
+            return nil
+        }
+        liveTimeline?.setReadingAnchor(undo.previousAnchor)
+        persistReadingAnchorOnly(undo.previousAnchor)
+        return undo.previousAnchor
+    }
+
+    private func resolveOrFetchRemoteMarkerTarget(
+        remoteID: String,
+        in live: inout TimelineLiveUpdates,
+        currentAnchorID: String?,
+        previousKnownServerMarkerID: String?,
+        generation: UUID
+    ) async -> (targetID: String, insertedCrossGap: Bool)? {
+        if let previousKnownServerMarkerID,
+            !TimelineLiveUpdates.isNewerID(remoteID, than: previousKnownServerMarkerID)
+        {
+            return nil
+        }
+        if let currentAnchorID, !TimelineLiveUpdates.isNewerID(remoteID, than: currentAnchorID) {
+            return nil
+        }
+        if live.statuses.contains(where: { $0.id == remoteID }) {
+            return (remoteID, false)
+        }
+
+        let isSpanningGap = live.gapSpanning(statusID: remoteID) != nil
+        let isAheadOfHead = live.statuses.first.map {
+            TimelineLiveUpdates.isNewerID(remoteID, than: $0.id)
+        } ?? false
+
+        if TimelineLiveUpdates.isNumericID(remoteID), isSpanningGap || isAheadOfHead {
+            async let newerPageTask: TimelinePage? = try? await apiClient.fetchTimelinePage(
+                timeline: timelineType,
+                maxID: nil,
+                sinceID: nil,
+                minID: remoteID,
+                limit: bootstrapConfig.refreshLoadLimit
+            )
+            async let anchorStatusTask: Status? = try? await apiClient.fetchStatusDetail(id: remoteID)
+            let (newerPage, anchorStatus) = await (newerPageTask, anchorStatusTask)
+            guard generation == dataGeneration, !Task.isCancelled else { return nil }
+            if let newerPage,
+                let insertedTarget = live.insertRemoteAnchorContext(
+                    remoteID: remoteID,
+                    anchorStatus: anchorStatus,
+                    newerPage: newerPage,
+                    currentAccountID: currentAccountID
+                )
+            {
+                accountCache.cacheFromStatuses(newerPage.statuses)
+                if let anchorStatus {
+                    accountCache.cacheFromStatuses([anchorStatus])
+                }
+                return (insertedTarget, true)
+            }
+        }
+
+        guard let fallbackTarget = resolveRemoteMarkerTarget(
+            remoteID: remoteID,
+            in: live.statuses,
+            currentAnchorID: currentAnchorID,
+            previousKnownServerMarkerID: previousKnownServerMarkerID
+        ) else { return nil }
+        return (fallbackTarget, false)
     }
 
     private func fetchRemoteHomeMarker() async -> MarkerContent? {
@@ -1180,7 +1350,8 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
         {
             return nil
         }
-        let currentAnchorID = savedReadingAnchor?.statusID
+        let previousLocalAnchor = savedReadingAnchor
+        let currentAnchorID = previousLocalAnchor?.statusID
         if let currentAnchorID, !TimelineLiveUpdates.isNewerID(remoteID, than: currentAnchorID) {
             return nil
         }
@@ -1195,19 +1366,34 @@ final class TimelineViewModel: ObservableObject, FeedCoordinatorUpdatable {
             guard generation == dataGeneration, !Task.isCancelled else { return nil }
         }
 
-        let updatedList = liveTimeline?.statuses ?? statuses
-        guard let targetID = resolveRemoteMarkerTarget(
+        var updatedLive = liveTimeline ?? TimelineLiveUpdates(statuses: statuses)
+        guard let resolved = await resolveOrFetchRemoteMarkerTarget(
             remoteID: remoteID,
-            in: updatedList,
-            currentAnchorID: savedReadingAnchor?.statusID,
-            previousKnownServerMarkerID: previousKnownServerMarker
+            in: &updatedLive,
+            currentAnchorID: currentAnchorID,
+            previousKnownServerMarkerID: previousKnownServerMarker,
+            generation: generation
         ) else { return nil }
+        guard generation == dataGeneration, !Task.isCancelled else { return nil }
 
-        let syncedAnchor = TimelineReadingAnchor(statusID: targetID, viewportOffset: 0)
-        liveTimeline?.setReadingAnchor(syncedAnchor)
-        liveTimeline?.markReadThrough(statusID: remoteID)
+        let syncedAnchor = TimelineReadingAnchor(statusID: resolved.targetID, viewportOffset: 0)
+        updatedLive.setReadingAnchor(syncedAnchor)
+        updatedLive.markReadThrough(statusID: remoteID)
+        liveTimeline = updatedLive
+        if resolved.insertedCrossGap {
+            automaticGapBudget = 0
+        }
         persistReadingAnchorOnly(syncedAnchor)
-        pendingRemoteSyncedAnchor = syncedAnchor
+        let undoAnchor = previousLocalAnchor.flatMap {
+            $0.statusID != syncedAnchor.statusID ? $0 : nil
+        }
+        setPendingRemoteSyncJump(
+            PendingRemoteSyncJump(
+                anchor: syncedAnchor,
+                previousAnchor: undoAnchor,
+                requiresRestoredHold: false
+            )
+        )
         liveContentChanged(immediate: true)
         return syncedAnchor
     }

@@ -32,32 +32,66 @@ extension TimelineHomeView {
         }
     }
 
+    var bottomRemoteSyncUndoIndicator: some View {
+        TimelineRemoteSyncUndoOverlay(
+            timeline: selectedTimeline,
+            undoState: selectedTimeline == .home ? viewModel.remoteSyncUndoState : nil,
+            bottomInset: bottomContentInset,
+            bridge: scrollBridge,
+            onUndo: { undoRemoteMarkerSync() },
+            onUserScroll: { viewModel.dismissRemoteSyncUndo() }
+        )
+    }
+
+    func undoRemoteMarkerSync() {
+        guard selectedTimeline == .home,
+            let previousAnchor = homeViewModel.undoRemoteMarkerSync()
+        else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        scrollBridge.holdReadingPosition(previousAnchor, for: .home)
+        scrollBridge.restoreReadingAnchor(previousAnchor, for: .home)
+    }
+
     func processLiveUpdates(for timeline: TimelineType, viewModel target: TimelineViewModel) {
         guard target.hasReadingState,
             !target.isAwaitingInitialCacheCheck,
             scrollBridge.canPresentUpdates(for: timeline)
         else { return }
         let session = pageSessionStore.session(for: timeline)
-        if let remoteAnchor = target.consumePendingRemoteSyncedAnchor() {
-            let canAdoptRemote = !scrollBridge.isUserScrolling(timeline)
-                && !scrollBridge.isUserDragging(timeline)
-                && (!session.hasRestoredReadingAnchor || scrollBridge.isHoldingRestoredAnchor(for: timeline))
-            if canAdoptRemote {
-                if target.hasUnappliedUpdates {
+        if let jump = target.peekPendingRemoteSyncJump() {
+            if scrollBridge.isUserScrolling(timeline) || scrollBridge.isUserDragging(timeline) {
+                target.discardPendingRemoteSyncJump()
+            } else {
+                let canAdoptRemote: Bool
+                if jump.requiresRestoredHold {
+                    canAdoptRemote = !session.hasRestoredReadingAnchor
+                        || scrollBridge.isHoldingRestoredAnchor(for: timeline)
+                } else {
+                    canAdoptRemote = true
+                }
+
+                if !canAdoptRemote {
+                    target.discardPendingRemoteSyncJump()
+                } else if target.hasUnappliedUpdates {
                     session.hasRestoredReadingAnchor = true
-                    scrollBridge.holdReadingPosition(remoteAnchor, for: timeline)
+                    scrollBridge.holdReadingPosition(jump.anchor, for: timeline)
                     if scrollBridge.prepareContentUpdate(
                         for: timeline,
                         revision: target.presentationRevision + 1,
-                        retainedIDs: target.canonicalStatusIDs
+                        retainedIDs: target.canonicalStatusIDs,
+                        targetAnchor: jump.anchor
                     ) {
+                        _ = target.consumePendingRemoteSyncJump()
                         target.applyLiveUpdates()
+                        presentUndoIfNeeded(for: jump, on: target)
                         return
                     }
-                } else if target.statuses.contains(where: { $0.id == remoteAnchor.statusID }) {
+                } else if target.statuses.contains(where: { $0.id == jump.anchor.statusID }) {
+                    _ = target.consumePendingRemoteSyncJump()
                     session.hasRestoredReadingAnchor = true
-                    scrollBridge.holdReadingPosition(remoteAnchor, for: timeline)
-                    scrollBridge.restoreReadingAnchor(remoteAnchor, for: timeline)
+                    scrollBridge.holdReadingPosition(jump.anchor, for: timeline)
+                    scrollBridge.restoreReadingAnchor(jump.anchor, for: timeline)
+                    presentUndoIfNeeded(for: jump, on: target)
                     return
                 }
             }
@@ -115,6 +149,7 @@ extension TimelineHomeView {
         let target = viewModel
         if providesFeedback { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
         if scrollToTop {
+            target.dismissRemoteSyncUndo()
             if target.hasUnappliedUpdates,
                 scrollBridge.prepareContentUpdate(for: timeline,
                     revision: target.presentationRevision + 1, jumpToLatest: true) {
@@ -125,6 +160,20 @@ extension TimelineHomeView {
         } else {
             processLiveUpdates(for: timeline, viewModel: target)
         }
+    }
+
+    private func presentUndoIfNeeded(
+        for jump: TimelineViewModel.PendingRemoteSyncJump,
+        on target: TimelineViewModel
+    ) {
+        guard let previous = jump.previousAnchor,
+            previous.statusID != jump.anchor.statusID
+        else { return }
+        target.presentRemoteSyncUndo(
+            previousAnchor: previous,
+            syncedStatusID: jump.anchor.statusID,
+            autoDismissAfter: UIAccessibility.isVoiceOverRunning ? 10.0 : 5.0
+        )
     }
 
     func detectionDimension(for timeline: TimelineType) -> TimelineDimension? {
@@ -297,6 +346,118 @@ private struct TimelineNewPostsBadge: View {
             }
             // Cast downward only: the top edge sits on the header.
             .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.12), radius: 4, y: 2)
+    }
+}
+
+private struct TimelineRemoteSyncUndoOverlay: View {
+    let timeline: TimelineType
+    let undoState: TimelineViewModel.RemoteSyncUndoState?
+    let bottomInset: CGFloat
+    let bridge: TimelineScrollBridge
+    let onUndo: () -> Void
+    let onUserScroll: () -> Void
+
+    @Environment(\.moroTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            if undoState != nil {
+                pill
+                    .padding(.horizontal, theme.spacing.m)
+                    .padding(.bottom, max(bottomInset, 20))
+                    .transition(
+                        reduceMotion
+                            ? .opacity
+                            : .opacity.combined(with: .move(edge: .bottom))
+                    )
+            }
+        }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: undoState != nil)
+        .onReceive(bridge.userScrollEvents) { source in
+            guard source == timeline, undoState != nil else { return }
+            onUserScroll()
+        }
+        .onChange(of: undoState) { oldValue, newValue in
+            if oldValue == nil, newValue != nil {
+                UIAccessibility.post(
+                    notification: .announcement,
+                    argument: MoroL10n.Timeline.remoteSyncNotice
+                )
+            }
+        }
+    }
+
+    private var pill: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 6) {
+                    messageLabel
+                    undoButton
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            } else {
+                HStack(spacing: 10) {
+                    messageLabel
+                    Rectangle()
+                        .fill(Color.white.opacity(0.22))
+                        .frame(width: 1, height: 14)
+                        .accessibilityHidden(true)
+                    undoButton
+                }
+                .padding(.leading, 14)
+                .padding(.trailing, 14)
+                .frame(minHeight: 44)
+            }
+        }
+        .background(backgroundColor)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(borderColor, lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.14), radius: 10, y: 3)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var messageLabel: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .moroScaledFont(size: 12, weight: .medium)
+                .foregroundStyle(Color.white.opacity(0.76))
+                .accessibilityHidden(true)
+            Text(MoroL10n.Timeline.remoteSyncNotice)
+                .font(theme.typography.caption)
+                .foregroundStyle(Color.white.opacity(0.92))
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+        }
+    }
+
+    private var undoButton: some View {
+        Button(action: onUndo) {
+            Text(MoroL10n.Timeline.remoteSyncUndo)
+                .font(theme.typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(Color.white)
+                .lineLimit(1)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(MoroL10n.Timeline.remoteSyncNotice), \(MoroL10n.Timeline.remoteSyncUndo)")
+        .accessibilityIdentifier("timeline.remoteSyncUndo")
+    }
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? theme.colors.surfaceElevated : theme.colors.textPrimary
+    }
+
+    private var borderColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.06)
     }
 }
 

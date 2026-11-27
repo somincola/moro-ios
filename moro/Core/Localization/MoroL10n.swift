@@ -873,6 +873,8 @@ public enum MoroL10n {
         public static var gapLoading: String { text("timeline.gapLoading") }
         public static var gapRetry: String { text("timeline.gapRetry") }
         public static func gapTimeSpan(_ duration: String) -> String { format("timeline.gapTimeSpan", duration) }
+        public static var remoteSyncNotice: String { text("timeline.remoteSyncNotice") }
+        public static var remoteSyncUndo: String { text("timeline.remoteSyncUndo") }
         public static func newPostsAtLeast(_ count: Int) -> String { format("timeline.newPostsAtLeast", Int64(count)) }
         public static var refreshing: String { text("timeline.refreshing") }
         public static var newPostsMany: String { text("timeline.newPostsMany") }

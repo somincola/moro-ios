@@ -78,6 +78,28 @@ final class TimelineLiveUITests: XCTestCase {
         XCTAssertFalse(gapButton.exists)
     }
 
+    @MainActor func testCrossGapRemoteMarkerSyncJumpsAndUndoRestoresPreviousAnchor() throws {
+        let app = launch(scheme: "light", testsGaps: true)
+        defer { app.terminate() }
+        let anchor = try beginReading(in: app)
+        let count = app.staticTexts["timeline.fixture.count"]
+
+        app.buttons["timeline.fixture.remoteSync"].tap()
+        let undoButton = app.buttons["timeline.remoteSyncUndo"]
+        XCTAssertTrue(undoButton.waitForExistence(timeout: 8))
+        XCTAssertTrue(wait { count.value as? String == "gaps:2;failed:0" })
+        XCTAssertTrue(wait { self.post(in: app, id: 110).isHittable })
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Timeline cross-gap remote sync undo pill"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+
+        undoButton.tap()
+        XCTAssertTrue(wait { !undoButton.exists })
+        assertReadingPosition(anchor, in: app)
+    }
+
     /// Not only the final position: no intermediate frame may show the reading position
     /// displaced while the inserted rows wait for their offset correction.
     @MainActor func testInsertionNeverShowsAFrameWithTheReadingPositionDisplaced() throws {

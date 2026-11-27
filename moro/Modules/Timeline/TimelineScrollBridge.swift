@@ -218,6 +218,10 @@ final class TimelineScrollBridge: ObservableObject {
         restoredAnchors[timeline] != nil
     }
 
+    func isHoldingPositionAfterResume(for timeline: TimelineType) -> Bool {
+        holdsPositionAfterResume && !releasedFromResumeHold.contains(timeline)
+    }
+
     func releaseRestoredAnchorHold(for timeline: TimelineType) {
         restoredAnchors[timeline] = nil
         settlingAnchors[timeline] = nil
@@ -334,10 +338,21 @@ final class TimelineScrollBridge: ObservableObject {
         revision: UInt64,
         jumpToLatest: Bool = false,
         retainedIDs: Set<String>? = nil,
-        preferredAnchorID: String? = nil
+        preferredAnchorID: String? = nil,
+        targetAnchor: TimelineReadingAnchor? = nil
     ) -> Bool {
         guard active, isPresented(timeline) else { return false }
         if !jumpToLatest && !canPresentUpdates(for: timeline) { return false }
+        if let targetAnchor {
+            settlingAnchors[timeline] = nil
+            pendingLayouts[timeline] = PendingLayout(
+                revision: revision,
+                anchors: [targetAnchor],
+                followsLatest: false
+            )
+            scheduleLayoutEvent(for: timeline)
+            return true
+        }
         let followsLatest = jumpToLatest || followsLatestAtTop(timeline)
         let candidates = readingAnchors(for: timeline, onlyVisible: false)
         let visibleIDs = Set(readingAnchors(for: timeline).map(\.statusID))

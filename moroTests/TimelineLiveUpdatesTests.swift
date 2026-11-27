@@ -1177,4 +1177,187 @@ struct TimelineLiveUpdatesTests {
         #expect(session2.savedReadingAnchor == TimelineReadingAnchor(statusID: "205", viewportOffset: 0))
     }
 
+    @Test func insertRemoteAnchorContextSplitsLargeGapIntoUnreadUpperAndHistoricalLower() throws {
+        var state = TimelineLiveUpdates(statuses: [post("100"), post("99")])
+        _ = state.receiveHead(
+            TimelinePage(statuses: [post("300"), post("261")]),
+            sinceID: "100",
+            currentAccountID: nil
+        )
+        #expect(state.metadata.gaps.count == 1)
+
+        // Remote marker 180 lies inside the 261..100 gap; min_id=180 returns [220, 181] and status 180 exists.
+        let targetID = state.insertRemoteAnchorContext(
+            remoteID: "180",
+            anchorStatus: post("180"),
+            newerPage: TimelinePage(statuses: [post("220"), post("181")], prevMinID: "220"),
+            currentAccountID: nil
+        )
+        #expect(targetID == "180")
+        #expect(state.statuses.map(\.id) == ["300", "261", "220", "181", "180", "100", "99"])
+        #expect(state.metadata.gaps.count == 2)
+
+        let upperGap = try #require(state.metadata.gaps.first { $0.afterID == "261" })
+        #expect(upperGap.beforeID == "220")
+        #expect(upperGap.maxID == "261" && upperGap.sinceID == "220")
+        #expect(upperGap.sequence > state.metadata.acknowledgedSequence)
+
+        let lowerGap = try #require(state.metadata.gaps.first { $0.afterID == "180" })
+        #expect(lowerGap.beforeID == "100")
+        #expect(lowerGap.maxID == "180" && lowerGap.sinceID == "100")
+        // Already-read history below 180 does not inflate unread badge counts.
+        #expect(lowerGap.sequence == state.metadata.acknowledgedSequence)
+        #expect(state.newCount == 4) // 300, 261, 220, 181 (180 is read)
+    }
+
+    @Test func insertRemoteAnchorContextClosesUpperGapAndHandlesDeletedAnchor404() throws {
+        var state = TimelineLiveUpdates(statuses: [post("100")])
+        _ = state.receiveHead(
+            TimelinePage(statuses: [post("300"), post("261")]),
+            sinceID: "100",
+            currentAccountID: nil
+        )
+
+        // Anchor 180 was deleted (nil), while min_id=180 reached upper edge 261 with unread posts [220, 181].
+        let targetID = state.insertRemoteAnchorContext(
+            remoteID: "180",
+            anchorStatus: nil,
+            newerPage: TimelinePage(statuses: [post("261"), post("220"), post("181")]),
+            currentAccountID: nil
+        )
+        #expect(targetID == "181")
+        #expect(state.statuses.map(\.id) == ["300", "261", "220", "181", "100"])
+        // Upper gap closed cleanly; only the historical lower gap remains.
+        #expect(state.metadata.gaps.count == 1)
+        let lowerGap = try #require(state.metadata.gaps.first)
+        #expect(lowerGap.afterID == "181" && lowerGap.beforeID == "100")
+        #expect(lowerGap.sequence == state.metadata.acknowledgedSequence)
+    }
+
+    @Test func insertRemoteAnchorContextIgnoresNonStandardServerThatIgnoresMinID() {
+        var state = TimelineLiveUpdates(statuses: [post("100")])
+        _ = state.receiveHead(
+            TimelinePage(statuses: [post("300"), post("261")]),
+            sinceID: "100",
+            currentAccountID: nil
+        )
+
+        // Server ignored min_id=180 and returned newest head [300, 261], and 180 was 404.
+        let targetID = state.insertRemoteAnchorContext(
+            remoteID: "180",
+            anchorStatus: nil,
+            newerPage: TimelinePage(statuses: [post("300"), post("261")]),
+            currentAccountID: nil
+        )
+        #expect(targetID == nil)
+        #expect(state.statuses.map(\.id) == ["300", "261", "100"])
+        #expect(state.metadata.gaps.count == 1)
+    }
+
+    @Test func crossGapResumeSyncAndUndoRestoresLocalAnchorWithoutRollingBackServerMarker() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let api = MockMastodonAPI()
+        api.fetchTimelinePageHandler = { _, maxID, sinceID, minID, _ in
+            if minID == "180" {
+                return TimelinePage(statuses: [post("200"), post("181")], prevMinID: "200")
+            }
+            if maxID == nil && minID == nil {
+                return TimelinePage(statuses: [post("300"), post("261")])
+            }
+            return TimelinePage(statuses: [])
+        }
+        api.fetchStatusDetailHandler = { id in
+            #expect(id == "180")
+            return post("180")
+        }
+        api.fetchMarkersHandler = { _ in
+            Marker(home: MarkerContent(lastReadId: "180", updatedAt: Date(), version: 12))
+        }
+        var savedMarkers: [String] = []
+        api.saveMarkerHandler = { home, _ in
+            if let home { savedMarkers.append(home) }
+            return Marker(home: home.map { MarkerContent(lastReadId: $0, updatedAt: Date(), version: 13) })
+        }
+
+        let model = TimelineViewModel(
+            apiClient: api,
+            feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory),
+            cacheClientID: UUID().uuidString,
+            defersLivePresentation: true,
+            markerSyncEnabled: { true },
+            restoresReadingPositionOverride: true
+        )
+        defer { model.clearStatuses() }
+        model.statuses = [post("100"), post("99")]
+        let originalAnchor = TimelineReadingAnchor(statusID: "100", viewportOffset: -48)
+        model.saveReadingAnchor(originalAnchor)
+
+        let synced = await model.syncRemoteMarkerOnResume(allowAdvance: true)
+        #expect(synced == TimelineReadingAnchor(statusID: "180", viewportOffset: 0))
+        let jump = try #require(model.consumePendingRemoteSyncJump())
+        #expect(jump.anchor == TimelineReadingAnchor(statusID: "180", viewportOffset: 0))
+        #expect(jump.previousAnchor == originalAnchor)
+        #expect(jump.requiresRestoredHold == false)
+        model.applyLiveUpdates()
+        #expect(model.statuses.map(\.id) == ["300", "261", "200", "181", "180", "100", "99"])
+        #expect(model.gaps.count == 2)
+
+        // Present undo pill, then undo back to 100.
+        model.presentRemoteSyncUndo(
+            previousAnchor: originalAnchor,
+            syncedStatusID: "180",
+            autoDismissAfter: 30
+        )
+        #expect(model.remoteSyncUndoState?.previousAnchor == originalAnchor)
+        let restored = model.undoRemoteMarkerSync()
+        #expect(restored == originalAnchor)
+        #expect(model.remoteSyncUndoState == nil)
+        #expect(model.savedReadingAnchor == originalAnchor)
+
+        // Server high-water mark stays at 180: flushing from 100 must NOT roll the server back,
+        // and re-running resume sync with the same 180 must NOT snap the reader away again.
+        await model.flushPendingMarkerSave()
+        #expect(savedMarkers.isEmpty)
+        let repeated = await model.syncRemoteMarkerOnResume(allowAdvance: true)
+        #expect(repeated == nil)
+        #expect(model.savedReadingAnchor == originalAnchor)
+    }
+
+    @Test func remoteSyncUndoAutoDismissesAndClearsOnClearStatuses() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = TimelineViewModel(
+            apiClient: MockMastodonAPI(),
+            feedCoordinator: FeedCoordinator(),
+            timelineCache: TimelineCache(directory: directory),
+            cacheClientID: UUID().uuidString
+        )
+        defer { model.clearStatuses() }
+        model.remoteSyncUndoDurationOverride = 0.08
+        let previous = TimelineReadingAnchor(statusID: "100", viewportOffset: -20)
+
+        model.presentRemoteSyncUndo(previousAnchor: previous, syncedStatusID: "180")
+        #expect(model.remoteSyncUndoState != nil)
+        try await waitForGapWork { model.remoteSyncUndoState == nil }
+        #expect(model.remoteSyncUndoState == nil)
+
+        model.remoteSyncUndoDurationOverride = 30
+        model.presentRemoteSyncUndo(previousAnchor: previous, syncedStatusID: "180")
+        #expect(model.remoteSyncUndoState != nil)
+        model.clearStatuses()
+        #expect(model.remoteSyncUndoState == nil)
+    }
+
+    @Test func staleHeadPageNeverCreatesAnInvertedGap() {
+        var state = TimelineLiveUpdates(statuses: [post("108"), post("100"), post("99")])
+        _ = state.receiveHead(
+            TimelinePage(statuses: [post("100"), post("99")]),
+            sinceID: "108",
+            currentAccountID: nil
+        )
+        #expect(state.metadata.gaps.isEmpty)
+    }
+
 }

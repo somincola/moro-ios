@@ -259,6 +259,7 @@ struct TimelineHomeView: View {
             // Pinned models live in a retained store, so the notice observes the
             // active model directly as well as the three built-in StateObjects.
             TimelineObservedPage(viewModel: viewModel) { topIndicator }
+            TimelineObservedPage(viewModel: viewModel) { bottomRemoteSyncUndoIndicator }
         }
         .onChange(of: hasLocalModal) { _, modal in
             scrollBridge.setActive(isActive && scenePhase == .active && !modal)
@@ -380,6 +381,7 @@ struct TimelineHomeView: View {
         .onChange(of: selectedTimeline) { oldValue, newValue in
             // Only process if timeline type actually changed
             guard oldValue != newValue else { return }
+            homeViewModel.dismissRemoteSyncUndo()
 
             // Stop the departing timeline's deferred fill so it no longer mutates an
             // off-screen view model (and writes cache) after we've navigated away —

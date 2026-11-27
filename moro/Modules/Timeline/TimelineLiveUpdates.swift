@@ -106,7 +106,10 @@ struct TimelineLiveUpdates {
         if let baseline = sinceID, baseline != newest,
             !page.statuses.contains(where: { $0.id == baseline }),
             let oldest = pageStatuses.last,
-            let baselineRow, statuses.contains(where: { $0.id == baselineRow }),
+            let baselineRow,
+            let afterIndex = statuses.firstIndex(where: { $0.id == oldest.id }),
+            let beforeIndex = statuses.firstIndex(where: { $0.id == baselineRow }),
+            afterIndex < beforeIndex,
             !metadata.gaps.contains(where: { $0.sinceID == baseline && $0.targetHeadID == newest })
         {
             metadata.gaps.append(TimelineGap(
@@ -115,7 +118,10 @@ struct TimelineLiveUpdates {
                 targetHeadID: newest, sequence: metadata.sequence))
         } else if page.isPartial, let baseline = sinceID,
             let oldest = pageStatuses.last, oldest.id != baseline,
-            let baselineRow, statuses.contains(where: { $0.id == baselineRow })
+            let baselineRow,
+            let afterIndex = statuses.firstIndex(where: { $0.id == oldest.id }),
+            let beforeIndex = statuses.firstIndex(where: { $0.id == baselineRow }),
+            afterIndex < beforeIndex
         {
             metadata.gaps.append(TimelineGap(
                 afterID: oldest.id, beforeID: baselineRow, maxID: oldest.id,
@@ -302,6 +308,161 @@ struct TimelineLiveUpdates {
         metadata.newIDs = metadata.newIDs.filter { id, _ in
             id != statusID && Self.isNewerID(id, than: statusID)
         }
+    }
+
+    func gapSpanning(statusID: String) -> TimelineGap? {
+        guard Self.isNumericID(statusID) else { return nil }
+        return metadata.gaps.first {
+            Self.isNewerID($0.maxID, than: statusID) && Self.isNewerID(statusID, than: $0.sinceID)
+        }
+    }
+
+    /// Inserts a cross-gap context slice fetched around a remote Marker ID (typically from
+    /// `GET /api/v1/timelines/home?min_id=<remoteID>` + `GET /api/v1/statuses/<remoteID>`),
+    /// accurately splitting any spanning gap into an unread upper gap and a historical lower gap.
+    /// Returns the concrete target status ID to anchor on, or `nil` if the response cannot be
+    /// safely placed (e.g. a non-standard server ignored `min_id`).
+    @discardableResult
+    mutating func insertRemoteAnchorContext(
+        remoteID: String,
+        anchorStatus: Status?,
+        newerPage: TimelinePage,
+        currentAccountID: String?
+    ) -> String? {
+        guard Self.isNumericID(remoteID) else { return nil }
+        if statuses.contains(where: { $0.id == remoteID }) {
+            markReadThrough(statusID: remoteID)
+            return remoteID
+        }
+
+        if let spanningIndex = metadata.gaps.firstIndex(where: {
+            Self.isNewerID($0.maxID, than: remoteID) && Self.isNewerID(remoteID, than: $0.sinceID)
+        }) {
+            let originalGap = metadata.gaps[spanningIndex]
+            let rawNewerInside = newerPage.statuses.filter {
+                Self.isNewerID(originalGap.maxID, than: $0.id) && Self.isNewerID($0.id, than: remoteID)
+            }
+            let validAnchor: Status? = anchorStatus.flatMap { status in
+                guard status.id == remoteID,
+                    !isDeleted(status),
+                    Self.isNewerID(originalGap.maxID, than: status.id),
+                    Self.isNewerID(status.id, than: originalGap.sinceID)
+                else { return nil }
+                return status
+            }
+
+            let filteredNewer = Self.unique(rawNewerInside.filter { !isDeleted($0) })
+            let fragment = filteredNewer + (validAnchor.map { [$0] } ?? [])
+            guard !fragment.isEmpty else { return nil }
+
+            let upperKnownIDs: Set<String>
+            if let afterIndex = statuses.firstIndex(where: { $0.id == originalGap.afterID }) {
+                upperKnownIDs = Set(statuses[...afterIndex].map(\.id))
+            } else {
+                upperKnownIDs = []
+            }
+            // Only trust `newerPage` to close the upper gap when it also returned posts
+            // strictly inside the gap (proving the server honored `min_id`).
+            let reachedUpperBoundary = !rawNewerInside.isEmpty && !newerPage.isPartial
+                && newerPage.statuses.contains {
+                    $0.id == originalGap.maxID || $0.id == originalGap.afterID
+                        || Self.isNewerID($0.id, than: originalGap.maxID)
+                        || upperKnownIDs.contains($0.id)
+                }
+
+            let countsAsNew = originalGap.sequence > metadata.acknowledgedSequence
+            _ = merge(
+                fragment,
+                before: originalGap.beforeID,
+                currentAccountID: currentAccountID,
+                countsAsNew: countsAsNew,
+                sequence: originalGap.sequence
+            )
+
+            metadata.gaps.remove(at: spanningIndex)
+            let fragmentTopID = fragment.first!.id
+            let fragmentBottomID = fragment.last!.id
+
+            if !reachedUpperBoundary {
+                let upperSinceID: String
+                if let prev = newerPage.prevMinID,
+                    Self.isNewerID(originalGap.maxID, than: prev),
+                    Self.isNewerID(prev, than: remoteID)
+                {
+                    upperSinceID = prev
+                } else {
+                    upperSinceID = fragmentTopID
+                }
+                metadata.gaps.append(
+                    TimelineGap(
+                        afterID: originalGap.afterID,
+                        beforeID: fragmentTopID,
+                        maxID: originalGap.maxID,
+                        sinceID: upperSinceID,
+                        targetHeadID: originalGap.targetHeadID,
+                        sequence: originalGap.sequence
+                    )
+                )
+            }
+
+            // Everything below the remote marker was already read on another device:
+            // keep it explicitly loadable as a manual gap without inflating unread counts.
+            metadata.gaps.append(
+                TimelineGap(
+                    afterID: fragmentBottomID,
+                    beforeID: originalGap.beforeID,
+                    maxID: fragmentBottomID,
+                    sinceID: originalGap.sinceID,
+                    targetHeadID: originalGap.targetHeadID,
+                    sequence: metadata.acknowledgedSequence
+                )
+            )
+
+            markReadThrough(statusID: remoteID)
+            return validAnchor?.id ?? filteredNewer.last?.id
+        }
+
+        // If `remoteID` is strictly newer than our entire loaded timeline, insert the slice
+        // at the head and leave a historical gap to the previous head.
+        let isAheadOfHead = statuses.first.map { Self.isNewerID(remoteID, than: $0.id) } ?? true
+        guard isAheadOfHead else { return nil }
+
+        let rawNewerInside = newerPage.statuses.filter { Self.isNewerID($0.id, than: remoteID) }
+        let validAnchor: Status? = anchorStatus.flatMap { status in
+            status.id == remoteID && !isDeleted(status) ? status : nil
+        }
+        let filteredNewer = Self.unique(rawNewerInside.filter { !isDeleted($0) })
+        let fragment = filteredNewer + (validAnchor.map { [$0] } ?? [])
+        guard !fragment.isEmpty else { return nil }
+
+        let previousHead = statuses.first?.id
+        _ = merge(fragment, before: previousHead, currentAccountID: currentAccountID, countsAsNew: true)
+
+        let fragmentTopID = fragment.first!.id
+        let fragmentBottomID = fragment.last!.id
+        if !newerPage.isPartial {
+            if let existingHead = metadata.fetchedHeadID {
+                if Self.isNewerID(fragmentTopID, than: existingHead) {
+                    metadata.fetchedHeadID = fragmentTopID
+                }
+            } else {
+                metadata.fetchedHeadID = fragmentTopID
+            }
+        }
+        if let previousHead {
+            metadata.gaps.append(
+                TimelineGap(
+                    afterID: fragmentBottomID,
+                    beforeID: previousHead,
+                    maxID: fragmentBottomID,
+                    sinceID: previousHead,
+                    targetHeadID: fragmentTopID,
+                    sequence: metadata.acknowledgedSequence
+                )
+            )
+        }
+        markReadThrough(statusID: remoteID)
+        return validAnchor?.id ?? filteredNewer.last?.id
     }
 
     mutating func setReadingAnchor(_ anchor: TimelineReadingAnchor?) {
